@@ -12,7 +12,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
-PYTHON_EXE = r"C:\Users\16070\AppData\Local\Programs\Python\Python312\python.exe"
+PYTHON_EXE = sys.executable
 
 
 async def _run_mcp_server():
@@ -74,7 +74,7 @@ async def _run_mcp_server():
 
             result = await session.call_tool("intake", {
                 "section": "have",
-                "data": '{"skills": ["React", "TypeScript"], "experience": "3年"}'
+                "data": '{"core_skills": [{"skill": "React", "evidence": "3年项目实战，用户已确认", "user_verified": true}], "experience": "3年"}'
             })
             have_result = result.content[0].text
             print(f"[OK] intake have: {have_result}")

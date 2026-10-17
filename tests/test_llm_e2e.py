@@ -10,20 +10,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pytest
 import anthropic
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# 默认配置（可通过环境变量覆盖）
-DEFAULT_BASE_URL = "https://token-plan-cn.xiaomimimo.com/anthropic"
-DEFAULT_API_KEY = "tp-cvwuv6lgvskloafr4wjgdc6j8wgjgufmqyywdkjgmzwdyggk"
+# 配置：LLM 端点与密钥从环境变量读取（密钥不得写死进源码）
+DEFAULT_BASE_URL = os.environ.get(
+    "ANTHROPIC_BASE_URL", "https://token-plan-cn.xiaomimimo.com/anthropic"
+)
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+pytestmark = pytest.mark.skipif(
+    not API_KEY, reason="未设置 ANTHROPIC_API_KEY，跳过 LLM 集成测试"
+)
 
 
 def get_anthropic_client() -> anthropic.Anthropic:
     """创建 Anthropic 客户端，支持自定义 endpoint。"""
-    base_url = os.environ.get("ANTHROPIC_BASE_URL", DEFAULT_BASE_URL)
-    api_key = os.environ.get("ANTHROPIC_API_KEY", DEFAULT_API_KEY)
-    return anthropic.Anthropic(api_key=api_key, base_url=base_url)
+    return anthropic.Anthropic(api_key=API_KEY, base_url=DEFAULT_BASE_URL)
 
 
 def extract_tool_calls(response) -> list[dict]:
@@ -39,7 +44,7 @@ def extract_tool_calls(response) -> list[dict]:
     return tool_calls
 
 
-PYTHON_EXE = r"C:\Users\16070\AppData\Local\Programs\Python\Python312\python.exe"
+PYTHON_EXE = sys.executable
 
 
 async def test_llm_e2e():

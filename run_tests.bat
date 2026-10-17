@@ -1,6 +1,7 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
-set PYTHON=C:\Users\16070\AppData\Local\Programs\Python\Python312\python.exe
+set PYTHON=%~dp0.venv\Scripts\python.exe
 
 echo.
 echo ========================================
@@ -8,31 +9,25 @@ echo   Career Kit 测试套件
 echo ========================================
 echo.
 
-echo [1/5] 运行单元测试...
-%PYTHON% tests/test_career_kit.py
-if errorlevel 1 goto :error
+if not exist "%PYTHON%" (
+    echo [错误] 未找到虚拟环境解释器: %PYTHON%
+    echo 请先创建环境:
+    echo   uv venv .venv --python 3.12
+    echo   uv pip install -e . --index-url https://pypi.org/simple
+    echo   uv pip install pytest pytest-asyncio --index-url https://pypi.org/simple
+    exit /b 1
+)
+
+if "%CAREER_KIT_DATA_DIR%"=="" set CAREER_KIT_DATA_DIR=%TEMP%\career_kit_test
+
+echo 解释器: %PYTHON%
+echo 数据目录: %CAREER_KIT_DATA_DIR%
 echo.
 
-echo [2/5] 运行简历格式测试...
-%PYTHON% tests/test_resume_formats.py
+"%PYTHON%" -m pytest tests -q --ignore=tests/career-kit-test
 if errorlevel 1 goto :error
-echo.
 
-echo [3/5] 运行计划导入测试...
-%PYTHON% tests/test_plan_import.py
-if errorlevel 1 goto :error
 echo.
-
-echo [4/5] 运行 MCP 客户端测试...
-%PYTHON% tests/test_mcp_client.py
-if errorlevel 1 goto :error
-echo.
-
-echo [5/5] 运行 LLM 端到端测试...
-%PYTHON% tests/test_llm_e2e.py
-if errorlevel 1 goto :error
-echo.
-
 echo ========================================
 echo   所有测试通过!
 echo ========================================

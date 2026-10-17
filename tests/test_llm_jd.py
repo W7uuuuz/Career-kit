@@ -12,22 +12,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
+import pytest
 import anthropic
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# 配置
-PYTHON_EXE = r"C:\Users\16070\AppData\Local\Programs\Python\Python312\python.exe"
-DEFAULT_BASE_URL = "https://token-plan-cn.xiaomimimo.com/anthropic"
-DEFAULT_API_KEY = "tp-cvwuv6lgvskloafr4wjgdc6j8wgjgufmqyywdkjgmzwdyggk"
+# 配置：LLM 端点与密钥从环境变量读取（密钥不得写死进源码）
+PYTHON_EXE = sys.executable
+DEFAULT_BASE_URL = os.environ.get(
+    "ANTHROPIC_BASE_URL", "https://token-plan-cn.xiaomimimo.com/anthropic"
+)
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+pytestmark = pytest.mark.skipif(
+    not API_KEY, reason="未设置 ANTHROPIC_API_KEY，跳过 LLM 集成测试"
+)
 JD_FILE = Path(__file__).parent.parent / "dev" / "test" / "JD1.md"
 RESUME_FILE = Path(__file__).parent.parent / "dev" / "test" / "AI.md"
 
 
 def get_anthropic_client() -> anthropic.Anthropic:
-    base_url = os.environ.get("ANTHROPIC_BASE_URL", DEFAULT_BASE_URL)
-    api_key = os.environ.get("ANTHROPIC_API_KEY", DEFAULT_API_KEY)
-    return anthropic.Anthropic(api_key=api_key, base_url=base_url)
+    return anthropic.Anthropic(api_key=API_KEY, base_url=DEFAULT_BASE_URL)
 
 
 def extract_tool_calls(response) -> list[dict]:
