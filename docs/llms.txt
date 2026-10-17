@@ -41,6 +41,7 @@ Career Kit 的核心优势是有**真实数据**，而不是凭空分析：
 | `parse_resume` | 解析简历文件 | 用户给了简历时 |
 | `intake` | 填充档案（who/have/want，技能带证据） | 逐步填充用户信息 |
 | `finalize_profile` | 确认档案 | 档案完整后 |
+| `explore_goals` | 无目标时三轴定位引导选方向 | 用户没有明确目标时 |
 | `import_jd` / `import_jd_file` | 导入 JD | 有目标岗位时 |
 
 ### 2. 数据获取与分析工具
@@ -66,8 +67,10 @@ Career Kit 的核心优势是有**真实数据**，而不是凭空分析：
 | 工具 | 作用 | 调用时机 |
 |------|------|----------|
 | `generate_tasks` | 从路线图生成任务 | save_roadmap 之后 |
+| `detail_current_phase` | 获取当前阶段详细路线方法论（只细化当前阶段；intern 阶段先抓真实数据） | 用户要进入执行、需更细颗粒度时 |
+| `save_current_detail` | 保存当前阶段详细路线（含按天/按比例打卡点） | LLM 设计完成后，随后重新 generate_tasks |
 | `get_next_tasks` | 当前阶段的下一步任务 | 用户想知道「现在做什么」 |
-| `checkin_task` | 打卡（沉淀能力证据） | 用户完成/跳过任务时 |
+| `checkin_task` | 打卡（沉淀能力证据；once/daily/percent） | 用户完成/推进任务时 |
 
 ### 5. 洞察与产出工具
 
@@ -120,8 +123,11 @@ Career Kit 的核心优势是有**真实数据**，而不是凭空分析：
 
 ```
 1. generate_tasks()
-2. get_next_tasks()
-3. checkin_task(task_id="task_001", status="completed", notes="练习题也做了")
+2. detail_current_phase()                          // 只细化当前阶段；intern 先抓真实岗位数据
+3. save_current_detail(detail_json='{"phase_id":"phase_1","tasks":[...]}')
+4. generate_tasks()                                // 重新生成以合并打卡点
+5. get_next_tasks()
+6. checkin_task(task_id="task_001", status="completed", notes="练习题也做了")
    // 完成自动沉淀能力证据到 have.capability_evidence
 ```
 
@@ -183,7 +189,7 @@ Career Kit 的核心优势是有**真实数据**，而不是凭空分析：
 5. fetch_company_jobs(...)        // 抓取真实岗位（含薪资）
 6. analyze_gaps() → save_gap_analysis()
 7. generate_roadmap() → save_roadmap()
-8. generate_tasks() → get_next_tasks()
+8. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks() → get_next_tasks()
 ```
 
 ### 场景 2：用户说"任务做完了"
@@ -234,4 +240,4 @@ Career Kit 的核心优势是有**真实数据**，而不是凭空分析：
 
 ---
 
-*本指南基于 Career Kit 时间退场重构版（2026-08）*
+*本指南基于 Career Kit 时间退场重构版（2026-08）· 更新于 2026-10-17*

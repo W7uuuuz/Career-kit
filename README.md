@@ -153,6 +153,8 @@ graph LR
 |------|------|
 | `generate_roadmap` | 基于差距分析生成分阶段路线图（只定顺序与标准，无时限） |
 | `generate_tasks` | 从路线图生成任务列表 |
+| `detail_current_phase` | 细化当前阶段的详细路线（含按天/按比例打卡点） |
+| `save_current_detail` | 保存当前阶段详细路线 |
 | `get_next_tasks` | 当前阶段的下一步任务（关卡式推进） |
 | `checkin_task` | 打卡任务，完成自动沉淀能力证据 |
 | `get_progress` | 获取进度概览 |

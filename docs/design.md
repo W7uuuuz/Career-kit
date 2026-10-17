@@ -188,8 +188,9 @@ finalize_profile → 生成摘要，进入分析
 | Tool | 输入 | 输出 | 说明 |
 |------|------|------|------|
 | `generate_tasks` | 无 | 任务列表 | 从路线图生成任务；重建时历史进度沉淀为能力证据 |
+| `detail_current_phase` / `save_current_detail` | detail_json | 当前阶段详细路线 | 只细化当前阶段，含按天/按比例打卡点；intern 阶段先抓真实数据 |
 | `get_next_tasks` | 无 | 当前阶段下一步 | 关卡式：顺序即答案 |
-| `checkin_task` | task_id | 打卡结果 | 完成自动沉淀能力证据 |
+| `checkin_task` | task_id | 打卡结果 | 完成自动沉淀能力证据（once/daily/percent） |
 | `trigger_insight` / `apply_insight` | trigger_type | 调整记录 | 仅 stage_audit / event 两种触发 |
 | `get_progress` / `get_workflow_status` | 无 | 进度/状态 | 含目标变更检测 |
 | `export_dashboard` | 无 | 自包含 HTML | 阶段驱动仪表盘快照 |
@@ -202,7 +203,8 @@ finalize_profile → 生成摘要，进入分析
   └──是──> 用户目标 → fetch_company_jobs（真实数据）
     → analyze_gaps → save_gap_analysis
     → generate_roadmap → save_roadmap
-    → generate_tasks → get_next_tasks
+    → generate_tasks → detail_current_phase → save_current_detail → generate_tasks
+    → get_next_tasks
     → 用户打卡 checkin_task（能力证据自动沉淀）
     → trigger_insight(stage_audit/event) → apply_insight（调整）
     → 回到任务执行

@@ -15,7 +15,7 @@
 ## 2026-08-26 架构决策记录（审计产出，已全部落地）
 
 - **时间退场**：产品只回答「需要什么、什么顺序」，不为任务设时限；日程由 LLM 对话中一次性产出，系统不存储
-- **工具面收缩**：32 → 24 个（下线 suggest_adjustment、schedule 链路、计划管理收缩为 import_plan、get_today_tasks→get_next_tasks、新增 export_dashboard）
+- **工具面收缩**：2026-08-26 曾收缩至 24 个（下线 suggest_adjustment、schedule 链路、计划管理收缩为 import_plan、get_today_tasks→get_next_tasks、新增 export_dashboard）；后续新增 explore_goals、多档案 5 件套、detail_current_phase/save_current_detail，**当前共 32 个**（以 docs/tools.md 为准）
 - **能力证据**：建档追问证据 + 打卡沉淀 have.capability_evidence + 重建任务进度不丢
 - **阶段审计去重**：audited_phases 每阶段只审计一次；任务 schema 统一 name 制
 - **数据落位**：~/.career-kit/ 单一数据根（src/paths.py），知识库属用户自有资产
@@ -27,12 +27,13 @@
 
 | # | 待办 | 说明 | 优先级 |
 |---|------|------|--------|
-| T1 | dashboard.html 接通真实数据 | 当前内置 mock 数据；数据实际在 profile.json 的 tasks/checkins/adjustments 字段，需实现导出或让页面直接读档案 | P1 |
-| T2 | server.py 按工作流拆分 | 1450+ 行、32 个工具全部内联；建议拆为 tools/profile_tools.py、analysis_tools.py、task_tools.py 等模块，server.py 只做注册 | P1 |
-| T3 | test_mcp_client 需要 pytest-asyncio | 唯一持续失败的测试，属环境缺依赖；加入 dev 依赖组并安装 | P2 |
-| T4 | tests/career-kit-test/ 目录清理 | 嵌套克隆残留，二进制被进程锁定无法删除（已 gitignore）；关闭占用进程后手动删除 | P2 |
+| T1 | ~~dashboard.html 接通真实数据~~ | 已完成——旧 mock 静态页已删除，改由 export_dashboard 生成内嵌数据快照的自包含 HTML（progress/roadmap 两种模式） | 已完成 |
+| T2 | server.py 按工作流拆分 | 2700+ 行、32 个工具全部内联；建议拆为 tools/profile_tools.py、analysis_tools.py、task_tools.py 等模块，server.py 只做注册 | P1 |
+| T3 | ~~test_mcp_client 需要 pytest-asyncio~~ | 已完成——pytest-asyncio 已加入 [dependency-groups] dev 并配置 asyncio_mode=auto | 已完成 |
+| T4 | tests/career-kit-test/ 目录清理 | 本地测试副本（已 gitignore，未跟踪）；如需清理删除该目录即可 | P2 |
 | T5 | BOSS直聘登录态初始化体验 | 首次使用需手动跑 `python -m src.scrapers.boss.login`；考虑提供 MCP 内引导或把该说明前置到 get_scraper_guide 的错误返回里 | P2 |
 | T6 | 语义检索升级 | 关键词检索 → sentence-transformers 本地模型，见 roadmap.md Phase 4 | P2 |
+| T7 | 三档目标推荐（BUG-006） | explore_goals/analyze_gaps 缺「挑战档/一般档/兜底档」分层推荐；需真实岗位数据（难度+薪资）支撑三档目标组合 | P0 |
 
 ---
 
@@ -268,9 +269,9 @@
 
 | 优先级 | 任务 | 方向 | 工作量 |
 |--------|------|------|--------|
+| P0 | 三档目标推荐（BUG-006，挑战/一般/兜底） | LLM Prompt | 中 |
 | P0 | 强化输出格式解析稳定性 | LLM Prompt | 中 |
 | P0 | 用户导入途径不完善 | 其他 | 中 |
-| P0 | 反馈循环机制缺失 | 其他 | 中 |
 | P0 | 实现 Top 3 大厂爬虫（腾讯、阿里、百度） | 适配更多网页 | 大 |
 | P1 | 抽取反爬工具库 | 适配更多网页 | 中 |
 | P1 | 实现爬虫 Mock 测试框架 | 适配更多网页 | 中 |
@@ -279,7 +280,8 @@
 | P2 | 支持工作流分支和循环 | LLM Prompt | 大 |
 | P2 | 错误处理和用户体验 | 其他 | 小 |
 | P2 | 测试覆盖不完整 | 其他 | 中 |
+| P2 | 反馈循环机制缺失（已降级，checkin notes + journey 承载） | 其他 | 中 |
 
 ---
 
-*最后更新：2026-08-26*
+*最后更新：2026-10-17*

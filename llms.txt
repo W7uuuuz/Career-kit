@@ -22,9 +22,10 @@
 5. fetch_company_jobs(company=..., params=...)  # 抓取真实岗位（含薪资）
 6. analyze_gaps() → save_gap_analysis()       # 基于真实数据分析
 7. generate_roadmap() → save_roadmap()        # 只定顺序与完成标准，无时长
-8. generate_tasks() → get_next_tasks()
-9. checkin_task(...)                          # 完成即沉淀能力证据
-10. export_dashboard()                        # 生成阶段进度仪表盘
+8. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks()
+9. get_next_tasks()
+10. checkin_task(...)                         # 完成即沉淀能力证据
+11. export_dashboard()                        # 生成阶段进度仪表盘
 ```
 
 ## 核心原则

@@ -152,15 +152,20 @@
 | 工具 | 作用 |
 |------|------|
 | `generate_tasks` | 从路线图生成任务（重建时历史进度沉淀为能力证据） |
+| `detail_current_phase` | 获取当前阶段详细路线方法论（只细化当前阶段；intern 阶段先抓真实数据） |
+| `save_current_detail` | 保存当前阶段详细路线（含按天/按比例打卡点，随后重新 generate_tasks 合并） |
 | `get_next_tasks` | 当前阶段的下一步任务 |
-| `checkin_task` | 打卡任务 |
+| `checkin_task` | 打卡任务（once/daily/percent 三种模式） |
 
 ### 流程
 
 ```
 1. generate_tasks()
-2. get_next_tasks()
-3. checkin_task(task_id="task_001", status="completed", notes="练习题也做了")
+2. detail_current_phase()          // 只细化当前阶段，可先抓真实岗位数据
+3. save_current_detail(detail_json='{"phase_id":"phase_1","tasks":[...]}')
+4. generate_tasks()                // 重新生成以合并打卡点
+5. get_next_tasks()
+6. checkin_task(task_id="task_001", status="completed", notes="练习题也做了")
 ```
 
 ### 前置条件
@@ -171,6 +176,8 @@
 
 - `profile.tasks`：任务列表
   - 每个任务包含 `id`、`name`、`description`、`phase_id`、`status`、`priority`
+  - 详细路线任务额外带 `checkin_mode`（once/daily/percent）与 `checkin_goal`
+- `profile.plan.current_detail`：当前阶段详细路线
 - `profile.have.capability_evidence`：完成任务自动沉淀的能力证据
 
 ---

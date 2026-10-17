@@ -1,6 +1,6 @@
 # Career Kit 端到端验证手册
 
-> 真实接入 MCP 跑全流程，验证所有 30 个工具。按场景一步步照做，每步有预期结果与验证点。
+> 真实接入 MCP 跑全流程，验证所有 32 个工具。按场景一步步照做，每步有预期结果与验证点。
 >
 > 核心理念：**顺序归产品，时间归用户**——不为任务设定时限；所有分析基于真实数据，绝不编造。
 
@@ -38,7 +38,7 @@
 
 | 场景 | 覆盖功能 | 覆盖工具 |
 |------|----------|----------|
-| A：零基础小白全流程 | 建档 → 目标探索 → 差距分析 → 路线图 → 任务 → 打卡 → 洞察 → 产出 | 约 20 个 |
+| A：零基础小白全流程 | 建档 → 目标探索 → 差距分析 → 路线图 → 任务 → 阶段详细路线 → 打卡 → 洞察 → 产出 | 约 22 个 |
 | B：多档案管理 | 档案列表/切换/回收站删除/恢复 | 5 个 |
 | C：数据获取与守卫 | 真实抓取 + 边界守卫 | 约 10 个 |
 
@@ -207,11 +207,37 @@ save_roadmap(roadmap_json='{"strategy_summary":"零基础先学产品基础，�
 
 **操作**：`generate_tasks`
 
-**预期**：`已从路线图生成 N 个任务` + 任务列表（含 phase_id、priority），`next_steps: ["get_next_tasks"]`
+**预期**：`已从路线图生成 N 个任务` + 任务列表（含 phase_id、priority），`next_steps: ["get_next_tasks", "detail_current_phase"]`
 
 **验证点**： 任务数量与路线图里程碑任务一致  阶段 id 关联正确
 
-### 第 16 步：查看下一步任务（关卡式 + 全流程概览）
+### 第 16 步：细化当前阶段（执行期详细路线）
+
+**操作**：`detail_current_phase`
+
+**预期**：
+- 返回 detailed_route 方法论 + `current_phase`（当前阶段 goal/company/kpi/milestones/jd_status）
+- `instructions` 提示：intern 阶段先抓真实数据，任务需带 checkin_mode/checkin_goal
+
+**验证点**：
+-  只返回当前阶段（不生成后续阶段）
+-  intern 阶段 instructions 强调 fetch_company_jobs/fetch_jd_detail 抓真实数据
+
+### 第 17 步：保存详细路线并合并打卡点
+
+**操作**：
+```
+save_current_detail(detail_json='{"phase_id":"phase_1","tasks":[{"name":"每天刷 5 题","description":"...","priority":"high","checkin_mode":"daily","checkin_goal":30}]}')
+```
+随后重新 `generate_tasks` 合并打卡点。
+
+**预期**：
+- `save_current_detail` 返回 `当前阶段详细路线已保存（N 个任务）`，`next_steps: ["generate_tasks"]`
+- 重新 `generate_tasks` 后，任务带上 `checkin_mode`/`checkin_goal`
+
+**验证点**： 详细路线保存成功  重新 generate_tasks 后任务含打卡点字段
+
+### 第 18 步：查看下一步任务（关卡式 + 全流程概览）
 
 **操作**：`get_next_tasks`
 
@@ -221,7 +247,7 @@ save_roadmap(roadmap_json='{"strategy_summary":"零基础先学产品基础，�
 
 **验证点**： 全流程概览  当前阶段任务带 ID  无时限压力提示
 
-### 第 17 步：打卡（能力证据沉淀）
+### 第 19 步：打卡（能力证据沉淀）
 
 **操作**：
 ```
@@ -237,7 +263,7 @@ checkin_task(task_id="task_001", status="completed", notes="看完产品入门�
 -  打卡成功  能力证据自动沉淀（之后 export_dashboard 可看到）
 -  打卡返回值提示「完成得轻松可加深难度或推进下一项」
 
-### 第 18 步：阶段审计（完成阶段后触发）
+### 第 20 步：阶段审计（完成阶段后触发）
 
 **操作**（对话引导）：先完成当前阶段全部任务（逐个 checkin_task），然后：
 ```
@@ -250,7 +276,7 @@ trigger_insight(trigger_type="stage_audit")
 
 **验证点**： 阶段完成检测  审计触发（每阶段只审计一次——audited_phases 去重）
 
-### 第 19 步：应用洞察（调整任务）
+### 第 21 步：应用洞察（调整任务）
 
 **操作**：
 ```
@@ -261,7 +287,7 @@ apply_insight(insight_json='{"trigger_type":"stage_audit","status":"on_track","s
 
 **验证点**： 新增任务成功  `get_progress` 可看到调整历史
 
-### 第 20 步：进度与产出
+### 第 22 步：进度与产出
 
 **操作**：
 ```
@@ -481,11 +507,13 @@ import_plan(file_path="C:/tmp/my_plan.md")
 - [ ] A13 generate_roadmap 方法论
 - [ ] A14 save_roadmap（jd 三件套软校验 + HTML）
 - [ ] A15 generate_tasks 生成任务
-- [ ] A16 get_next_tasks（全流程概览）
-- [ ] A17 checkin_task（能力证据沉淀）
-- [ ] A18 trigger_insight（阶段审计）
-- [ ] A19 apply_insight（调整落地）
-- [ ] A20 get_progress + export_dashboard（progress/roadmap）
+- [ ] A16 detail_current_phase（细化当前阶段）
+- [ ] A17 save_current_detail + 重新 generate_tasks（合并打卡点）
+- [ ] A18 get_next_tasks（全流程概览）
+- [ ] A19 checkin_task（能力证据沉淀）
+- [ ] A20 trigger_insight（阶段审计）
+- [ ] A21 apply_insight（调整落地）
+- [ ] A22 get_progress + export_dashboard（progress/roadmap）
 
 ## 场景 B：多档案管理
 - [ ] B1  list_profiles
@@ -507,4 +535,4 @@ import_plan(file_path="C:/tmp/my_plan.md")
 
 ---
 
-*生成于 2026-08-28 · 工具版本 30 个*
+*生成于 2026-08-28 · 更新于 2026-10-17 · 工具版本 32 个*
