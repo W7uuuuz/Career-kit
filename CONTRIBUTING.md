@@ -6,7 +6,7 @@
 
 ### 报告问题
 
-发现 Bug 或有新想法？[开一个 Issue](https://github.com/Wuuuuuuuuuz/career-kit/issues/new)。
+发现 Bug 或有新想法？[开一个 Issue](https://github.com/W7uuuz/Career-kit/issues/new)。
 
 ### 贡献代码
 

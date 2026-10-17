@@ -37,7 +37,7 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/Wuuuuuuuuuz/career-kit.git
+git clone https://github.com/W7uuuz/Career-kit.git
 cd career-kit
 pip install -e .
 ```
