@@ -211,7 +211,6 @@ def test_step1_build_profile():
         print(f"[OK] 档案完整，版本 v{p.version}，section 时间戳已记录")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -249,7 +248,6 @@ def test_step2_gap_analysis():
         print("[OK] 差距报告格式化成功")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -313,7 +311,6 @@ def test_step3_roadmap():
         print("[OK] 路线图报告格式化成功")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -383,7 +380,6 @@ def test_step4_progress_tracking():
         print("[OK] 打卡与能力证据持久化验证通过")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -429,7 +425,6 @@ def test_step5_stage_audit_dedup():
         print("[OK] 阶段审计只触发一次，audited_phases 去重生效")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -482,7 +477,6 @@ def test_step6_rebuild_preserves_progress():
         print("[OK] 重建后任务数量一致，历史进度已沉淀为能力证据")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -534,7 +528,6 @@ def test_step7_data_continuity():
         print(f"  - tasks: {len(final.tasks)} 个，checkins: {len(final.checkins)} 次")
 
         print()
-        return True
     finally:
         _restore_profile_dir(original_dir)
 
@@ -583,7 +576,6 @@ def test_step8_mcp_tools_registered():
     print(f"\n共注册 {len(tools)} 个 MCP tools")
 
     print()
-    return True
 
 
 def main():

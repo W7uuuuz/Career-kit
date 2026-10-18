@@ -7,66 +7,62 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pytest
+
 from src.tools.resume_parser import extract_text
 
 TEST_DIR = Path(__file__).parent.parent / "dev" / "test"
 
 
-def test_markdown():
-    """测试 Markdown 简历解析。"""
-    print("=" * 60)
-    print("测试 1: Markdown 简历")
-    print("=" * 60)
-
+def parse_markdown() -> str | None:
+    """解析 Markdown 简历；文件缺失返回 None。"""
     md_file = TEST_DIR / "AI.md"
     if not md_file.exists():
-        print("[SKIP] AI.md 不存在")
-        return
-
+        return None
     text = extract_text(str(md_file))
-    print(f"[OK] 提取成功，共 {len(text)} 字符")
-    print(f"\n前 500 字符预览:\n{'-' * 40}")
-    print(text[:500])
-    print(f"{'-' * 40}\n")
+    print(f"[OK] Markdown 提取成功，共 {len(text)} 字符")
     return text
+
+
+def parse_docx() -> str | None:
+    """解析 DOCX 简历；文件缺失返回 None。"""
+    docx_file = TEST_DIR / "AI岗.docx"
+    if not docx_file.exists():
+        return None
+    text = extract_text(str(docx_file))
+    print(f"[OK] DOCX 提取成功，共 {len(text)} 字符")
+    return text
+
+
+def parse_pdf() -> str | None:
+    """解析 PDF 简历；文件缺失返回 None。"""
+    pdf_file = TEST_DIR / "AI岗.pdf"
+    if not pdf_file.exists():
+        return None
+    text = extract_text(str(pdf_file))
+    print(f"[OK] PDF 提取成功，共 {len(text)} 字符")
+    return text
+
+
+def test_markdown():
+    text = parse_markdown()
+    if text is None:
+        pytest.skip("AI.md 不存在")
+    assert len(text) > 0
 
 
 def test_docx():
-    """测试 DOCX 简历解析。"""
-    print("=" * 60)
-    print("测试 2: DOCX 简历")
-    print("=" * 60)
-
-    docx_file = TEST_DIR / "AI岗.docx"
-    if not docx_file.exists():
-        print("[SKIP] AI岗.docx 不存在")
-        return
-
-    text = extract_text(str(docx_file))
-    print(f"[OK] 提取成功，共 {len(text)} 字符")
-    print(f"\n前 500 字符预览:\n{'-' * 40}")
-    print(text[:500])
-    print(f"{'-' * 40}\n")
-    return text
+    text = parse_docx()
+    if text is None:
+        pytest.skip("AI岗.docx 不存在")
+    assert len(text) > 0
 
 
 def test_pdf():
-    """测试 PDF 简历解析。"""
-    print("=" * 60)
-    print("测试 3: PDF 简历")
-    print("=" * 60)
-
-    pdf_file = TEST_DIR / "AI岗.pdf"
-    if not pdf_file.exists():
-        print("[SKIP] AI岗.pdf 不存在")
-        return
-
-    text = extract_text(str(pdf_file))
-    print(f"[OK] 提取成功，共 {len(text)} 字符")
-    print(f"\n前 500 字符预览:\n{'-' * 40}")
-    print(text[:500])
-    print(f"{'-' * 40}\n")
-    return text
+    text = parse_pdf()
+    if text is None:
+        pytest.skip("AI岗.pdf 不存在")
+    assert len(text) > 0
 
 
 def compare_results(md_text, docx_text, pdf_text):
@@ -85,29 +81,22 @@ def compare_results(md_text, docx_text, pdf_text):
         if text:
             print(f"{name}: {len(text)} 字符")
 
-    # 检查是否包含关键信息
     keywords = ["AI", "经验", "技能", "项目"]
     print("\n关键信息提取检查:")
     for kw in keywords:
-        found_in = []
-        for name, text in results.items():
-            if text and kw in text:
-                found_in.append(name)
-        if found_in:
-            print(f"  '{kw}': {', '.join(found_in)}")
-        else:
-            print(f"  '{kw}': 未找到")
+        found_in = [name for name, text in results.items() if text and kw in text]
+        print(f"  '{kw}': {', '.join(found_in) if found_in else '未找到'}")
 
 
 def main():
-    """运行所有测试。"""
+    """手动运行：解析三种格式并比较。"""
     print("\n" + "=" * 60)
     print("简历格式解析测试")
     print("=" * 60 + "\n")
 
-    md_text = test_markdown()
-    docx_text = test_docx()
-    pdf_text = test_pdf()
+    md_text = parse_markdown()
+    docx_text = parse_docx()
+    pdf_text = parse_pdf()
 
     if any([md_text, docx_text, pdf_text]):
         compare_results(md_text, docx_text, pdf_text)
