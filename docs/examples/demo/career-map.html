@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Career Kit 职业地图</title>
+<style>
+:root {
+  --bg: #f6f7fb; --card: #ffffff; --ink: #1f2430; --muted: #8a93a6;
+  --line: #e6e9f0; --brand: #4a6cf7; --brand-soft: #eef1fe;
+  --ok: #22a06b; --ok-soft: #e8f7f0; --warn: #b26a00; --warn-soft: #fff4e0;
+  --radius: 14px; --shadow: 0 1px 3px rgba(31,36,48,.06), 0 4px 16px rgba(31,36,48,.05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+       background: var(--bg); color: var(--ink); line-height: 1.6; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; }
+header { display: flex; align-items: flex-end; justify-content: space-between;
+          gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+h1 { font-size: 24px; letter-spacing: .3px; }
+.meta { color: var(--muted); font-size: 12.5px; }
+.start { margin: 6px 0 18px; color: var(--muted); font-size: 13.5px; }
+.start b { color: var(--brand); }
+.strategy { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+             padding: 14px 16px; margin: 12px 0 22px; color: #4a5160; font-size: 14px;
+             box-shadow: var(--shadow); }
+/* 总进度 */
+.overview { display: flex; gap: 18px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.ring { --p: 0; width: 74px; height: 74px; border-radius: 50%;
+         background: conic-gradient(var(--brand) calc(var(--p)*1%), #e6e9f0 0);
+         display: grid; place-items: center; }
+.ring div { width: 58px; height: 58px; border-radius: 50%; background: var(--card);
+             display: grid; place-items: center; font-weight: 700; font-size: 15px; color: var(--brand); }
+.overview-txt { font-size: 13.5px; color: var(--muted); }
+.overview-txt b { color: var(--ink); font-size: 15px; }
+/* 阶段导航 */
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 16px; }
+.tab { padding: 8px 16px; border: 1px solid var(--line); background: var(--card);
+        border-radius: 999px; font-size: 13.5px; cursor: pointer; color: var(--muted);
+        transition: all .15s; }
+.tab:hover { border-color: var(--brand); color: var(--brand); }
+.tab.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.tab .tab-pct { margin-left: 6px; font-size: 12px; opacity: .8; }
+/* 阶段卡片 */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+         padding: 20px 22px; margin-bottom: 16px; box-shadow: var(--shadow);
+         display: none; }
+.card.active { display: block; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start;
+              gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.card-title { font-size: 17px; font-weight: 700; }
+.type-pill { font-size: 11.5px; color: var(--muted); border: 1px solid var(--line);
+             border-radius: 6px; padding: 1px 7px; margin-left: 8px; vertical-align: 2px; }
+.badge { display: inline-block; font-size: 11px; color: #666; background: #eee;
+          border-radius: 8px; padding: 1px 7px; margin-left: 4px; }
+.badge.ok { color: var(--ok); background: var(--ok-soft); }
+.badge.warn { color: var(--warn); background: var(--warn-soft); }
+.cur-tag { color: var(--brand); font-size: 12px; margin-left: 8px; }
+.bar { background: #eef0f6; border-radius: 999px; height: 8px; overflow: hidden; margin: 10px 0 14px; }
+.fill { background: linear-gradient(90deg, var(--brand), #6f8bff); height: 100%; width: 0; transition: width .3s; }
+.done-txt { color: var(--muted); font-size: 12.5px; }
+.goal { color: #4a5160; font-size: 13.5px; margin: 6px 0; }
+.kpi { color: #5a6270; font-size: 13px; margin: 2px 0; }
+.resume { color: var(--ok); font-size: 13px; margin: 2px 0; }
+.jd { color: #455a64; background: #f4f7f8; padding: 8px 12px; border-radius: 8px;
+      font-size: 12.5px; margin: 8px 0; }
+.company { margin: 6px 0 2px; font-size: 13px; font-weight: 600; }
+/* 任务列表 */
+.tasks { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px;
+         border-radius: 8px; cursor: pointer; }
+.task:hover { background: var(--brand-soft); }
+.task input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--brand); cursor: pointer; }
+.task-name { flex: 1; font-size: 13.5px; }
+.task-name.done { text-decoration: line-through; color: var(--muted); }
+.task-meta { color: var(--muted); font-size: 12px; }
+.ck-ctl { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.ck-btn { padding: 3px 10px; border: 1px solid var(--brand); background: var(--brand-soft);
+           color: var(--brand); border-radius: 8px; font-size: 12px; cursor: pointer; }
+.ck-btn:hover { background: var(--brand); color: #fff; }
+.done-badge { color: var(--ok); font-size: 12px; margin-right: 8px; font-weight: 600; }
+.ck-ctl input[type=range] { width: 110px; accent-color: var(--brand); }
+.ms { font-size: 12px; color: var(--muted); margin-top: 8px; font-weight: 600; }
+.pr { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.pr-high { background: #e5484d; } .pr-medium { background: #f5a524; } .pr-low { background: #22a06b; }
+.empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+/* 底部操作 */
+.actions { position: sticky; bottom: 16px; display: flex; gap: 10px; justify-content: flex-end;
+            margin-top: 18px; }
+.btn { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line);
+        background: var(--card); font-size: 13px; cursor: pointer; color: var(--ink); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn:hover { opacity: .9; }
+.footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 30px; }
+.toast { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%);
+         background: #1f2430; color: #fff; padding: 9px 18px; border-radius: 10px;
+         font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.toast.show { opacity: 1; }
+@media (max-width: 640px) { .wrap { padding: 16px 12px 60px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Career Kit 职业地图</h1>
+    <span class="meta">生成于 2026-10-18 15:31 · 路线图 v41</span>
+  </header>
+
+  <p class="start">起点层级：<b id="start-level">—</b>（差距分析产出，路线图按此对齐）</p>
+
+  <div class="strategy" id="strategy">—</div>
+
+  <div class="overview">
+    <div class="ring" id="ring"><div id="ring-pct">0%</div></div>
+    <div class="overview-txt">
+      <div>总进度：<b id="total-pct">0%</b></div>
+      <div id="total-done">已完成 0 / 0 个任务</div>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div id="cards"></div>
+
+  <div class="actions">
+    <button class="btn" id="export-btn">导出打卡数据</button>
+    <button class="btn" id="reset-btn">重置本地打卡</button>
+  </div>
+
+  <p class="footer">顺序归产品，时间归用户。勾选任务即本地打卡（浏览器保存）；点「导出打卡数据」把打卡结果粘贴回对话，即可同步到档案。</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="application/json" id="career-data">{"profile": "default", "start_level": "小厂", "strategy": "从「独立开发者」升级为「能进团队的 Agent 工程师」：先补工程化与协作证据，用开源贡献拿到第一段团队经历，再以中厂实习过渡，最后冲大厂校招。", "phases": [{"id": "phase_1", "name": "阶段一｜工程化补齐", "type": "learn", "goal": "把独立开发补成有规范、可观测、可评测的工程能力", "company": "", "rationale": "", "badge": "免 JD", "badge_cls": "", "kpi_metric": "HotMirror 补齐 trace + 评测集并开源", "kpi_target": "1 个可演示仓库", "kpi_evidence": "仓库链接 + 评测报告", "resume_value": "", "jd_text": "", "done": 2, "total": 4, "is_current": true, "tasks": [{"id": "task_001", "name": "为 HotMirror 增加结构化日志与 trace", "desc": "按模块推进，完成 80% 即可", "status": "in_progress", "priority": "high", "milestone_id": "phase_1_ms_1", "checkin_mode": "percent", "checkin_goal": 80.0, "checkin_progress": 40.0}, {"id": "task_002", "name": "补单测与 CI 流水线", "desc": "", "status": "completed", "priority": "medium", "milestone_id": "phase_1_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_003", "name": "构建 30 条评测样本集", "desc": "每天推进一批，共 10 天", "status": "in_progress", "priority": "high", "milestone_id": "phase_1_ms_2", "checkin_mode": "daily", "checkin_goal": 10.0, "checkin_progress": 1.0}, {"id": "task_004", "name": "跑通评测并输出报告", "desc": "", "status": "completed", "priority": "medium", "milestone_id": "phase_1_ms_2", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}], "milestone_tasks": [{"name": "为 HotMirror 增加结构化日志与 trace", "desc": "", "priority": "high"}, {"name": "补单测与 CI 流水线", "desc": "", "priority": "medium"}, {"name": "构建 30 条评测样本集", "desc": "", "priority": "high"}, {"name": "跑通评测并输出报告", "desc": "", "priority": "medium"}], "milestone_names": {"phase_1_ms_1": "工程规范", "phase_1_ms_2": "Agent 评测"}}, {"id": "phase_2", "name": "阶段二｜协作证据（开源贡献）", "type": "project", "goal": "拿到「被团队协作过」的硬证据，补掉独立开发的盲区", "company": "", "rationale": "", "badge": "免 JD", "badge_cls": "", "kpi_metric": "被 merge 的开源 PR 数", "kpi_target": "3 个", "kpi_evidence": "PR 链接 + review 往返记录", "resume_value": "参与开源 Agent 项目，3 个被合并的 PR，含代码评审往返", "jd_text": "", "done": 0, "total": 5, "is_current": false, "tasks": [{"id": "task_005", "name": "调研 3 个候选开源项目并锁定目标", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_2_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_006", "name": "跑通其贡献流程（读 CONTRIBUTING）", "desc": "", "status": "pending", "priority": "medium", "milestone_id": "phase_2_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_007", "name": "提第 1 个 PR（good-first-issue）", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_2_ms_2", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_008", "name": "提第 2 个 PR（修复一个真实 bug）", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_2_ms_2", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_009", "name": "提第 3 个 PR（补测试或文档）", "desc": "", "status": "pending", "priority": "medium", "milestone_id": "phase_2_ms_2", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}], "milestone_tasks": [{"name": "调研 3 个候选开源项目并锁定目标", "desc": "", "priority": "high"}, {"name": "跑通其贡献流程（读 CONTRIBUTING）", "desc": "", "priority": "medium"}, {"name": "提第 1 个 PR（good-first-issue）", "desc": "", "priority": "high"}, {"name": "提第 2 个 PR（修复一个真实 bug）", "desc": "", "priority": "high"}, {"name": "提第 3 个 PR（补测试或文档）", "desc": "", "priority": "medium"}], "milestone_names": {"phase_2_ms_1": "选定开源项目", "phase_2_ms_2": "提交并合并 PR"}}, {"id": "phase_3", "name": "阶段三｜过渡：中厂 AI 应用实习", "type": "intern", "goal": "从中厂拿到一段有 AI 业务的团队实习，作为大厂的跳板", "company": "某中厂 AI 应用团队", "rationale": "对双非与在校生友好，AI 业务真实，能积累团队协作与工程规范证据", "badge": "有 JD 依据", "badge_cls": "ok", "kpi_metric": "完成一段团队实习", "kpi_target": "1 段（≥3 个月）", "kpi_evidence": "实习证明 + 项目产出", "resume_value": "中厂 AI 应用实习经历，参与真实业务团队交付", "jd_text": "岗位：AI 应用开发实习生；要求：Python / LLM 应用 / 有团队协作意识；薪资：200-300/天；来源：BOSS 直聘抓取", "done": 0, "total": 2, "is_current": false, "tasks": [{"id": "task_010", "name": "按中厂 JD 定制简历并投递 15 家", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_3_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_011", "name": "准备 AI 应用面试八股与项目深挖", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_3_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}], "milestone_tasks": [{"name": "按中厂 JD 定制简历并投递 15 家", "desc": "", "priority": "high"}, {"name": "准备 AI 应用面试八股与项目深挖", "desc": "", "priority": "high"}], "milestone_names": {"phase_3_ms_1": "投递与面试"}}, {"id": "phase_4", "name": "阶段四｜秋招：大厂 AI Agent 岗（2028 届）", "type": "校招", "goal": "以中厂实习 + 开源协作证据冲击大厂校招", "company": "字节跳动 / 阿里巴巴", "rationale": "Agent 岗位布局重，且中厂实习 + 开源协作是有效加分项", "badge": "待导入真实 JD（已确认）", "badge_cls": "warn", "kpi_metric": "大厂面试轮次", "kpi_target": "进入终面", "kpi_evidence": "面试记录", "resume_value": "大厂 AI Agent 方向校招 offer", "jd_text": "", "done": 0, "total": 2, "is_current": false, "tasks": [{"id": "task_012", "name": "整理大厂 Agent 岗 JD 并定制简历", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_4_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}, {"id": "task_013", "name": "系统刷高频算法与系统设计", "desc": "", "status": "pending", "priority": "high", "milestone_id": "phase_4_ms_1", "checkin_mode": "once", "checkin_goal": 0.0, "checkin_progress": 0.0}], "milestone_tasks": [{"name": "整理大厂 Agent 岗 JD 并定制简历", "desc": "", "priority": "high"}, {"name": "系统刷高频算法与系统设计", "desc": "", "priority": "high"}], "milestone_names": {"phase_4_ms_1": "投递与冲刺"}}]}</script>
+<script>
+(function () {
+  'use strict';
+  var DATA = JSON.parse(document.getElementById('career-data').textContent);
+  var KEY = 'career-kit-checkins-' + DATA.profile;
+
+  function loadCheckins() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function saveCheckins(c) { localStorage.setItem(KEY, JSON.stringify(c)); }
+
+  var checkins = loadCheckins();
+
+  // 阶段初始状态：服务端已有 completed/skipped 的任务视为已打卡
+  var phases = DATA.phases.map(function (ph) {
+    var tasks = ph.tasks.map(function (t) {
+      var serverDone = (t.status === 'completed' || t.status === 'skipped');
+      var base = serverDone ? 'done' : 'open';
+      var st = checkins[t.id] || base;
+      var mode = t.checkin_mode || 'once';
+      return { id: t.id, name: t.name, desc: t.desc, priority: t.priority,
+                 milestone_id: t.milestone_id, state: st, __server_done: serverDone,
+                 mode: mode, goal: t.checkin_goal || 0,
+                 progress: (t.checkin_progress || 0) };
+    });
+    return {
+      id: ph.id, name: ph.name, type: ph.type, goal: ph.goal,
+      company: ph.company, rationale: ph.rationale, badge: ph.badge, badge_cls: ph.badge_cls,
+      kpi_metric: ph.kpi_metric, kpi_target: ph.kpi_target, kpi_evidence: ph.kpi_evidence,
+      resume_value: ph.resume_value, jd_text: ph.jd_text,
+      is_current: ph.is_current, tasks: tasks, milestone_tasks: ph.milestone_tasks,
+      milestone_names: ph.milestone_names || {},
+      done: 0, total: tasks.length
+    };
+  });
+
+  function render() {
+    document.getElementById('start-level').textContent = DATA.start_level || '未判定';
+    document.getElementById('strategy').textContent = DATA.strategy || '—';
+    var tabsEl = document.getElementById('tabs');
+    var cardsEl = document.getElementById('cards');
+    tabsEl.innerHTML = '';
+    cardsEl.innerHTML = '';
+
+    var totalDone = 0, totalAll = 0;
+    phases.forEach(function (ph) {
+      var done = ph.tasks.filter(function (t) { return t.state === 'done'; }).length;
+      ph.done = done;
+      totalDone += done; totalAll += ph.total;
+      var pct = ph.total ? Math.round(done / ph.total * 100) : 0;
+      ph.pct = pct;
+
+      var tab = document.createElement('div');
+      tab.className = 'tab' + (ph.is_current ? ' active' : '');
+      tab.dataset.id = ph.id;
+      tab.innerHTML = ph.name + '<span class="tab-pct">' + done + '/' + ph.total + ' · ' + pct + '%</span>';
+      tabsEl.appendChild(tab);
+
+      var badge = ph.badge ? '<span class="badge ' + ph.badge_cls + '">' + ph.badge + '</span>' : '';
+      var cur = ph.is_current ? '<span class="cur-tag">[当前]</span>' : '';
+      var company = ph.company ? '<div class="company">' + ph.company
+        + (ph.rationale ? ' <span class="meta">— ' + ph.rationale + '</span>' : '') + '</div>' : '';
+      var kpi = ph.kpi_metric
+        ? '<div class="kpi">KPI：' + ph.kpi_metric + ' → ' + ph.kpi_target
+          + (ph.kpi_evidence ? '（验证：' + ph.kpi_evidence + '）' : '') + '</div>' : '';
+      var resume = ph.resume_value ? '<div class="resume">简历价值：' + ph.resume_value + '</div>' : '';
+      var jd = ph.jd_text ? '<div class="jd">' + ph.jd_text.slice(0, 400) + '</div>' : '';
+
+      var tasksHtml = '';
+      if (ph.tasks.length) {
+        var lastMs = null;
+        ph.tasks.forEach(function (t) {
+          var msLabel = '';
+          if (t.milestone_id && t.milestone_id !== lastMs) {
+            lastMs = t.milestone_id;
+            msLabel = '<div class="ms">里程碑：' + (ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
+          }
+          var pr = { high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }[t.priority] || 'pr-medium';
+          var nameCls = t.state === 'done' ? ' task-name done' : ' task-name';
+          var ctl = '';
+          if (t.state === 'done') {
+            // 已完成：显示打勾状态 + 完成标记
+            ctl = '<span class="done-badge">完成</span>';
+          } else if (t.mode === 'daily') {
+            ctl = '<span class="ck-ctl" data-mode="daily" data-id="' + t.id + '">'
+              + '打卡 ' + Math.floor(t.progress) + '/' + (t.goal || '?') + ' 天'
+              + ' <button class="ck-btn" data-action="daily" data-id="' + t.id + '">今天打卡</button>'
+              + '</span>';
+          } else if (t.mode === 'percent') {
+            ctl = '<span class="ck-ctl" data-mode="percent" data-id="' + t.id + '">'
+              + '进度 ' + Math.floor(t.progress) + '%/' + (t.goal || 100) + '%'
+              + ' <input type="range" min="0" max="' + (t.goal || 100) + '" value="' + Math.floor(t.progress)
+              + '" data-action="percent" data-id="' + t.id + '" style="vertical-align:middle">'
+              + '</span>';
+          } else {
+            ctl = '<input type="checkbox" data-action="once" data-id="' + t.id + '">';
+          }
+          tasksHtml += msLabel
+            + '<label class="task">'
+            + ctl
+            + '<span class="' + nameCls + '">'
+            + '<span class="pr ' + pr + '"></span>' + t.name + '</span>'
+            + '<span class="task-meta">' + t.id + '</span>'
+            + '</label>';
+        });
+      } else if (ph.milestone_tasks.length) {
+        tasksHtml = '<div class="empty">里程碑已规划（任务列表生成后即可打卡）</div>';
+      } else {
+        tasksHtml = '<div class="empty">暂无任务</div>';
+      }
+
+      var card = document.createElement('div');
+      card.className = 'card' + (ph.is_current ? ' active' : '');
+      card.dataset.id = ph.id;
+      card.innerHTML =
+        '<div class="card-head"><span class="card-title">' + ph.name
+          + '<span class="type-pill">' + ph.type + '</span>' + badge + cur + '</span>'
+          + '<span class="done-txt">' + done + '/' + ph.total + ' · ' + pct + '%</span></div>'
+        + '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>'
+        + company
+        + (ph.goal ? '<div class="goal">' + ph.goal + '</div>' : '')
+        + kpi + resume + jd
+        + '<div class="tasks">' + tasksHtml + '</div>';
+      cardsEl.appendChild(card);
+    });
+
+    var totalPct = totalAll ? Math.round(totalDone / totalAll * 100) : 0;
+    document.getElementById('ring').style.setProperty('--p', totalPct);
+    document.getElementById('ring-pct').textContent = totalPct + '%';
+    document.getElementById('total-pct').textContent = totalPct + '%';
+    document.getElementById('total-done').textContent = '已完成 ' + totalDone + ' / ' + totalAll + ' 个任务';
+  }
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(function () { t.classList.remove('show'); }, 1800);
+  }
+
+  // 阶段导航
+  document.getElementById('tabs').addEventListener('click', function (e) {
+    var tab = e.target.closest('.tab'); if (!tab) return;
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+    document.querySelectorAll('.card').forEach(function (x) { x.classList.remove('active'); });
+    tab.classList.add('active');
+    document.querySelector('.card[data-id="' + tab.dataset.id + '"]').classList.add('active');
+  });
+
+  // 任务打卡：once checkbox / daily 按钮 / percent 滑块
+  function applyCheckin(id, mode, done, amount) {
+    var updated = false;
+    phases.forEach(function (ph) {
+      ph.tasks.forEach(function (t) {
+        if (t.id === id) {
+          t.state = done ? 'done' : 'open';
+          if (mode === 'daily') t.progress = done ? (t.goal || 1) : (t.progress || 0);
+          if (mode === 'percent') t.progress = amount;
+          updated = true;
+        }
+      });
+    });
+    if (updated) {
+      checkins[id] = done ? 'done' : 'open';
+      checkins[id + ':progress'] = (mode === 'daily' || mode === 'percent') ? (amount || 0) : null;
+      saveCheckins(checkins);
+      render();
+      toast(done ? '已打卡：' + id : '已更新进度：' + id);
+    }
+  }
+
+  // click：once 完成勾选（点击任务行切换） / daily 打卡按钮
+  document.getElementById('cards').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.getAttribute('data-action');
+    var id = btn.getAttribute('data-id');
+    if (action === 'once') {
+      // 点击任务行（checkbox 外层 label）切换完成状态
+      var t = null;
+      phases.forEach(function (ph) {
+        ph.tasks.forEach(function (x) { if (x.id === id) t = x; });
+      });
+      if (!t) return;
+      applyCheckin(id, 'once', t.state !== 'done', 1);
+    } else if (action === 'daily') {
+      var task = null;
+      phases.forEach(function (ph) {
+        ph.tasks.forEach(function (x) { if (x.id === id) task = x; });
+      });
+      if (!task) return;
+      // 当天打卡一次：进度 +1
+      var newProg = (task.progress || 0) + 1;
+      var goal = task.goal || 0;
+      var doneNow = goal > 0 && newProg >= goal;
+      task.progress = newProg;
+      applyCheckin(id, 'daily', doneNow, doneNow ? goal : newProg);
+    }
+  });
+
+  // change：once checkbox 勾选 / percent 滑块
+  document.getElementById('cards').addEventListener('change', function (e) {
+    var el = e.target;
+    var action = el.getAttribute && el.getAttribute('data-action');
+    var id = el.getAttribute && el.getAttribute('data-id');
+    if (action === 'once' && el.matches('input[type=checkbox]')) {
+      applyCheckin(id, 'once', el.checked, 1);
+    } else if (action === 'percent' && el.matches('input[type=range]')) {
+      var val = parseFloat(el.value);
+      var task = null;
+      phases.forEach(function (ph) {
+        ph.tasks.forEach(function (x) { if (x.id === id) task = x; });
+      });
+      var goal = task ? (task.goal || 100) : 100;
+      applyCheckin(id, 'percent', val >= goal, val);
+    }
+  });
+
+  // 导出打卡数据（回传 LLM 同步档案，按打卡方式输出含 amount）
+  document.getElementById('export-btn').addEventListener('click', function () {
+    var rows = [];
+    phases.forEach(function (ph) {
+      ph.tasks.forEach(function (t) {
+        if (t.state === 'done' && !t.__server_done) {
+          if (t.mode === 'daily') {
+            rows.push('checkin_task(task_id="' + t.id + '", status="completed", amount=' + (t.goal || 1) + ')');
+          } else if (t.mode === 'percent') {
+            rows.push('checkin_task(task_id="' + t.id + '", status="completed", amount=' + (t.progress || 0) + ')');
+          } else {
+            rows.push('checkin_task(task_id="' + t.id + '", status="completed")');
+          }
+        } else if (t.state !== 'done' && (t.mode === 'daily' || t.mode === 'percent') && t.progress > 0) {
+          // 部分进度：导出累计打卡
+          rows.push('checkin_task(task_id="' + t.id + '", status="completed", amount=' + (t.progress || 0) + ')');
+        }
+      });
+    });
+    var text = rows.length ? rows.join('\n') : '（暂无打卡记录）';
+    var pre = document.createElement('textarea');
+    pre.value = text; document.body.appendChild(pre); pre.select();
+    try { document.execCommand('copy'); toast('已复制 ' + rows.length + ' 条打卡指令'); }
+    catch (err) { prompt('复制以下打卡指令回传对话：', text); }
+    pre.remove();
+  });
+
+  // 重置本地打卡
+  document.getElementById('reset-btn').addEventListener('click', function () {
+    if (!confirm('确认清除本浏览器的打卡记录？（仅本地，不影响档案）')) return;
+    checkins = {};
+    phases.forEach(function (ph) {
+      ph.tasks.forEach(function (t) {
+        // 只重置用户本地勾选，服务端已完成的（初始 done）保持完成
+        if (t.state === 'done' && !t.__server_done) t.state = 'open';
+      });
+    });
+    saveCheckins(checkins); render(); toast('已重置本地打卡');
+  });
+
+  render();
+})();
+</script>
+</body></html>

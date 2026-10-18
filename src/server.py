@@ -2296,6 +2296,8 @@ def _render_roadmap_map(profile) -> str:
                     "priority": t.get("priority", "medium"),
                 })
 
+        ms_names = {ms.get("id"): ms.get("name", "") for ms in phase.get("milestones", [])}
+
         data["phases"].append({
             "id": phase_id,
             "name": phase.get("name", phase_id),
@@ -2315,6 +2317,7 @@ def _render_roadmap_map(profile) -> str:
             "is_current": is_current,
             "tasks": tasks,
             "milestone_tasks": milestone_tasks,
+            "milestone_names": ms_names,
         })
 
     data_json = _json_lib.dumps(data, ensure_ascii=False)
@@ -2485,11 +2488,14 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       kpi_metric: ph.kpi_metric, kpi_target: ph.kpi_target, kpi_evidence: ph.kpi_evidence,
       resume_value: ph.resume_value, jd_text: ph.jd_text,
       is_current: ph.is_current, tasks: tasks, milestone_tasks: ph.milestone_tasks,
+      milestone_names: ph.milestone_names || {{}},
       done: 0, total: tasks.length
     }};
   }});
 
   function render() {{
+    document.getElementById('start-level').textContent = DATA.start_level || '未判定';
+    document.getElementById('strategy').textContent = DATA.strategy || '—';
     var tabsEl = document.getElementById('tabs');
     var cardsEl = document.getElementById('cards');
     tabsEl.innerHTML = '';
@@ -2526,7 +2532,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
           var msLabel = '';
           if (t.milestone_id && t.milestone_id !== lastMs) {{
             lastMs = t.milestone_id;
-            msLabel = '<div class="ms">里程碑：' + t.milestone_id.replace(/.*_ms_/, 'M') + '</div>';
+            msLabel = '<div class="ms">里程碑：' + (ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
           }}
           var pr = {{ high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }}[t.priority] || 'pr-medium';
           var nameCls = t.state === 'done' ? ' task-name done' : ' task-name';

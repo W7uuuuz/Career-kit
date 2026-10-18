@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Career Kit 进度仪表盘</title>
+<style>
+body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+       max-width: 760px; margin: 0 auto; padding: 24px; color: #222; background: #fafafa; }
+h1 { font-size: 22px; } h2 { font-size: 17px; border-bottom: 2px solid #4a90d9; padding-bottom: 4px; }
+.card { background: #fff; border: 1px solid #e3e3e3; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.bar { background: #eee; border-radius: 6px; height: 12px; overflow: hidden; }
+.fill { background: linear-gradient(90deg,#4a90d9,#67b26f); height: 100%; }
+.phase { margin-bottom: 14px; }
+.phase-head { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }
+.goal { color: #666; font-size: 13px; margin: 4px 0 0; }
+small, .meta { color: #999; font-size: 12px; }
+ul { padding-left: 20px; } li { margin: 4px 0; font-size: 14px; }
+.overall { display: flex; align-items: center; gap: 12px; }
+.overall .num { font-size: 30px; font-weight: 700; color: #4a90d9; }
+</style>
+</head>
+<body>
+<h1>Career Kit 进度仪表盘 <span class="meta">生成于 2026-10-18 15:31 · 快照 v41</span></h1>
+
+<div class="card overall"><span class="num">15%</span>
+  <div style="flex:1"><div class="bar"><div class="fill" style="width:15%"></div></div>
+  <p class="goal">共 13 个任务 · 完成 2 · 跳过 0 · 目标：AI Agent 工程师</p></div>
+</div>
+
+<div class="card"><h2>阶段进度（顺序推进，节奏自定）</h2>
+<div class="phase"><div class="phase-head"><span>阶段一｜工程化补齐</span><span>2/4</span></div><div class="bar"><div class="fill" style="width:50%"></div></div><p class="goal">把独立开发补成有规范、可观测、可评测的工程能力</p></div><div class="phase"><div class="phase-head"><span>阶段二｜协作证据（开源贡献）</span><span>0/5</span></div><div class="bar"><div class="fill" style="width:0%"></div></div><p class="goal">拿到「被团队协作过」的硬证据，补掉独立开发的盲区</p></div><div class="phase"><div class="phase-head"><span>阶段三｜过渡：中厂 AI 应用实习</span><span>0/2</span></div><div class="bar"><div class="fill" style="width:0%"></div></div><p class="goal">从中厂拿到一段有 AI 业务的团队实习，作为大厂的跳板</p></div><div class="phase"><div class="phase-head"><span>阶段四｜秋招：大厂 AI Agent 岗（2028 届）</span><span>0/2</span></div><div class="bar"><div class="fill" style="width:0%"></div></div><p class="goal">以中厂实习 + 开源协作证据冲击大厂校招</p></div></div>
+
+<div class="card"><h2>接下来做</h2><ul><li>为 HotMirror 增加结构化日志与 trace <small>(phase_1)</small></li><li>构建 30 条评测样本集 <small>(phase_1)</small></li><li>调研 3 个候选开源项目并锁定目标 <small>(phase_2)</small></li><li>跑通其贡献流程（读 CONTRIBUTING） <small>(phase_2)</small></li><li>提第 1 个 PR（good-first-issue） <small>(phase_2)</small></li><li>提第 2 个 PR（修复一个真实 bug） <small>(phase_2)</small></li><li>提第 3 个 PR（补测试或文档） <small>(phase_2)</small></li><li>按中厂 JD 定制简历并投递 15 家 <small>(phase_3)</small></li></ul></div>
+
+<div class="card"><h2>能力证据（来自打卡沉淀）</h2><ul><li><b>构建 30 条评测样本集</b> — 选定一个 Agent 相关开源项目，读完 CONTRIBUTING</li><li><b>跑通评测并输出报告</b> — 跑通贡献流程，本地构建通过</li><li><b>为 HotMirror 增加结构化日志与 trace</b> — 日志已接入 4 个 Subgraph</li><li><b>补单测与 CI 流水线</b> — 评测样本已完成第一批 12 条</li></ul></div>
+
+<div class="card"><h2>调整历史</h2><ul><li>暂无调整记录</li></ul></div>
+
+<p class="meta">顺序归产品，时间归用户 —— Career Kit 不为任务设定时限。</p>
+</body></html>

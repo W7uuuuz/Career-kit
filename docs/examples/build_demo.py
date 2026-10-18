@@ -1,0 +1,267 @@
+# -*- coding: utf-8 -*-
+"""重建 docs/examples/demo/ 的零等待演示产物。
+
+用真实 MCP 管线（intake → finalize → save_gap_analysis → save_roadmap →
+generate_tasks → save_current_detail → checkin_task）把样例简历+JD 跑成：
+- career-map.html / dashboard.html / demo_profile.json
+
+运行：
+    python docs/examples/build_demo.py
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+DATA = Path(tempfile.gettempdir()) / "ck_demo_data"
+if DATA.exists():
+    shutil.rmtree(DATA)
+DATA.mkdir(parents=True)
+os.environ["CAREER_KIT_DATA_DIR"] = str(DATA)
+
+from src.server import (  # noqa: E402
+    _render_progress_html,
+    _render_roadmap_map,
+    checkin_task,
+    finalize_profile,
+    generate_tasks,
+    intake,
+    save_current_detail,
+    save_gap_analysis,
+    save_roadmap,
+)
+from src.tools.profile import load_profile  # noqa: E402
+
+
+def show(tag: str, out) -> None:
+    print(f"\n===== {tag} =====")
+    print(out[:800] if isinstance(out, str) else out)
+
+
+WHO = {
+    "name": "陈墨", "graduation_year": "2028",
+    "education": "双非本科 · 计算机科学与技术",
+    "status": "在校生（2028 届）", "location": "上海",
+}
+
+HAVE = {
+    "core_skills": [
+        {"skill": "Python", "level": "熟练",
+         "evidence": "课程 + 多个独立项目；用户确认能独立完成", "user_verified": True},
+        {"skill": "LangChain / LangGraph", "level": "入门",
+         "evidence": "HotMirror Studio 独立编写 6 个 Subgraph；用户确认独立完成，但无团队评审",
+         "user_verified": True},
+        {"skill": "RAG 检索增强", "level": "入门",
+         "evidence": "自建 3 层知识注入；用户确认实际跑通", "user_verified": True},
+    ],
+    "experience": "1 段 3 个月小公司实习（电商）",
+    "projects": ["HotMirror Studio（独立开发，未开源协作）"],
+}
+
+WANT = {
+    "target_role": "AI Agent 工程师", "target_company": "大厂（字节 / 阿里）",
+    "city": "上海", "salary": "20k-30k", "direction_confidence": 8,
+    "experience_level": "有一定基础但缺协作经历",
+}
+
+GAP = {
+    "match_score": 58, "match_level": "partial_match", "start_level": "小厂",
+    "dimension_scores": {"education": 2, "internship": 1, "collaboration": 1,
+                         "skill_depth": 3, "project_complexity": 2},
+    "strengths": [
+        {"area": "AI Agent 工程落地",
+         "description": "独立交付 6 个 LangGraph Subgraph + 双提供商网关 + 3 层 RAG",
+         "resume_highlight": "突出架构级 Agent 工程能力，量化交付收益",
+         "interview_talk": "讲清拆解-生成-审核的编排设计与重试契约"},
+    ],
+    "resume_red_flags": [
+        {"signal": "实习公司为电商小公司",
+         "risk": "缺大流量 / 规范化工程场景，简历含金量被 HR 打折",
+         "narrative_fix": "强调在资源受限下独立搭起完整 Agent 链路",
+         "evidence_fix": "补一段有规模的团队协作产出（开源 PR / 组队 hackathon）"},
+        {"signal": "项目全为独立开发，零团队协作证据",
+         "risk": "大厂校招最看重协作 / 代码评审 / 跨角色配合，这里完全空白",
+         "narrative_fix": "把 HotMirror 的接口契约设计讲成跨角色协作的雏形",
+         "evidence_fix": "参与开源项目并拿到 3 个被 merge 的 PR；记录 review 往返"},
+        {"signal": "实习仅 3 个月、时长偏短",
+         "risk": "被质疑缺乏长期在团队中交付的稳定性",
+         "narrative_fix": "聚焦 3 个月内的可量化产出，弱化时长",
+         "evidence_fix": "用一段更长的日常实习（6 个月+）补齐"},
+    ],
+    "skill_gaps": [
+        {"skill": "多人协作 / 代码评审", "priority": "high", "current_level": "无",
+         "required_level": "能参与团队协作开发", "is_hidden": True,
+         "how_to_improve": "参与开源项目提交 PR 并完成 review 往返",
+         "source": "字节跳动 AI Agent JD（协作与工程规范要求）"},
+        {"skill": "Agent 工程化（可观测 / 评测）", "priority": "high", "current_level": "入门",
+         "required_level": "熟练", "how_to_improve": "为 HotMirror 增加 trace 与评测集",
+         "source": "阿里通义 Agent 平台 JD"},
+        {"skill": "分布式与后端基础", "priority": "medium", "current_level": "入门",
+         "required_level": "熟练", "how_to_improve": "系统补后端并发与服务化",
+         "source": "BOSS 直聘 AI 应用工程师 JD"},
+    ],
+    "priority_actions": [
+        {"action": "参与一个 Agent 相关开源项目并拿下 3 个 merged PR", "impact": "high", "difficulty": "medium"},
+        {"action": "把 HotMirror 补上 trace + 评测集并开源", "impact": "high", "difficulty": "medium"},
+    ],
+    "market_context": "AI Agent 岗位需求持续增长；大厂更看重工程规范与团队协作，独立开发是常见短板。",
+    "resume_optimization": {
+        "ats_keywords": ["LangGraph", "RAG", "Agent", "Pydantic", "工程化"],
+        "missing_keywords": ["code review", "CI/CD", "可观测性"],
+        "resume_tips": ["每个项目补一条协作/评审证据", "量化交付收益"],
+    },
+    "interview_preparation": {
+        "must_prepare": [
+            {"topic": "Agent 编排与容错", "type": "项目", "priority": "high",
+             "prepare_advice": "讲清 Subgraph 契约与自动重试"},
+            {"topic": "独立开发 vs 团队开发", "type": "行为", "priority": "high",
+             "prepare_advice": "准备协作叙事的 STAR"},
+        ],
+        "project_deep_dive": [
+            {"project": "HotMirror Studio",
+             "likely_questions": ["为什么这么拆 Subgraph", "团队里谁 review 你的代码"],
+             "key_points": ["契约先行", "重试幂等"],
+             "star_story": "S: 10 人视频团队效率低 T: 搭 Agent 链路 A: 6 Subgraph + 网关 R: 45→18 分钟"},
+        ],
+        "system_design_topics": [{"topic": "多 Agent 编排", "framework": "拆解→执行→审核"}],
+        "behavioral_questions": [{"question": "讲一次和他人协作解决冲突的经历", "story_template": "STAR"}],
+    },
+}
+
+ROADMAP = {
+    "strategy_summary": "从「独立开发者」升级为「能进团队的 Agent 工程师」：先补工程化与协作证据，"
+                        "用开源贡献拿到第一段团队经历，再以中厂实习过渡，最后冲大厂校招。",
+    "start_level": "小厂",
+    "phases": [
+        {
+            "type": "learn", "name": "阶段一｜工程化补齐",
+            "goal": "把独立开发补成有规范、可观测、可评测的工程能力",
+            "kpi": {"metric": "HotMirror 补齐 trace + 评测集并开源",
+                    "target": "1 个可演示仓库", "evidence": "仓库链接 + 评测报告"},
+            "milestones": [
+                {"name": "工程规范", "done_criteria": "项目有 CI、单测、结构化日志",
+                 "tasks": [
+                     {"name": "为 HotMirror 增加结构化日志与 trace", "priority": "high"},
+                     {"name": "补单测与 CI 流水线", "priority": "medium"},
+                 ]},
+                {"name": "Agent 评测", "done_criteria": "有一份可复现的评测集与指标",
+                 "tasks": [
+                     {"name": "构建 30 条评测样本集", "priority": "high"},
+                     {"name": "跑通评测并输出报告", "priority": "medium"},
+                 ]},
+            ],
+        },
+        {
+            "type": "project", "name": "阶段二｜协作证据（开源贡献）",
+            "goal": "拿到「被团队协作过」的硬证据，补掉独立开发的盲区",
+            "kpi": {"metric": "被 merge 的开源 PR 数", "target": "3 个",
+                    "evidence": "PR 链接 + review 往返记录"},
+            "resume_value": "参与开源 Agent 项目，3 个被合并的 PR，含代码评审往返",
+            "milestones": [
+                {"name": "选定开源项目", "done_criteria": "锁定 1-2 个活跃的 Agent 项目",
+                 "tasks": [
+                     {"name": "调研 3 个候选开源项目并锁定目标", "priority": "high"},
+                     {"name": "跑通其贡献流程（读 CONTRIBUTING）", "priority": "medium"},
+                 ]},
+                {"name": "提交并合并 PR", "done_criteria": "至少 3 个 PR 被 merge 且完成 review",
+                 "tasks": [
+                     {"name": "提第 1 个 PR（good-first-issue）", "priority": "high"},
+                     {"name": "提第 2 个 PR（修复一个真实 bug）", "priority": "high"},
+                     {"name": "提第 3 个 PR（补测试或文档）", "priority": "medium"},
+                 ]},
+            ],
+        },
+        {
+            "type": "intern", "name": "阶段三｜过渡：中厂 AI 应用实习",
+            "goal": "从中厂拿到一段有 AI 业务的团队实习，作为大厂的跳板",
+            "company": "某中厂 AI 应用团队",
+            "rationale": "对双非与在校生友好，AI 业务真实，能积累团队协作与工程规范证据",
+            "target_level": "中厂", "jd_status": "has_jd",
+            "jd": {"岗位": "AI 应用开发实习生", "要求": "Python / LLM 应用 / 有团队协作意识",
+                   "薪资": "200-300/天", "来源": "BOSS 直聘抓取"},
+            "resume_value": "中厂 AI 应用实习经历，参与真实业务团队交付",
+            "kpi": {"metric": "完成一段团队实习", "target": "1 段（≥3 个月）", "evidence": "实习证明 + 项目产出"},
+            "milestones": [
+                {"name": "投递与面试", "done_criteria": "拿到 offer",
+                 "tasks": [
+                     {"name": "按中厂 JD 定制简历并投递 15 家", "priority": "high"},
+                     {"name": "准备 AI 应用面试八股与项目深挖", "priority": "high"},
+                 ]},
+            ],
+        },
+        {
+            "type": "校招", "name": "阶段四｜秋招：大厂 AI Agent 岗（2028 届）",
+            "goal": "以中厂实习 + 开源协作证据冲击大厂校招",
+            "company": "字节跳动 / 阿里巴巴", "rationale": "Agent 岗位布局重，且中厂实习 + 开源协作是有效加分项",
+            "graduation_year": "2028", "jd_status": "pending_user_import", "confirmed": True,
+            "resume_value": "大厂 AI Agent 方向校招 offer",
+            "kpi": {"metric": "大厂面试轮次", "target": "进入终面", "evidence": "面试记录"},
+            "milestones": [
+                {"name": "投递与冲刺", "done_criteria": "进入终面",
+                 "tasks": [
+                     {"name": "整理大厂 Agent 岗 JD 并定制简历", "priority": "high"},
+                     {"name": "系统刷高频算法与系统设计", "priority": "high"},
+                 ]},
+            ],
+        },
+    ],
+}
+
+DETAIL = {
+    "phase_id": "phase_1",
+    "tasks": [
+        {"name": "为 HotMirror 增加结构化日志与 trace", "priority": "high",
+         "checkin_mode": "percent", "checkin_goal": 80, "description": "按模块推进，完成 80% 即可"},
+        {"name": "构建 30 条评测样本集", "priority": "high",
+         "checkin_mode": "daily", "checkin_goal": 10, "description": "每天推进一批，共 10 天"},
+    ],
+}
+
+# 演示打卡：(task_id, amount, notes)
+CHECKINS = [
+    ("task_003", 0, "选定一个 Agent 相关开源项目，读完 CONTRIBUTING"),
+    ("task_004", 0, "跑通贡献流程，本地构建通过"),
+    ("task_001", 40, "日志已接入 4 个 Subgraph"),
+    ("task_002", 0, "评测样本已完成第一批 12 条"),
+]
+
+
+def main() -> None:
+    show("intake who", intake("who", json.dumps(WHO, ensure_ascii=False)))
+    show("intake have", intake("have", json.dumps(HAVE, ensure_ascii=False)))
+    show("intake want", intake("want", json.dumps(WANT, ensure_ascii=False)))
+    show("finalize_profile", finalize_profile())
+
+    show("save_gap_analysis", save_gap_analysis(json.dumps(GAP, ensure_ascii=False)))
+    show("save_roadmap", save_roadmap(json.dumps(ROADMAP, ensure_ascii=False)))
+    show("generate_tasks", generate_tasks())
+    show("save_current_detail", save_current_detail(json.dumps(DETAIL, ensure_ascii=False)))
+    show("generate_tasks(merge)", generate_tasks())
+
+    for tid, amount, notes in CHECKINS:
+        show(f"checkin {tid}", checkin_task(task_id=tid, status="completed", notes=notes, amount=amount))
+
+    profile = load_profile()
+    out = ROOT / "docs" / "examples" / "demo"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "career-map.html").write_text(_render_roadmap_map(profile), encoding="utf-8")
+    (out / "dashboard.html").write_text(_render_progress_html(profile), encoding="utf-8")
+    shutil.copy(DATA / "default.json", out / "demo_profile.json")
+    print("\nDONE ->", out)
+    for f in sorted(out.iterdir()):
+        print(" ", f.name, f.stat().st_size, "bytes")
+
+
+if __name__ == "__main__":
+    main()
