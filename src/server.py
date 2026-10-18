@@ -788,6 +788,8 @@ def analyze_gaps() -> str:
             "请按照上述方法论指引：\n"
             "1. 先用 fetch_company_jobs 搜索目标企业的真实岗位（先 list_data_sources 查看可用企业）\n"
             "2. 用 fetch_jd_detail 获取 JD 全文和同背景案例\n"
+            "   —— 若抓取不可用（无网/需登录/无数据源），不要停摆：改用用户导入的 target_jd\n"
+            "   （import_jd / import_jd_file）或已填 want 作为数据来源，source 标注真实出处\n"
             "3. 基于真实数据从简历过筛和面试通过两个维度分析差距\n"
             "4. 分析前先核对 have 技能的证据来源：若技能条目的 evidence 未经用户确认\n"
             "   （无 user_verified 标记），先追问证据（做过什么项目/讲一个难点）再分析，\n"
@@ -1441,7 +1443,8 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
                 "available": result.get("available", []),
                 "recovery": (
                     "可尝试：1) 换关键词重试 2) 换其他企业数据源 "
-                    "3) 如确认数据不可用，如实告知用户，不要编造岗位数据"
+                    "3) 用 import_jd / import_jd_file 导入用户手头的真实 JD "
+                    "4) 如确认数据不可用，如实告知用户，不要编造岗位数据"
                 ),
             },
         )

@@ -45,6 +45,8 @@ WELCOME_PROMPT = """\
    - `fetch_company_jobs(company=..., params=...)` → 搜岗位（结果含薪资范围）
    - `fetch_jd_detail(url=...)` → 获取 JD 全文
    - `search_knowledge(query=...)` → 查本地已积累的资料（JD/面经）
+   - 抓取不可用（无网/需登录/无数据源）→ 让用户提供 JD 文本或用 `import_jd` /
+     `import_jd_file` 导入；数据来源如实标注，绝不编造，也不要因此停摆
 5. `finalize_profile` → 确认档案完整
 
 ### Phase 2: 差距分析

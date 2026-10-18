@@ -928,3 +928,20 @@ def test_gap_gate_accepts_anchored_analysis(temp_profile):
     assert result["context"]["phase"] == "gap_saved"
     assert profile_module.load_profile().gap["match_score"] == 58
 
+
+# ============ 首启零抓取降级路径：抓取失败要引导手动导入 ============
+
+def test_fetch_failure_suggests_manual_import(temp_profile, monkeypatch):
+    """抓取失败时恢复建议包含手动导入（import_jd），流程不停摆。"""
+    import asyncio
+    import src.server as server_module
+
+    monkeypatch.setattr(
+        server_module, "search_company_jobs",
+        lambda *a, **k: {"error": "需要登录 BOSS 直聘", "available": []},
+    )
+    result = json.loads(asyncio.run(server_module.fetch_company_jobs(company="boss")))
+    assert result.get("isError") is True
+    assert "import_jd" in result["details"]["recovery"]
+
+
