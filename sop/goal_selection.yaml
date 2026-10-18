@@ -11,6 +11,7 @@ methodology:
     - "如实反映现状：用户是零基础小白就明确记录 experience_level=零基础、skills 留空，绝不美化；候选方向要标注该方向对零基础的友好度（门槛高/中/低）"
     - "不做死板测评：不套用霍兰德/MBTI 问卷题，用对话提问 + 真实岗位数据驱动"
     - "落定即衔接：用户选定方向后，用 intake(section='want') 写入档案，然后走正常差距分析流程（analyze_gaps）"
+    - "三档目标推荐：方向锁定后要给「冲/稳/保」三档目标（挑战/一般/兜底），而非只给单档——每档结合真实难度（JD 要求）与薪资数据给出具体公司+岗位，允许用户按档组合；无数据处如实标注缺失，绝不编造"
 
   phases:
     - id: probe_reality
@@ -74,6 +75,29 @@ methodology:
       data_needs: []
       quality_gate: "2-3 个方向，每个含依据+假设+Fit Filters+市场数据摘要；零基础用户明确标注门槛"
 
+    - id: propose_target_tiers
+      name: 三档目标推荐（冲 / 稳 / 保）
+      guidance: |
+        用户选定方向后，结合真实岗位数据给出三档目标——不要只给单档，让用户在
+        风险与收益之间自主组合：
+
+        - 挑战档（冲刺）：比当前能力高一档、需要明显补短板才能触及的目标
+        - 一般档（中位）：当前能力经过路线图提升后大概率够到的目标
+        - 兜底档（保底）：当前能力即可覆盖、保证能拿到 offer 的下限目标
+
+        每档给 1-3 个具体目标，逐条标注：
+        1. 公司 + 岗位
+        2. 难度依据：来自真实 JD 的要求（学历/经验/技能），不是感觉
+        3. 薪资：来自含薪资的抓取来源（如 BOSS 直聘）
+        4. 数据来源：抓取 / 用户导入；没有真实数据的目标如实标注「缺数据」并说明获取方式
+
+        允许用户按档任意组合（如「挑战档 + 兜底档」），也允许只选一档——选择权在用户。
+      data_needs:
+        - type: job_market
+          query_hint: "按选定方向抓真实岗位，尽量覆盖不同难度档位且含薪资"
+          local_paths: ["jds/", "market/"]
+      quality_gate: "三档目标均有具体公司/岗位；难度依据来自 JD、薪资来自真实含薪来源；无数据处如实标注缺失"
+
     - id: decide
       name: 引导选择并落定
       guidance: |
@@ -103,3 +127,9 @@ methodology:
       用户选定方向（经 intake 写入 want）：
       - target_role, interest, constraints, direction_confidence, experience_level
       注意：experience_level 必须如实反映，零基础就是零基础，不美化
+    target_tiers: |
+      三档目标（冲 / 稳 / 保），每档：
+      - tier: 挑战档 | 一般档 | 兜底档
+      - targets: [{company, role, salary, difficulty_basis（来自 JD 的要求）, source（数据来源）}]
+      - note: 无真实数据时如实标注缺失，并说明获取方式
+      允许用户按档组合选择；所选档位随 intake(section='want') 一并落定

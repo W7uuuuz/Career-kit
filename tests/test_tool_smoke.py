@@ -945,3 +945,29 @@ def test_fetch_failure_suggests_manual_import(temp_profile, monkeypatch):
     assert "import_jd" in result["details"]["recovery"]
 
 
+# ============ 三档目标推荐（BUG-006） ============
+
+def test_explore_goals_includes_three_tier_targets(temp_profile):
+    """BUG-006：explore_goals 指引包含三档目标（冲/稳/保）。"""
+    from src.server import explore_goals, intake
+
+    intake("who", '{"name": "张三", "status": "应届生"}')
+    intake("have", '{"experience_level": "零基础"}')
+
+    out = json.loads(explore_goals())
+    ins = out["instructions"]
+    assert "三档" in ins
+    assert "挑战" in ins and "兜底" in ins
+
+
+def test_goal_selection_has_three_tier_phase():
+    """BUG-006：目标选择方法论含三档目标阶段与输出 schema。"""
+    from src.tools.methodology import load_methodology
+
+    m = load_methodology("goal_selection")["methodology"]
+    phase_ids = [p.get("id") for p in m.get("phases", [])]
+    assert "propose_target_tiers" in phase_ids
+    assert "target_tiers" in m.get("output_schema", {})
+
+
+
