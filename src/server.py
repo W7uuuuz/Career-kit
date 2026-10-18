@@ -792,9 +792,61 @@ def analyze_gaps() -> str:
             "4. 分析前先核对 have 技能的证据来源：若技能条目的 evidence 未经用户确认\n"
             "   （无 user_verified 标记），先追问证据（做过什么项目/讲一个难点）再分析，\n"
             "   避免基于简历字面水平做系统性失真判断\n"
-            "5. 调用 save_gap_analysis(gap_json) 保存结构化结果"
+            "5. 每条 skill_gaps 必须带 source（真实数据来源：抓取的 JD / 导入材料），\n"
+            "   match_score 为 0-100；save_gap_analysis 有内容质量门，无依据/编造的结果会被拒绝\n"
+            "6. 调用 save_gap_analysis(gap_json) 保存结构化结果"
         ),
     })
+
+
+def _validate_gap_content(gap_data: dict) -> list[str]:
+    """差距分析内容质量门（BUG-002/003 收尾）：把「不编造真实数据」落成代码。
+
+    结构校验由 _parse_json_param / format_gap_report 负责（能否解析、能否渲染）；
+    此处只挡内容性缺陷，是 MCP 层对 LLM 输出的硬约束：
+    - match_score 必须是 0-100 的数字（不能缺、不能是乱值）
+    - skill_gaps 非空，且每条必须有 skill 与 source（真实数据来源）
+    - resume_red_flags（若提供）每条必须有 signal / risk / evidence_fix
+    返回问题列表（空 = 通过）。
+    """
+    issues: list[str] = []
+
+    score = gap_data.get("match_score")
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not (0 <= score <= 100):
+        issues.append(f"match_score 必须是 0-100 的数字，收到「{score}」——不能缺或写非数值")
+
+    gaps = gap_data.get("skill_gaps")
+    if not isinstance(gaps, list) or not gaps:
+        issues.append("skill_gaps 不能为空——差距分析必须产出至少一条技能差距")
+    else:
+        for i, g in enumerate(gaps):
+            if not isinstance(g, dict) or not str(g.get("skill", "")).strip():
+                issues.append(f"skill_gaps[{i}] 缺 skill 字段")
+                continue
+            if not str(g.get("source", "")).strip():
+                issues.append(
+                    f"skill_gaps[{i}]「{g['skill']}」缺 source（数据来源）——"
+                    "差距必须锚定真实数据（抓取/导入的 JD、用户材料），不可凭 LLM 知识编造"
+                )
+
+    red_flags = gap_data.get("resume_red_flags")
+    if red_flags:
+        if not isinstance(red_flags, list):
+            issues.append("resume_red_flags 必须是数组")
+        else:
+            for i, rf in enumerate(red_flags):
+                if not isinstance(rf, dict):
+                    issues.append(f"resume_red_flags[{i}] 必须是对象")
+                    continue
+                missing = [k for k in ("signal", "risk", "evidence_fix")
+                           if not str(rf.get(k, "")).strip()]
+                if missing:
+                    issues.append(
+                        f"resume_red_flags[{i}] 缺字段 {missing}——"
+                        "每条负面信号必须给出风险说明与补证据动作"
+                    )
+
+    return issues
 
 
 @mcp.tool()
@@ -858,11 +910,28 @@ def save_gap_analysis(gap_json: str) -> str:
             ],
             "market_context": "..."       // 市场背景（来自真实抓取数据汇总）
         }
+
+    内容质量门（硬约束，BAD 数据会被拒绝落盘）：
+    - match_score 必须是 0-100 的数字
+    - skill_gaps 非空，且每条必须带 source（真实数据来源，抓取/导入）
+    - resume_red_flags 若提供，每条必须有 signal / risk / evidence_fix
     """
     try:
         gap_data = _parse_json_param(gap_json, "差距分析")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
+
+    # 内容质量门（BUG-002/003 收尾）：结构合法还不够——无依据/编造的内容一律拒绝落盘
+    content_issues = _validate_gap_content(gap_data)
+    if content_issues:
+        return error_response(
+            "INCOMPLETE_ANALYSIS",
+            "差距分析未通过内容质量门（防止无依据/编造）：\n"
+            + "\n".join(f"- {i}" for i in content_issues)
+            + "\n\n差距必须锚定真实数据来源（抓取/导入的 JD、用户材料）；"
+            "补齐后重新调用 save_gap_analysis。",
+            {"issues": content_issues},
+        )
 
     # 先生成报告——格式非法时在此暴露，避免把半成品写进档案
     report = format_gap_report(gap_data)

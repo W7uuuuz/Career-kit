@@ -857,3 +857,74 @@ def test_save_roadmap_guides_execution_start(temp_profile):
     ]}}
     out = _parse(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     assert "开始第一阶段" in out["message"] or "引导用户" in out["message"]
+
+
+# ============ 差距分析内容质量门（BUG-002/003 收尾：不编造落成代码） ============
+
+def test_gap_gate_rejects_missing_source(temp_profile):
+    """skill_gaps 缺 source（无真实数据来源）→ 拒绝落盘。"""
+    from src.server import save_gap_analysis
+
+    bad = json.dumps({
+        "match_score": 60,
+        "skill_gaps": [{"skill": "RAG", "priority": "high"}],
+    }, ensure_ascii=False)
+    result = json.loads(save_gap_analysis(gap_json=bad))
+    assert result.get("isError") is True
+    assert result["code"] == "INCOMPLETE_ANALYSIS"
+    assert any("source" in i for i in result["details"]["issues"])
+    assert not profile_module.load_profile().gap
+
+
+def test_gap_gate_rejects_empty_gaps(temp_profile):
+    """空 skill_gaps → 拒绝（差距分析必须至少产出一条差距）。"""
+    from src.server import save_gap_analysis
+
+    bad = json.dumps({"match_score": 60, "skill_gaps": []}, ensure_ascii=False)
+    result = json.loads(save_gap_analysis(gap_json=bad))
+    assert result.get("isError") is True
+    assert result["code"] == "INCOMPLETE_ANALYSIS"
+
+
+def test_gap_gate_rejects_out_of_range_score(temp_profile):
+    """match_score 越界 → 拒绝。"""
+    from src.server import save_gap_analysis
+
+    bad = json.dumps({
+        "match_score": 180,
+        "skill_gaps": [{"skill": "RAG", "source": "JD"}],
+    }, ensure_ascii=False)
+    result = json.loads(save_gap_analysis(gap_json=bad))
+    assert result.get("isError") is True
+    assert result["code"] == "INCOMPLETE_ANALYSIS"
+
+
+def test_gap_gate_rejects_incomplete_red_flags(temp_profile):
+    """resume_red_flags 缺 risk/evidence_fix → 拒绝（负面信号必须给对策）。"""
+    from src.server import save_gap_analysis
+
+    bad = json.dumps({
+        "match_score": 60,
+        "skill_gaps": [{"skill": "RAG", "source": "JD"}],
+        "resume_red_flags": [{"signal": "独立开发"}],
+    }, ensure_ascii=False)
+    result = json.loads(save_gap_analysis(gap_json=bad))
+    assert result.get("isError") is True
+    assert result["code"] == "INCOMPLETE_ANALYSIS"
+    assert any("resume_red_flags" in i for i in result["details"]["issues"])
+
+
+def test_gap_gate_accepts_anchored_analysis(temp_profile):
+    """锚定真实数据来源的完整差距分析 → 正常保存。"""
+    from src.server import save_gap_analysis
+
+    good = json.dumps({
+        "match_score": 58,
+        "skill_gaps": [{"skill": "协作", "priority": "high", "source": "字节 JD"}],
+        "resume_red_flags": [{"signal": "独立开发", "risk": "缺协作证据",
+                              "narrative_fix": "强调契约设计", "evidence_fix": "开源 PR"}],
+    }, ensure_ascii=False)
+    result = _parse(save_gap_analysis(gap_json=good))
+    assert result["context"]["phase"] == "gap_saved"
+    assert profile_module.load_profile().gap["match_score"] == 58
+
