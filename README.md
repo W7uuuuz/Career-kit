@@ -6,57 +6,61 @@
 
 > 别再海投了。AI 帮你规划路线、打卡执行、达成目标。
 
-## 你是不是也这样？
+**Career Kit 是一个 MCP 服务**——接入 Claude Code / Cursor / opencode 等任意支持 MCP 的 AI Agent，
+把你的求职从「投简历碰运气」变成「有真实数据支撑的分阶段计划 + 可打卡执行」。
 
-**海投 100 份简历，0 个面试。**
-不知道是简历写得不好，还是技能不够，还是投的公司不对。每天打开招聘软件，越看越焦虑。
+![Career Kit 职业地图](docs/examples/demo/career-map.png)
 
-**想转行，但不知道从哪开始。**
-网上教程一堆，今天学 Python，明天学 LLM，后天又看到有人说要学 RAG。到底先学什么？学了有没有用？
+> 上图是 `docs/examples/demo/career-map.html` 的真实截图——一份样例简历经完整链路生成的
+> **可交互职业地图**（勾选打卡、进度实时更新、本地保存）。无需安装，双击即可打开体验。
 
-**计划做了，执行不下去。**
-每次都立 flag，每次都倒。没有人监督，没有反馈，不知道自己是快了还是慢了。慢慢地，连打开计划的勇气都没有了。
+## 30 秒看懂
 
-**拿到面试了，不知道怎么准备。**
-面经一堆，但不知道哪些是重点。准备了一周，面试官问的问题一个都没押中。挂了，也不知道为什么挂。
-
-**迷茫。**
-不知道自己值多少钱，不知道市场要什么人，不知道现在学的东西有没有用。每天都在焦虑，但不知道该怎么办。
-
-## Career Kit 怎么帮你？
-
-**有真实数据，不瞎分析**
-接入 BOSS 直聘、牛客网，字节跳动，百度，阿里，腾讯等企业官网的真实数据。AI 分析你的差距时，用的是市场真实要求，不是凭空想象。
-
-**拆成阶段任务，跟着做就行**
-不只是给你一个大方向。AI 把路线图拆成分阶段任务，随时问「接下来做什么」、打卡完成，不用想"下一步该干嘛"。
-
-**跟着你调整，不是死计划**
-完成得轻松？建议加深难度。拿到面试？触发洞察重估计划。换了目标？已完成的进度自动沉淀为能力证据，努力不白费。
+- **真实数据，不瞎分析**：接入 BOSS 直聘 / 字节跳动 / 牛客网的真实岗位数据，AI 基于市场真实要求
+  分析差距，不凭空想象；差距必须锚定真实数据来源，否则被硬门禁拒绝。
+- **拆成阶段任务**：不只是给一个大方向——分阶段、里程碑、可打卡任务（按次/按天/按比例），
+  随时问「下一步做什么」。
+- **可交互职业地图**：一键导出自包含 HTML，勾选即打卡、进度实时更新、浏览器本地保存。
+- **跟着你变，不是死计划**：拿到面试触发洞察重估；换目标时已完成进度自动沉淀为能力证据。
+- **顺序归产品，时间归用户**：只为任务定义顺序与完成标准，不为它设时限。
 
 ## 快速开始
 
+### 一键安装（推荐）
+
+```bash
+# macOS / Linux
+bash install.sh
+
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+脚本会建好 `.venv`、装好依赖，并直接打印注册命令——**用绝对解释器路径**，
+避开「裸 `python` 指到错误解释器」的经典坑。
+
+### 手动安装
+
 ```bash
 git clone https://github.com/W7uuuz/Career-kit.git
-cd career-kit
+cd Career-kit
 pip install -e .
 ```
 
-### 接入你的 AI Agent（一行命令）
-
 > **解释器很重要**：注册命令里的 `python` 必须是执行过 `pip install -e .` 的那一个。
-> 本机存在多个 Python 时（系统/msys64/venv），裸 `python` 可能指向缺依赖的解释器。
-> 最稳妥写法是 venv 绝对路径，例如：
-> `claude mcp add career-kit -- D:\path\to\career-kit\.venv\Scripts\python.exe -m src.server`
+> 本机存在多个 Python 时，裸 `python` 可能指向缺依赖的解释器。最稳妥是 venv 绝对路径：
+> `D:\path\to\Career-kit\.venv\Scripts\python.exe`（Windows）或 `.venv/bin/python`（macOS/Linux）。
+
+### 注册到你的 AI Agent
 
 | Agent | 注册方式 |
 |-------|---------|
-| Claude Code | `claude mcp add career-kit -- python -m src.server` |
-| Codex CLI | `codex mcp add career-kit -- python -m src.server` |
-| opencode | 在项目或全局 `opencode.json` 中加入：`{"mcp": {"career-kit": {"type": "local", "command": ["python", "-m", "src.server"], "enabled": true}}}` |
-| Cursor / Windsurf | MCP 设置中手动添加：command=`python`，args=`["-m", "src.server"]` |
+| Claude Code | `claude mcp add career-kit -- <venv-python> -m src.server` |
+| Codex CLI | `codex mcp add career-kit -- <venv-python> -m src.server` |
+| opencode | `opencode.json` 中加入：`{"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}` |
+| Cursor / Windsurf | MCP 设置中手动添加：command=`<venv-python>`，args=`["-m", "src.server"]` |
 
-> macOS 用户把 `python` 换成 `python3`。项目发布 PyPI 后将支持 `uvx career-kit` 免克隆使用。
+> macOS 用户把 python 换成 python3。
 
 ### 验证安装
 
@@ -67,24 +71,20 @@ pip install -e .
 
 | 现象 | 处理 |
 |------|------|
-| 工具列表里没有 career-kit 的工具 | 确认注册命令在 career-kit 目录下执行；Claude Code 会话内用 `/mcp` 查看连接状态 |
+| 工具列表里没有 career-kit 的工具 | 确认注册命令在 Career-kit 目录下执行；Claude Code 会话内用 `/mcp` 查看连接状态 |
 | 服务器启动即崩 / `No module named 'mcp'` | 注册用了错误解释器——改用 venv 绝对路径（见上方警告） |
 | 抓取工具报 Playwright 相关错误 | 先执行 `playwright install chromium` 安装浏览器内核 |
-| BOSS 直聘提示需要登录 | 在项目目录运行 `python -m src.scrapers.boss.login`，浏览器弹出后扫码即可——检测到登录态自动保存退出，无需任何手动确认 |
-| opencode 不加载配置 | opencode 无 cwd 字段，command 数组里同样建议写 venv 绝对路径 |
+| BOSS 直聘提示需要登录 | 在项目目录运行 `python -m src.scrapers.boss.login`，浏览器弹出后扫码即可——检测到登录态自动保存退出 |
+| uv 装依赖报 `iv8 was not found` | iv8 只在官方 PyPI，不在镜像上：`uv pip install -e . --index-url https://pypi.org/simple` |
 
 ### 斜杠命令（可选）
 
 - **Claude Code**：仓库已内置 `/career-kit [目标]`（职业陪练）与 `/career-kit-profile`（档案管理）——
-  在本目录启动 claude 即可直接使用；
-  想在任意目录用，复制到全局：`mkdir -p ~/.claude/commands && cp .claude/commands/*.md ~/.claude/commands/`
+  在本目录启动 claude 即可直接使用；想在任意目录用，复制到全局：
+  `mkdir -p ~/.claude/commands && cp .claude/commands/*.md ~/.claude/commands/`
 - **opencode**：同理内置 `.opencode/commands/career-kit.md` 与 `.opencode/commands/career-kit-profile.md`；
   全局版复制到 `~/.config/opencode/commands/`
-- **Codex CLI**：把 `.claude/commands/*.md` 复制为 `~/.codex/prompts/`，
-  即可用 `/prompts:career-kit` 调用
-
-和 AI 说"我想转行"，或直接敲 `/career-kit 转行 AI Agent 工程师`。
-多份档案管理（选择/切换/删除）用 `/career-kit-profile`。
+- **Codex CLI**：把 `.claude/commands/*.md` 复制为 `~/.codex/prompts/`，即可用 `/prompts:career-kit` 调用
 
 ## 它能做什么？
 
@@ -111,7 +111,7 @@ graph LR
     U -->|否| G0[explore_goals 选方向] --> A
     A --> B[AI 分析差距]
     B --> C[设计路线图]
-    C --> D[细化到每天任务]
+    C --> D[细化到阶段任务]
     D --> E[用户打卡]
     E --> F{AI 洞察}
     F -->|正常| D
@@ -121,51 +121,47 @@ graph LR
     H --> G
 ```
 
-## 为什么选 Career Kit？
+## 为什么是它？
 
 | | ChatGPT | 求职网站 | Career Kit |
 |---|---------|----------|------------|
-| 真实岗位数据 |  |  |  |
-| 个性化路线图 |  |  |  |
-| 每日任务打卡 |  |  |  |
-| 进度追踪调整 |  |  |  |
-| 免费 |  |  |  |
-| 本地运行，数据不上传 |  |  |  |
+| 真实岗位数据 | 无 | 有 | 有（可抓取，含薪资） |
+| 个性化路线图 | 泛泛而谈 | 无 | 分阶段 + 里程碑 + 完成标准 |
+| 阶段任务打卡 | 无 | 无 | 有（按次/按天/按比例） |
+| 进度追踪调整 | 无 | 无 | 阶段审计 + 事件洞察 |
+| 数据本地、可自托管 | 否 | 否 | 是 |
 
-## MCP 工具
+## MCP 工具（32 个）
 
 ### 建档与分析
 
 | 工具 | 作用 |
 |------|------|
 | `start_session` | 初始化新的职业规划会话 |
-| `intake` | 逐步填充档案（who/have/want） |
-| `finalize_profile` | 确认档案完整，生成摘要，解锁分析工具 |
-| `list_data_sources` | 列出可用企业数据源（BOSS直聘/字节/牛客） |
-| `fetch_company_jobs` | 抓取真实岗位（含薪资范围） |
-| `fetch_jd_detail` | 获取 JD 全文 |
-| `search_knowledge` | 检索本地知识库 |
-| `analyze_gaps` | 基于真实数据对比现状与目标 |
+| `parse_resume` / `intake` / `finalize_profile` | 简历解析、逐步填充档案、确认档案（含技能摸排硬门禁） |
+| `import_jd` / `import_jd_file` | 导入目标 JD（文本/文件） |
+| `list_profiles` / `switch_profile` / `delete_profile` / `list_trash` / `restore_profile` | 多档案管理（回收站式删除） |
+| `explore_goals` | 无目标时三轴定位引导选方向 |
+| `list_data_sources` / `fetch_company_jobs` / `fetch_jd_detail` | 真实岗位数据源与抓取 |
+| `search_knowledge` | 检索本地知识库（爬虫自动积累的 JD/面经） |
+| `analyze_gaps` / `save_gap_analysis` | 差距分析（含内容质量门：不编造） |
 
-### 任务与打卡
+### 规划与执行
 
 | 工具 | 作用 |
 |------|------|
-| `generate_roadmap` | 基于差距分析生成分阶段路线图（只定顺序与标准，无时限） |
-| `generate_tasks` | 从路线图生成任务列表 |
-| `detail_current_phase` | 细化当前阶段的详细路线（含按天/按比例打卡点） |
-| `save_current_detail` | 保存当前阶段详细路线 |
-| `get_next_tasks` | 当前阶段的下一步任务（关卡式推进） |
-| `checkin_task` | 打卡任务，完成自动沉淀能力证据 |
-| `get_progress` | 获取进度概览 |
+| `generate_roadmap` / `save_roadmap` | 生成/保存分阶段路线图（起点判定 + 层级连续 + 届别硬校验） |
+| `import_plan` | 导入既有计划 |
+| `generate_tasks` / `detail_current_phase` / `save_current_detail` | 生成任务、按需细化当前阶段打卡点 |
+| `get_next_tasks` / `checkin_task` / `get_progress` | 下一步任务、打卡、进度概览 |
 
 ### 洞察与产出
 
 | 工具 | 作用 |
 |------|------|
-| `trigger_insight` / `apply_insight` | 洞察检查与应用调整（阶段审计/事件触发） |
+| `trigger_insight` / `apply_insight` | 阶段审计 / 事件洞察与应用调整 |
 | `get_workflow_status` | 工作流状态 + 目标变更检测 |
-| `export_dashboard` | 生成阶段驱动的自包含 HTML 仪表盘 |
+| `export_dashboard` | 生成自包含 HTML：进度仪表盘 / 可交互职业地图 |
 
 ## 文档
 
@@ -175,10 +171,12 @@ graph LR
 - [工具总览](docs/tools.md)：MCP 工具列表、分类说明
 - [知识库](docs/knowledge.md)：目录结构、文件格式
 - [示例](docs/examples/README.md)：完整工作流示例、场景示例
+- [零等待演示](docs/examples/demo/README.md)：一份真实产出（简历 → 职业地图）
 
 ## 隐私
 
 所有数据存储在本地 `~/.career-kit/`，不会发送到任何外部服务器。
+知识库是用户自有资产，不随包升级丢失。
 
 ## 开源协议
 
