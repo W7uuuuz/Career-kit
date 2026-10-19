@@ -33,7 +33,10 @@ fetch_company_jobs(company="boss", params='{"keyword":"AI Agent", "city":"上海
 
 ## 注意事项
 
-1. **需要登录态**：首次使用前在本项目目录运行 `python -m src.scrapers.boss.login`，
+1. **需要登录态**：首次使用前在本项目目录运行登录命令。
+   MCP 报错信息会打印**当前服务解释器的绝对路径**，直接复制执行即可：
+   `"<venv-python>" -m src.scrapers.boss.login`
+   （不要用裸 `python`，多解释器环境可能装不到依赖）
    一条命令到底：patchright（Playwright 反检测 fork，驱动层消除 CDP 检测向量）
    拉起**系统默认浏览器（Chrome 或 Edge）** → 你在浏览器完成扫码 → 工具自动检测
    登录态落盘并退出，全程无需任何手动确认；cookies 长期复用，过期时重跑一次即可
@@ -42,7 +45,7 @@ fetch_company_jobs(company="boss", params='{"keyword":"AI Agent", "city":"上海
    明确报错而不是静默降级。窗口尺寸**由浏览器自适应**（仅 --start-maximized，
    由操作系统最大化到实际工作区），代码不规定任何分辨率——强制尺寸不是
    看不全就是超出可视区域
-2. 失败时错误信息会说明原因（未登录 / 风控 code=36 需等待 / code=37 自动处理 stoken）
-3. 抓取频率受风控限制，短时间多次调用可能被临时限制
-4. `salary` 过滤为**近似过滤**：BOSS API 对日薪岗（如「250-400元/天」）不生效，
+3. 失败时错误信息会说明原因（未登录 / 风控 code=36 需等待 / code=37 自动处理 stoken）
+4. 抓取频率受风控限制，短时间多次调用可能被临时限制
+5. `salary` 过滤为**近似过滤**：BOSS API 对日薪岗（如「250-400元/天」）不生效，
    结果中可能混入日薪岗位

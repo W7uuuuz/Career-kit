@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -217,8 +218,9 @@ class Scraper(CompanyScraper):
         if not has_valid_cookies():
             return [{"error": (
                 "需要登录 BOSS 直聘。请在 career-kit 项目目录运行：\n"
-                "    python -m src.scrapers.boss.login\n"
-                "按提示在浏览器完成扫码后回车即可；cookies 保存后长期有效（过期时重跑一次）。"
+                f'    "{sys.executable}" -m src.scrapers.boss.login\n'
+                "使用当前 MCP 服务的解释器（绝对路径），避免裸 python 指向错误环境。\n"
+                "按提示在浏览器完成扫码即可；cookies 保存后长期有效（过期时重跑一次）。"
             )}]
 
         cookies = load_cookies()
@@ -270,7 +272,8 @@ class Scraper(CompanyScraper):
         """获取岗位详情。"""
         if not has_valid_cookies():
             return {"error": (
-                "需要登录 BOSS 直聘。请在本项目目录运行：python -m src.scrapers.boss.login"
+                "需要登录 BOSS 直聘。请在本项目目录运行：\n"
+                f'    "{sys.executable}" -m src.scrapers.boss.login'
             )}
 
         cookies = load_cookies()
