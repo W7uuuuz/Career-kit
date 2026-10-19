@@ -32,6 +32,31 @@ scrapers:
     url_patterns:
       - "jobs.bytedance.com"
 
+  tencent:
+    name: 腾讯
+    module: tencent.scraper
+    class: Scraper
+    description: 腾讯招聘（careers.tencent.com 社招 / join.qq.com 校招实习），不公开薪资
+    url_patterns:
+      - "careers.tencent.com"
+      - "join.qq.com"
+
+  baidu:
+    name: 百度
+    module: baidu.scraper
+    class: Scraper
+    description: 百度招聘（talent.baidu.com），社招/校招/实习，列表已含完整 JD，不公开薪资
+    url_patterns:
+      - "talent.baidu.com"
+
+  alibaba:
+    name: 阿里巴巴（校招/实习）
+    module: alibaba.scraper
+    class: Scraper
+    description: 阿里校招/实习（campus-talent.alibaba.com），需 XSRF token，按批次搜索
+    url_patterns:
+      - "campus-talent.alibaba.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper

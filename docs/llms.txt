@@ -14,7 +14,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 | 数据源 | 内容 | 获取方式 |
 |--------|------|----------|
-| 企业 Scraper（BOSS/字节/牛客等） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
+| 企业 Scraper（BOSS/字节/腾讯/百度/阿里/牛客） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
 | 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
 
 分析或规划前必须至少调用一次 `fetch_company_jobs` 或 `search_knowledge`。
