@@ -42,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ### 手动安装
 
 ```bash
-git clone https://github.com/W7uuuz/Career-kit.git
+git clone https://github.com/W7uuuuz/Career-kit.git
 cd Career-kit
 pip install -e .
 ```
