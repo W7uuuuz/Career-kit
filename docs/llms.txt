@@ -1,243 +1,134 @@
 # Career Kit LLM 使用指南
 
-> 本指南帮助 LLM 理解如何使用 Career Kit 的工具，完成职业规划全流程。
+> 面向 LLM 的运行时操作手册。工具参数与完整清单以 [tools.md](tools.md) 为准。
 
 ## 核心理念
 
-Career Kit 是一个**有真实数据源的 AI 职业陪练**。它不只是提供信息，而是：
-- 帮你设计最优路线（只定顺序与完成标准）
-- 拆成阶段任务
-- 跟着做、打卡、沉淀能力证据
-- 达成目标
+Career Kit 是**有真实数据源的 AI 职业陪练**：
 
-**顺序归产品，时间归用户**：不为任务设定时限，进度以阶段为刻度；用户想要日程时在对话中直接写 markdown/HTML 文档交付。
+- 只定顺序与完成标准，不为任务设时限（顺序归产品，时间归用户）
+- 分析必须基于真实抓取/导入的数据，禁止凭 LLM 知识编造
+- 用户想要日程时，在对话中直接写 markdown/HTML 文档交付，系统不存储日程
 
-## 真实数据源
+## 真实数据规则
 
-Career Kit 的核心优势是有**真实数据**，而不是凭空分析：
+| 数据源 | 内容 | 获取方式 |
+|--------|------|----------|
+| 企业 Scraper（BOSS/字节/牛客等） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
+| 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
 
-| 数据源 | 内容 | 用途 | 获取方式 |
-|--------|------|------|----------|
-| 企业 Scraper（BOSS直聘/字节/牛客） | 真实岗位 JD、薪资、面经 | 了解市场需求 | [企业库总览](scrapers.md) |
-| 知识库 | scraper 自动写入 + 用户积累的资料 | 参考历史数据 | `search_knowledge` |
+分析或规划前必须至少调用一次 `fetch_company_jobs` 或 `search_knowledge`。
+数据不可用时如实告知，并引导 `import_jd` / `import_jd_file` 导入用户手头 JD，不要编造。
 
-**关键原则**：在分析和规划之前，必须用 `fetch_company_jobs` 抓取真实数据（`search_knowledge` 查本地积累）。不要凭 LLM 自身知识做分析。
-
-## 工作流概览
+## 工作流
 
 ```
-用户目标 → AI 分析差距 → 设计路线图 → 阶段任务 → 用户打卡（能力证据沉淀）→ AI 洞察调整 → 达成目标
+建档 → 差距分析 → 路线图 → 阶段任务 → 打卡 → 阶段审计/事件洞察 → 循环
 ```
 
-## 工具分类
-
-> 详细工具列表见 [MCP 工具文档](tools.md)
-
-### 1. 建档工具
-
-| 工具 | 作用 | 调用时机 |
-|------|------|----------|
-| `start_session` | 初始化会话 | 用户开始新规划时 |
-| `parse_resume` | 解析简历文件 | 用户给了简历时 |
-| `intake` | 填充档案（who/have/want，技能带证据） | 逐步填充用户信息 |
-| `finalize_profile` | 确认档案 | 档案完整后 |
-| `explore_goals` | 无目标时三轴定位引导选方向 | 用户没有明确目标时 |
-| `import_jd` / `import_jd_file` | 导入 JD | 有目标岗位时 |
-
-### 2. 数据获取与分析工具
-
-| 工具 | 作用 | 调用时机 |
-|------|------|----------|
-| `list_data_sources` | 列出可用企业数据源 | 需要真实数据时先调用 |
-| `get_scraper_guide` | 读取指定数据源教程 | 第一次使用某源前 |
-| `fetch_company_jobs` | 抓取企业岗位/面经（含薪资） | 分析和规划前必须调用 |
-| `fetch_jd_detail` | 获取 JD 全文 | 深入分析某岗位时 |
-| `search_knowledge` | 检索本地知识库 | 查找已积累的资料 |
-| `analyze_gaps` / `save_gap_analysis` | 差距分析 | 真实数据就绪后 |
-
-### 3. 规划工具
-
-| 工具 | 作用 | 调用时机 |
-|------|------|----------|
-| `generate_roadmap` | 获取路线图方法论 | 差距分析完成后 |
-| `save_roadmap` | 保存路线图（无时长字段） | LLM 生成完成后 |
-
-### 4. 任务执行工具
-
-| 工具 | 作用 | 调用时机 |
-|------|------|----------|
-| `generate_tasks` | 从路线图生成任务 | save_roadmap 之后 |
-| `detail_current_phase` | 获取当前阶段详细路线方法论（只细化当前阶段；intern 阶段先抓真实数据） | 用户要进入执行、需更细颗粒度时 |
-| `save_current_detail` | 保存当前阶段详细路线（含按天/按比例打卡点） | LLM 设计完成后，随后重新 generate_tasks |
-| `get_next_tasks` | 当前阶段的下一步任务 | 用户想知道「现在做什么」 |
-| `checkin_task` | 打卡（沉淀能力证据；once/daily/percent） | 用户完成/推进任务时 |
-
-### 5. 洞察与产出工具
-
-| 工具 | 作用 | 调用时机 |
-|------|------|----------|
-| `trigger_insight` | 触发洞察分析（仅 stage_audit/event） | 阶段完成或报告事件 |
-| `apply_insight` | 应用洞察结果 | LLM 分析完成后 |
-| `get_progress` | 查看进度 | 用户想了解进度时 |
-| `get_workflow_status` | 工作流状态 + 目标变更检测 | 不确定下一步时 |
-| `export_dashboard` | 生成自包含 HTML（mode=progress 仪表盘 / mode=roadmap 职业地图） | 用户想直观查看进度或路线图时 |
-| `import_plan` | 导入既有规划文档 | 用户有旧计划要迁移时 |
-
-## 完整工作流示例
-
-### 阶段 1：建档（摸清真实水平）
+### 1. 建档
 
 ```
-1. start_session()
-2. intake(section="who", data='{"name":"张三", "education":"计算机本科"}')
-3. intake(section="have", data='{"skills":["Python"], "skill_evidence":[{"skill":"Python","evidence":"电商后端项目","confidence":"high"}]}')
-   // 关键技能追问证据：做过什么项目？讲一个难点？
-4. intake(section="want", data='{"target_role":"AI Agent 工程师", "salary":"20k-30k"}')
-5. finalize_profile()
+start_session()
+→ intake(who / have / want)       # 关键技能追问证据，带 evidence + verified
+→ finalize_profile()              # 有技能无证据时会被摸排门禁拦截
 ```
 
-### 阶段 2：分析（必须先抓取真实数据）
+无目标时先 `explore_goals()`，用「能力 × 兴趣 × 真实岗位」选出方向，再 `intake(want)` 落定。
+
+### 2. 分析
 
 ```
-1. list_data_sources()                              // 查看可用企业数据源
-2. fetch_company_jobs(company="bytedance", params='{"keyword":"AI Agent"}')  // 抓取真实岗位
-3. fetch_jd_detail(url="...")                       // 获取 JD 全文
-4. search_knowledge(query="AI Agent 面经")          // 查本地已积累资料
-5. analyze_gaps()
-6. save_gap_analysis(gap_json='{"match_score":65, "skill_gaps":[{"skill":"LLM", "source":"BOSS直聘 JD"}, ...]}')
+list_data_sources()                                  # 查看可用源与参数
+get_scraper_guide(company)                           # 首次使用某源前读取
+fetch_company_jobs(company, params)                  # 真实岗位/面经
+fetch_jd_detail(url)                                 # JD 全文
+search_knowledge(query)                              # 本地资料
+analyze_gaps() → save_gap_analysis(gap_json)
 ```
 
-**注意**：gap_json 中的 skill_gaps 必须基于真实数据。每个差距应标注数据来源。
+`skill_gaps` 每项必须带 `source`；`resume_red_flags` 每项必须带 `signal/risk/evidence_fix`，
+否则内容质量门会拒绝保存。
 
-### 阶段 3：规划（只定顺序与标准）
-
-```
-1. generate_roadmap()
-2. save_roadmap(roadmap_json='{"strategy_summary":"...", "phases":[{"name":"基础学习", "goal":"...", "kpi":{...}, "milestones":[{"name":"...", "done_criteria":"...", "tasks":[{"name":"学习 LLM 基础"}]}]}, ...]}')
-```
-
-**注意**：不要输出 duration/estimated_days 等时长字段；里程碑必须有 done_criteria。
-用户想要日程 → 在对话中直接写 markdown/HTML 文档交付，时间由用户自己填。
-
-### 阶段 4：任务执行与打卡
+### 3. 规划
 
 ```
-1. generate_tasks()
-2. detail_current_phase()                          // 只细化当前阶段；intern 先抓真实岗位数据
-3. save_current_detail(detail_json='{"phase_id":"phase_1","tasks":[...]}')
-4. generate_tasks()                                // 重新生成以合并打卡点
-5. get_next_tasks()
-6. checkin_task(task_id="task_001", status="completed", notes="练习题也做了")
-   // 完成自动沉淀能力证据到 have.capability_evidence
+generate_roadmap() → save_roadmap(roadmap_json)
 ```
 
-### 阶段 5：洞察调整
+- 禁止任何时长字段（duration / estimated_days 等）
+- 里程碑必须有 `done_criteria`
+- 阶段与 JD 遵循「知识光谱」：公司/推荐理由可写常识；JD 细节必须有真实数据，
+  否则留空并标 `jd_status=pending_user_import`
+- 起点层级取 `gap.start_level`；目标超起点时插入过渡阶段
+
+### 4. 执行
 
 ```
-1. trigger_insight(trigger_type="stage_audit")     // 或 trigger_type="event"
-2. apply_insight(insight_json='{"trigger_type":"stage_audit", "status":"on_track", ...}')
+generate_tasks()
+→ detail_current_phase()             # 只细化当前阶段
+→ save_current_detail(detail_json)   # once / daily / percent 打卡点
+→ generate_tasks()                   # 合并打卡点
+→ get_next_tasks()
+→ checkin_task(task_id, status, notes, amount)
 ```
 
-## 返回值格式
+完成任务会自动沉淀能力证据到 `have.capability_evidence`。
 
-所有工具都返回字符串。结构化返回为 JSON 字符串，包含以下字段：
+### 5. 洞察
+
+```
+trigger_insight(trigger_type="stage_audit" | "event", event_description)
+→ apply_insight(insight_json)
+```
+
+- 阶段审计每阶段只触发一次（`audited_phases`）
+- 事件示例：「拿到大厂面试」→ 增加面试冲刺阶段
+- 调整类型只有 add_task / remove_task / modify_task
+
+### 6. 产出与状态
+
+```
+get_progress()
+get_workflow_status()                # 目标变更检测：want/target_jd 晚于路线图时提示重分析
+export_dashboard(mode="progress")    # 进度仪表盘
+export_dashboard(mode="roadmap")     # 可交互职业地图
+```
+
+## 返回值与错误
+
+结构化工具返回 JSON 字符串，通常包含 `message`、`next_steps`、`context`。
+错误统一为：
 
 ```json
-{
-  "message": "消息内容",
-  "next_steps": ["下一步工具1", "下一步工具2"],
-  "context": {"phase": "当前阶段", "其他数据": "..."}
-}
+{"isError": true, "code": "ERROR_CODE", "message": "错误描述", "details": {}}
 ```
 
-## 错误处理
-
-当工具遇到错误时，返回 JSON 字符串，格式如下：
-
-```json
-{
-  "isError": true,
-  "code": "ERROR_CODE",
-  "message": "错误描述",
-  "details": {}
-}
-```
-
-常见错误代码：
-- `MISSING_DATA`：缺少必要数据
-- `INVALID_JSON`：JSON 格式错误
-- `INVALID_SECTION`：无效的 section / trigger_type 名称
-
-## 最佳实践
-
-1. **先调用 `get_workflow_status`**：了解当前状态，避免重复操作
-2. **按 `next_steps` 提示操作**：工具返回的 `next_steps` 是推荐的下一步
-3. **保存中间结果**：`save_*` 工具用于保存 LLM 生成的内容
-4. **必须使用真实数据**：在分析和规划前，必须用 `fetch_company_jobs` 获取真实岗位数据
-5. **阶段完成才审计**：trigger_insight 只在阶段完成（stage_audit）或事件（event）时调用
-6. **标注数据来源**：在 gap_json 和 roadmap_json 中标注数据来源（如 "source": "BOSS直聘 JD"）
+常见错误码：`MISSING_DATA`、`INVALID_JSON`、`INVALID_SECTION`、`PROBING_REQUIRED`、
+`INCOMPLETE_ANALYSIS`、`ANALYSIS_FAILED`。
 
 ## 常见场景
 
-### 场景 1：用户说"我想转行"
+| 用户说 | 下一步 |
+|--------|--------|
+| 我想转行 / 不知道做什么 | `start_session` → `intake` → `explore_goals` → `analyze_gaps` |
+| 这步做完了 | `get_next_tasks` → `checkin_task` |
+| 我拿到面试了 | `trigger_insight(event)` → `apply_insight` |
+| 我换了目标公司 | `import_jd` / `intake(want)` → `get_workflow_status` 提示变更 → 重新分析规划 |
+| 想看看进度 / 路线 | `export_dashboard("progress")` / `export_dashboard("roadmap")` |
 
-```
-1. start_session()
-2. intake(who/have/want)          // 关键技能追问证据
-3. finalize_profile()
-4. list_data_sources()            // 查看可用企业数据源
-5. fetch_company_jobs(...)        // 抓取真实岗位（含薪资）
-6. analyze_gaps() → save_gap_analysis()
-7. generate_roadmap() → save_roadmap()
-8. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks() → get_next_tasks()
-```
+## 反模式
 
-### 场景 2：用户说"任务做完了"
+1. 没抓取真实数据就做差距分析
+2. 编造 skill_gaps、薪资或 JD 细节
+3. 输出时长字段或替用户排时间
+4. 用户没要求就自动增加任务
+5. 同一阶段重复触发 `stage_audit`
 
-```
-1. get_next_tasks()
-2. checkin_task(task_id="task_001", status="completed")
-```
+## 文档索引
 
-### 场景 3：用户说"我拿到面试了"
-
-```
-1. trigger_insight(trigger_type="event", event_description="拿到大厂面试")
-2. apply_insight(insight_json='{"status":"need_adjustment", ...}')
-```
-
-### 场景 4：用户说"我换了目标公司"
-
-```
-1. import_jd(jd_text=...) 或 intake(section="want", ...)
-   // get_workflow_status 会检测到目标变更并提示重新分析
-2. analyze_gaps() → save_gap_analysis()
-3. generate_roadmap() → save_roadmap()    // 已完成进度自动沉淀为能力证据
-4. generate_tasks()
-```
-
-### 场景 5：用户想要日程表/仪表盘
-
-```
-日程：直接在对话中把任务写成 markdown/HTML 文档，时间留空由用户自己填
-仪表盘：export_dashboard()
-```
-
-## 反模式（不要这样做）
-
-1. **凭空分析**：不要在没有抓取真实数据的情况下做差距分析
-2. **编造数据**：不要编造 skill_gaps，必须基于真实抓取结果
-3. **替用户规划时间**：不要输出任何时长字段；快慢由用户掌握
-4. **自动繁殖任务**：不要因为「提前完成」就自动加深度任务——在对话中建议，由用户决定
-5. **重复审计**：每个阶段的 stage_audit 只触发一次
-
-## 技术细节
-
-- 所有数据存储在本地 `~/.career-kit/`（src/paths.py 单一定义）
-- 支持多档案（通过 `name` 参数）
-- 档案版本控制（通过 `version` 字段与 plan_history 快照）
-- 学习轨迹记录（通过 `journey` 字段）
-
----
-
-*本指南基于 Career Kit 时间退场重构版（2026-08）· 更新于 2026-10-17*
+- [工具总览](tools.md)：32 个工具的唯一事实源
+- [工作流详解](workflow.md)：前置条件、输入输出
+- [企业库](scrapers.md)：已收录数据源
+- [知识库](knowledge.md)：目录与文件格式
+- [示例](examples/README.md)：职业地图与场景示例

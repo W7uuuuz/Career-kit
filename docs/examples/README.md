@@ -1,50 +1,30 @@
 # 示例目录
 
-> Career Kit 完整工作流示例和场景示例
+> 完整工作流见 [工作流详解](../workflow.md)，工具清单见 [工具总览](../tools.md)。
 
 ## 零等待演示
 
-- [demo/](demo/)：一份样例简历经完整链路生成的**可交互职业地图 HTML**（双击即看，无需安装）
-
-## 完整工作流示例
-
-### 场景：应届生转行 AI Agent 工程师
-
-```
-1. start_session()
-2. intake(section="who", data='{"name":"张三", "education":"计算机本科", "status":"应届生"}')
-3. intake(section="have", data='{"skills":["Python", "React"], "skill_evidence":[{"skill":"React","evidence":"1年前端实习","confidence":"high"}]}')
-4. intake(section="want", data='{"target_role":"AI Agent 工程师", "salary":"20k-30k", "city":"上海"}')
-5. finalize_profile()
-6. list_data_sources()
-7. fetch_company_jobs(company="bytedance", params='{"keyword":"AI Agent"}')
-8. fetch_jd_detail(url="...")
-9. analyze_gaps()
-10. save_gap_analysis(gap_json='{"match_score":65, "skill_gaps":[{"skill":"LLM", "source":"BOSS直聘 JD"}, ...]}')
-11. generate_roadmap()
-12. save_roadmap(roadmap_json='{"strategy_summary":"...", "phases":[...]}')
-13. generate_tasks()
-14. get_next_tasks()
-15. checkin_task(task_id="task_001", status="completed")
-16. export_dashboard()
-```
+- [demo/](demo/)：一份样例简历经完整链路生成的**可交互职业地图 HTML**
+  （双击即看，无需安装）
 
 ## 场景示例
 
-### 转行场景
-
 - [前端转 AI](scenarios/career_change.md)：前端工程师转行 AI Agent 工程师
-
-### 面试准备场景
-
 - [面试冲刺](scenarios/interview_prep.md)：拿到面试后的准备流程
-
-### 技能提升场景
-
 - [技能升级](scenarios/skill_upgrade.md)：在职人员提升技能
 
 ## 示例数据
 
-- [示例档案](data/sample_profile.json)：用户档案示例
-- [示例差距分析](data/sample_gap.json)：差距分析结果示例
-- [示例路线图](data/sample_roadmap.json)：路线图示例
+- [示例档案](data/sample_profile.json)
+- [示例差距分析](data/sample_gap.json)
+- [示例路线图](data/sample_roadmap.json)
+
+## 最短链路
+
+```
+start_session → intake(who/have/want) → finalize_profile
+→ fetch_company_jobs → analyze_gaps → save_gap_analysis
+→ generate_roadmap → save_roadmap
+→ generate_tasks → get_next_tasks → checkin_task
+→ export_dashboard
+```
