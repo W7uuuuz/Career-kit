@@ -15,9 +15,6 @@ def test_export_dashboard_smoke(tmp_path, monkeypatch):
     import json as jsonlib
 
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
-    # server.py 的 load_profile 是 from-import 绑定，需要同步替换
-    import src.server as server_module
-    monkeypatch.setattr(server_module, "load_profile", lambda name="default": CareerProfile.model_validate_json((profile_module.PROFILE_DIR / f"{name}.json").read_text(encoding="utf-8")) if (profile_module.PROFILE_DIR / f"{name}.json").exists() else CareerProfile())
 
     intake("who", '{"name":"冒烟"}')
     profile = profile_module.load_profile()

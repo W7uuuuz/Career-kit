@@ -14,28 +14,10 @@ import pytest
 import src.tools.profile as profile_module
 from src.models import CareerProfile
 
-# server.py 的 from-import 绑定需同步替换
-import src.server as server_module
-
-
 @pytest.fixture()
 def temp_profile(tmp_path, monkeypatch):
-    """把档案指到临时目录，并同步替换 server 层的 from-import 绑定。"""
+    """把档案指到临时目录；工具模块统一走 profile 模块的公开函数。"""
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
-
-    def _load(name: str | None = None) -> CareerProfile:
-        n = name or profile_module.get_active_profile_name()
-        p = profile_module.PROFILE_DIR / f"{n}.json"
-        return CareerProfile.model_validate_json(p.read_text(encoding="utf-8")) if p.exists() else CareerProfile()
-
-    monkeypatch.setattr(server_module, "load_profile", _load)
-    monkeypatch.setattr(server_module, "profile_exists", profile_module.profile_exists)
-    monkeypatch.setattr(server_module, "do_list_profiles", profile_module.list_profiles)
-    monkeypatch.setattr(server_module, "do_list_trash", profile_module.list_trash)
-    monkeypatch.setattr(server_module, "get_active_profile_name", profile_module.get_active_profile_name)
-    monkeypatch.setattr(server_module, "set_active_profile_name", profile_module.set_active_profile_name)
-    monkeypatch.setattr(server_module, "do_delete_profile", profile_module.delete_profile)
-    monkeypatch.setattr(server_module, "do_restore_profile", profile_module.restore_profile)
     return tmp_path
 
 

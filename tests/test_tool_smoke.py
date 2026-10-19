@@ -24,15 +24,8 @@ from src.models import CareerProfile
 
 @pytest.fixture()
 def temp_profile(tmp_path, monkeypatch):
-    """把档案指到临时目录，并同步替换 server 层的 from-import 绑定。"""
+    """把档案指到临时目录；工具模块统一走 profile.load_profile。"""
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
-    import src.server as server_module
-
-    def _load(name: str = "default") -> CareerProfile:
-        p = profile_module.PROFILE_DIR / f"{name}.json"
-        return CareerProfile.model_validate_json(p.read_text(encoding="utf-8")) if p.exists() else CareerProfile()
-
-    monkeypatch.setattr(server_module, "load_profile", _load)
     return tmp_path
 
 
@@ -227,7 +220,9 @@ def test_fetch_jd_detail_renders_interview_content(monkeypatch):
         "company": "字节跳动",
         "content": "【精品面经】面试时长约 57 分钟……",
     }
-    monkeypatch.setattr(server_module, "get_job_detail", lambda url, company=None: fake)
+    import src.tools.data_tools as data_tools
+
+    monkeypatch.setattr(data_tools, "get_job_detail", lambda url, company=None: fake)
 
     out = asyncio.run(server_module.fetch_jd_detail("https://www.nowcoder.com/discuss/123"))
     assert "### 面经内容" in out
@@ -935,9 +930,10 @@ def test_fetch_failure_suggests_manual_import(temp_profile, monkeypatch):
     """抓取失败时恢复建议包含手动导入（import_jd），流程不停摆。"""
     import asyncio
     import src.server as server_module
+    import src.tools.data_tools as data_tools
 
     monkeypatch.setattr(
-        server_module, "search_company_jobs",
+        data_tools, "search_company_jobs",
         lambda *a, **k: {"error": "需要登录 BOSS 直聘", "available": []},
     )
     result = json.loads(asyncio.run(server_module.fetch_company_jobs(company="boss")))

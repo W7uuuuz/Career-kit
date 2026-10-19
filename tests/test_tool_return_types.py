@@ -15,28 +15,31 @@ import ast
 import json
 from pathlib import Path
 
-SERVER_PATH = Path(__file__).parent.parent / "src" / "server.py"
+TOOLS_DIR = Path(__file__).parent.parent / "src" / "tools"
+TOOL_MODULES = sorted(TOOLS_DIR.glob("*_tools.py"))
 
 
 def _load_tool_functions():
-    """解析 server.py，返回所有 @mcp.tool() 装饰函数的 AST 节点。"""
-    tree = ast.parse(SERVER_PATH.read_text(encoding="utf-8"))
+    """解析所有工具模块，返回 @mcp.tool() 装饰函数的 AST 节点。"""
     tools = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for deco in node.decorator_list:
-            is_mcp_tool = (
-                isinstance(deco, ast.Call)
-                and isinstance(deco.func, ast.Attribute)
-                and deco.func.attr == "tool"
-            ) or (
-                isinstance(deco, ast.Attribute)
-                and deco.attr == "tool"
-            )
-            if is_mcp_tool:
-                tools.append(node)
-                break
+    for path in TOOL_MODULES:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for deco in node.decorator_list:
+                is_mcp_tool = (
+                    isinstance(deco, ast.Call)
+                    and isinstance(deco.func, ast.Attribute)
+                    and deco.func.attr == "tool"
+                ) or (
+                    isinstance(deco, ast.Attribute)
+                    and deco.attr == "tool"
+                )
+                if is_mcp_tool:
+                    tools.append(node)
+                    break
+    assert tools, "未找到任何 @mcp.tool() 函数"
     return tools
 
 
