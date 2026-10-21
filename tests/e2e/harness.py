@@ -146,6 +146,9 @@ class Sandbox:
             target = self.artifacts / "data"
             if not target.exists() and self.data_dir.exists():
                 shutil.copytree(self.data_dir, target)
+            tmp_target = self.artifacts / "tmp"
+            if not tmp_target.exists() and self.tmp.exists():
+                shutil.copytree(self.tmp, tmp_target)
             return
         if os.environ.get("CAREER_KIT_E2E_KEEP") == "1":
             return
