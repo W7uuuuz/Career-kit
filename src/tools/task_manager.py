@@ -313,26 +313,67 @@ def format_task_list(tasks: list[Task], title: str = "任务列表") -> str:
 
 
 def format_progress_overview(profile: CareerProfile) -> str:
-    """格式化整体进度概览。"""
+    """格式化进度概览——阶段优先，任务进度作为辅助。
+
+    进度以阶段为刻度：新增任务不会让主进度倒退。
+    """
     total = len(profile.tasks)
     completed = sum(1 for t in profile.tasks if t.status == TaskStatus.COMPLETED)
     in_progress = sum(1 for t in profile.tasks if t.status == TaskStatus.IN_PROGRESS)
     pending = sum(1 for t in profile.tasks if t.status == TaskStatus.PENDING)
     skipped = sum(1 for t in profile.tasks if t.status == TaskStatus.SKIPPED)
+    finished = (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
 
-    pct = int(completed / total * 100) if total > 0 else 0
-    bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+    task_pct = int(completed / total * 100) if total > 0 else 0
+    task_bar = "█" * (task_pct // 5) + "░" * (20 - task_pct // 5)
 
-    lines = [
-        f"## 整体进度：{pct}% [{bar}]",
+    roadmap = profile.plan.get("roadmap", profile.plan)
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+
+    if phases:
+        rows = []
+        done_phases = 0
+        current_phase = None
+        for phase in phases:
+            phase_id = phase.get("id", "")
+            name = phase.get("name") or phase_id or "未命名阶段"
+            phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
+            done = sum(1 for t in phase_tasks if t.status in finished)
+            is_done = bool(phase_tasks) and done == len(phase_tasks)
+            if is_done:
+                done_phases += 1
+            elif current_phase is None:
+                current_phase = (name, done, len(phase_tasks))
+            rows.append((name, done, len(phase_tasks), is_done))
+
+        phase_pct = int(done_phases / len(phases) * 100)
+        phase_bar = "█" * (phase_pct // 5) + "░" * (20 - phase_pct // 5)
+        lines = [
+            f"## 阶段进度：{done_phases}/{len(phases)}（{phase_pct}%）[{phase_bar}]",
+            "",
+        ]
+        for name, done, count, is_done in rows:
+            mark = "[x]" if is_done else "[ ]"
+            lines.append(f"- {mark} {name}（{done}/{count}）")
+        if current_phase:
+            name, done, count = current_phase
+            lines += ["", f"当前阶段：{name}（{done}/{count}）"]
+        else:
+            lines += ["", "所有阶段已完成，可以回顾目标或规划下一程。"]
+    else:
+        lines = [
+            f"## 整体进度：{task_pct}% [{task_bar}]",
+            "",
+        ]
+
+    lines += [
         "",
-        f"总计 {total} 个任务：",
-        f"-  已完成：{completed}",
+        f"任务总计：已完成 {completed} / {total}（{task_pct}%）",
         f"-  进行中：{in_progress}",
         f"-  待办：{pending}",
     ]
     if skipped:
-        lines.append(f"- 已跳过：{skipped}")
+        lines.append(f"-  已跳过：{skipped}")
     lines += ["", f"共打卡 {len(profile.checkins)} 次", ""]
 
     return "\n".join(lines)

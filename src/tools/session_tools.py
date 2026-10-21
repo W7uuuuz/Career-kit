@@ -59,7 +59,9 @@ def parse_resume(file_path: str) -> str:
         "请调用 intake 工具填充：\n"
         '- "who" section：姓名、联系方式、教育背景、当前状态\n'
         '- "have" section：技能、工作经历、项目经验、证书（每项带 evidence 与 verified）\n\n'
-        '示例：intake(section="who", data=\'{"name":"张三", "education":"..."}\')'
+        '示例：intake(section="who", data=\'{"name":"张三", "education":"..."}\')\n'
+        "下一步：先向用户求证关键技能证据，再调用 intake(section=\"have\")；"
+        "目标明确后调用 intake(section=\"want\")。"
     )
 
 
@@ -93,7 +95,10 @@ def intake(section: str, data: str) -> str:
         return error_response(exc.code, exc.message, exc.details)
 
     profile = merge_section(section, data)
-    result = f"已记录到「{section}」。当前档案版本：v{profile.version}"
+    result = (
+        f"已记录到「{section}」。当前档案版本：v{profile.version}\n"
+        "下一步：继续补齐其他 section；who/have/want 都有内容后调用 finalize_profile。"
+    )
 
     # 毕业届引导（届别校验的数据基础）：who 未含 graduation_year 时提醒补充
     if section == "who":
@@ -194,7 +199,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
 
     return (
         f"档案已确认。\n\n摘要：{profile.summary}{skip_note}{goal_reminder}\n\n"
-        "可以开始分析差距了，请调用 analyze_gaps。"
+        "下一步：调用 analyze_gaps 开始差距分析。"
     )
 
 
@@ -298,7 +303,7 @@ def import_jd(jd_text: str) -> str:
 
     return (
         f"已导入目标 JD。当前档案版本：v{profile.version}\n\n"
-        "请调用 analyze_gaps 开始差距分析。"
+        "下一步：调用 analyze_gaps 开始差距分析。"
     )
 
 
@@ -321,5 +326,6 @@ def import_jd_file(file_path: str) -> str:
         "根据以上 JD 内容，请调用 import_jd 工具导入，字段结构如下：\n"
         'import_jd(jd_text=\'{"company": "<公司名>", "role": "<岗位名>", "requirements": ["<要求1>", "<要求2>"]}\')\n'
         " 请用上面 JD 的真实内容填充字段（company/role/requirements/description 至少一项），"
-        "禁止原样复制示例占位文本。"
+        "禁止原样复制示例占位文本。\n"
+        "下一步：调用 import_jd 导入结构化字段。"
     )

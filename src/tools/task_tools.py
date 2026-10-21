@@ -241,7 +241,7 @@ def get_next_tasks() -> str:
 
     lines.append(format_progress_overview(profile))
     lines.append("---")
-    lines.append("完成任务后，请调用 checkin_task 打卡。")
+    lines.append("下一步：完成任务后调用 checkin_task 打卡。")
     lines.append("节奏由用户掌握：快了可以加深或推进下一项，慢了随时调整顺序。")
 
     return "\n".join(lines)
@@ -438,14 +438,16 @@ def apply_insight(insight_json: str) -> str:
         save_profile(profile)
 
         return _json({
-            "message": "已应用调整。",
+            "message": "已应用调整。下一步：调用 get_progress 查看整体进度，或 get_next_tasks 继续执行。",
+            "next_steps": ["get_progress", "get_next_tasks"],
             "report": format_insight_report(insight_result),
             "adjustment": adjustment.model_dump(),
             "context": {"phase": "adjustment_applied"},
         })
     else:
         return _json({
-            "message": "无需调整。",
+            "message": "无需调整。下一步：调用 get_next_tasks 继续执行。",
+            "next_steps": ["get_next_tasks"],
             "report": format_insight_report(insight_result),
             "context": {"phase": "insight_complete"},
         })
@@ -479,6 +481,7 @@ def get_progress() -> str:
             lines.append(f"- {adj.timestamp[:10]}：{adj.reason}")
         lines.append("")
 
+    lines.append("下一步：继续执行用 get_next_tasks；需要分享进度用 export_dashboard。")
     return "\n".join(lines)
 
 
@@ -631,7 +634,8 @@ def export_dashboard(mode: str = "progress") -> str:
             "用浏览器打开即可查看。这是一个可交互打卡应用：\n"
             "- 勾选任务即打卡，进度实时更新，状态保存在浏览器（localStorage）\n"
             "- 顶部 tab 切换阶段；「导出打卡数据」可复制打卡指令回传，由你同步到档案\n"
-            "重新生成时已打卡记录不会丢失。"
+            "重新生成时已打卡记录不会丢失。\n"
+            "下一步：用户回传打卡数据后调用 checkin_task 同步到档案。"
         )
 
     if mode != "progress":
@@ -647,5 +651,6 @@ def export_dashboard(mode: str = "progress") -> str:
     return (
         f"仪表盘已生成：{out_path}\n\n"
         "用浏览器打开即可查看。数据为生成时刻的快照，进度更新后可重新导出。\n"
-        "如需日程表，请直接在对话中为用户编写 markdown/HTML 日程文档（时间由用户自己填）。"
+        "如需日程表，请直接在对话中为用户编写 markdown/HTML 日程文档（时间由用户自己填）。\n"
+        "下一步：继续执行用 get_next_tasks，更新进度后用 export_dashboard 重新导出。"
     )

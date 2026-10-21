@@ -103,7 +103,7 @@ def switch_profile(profile_name: str) -> str:
     return (
         f"已切换到档案「{profile_name}」。\n\n"
         f"档案摘要：{summary}\n\n"
-        f"当前状态可调用 get_workflow_status 查看，或继续建档/分析。"
+        f"下一步：调用 get_workflow_status 查看该档案进度。"
     )
 
 
@@ -150,7 +150,7 @@ def delete_profile(profile_name: str, confirm: str = "") -> str:
         f"回收站位置：{target_path}\n"
         f"剩余档案：{remain_text}\n"
         f"当前使用：{get_active_profile_name()}\n\n"
-        "如需恢复：restore_profile(profile_name=\"<档案名>\")"
+        "下一步：需要找回时调用 restore_profile(profile_name=\"<档案名>\")。"
     )
 
 
@@ -215,5 +215,5 @@ def restore_profile(profile_name: str) -> str:
     return (
         f"已恢复档案「{profile_name}」。\n\n"
         f"档案摘要：{summary}\n\n"
-        "如需继续规划，请用 switch_profile(profile_name=\"<档案名>\") 切换到该档案。"
+        "下一步：用 switch_profile(profile_name=\"<档案名>\") 切换到该档案继续规划。"
     )

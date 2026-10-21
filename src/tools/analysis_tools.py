@@ -62,14 +62,33 @@ def explore_goals() -> str:
     ))
     save_profile(profile)
 
+    who_text = _summarize_dict(profile.who or {}) or "尚未填写身份信息"
+    skills = _collect_skills(profile.have or {})
+    skill_text = "、".join(
+        str(s.get("skill")) if isinstance(s, dict) else str(s) for s in skills[:5]
+    ) or "尚未确认技能"
+    user_summary = (
+        f"你目前是：{who_text}；已确认的能力：{skill_text}。"
+        "方向还没定，不急着下结论，先用真实岗位验证兴趣。"
+    )
+    next_question = (
+        "如果不考虑现实限制，你最想做哪类工作？"
+        "再想想你明确不想做什么，这两点比“热门行业”更有用。"
+    )
+
     return _json({
+        "user_summary": user_summary,
+        "next_question": next_question,
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
         "existing_journey": [
             {"phase": j.phase, "decision": j.decision, "timestamp": j.timestamp}
             for j in (profile.journey or [])[-5:]
         ],
+        "next_steps": ["list_data_sources", "fetch_company_jobs", "intake(section='want')"],
         "instructions": (
+            "先把 user_summary 用自己的话简短告诉用户，再问 next_question；"
+            "不要把 methodology 原文、Phase 编号或字段名倒给用户。\n"
             "请按照目标选择方法论指引，通过对话帮用户选定职业方向：\n"
             "1. 先用 get_workflow_status / 档案信息摸清用户现状（零基础就如实对待，不美化）\n"
             "2. 用对话挖掘兴趣轴与约束轴（Genie Goal 式提问，2-3 个问题一轮，不啰嗦）\n"
@@ -159,6 +178,7 @@ def analyze_gaps() -> str:
     save_profile(profile)
 
     return _json({
+        "next_steps": ["fetch_company_jobs", "save_gap_analysis"],
         "methodologies": [ctx1["methodology"], ctx2["methodology"]],
         "profile": ctx1["profile"],
         "existing_journey": [
@@ -335,7 +355,7 @@ def save_gap_analysis(gap_json: str) -> str:
     return _json({
         "message": (
             f"差距分析已保存。\n\n{report}\n\n"
-            "接下来可以调用 generate_roadmap 生成路线图。"
+            "下一步：调用 generate_roadmap 生成路线图。"
         ),
         "next_steps": ["generate_roadmap"],
         "context": {

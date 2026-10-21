@@ -57,7 +57,7 @@ def search_knowledge(query: str) -> str:
         lines.append("")
 
     lines.append("需要完整内容时，直接读取对应文件路径。")
-    lines.append("如需更多实时数据，调用 fetch_company_jobs。")
+    lines.append("下一步：需要更多实时数据时调用 fetch_company_jobs；数据齐备后进入 analyze_gaps。")
     return "\n".join(lines)
 
 
@@ -86,14 +86,16 @@ def import_plan(file_path: str) -> str:
         return (
             f"--- PLAN CONTENT ---\n{new_plan_text}\n--- END ---\n\n"
             "这是新导入的计划文档。请将其整理为路线图结构后调用 save_roadmap(roadmap_json) 保存：\n"
-            "schema 参考 sop/roadmap.yaml 的 output_schema（任务字段为 name/description/priority）。"
+            "schema 参考 sop/roadmap.yaml 的 output_schema（任务字段为 name/description/priority）。\n"
+            "下一步：与用户确认取舍后调用 save_roadmap。"
         )
 
     # 有旧计划时：对比与取舍在对话中完成，落盘走 save_roadmap
     return (
         f"--- NEW PLAN CONTENT ---\n{new_plan_text}\n--- END ---\n\n"
         "检测到已有计划档案。请在对话中向用户呈现新旧计划的差异，"
-        "由用户决定保留哪些内容；确认后把最终版整理为路线图结构，调用 save_roadmap(roadmap_json) 保存。"
+        "由用户决定保留哪些内容；确认后把最终版整理为路线图结构，调用 save_roadmap(roadmap_json) 保存。\n"
+        "下一步：save_roadmap。"
     )
 
 
@@ -113,9 +115,10 @@ def get_scraper_guide(company: str) -> str:
         available = ", ".join(s["id"] for s in list_scrapers()) or "无"
         return (
             f"「{company}」没有使用指南或不是已注册的数据源。\n"
-            f"可用数据源：{available}"
+            f"可用数据源：{available}\n"
+            "下一步：调用 list_data_sources 查看可用来源。"
         )
-    return guide
+    return guide + "\n\n下一步：按教程调用 fetch_company_jobs。"
 
 
 @mcp.tool()
@@ -151,6 +154,7 @@ def list_data_sources() -> str:
     lines.append("---")
     lines.append("使用原则：params 只传上表列出的参数，不要自造参数名；")
     lines.append("搜索失败时按错误信息处理，不要编造岗位数据。")
+    lines.append("下一步：先用 get_scraper_guide 读教程，再调用 fetch_company_jobs。")
     return "\n".join(lines)
 
 

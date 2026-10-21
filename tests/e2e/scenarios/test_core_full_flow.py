@@ -117,3 +117,10 @@ async def test_new_user_full_flow_quality(sandbox, quality):
             assert metric.score >= 50, (
                 f"{metric.name} 质量过低（{metric.score}）：{metric.detail}"
             )
+        guidance_metrics = [
+            m for m in report.metrics if "下一步指引" in m.name or "指引可执行" in m.name
+        ]
+        assert guidance_metrics, "缺少指引质量指标"
+        assert all(m.score >= 75 for m in guidance_metrics), [
+            (m.name, m.score, m.detail) for m in guidance_metrics
+        ]

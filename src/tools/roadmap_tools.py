@@ -36,6 +36,7 @@ def generate_roadmap() -> str:
     ctx = build_methodology_context("roadmap", profile)
 
     return _json({
+        "next_steps": ["save_roadmap", "generate_tasks"],
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
         "step_template": [
