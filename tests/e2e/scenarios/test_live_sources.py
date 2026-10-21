@@ -75,6 +75,8 @@ async def _run_source(company, driver, sandbox, quality):
     rows = _parse_jobs(fetched.text, company)
     assert rows, f"{company} 未解析到岗位：{fetched.text[:500]}"
     assert all(r["url"] for r in rows), rows
+    if not any(r.get("salary") for r in rows):
+        assert "未提供薪资" in fetched.text, "无薪资来源不应提示可汇总薪资行情"
 
     detail = await driver.fetch_detail(rows[0]["url"])
     assert len(detail.text) >= 80, f"{company} 详情过短：{detail.text[:200]}"

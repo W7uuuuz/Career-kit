@@ -237,7 +237,13 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         lines.append("")
 
     lines.append("获取岗位详情：fetch_jd_detail(url=\"具体岗位URL\")")
-    lines.append("薪资行情可直接汇总以上各岗位的薪资范围，这是最真实的市场数据。")
+    has_salary = any(job.get("salary") for job in result["results"])
+    if has_salary:
+        lines.append("薪资行情可直接汇总以上各岗位的薪资范围，这是最真实的市场数据。")
+    else:
+        lines.append(
+            "当前数据源未提供薪资；如需薪资行情，请补充 BOSS 直聘等含薪资来源。"
+        )
     return "\n".join(lines)
 
 

@@ -326,7 +326,9 @@ class Scraper(CompanyScraper):
             "location": (post.get("workCities") or "").strip(),
             "department": (post.get("bgs") or "").strip(),
             "summary": " / ".join(
-                x for x in (post.get("projectName", ""), post.get("recruitLabelName", "")) if x
+                dict.fromkeys(
+                    x for x in (post.get("projectName", ""), post.get("recruitLabelName", "")) if x
+                )
             ),
             "post_id": post_id,
             "source": "tencent",
