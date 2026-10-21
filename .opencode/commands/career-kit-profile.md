@@ -11,8 +11,10 @@ description: Career Kit 档案管理——查看/选择/切换/删除/恢复职�
 
 ```
 # 在 career-kit 项目目录下执行：
-opencode.json 中加入：
-{"mcp": {"career-kit": {"type": "local", "command": ["python", "-m", "src.server"], "enabled": true}}}
+"<venv-python>" -m src.doctor
+
+# 然后加入项目根目录 opencode.json（或全局 ~/.config/opencode/opencode.jsonc）：
+{"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}
 ```
 
 ## 第 1 步：展示档案列表

@@ -10,10 +10,11 @@ argument-hint: 如"查看档案"、"切到 xxx 档案"、"删除 xxx 档案"、"
 如果本会话中没有 career-kit 的工具（如 list_profiles / switch_profile / delete_profile），
 说明 MCP 服务器未注册。向用户展示以下指引并停止：
 
-1. 在 career-kit 项目目录执行（解释器必须与 `pip install -e .` 的一致，
-   多 Python 环境建议用 venv 绝对路径）：
-   `claude mcp add career-kit -- python -m src.server`
-2. 新开会话后重新运行 `/career-kit-profile`
+1. 在 career-kit 项目目录运行体检（解释器必须与 `pip install -e .` 一致）：
+   `"<venv-python>" -m src.doctor`
+2. 按 doctor 输出修正后，用绝对路径注册：
+   `claude mcp add career-kit -- "<venv-python>" -m src.server`
+3. 新开会话后重新运行 `/career-kit-profile`
 
 ## 第 1 步：展示档案列表
 

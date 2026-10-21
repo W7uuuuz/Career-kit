@@ -53,10 +53,13 @@ Write-Host ('  Claude Code :  claude mcp add career-kit -- "' + $VenvPy + '" -m 
 Write-Host ('  Codex CLI   :  codex mcp add career-kit -- "' + $VenvPy + '" -m src.server')
 $jsonPath = $VenvPy.Replace('\', '/')
 $regJson = '{"mcp":{"career-kit":{"type":"local","command":["' + $jsonPath + '","-m","src.server"],"enabled":true}}}'
-Write-Host "  opencode    :  add to opencode.json:"
+Write-Host "  opencode    :  project opencode.json or global ~/.config/opencode/opencode.jsonc:"
 Write-Host "    $regJson"
 Write-Host ""
 Write-Host "Scrapers need a browser engine (first time, optional):"
 Write-Host "  $VenvPy -m playwright install chromium"
+Write-Host ""
+Write-Host "== Doctor =="
+& $VenvPy -m src.doctor
 Write-Host ""
 Write-Host "Verify: start a new session and type /career-kit; a welcome guide means success."

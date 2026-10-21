@@ -25,6 +25,7 @@ dependencies = [
 
 [project.scripts]
 career-kit = "src.server:main"
+career-kit-doctor = "src.doctor:main"
 
 [dependency-groups]
 dev = [

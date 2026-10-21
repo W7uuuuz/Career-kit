@@ -56,21 +56,30 @@ pip install -e .
 |-------|---------|
 | Claude Code | `claude mcp add career-kit -- <venv-python> -m src.server` |
 | Codex CLI | `codex mcp add career-kit -- <venv-python> -m src.server` |
-| opencode | `opencode.json` 中加入：`{"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}` |
+| opencode | 项目根目录 `opencode.json`（或全局 `~/.config/opencode/opencode.jsonc`）加入：`{"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}` |
 | Cursor / Windsurf | MCP 设置中手动添加：command=`<venv-python>`，args=`["-m", "src.server"]` |
 
 > macOS 用户把 python 换成 python3。
+> opencode 的 `.opencode/config.json` 不是 MCP 注册入口，改它是无效的。
 
 ### 验证安装
 
-对新会话说「调用 start_session」，或直接敲 `/career-kit`——
-收到「欢迎使用 Career Kit」欢迎手册即接入成功。
+先跑体检：
+
+```bash
+"<venv-python>" -m src.doctor
+# 或安装后
+career-kit-doctor
+```
+
+全部 OK 后，对新会话说「调用 start_session」，或直接敲 `/career-kit`——
+收到「欢迎使用 Career Kit」欢迎信息即接入成功。
 
 ### 故障排查
 
 | 现象 | 处理 |
 |------|------|
-| 工具列表里没有 career-kit 的工具 | 确认注册命令在 Career-kit 目录下执行；Claude Code 会话内用 `/mcp` 查看连接状态 |
+| 工具列表里没有 career-kit 的工具 | 先运行 `career-kit-doctor`；确认注册命令在 Career-kit 目录下执行；Claude Code 会话内用 `/mcp` 查看连接状态 |
 | 服务器启动即崩 / `No module named 'mcp'` | 注册用了错误解释器——改用 venv 绝对路径（见上方警告） |
 | 抓取工具报 Playwright 相关错误 | 先执行 `playwright install chromium` 安装浏览器内核 |
 | BOSS 直聘提示需要登录 | 按报错信息里的绝对解释器命令运行 `-m src.scrapers.boss.login`，扫码后自动保存 |

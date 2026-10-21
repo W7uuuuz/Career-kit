@@ -28,6 +28,20 @@
 
 详见 [企业库文档](docs/scrapers.md)。
 
+### 环境体检
+
+首次配置或遇到启动问题时：
+
+```bash
+python -m src.doctor
+```
+
+需要检查浏览器内核/数据源连通性时：
+
+```bash
+python -m src.doctor --browser --network
+```
+
 ### 端到端测试
 
 新增功能或修改工作流后，至少跑核心 E2E：

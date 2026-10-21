@@ -10,14 +10,18 @@ argument-hint: [你的目标，如"转行 AI Agent 工程师"]
 如果本会话中没有 career-kit 的工具（如 get_workflow_status / start_session），
 说明 MCP 服务器未注册。向用户展示以下指引并停止：
 
-1. 在 career-kit 项目目录执行（解释器必须与 `pip install -e .` 的一致，
-   多 Python 环境建议用 venv 绝对路径）：
-   `claude mcp add career-kit -- python -m src.server`
-2. 新开会话后重新运行 `/career-kit`
+1. 在 career-kit 项目目录运行体检（解释器必须与 `pip install -e .` 一致）：
+   `"<venv-python>" -m src.doctor`
+2. 按 doctor 输出修正后，用绝对路径注册：
+   `claude mcp add career-kit -- "<venv-python>" -m src.server`
+3. 新开会话后重新运行 `/career-kit`
 
 ## 第 1 步：双读启动
 
 同时调用 `start_session`（获取完整流程手册）和 `get_workflow_status`（获取档案进度）。
+
+**第一轮回复必须简短**：3-5 句，不要复述手册/Phase/工具名；
+只问两件事：① 有简历文件吗？② 目标岗位/公司/方向是什么？
 
 ## 第 2 步：按状态分流
 
