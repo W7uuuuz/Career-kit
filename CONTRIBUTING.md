@@ -28,6 +28,25 @@
 
 详见 [企业库文档](docs/scrapers.md)。
 
+### 端到端测试
+
+新增功能或修改工作流后，至少跑核心 E2E：
+
+```bash
+python tests/e2e/cli.py --suite core
+```
+
+真实数据源、浏览器交互、LLM Agent 是独立 opt-in 套件：
+
+```bash
+python tests/e2e/cli.py --suite live --sources tencent,baidu,alibaba
+python tests/e2e/cli.py --suite browser
+python tests/e2e/cli.py --suite llm
+```
+
+质量评分与优化清单输出在 `artifacts/e2e/<run-id>/`，说明见
+[tests/e2e/README.md](tests/e2e/README.md)。
+
 ## 开发规范
 
 ### 提交信息

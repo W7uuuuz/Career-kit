@@ -38,6 +38,12 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 norecursedirs = [".git", ".venv", "node_modules", ".opencode", "career-kit-test", "*.egg"]
 addopts = "-q"
+markers = [
+    "e2e: 端到端测试（需要 CAREER_KIT_E2E=1）",
+    "e2e_live: 需要真实网络与招聘站点",
+    "e2e_browser: 需要 Playwright Chromium",
+    "e2e_llm: 需要 ANTHROPIC_API_KEY 与 LLM 端点",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

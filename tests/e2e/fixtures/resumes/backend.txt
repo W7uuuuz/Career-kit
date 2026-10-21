@@ -1,0 +1,5 @@
+林舟
+应届生
+Python / FastAPI / PostgreSQL
+项目：FastAPI 待办服务（鉴权、数据库、Docker）
+实习：React 运营后台维护
