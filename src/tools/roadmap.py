@@ -29,8 +29,8 @@ def parse_roadmap(llm_response: str) -> dict[str, Any]:
         json_str = llm_response[start:end].strip()
     elif "```" in llm_response:
         start = llm_response.index("```") + 3
-        end = ll_response.index("```", start)
-        json_str = ll_response[start:end].strip()
+        end = llm_response.index("```", start)
+        json_str = llm_response[start:end].strip()
 
     try:
         result = json.loads(json_str)

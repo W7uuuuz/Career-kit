@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..mcp_app import mcp
 from ..models import JourneyEntry
-from .errors import error_response
+from .errors import InvalidJsonError, error_response
 from .gap_analyzer import format_gap_report
 from .methodology import build_methodology_context
 from .profile import load_profile, save_profile

@@ -10,11 +10,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding='utf-8')
 
 from src.models import CareerProfile
+from src.tools.methodology import load_methodology
 from src.tools.roadmap import (
     format_roadmap,
     parse_roadmap,
 )
-from src.tools.methodology import load_methodology
 
 
 def test_sop_config():
@@ -128,6 +128,12 @@ def test_parse_roadmap():
     result2 = parse_roadmap("这不是 JSON")
     assert "raw_roadmap" in result2
     print("[OK] 解析失败返回原始文本")
+
+    # 裸 ``` code block 分支（回归：曾误写 ll_response 导致 NameError）
+    bare = "前言\n```\n" + '{"phases": [{"type": "learn", "name": "基础", "goal": "g", "milestones": []}]}' + "\n```\n后记"
+    result3 = parse_roadmap(bare)
+    assert result3["roadmap"]["phases"][0]["name"] == "基础"
+    print("[OK] 裸 ``` code block 解析成功")
 
     print()
 

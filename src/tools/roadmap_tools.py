@@ -7,7 +7,7 @@ from datetime import datetime
 
 from ..mcp_app import mcp
 from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
-from .errors import error_response
+from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import load_profile, save_plan_snapshot, save_profile
 from .roadmap import format_roadmap, parse_roadmap
