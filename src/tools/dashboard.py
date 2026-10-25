@@ -1,14 +1,21 @@
 """自包含 HTML 渲染——进度仪表盘与交互式职业地图。
 
 从 server.py 拆出，供 export_dashboard 与 save_roadmap 共用。
+
+转义纪律：任务名/阶段名/JD 等均来自 LLM 生成或用户输入，插入 HTML 前
+必须转义（Python 端 html.escape / JS 端 esc()）；内嵌 JSON 须防御
+`</script>` 提前闭合（`</` → `<\\/`）。
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 from .profile import get_active_profile_name
+
+_FINISHED_STATUS = ("completed", "skipped")
 
 
 def write_html(html: str, filename: str) -> str:
@@ -22,9 +29,6 @@ def write_html(html: str, filename: str) -> str:
 
 def render_progress_html(profile) -> str:
     """渲染进度仪表盘 HTML（mode="progress"）。"""
-    import tempfile
-
-    finished_status = ("completed", "skipped")
     total_tasks = len(profile.tasks)
     completed = sum(1 for t in profile.tasks if t.status == "completed")
     skipped = sum(1 for t in profile.tasks if t.status == "skipped")
@@ -36,38 +40,41 @@ def render_progress_html(profile) -> str:
     for idx, phase in enumerate(phases):
         phase_id = phase.get("id") or f"phase_{idx + 1}"
         phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
-        done = sum(1 for t in phase_tasks if t.status in finished_status)
+        done = sum(1 for t in phase_tasks if t.status in _FINISHED_STATUS)
         pct = int(done / len(phase_tasks) * 100) if phase_tasks else 0
         audited = "已审计" if phase_id in profile.audited_phases else ""
         phases_html += (
-            f'<div class="phase"><div class="phase-head"><span>{phase.get("name", phase_id)}</span>'
+            f'<div class="phase"><div class="phase-head"><span>{escape(str(phase.get("name", phase_id)))}</span>'
             f'<span>{done}/{len(phase_tasks)}{audited}</span></div>'
             f'<div class="bar"><div class="fill" style="width:{pct}%"></div></div>'
-            f'<p class="goal">{phase.get("goal", "")}</p></div>'
+            f'<p class="goal">{escape(str(phase.get("goal", "")))}</p></div>'
         )
 
     # 当前阶段任务
     current_html = "<p>暂无任务。</p>"
-    open_tasks = [t for t in profile.tasks if t.status not in finished_status]
+    open_tasks = [t for t in profile.tasks if t.status not in _FINISHED_STATUS]
     if open_tasks:
         items = "".join(
-            f"<li>{t.name}{f' <small>({t.phase_id})</small>' if t.phase_id else ''}</li>"
+            f"<li>{escape(t.name)}{f' <small>({escape(t.phase_id)})</small>' if t.phase_id else ''}</li>"
             for t in open_tasks[:8]
         )
         current_html = f"<ul>{items}</ul>"
 
     # 能力证据
     evidence = profile.have.get("capability_evidence", [])
-    evidence_items = "".join(
-        f"<li><b>{e.get('task', '')}</b>"
-        f"{f' — {e["notes"]}' if e.get('notes') else ''}</li>"
-        for e in evidence[-10:] if isinstance(e, dict)
-    ) or "<li>暂无——完成任务打卡后自动沉淀</li>"
+    ev_parts = []
+    for e in evidence[-10:]:
+        if not isinstance(e, dict):
+            continue
+        task = escape(str(e.get("task", "")))
+        notes = f" — {escape(str(e['notes']))}" if e.get("notes") else ""
+        ev_parts.append(f"<li><b>{task}</b>{notes}</li>")
+    evidence_items = "".join(ev_parts) or "<li>暂无——完成任务打卡后自动沉淀</li>"
     evidence_html = f"<ul>{evidence_items}</ul>"
 
     # 调整历史
     adj_items = "".join(
-        f"<li><b>{a.timestamp[:10]}</b> {a.reason or a.trigger}</li>"
+        f"<li><b>{escape(a.timestamp[:10])}</b> {escape(a.reason or a.trigger)}</li>"
         for a in reversed(profile.adjustments[-5:])
     ) or "<li>暂无调整记录</li>"
     adjustments_html = f"<ul>{adj_items}</ul>"
@@ -100,7 +107,7 @@ ul {{ padding-left: 20px; }} li {{ margin: 4px 0; font-size: 14px; }}
 
 <div class="card overall"><span class="num">{overall_pct}%</span>
   <div style="flex:1"><div class="bar"><div class="fill" style="width:{overall_pct}%"></div></div>
-  <p class="goal">共 {total_tasks} 个任务 · 完成 {completed} · 跳过 {skipped} · 目标：{profile.want.get('target_role', '未设定')}</p></div>
+  <p class="goal">共 {total_tasks} 个任务 · 完成 {completed} · 跳过 {skipped} · 目标：{escape(str(profile.want.get('target_role', '未设定')))}</p></div>
 </div>
 
 <div class="card"><h2>阶段进度（顺序推进，节奏自定）</h2>
@@ -130,8 +137,6 @@ def render_roadmap_map(profile) -> str:
     """
     import json as _json_lib
 
-    finished_status = ("completed", "skipped")
-
     roadmap = profile.plan.get("roadmap", profile.plan)
     phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
     strategy = roadmap.get("strategy_summary", "")
@@ -146,7 +151,7 @@ def render_roadmap_map(profile) -> str:
     for idx, phase in enumerate(phases):
         phase_id = phase.get("id") or f"phase_{idx + 1}"
         phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
-        done = sum(1 for t in phase_tasks if t.status in finished_status)
+        done = sum(1 for t in phase_tasks if t.status in _FINISHED_STATUS)
         total = len(phase_tasks)
         is_current = bool(profile.tasks) and phase_id == profile.tasks[0].phase_id
 
@@ -218,7 +223,8 @@ def render_roadmap_map(profile) -> str:
             "milestone_names": ms_names,
         })
 
-    data_json = _json_lib.dumps(data, ensure_ascii=False)
+    # 防御 `</script>` 提前闭合：JSON 中 `<\/` 与 `</` 等价，解析不受影响
+    data_json = _json_lib.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
     return f"""<!DOCTYPE html>
 <html lang="zh">
@@ -360,6 +366,13 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
   var DATA = JSON.parse(document.getElementById('career-data').textContent);
   var KEY = 'career-kit-checkins-' + DATA.profile;
 
+  // HTML 转义：任务名/阶段名/JD 等来自 LLM 与用户输入，拼接进 innerHTML 前必须转义
+  function esc(s) {{
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }}
+
   function loadCheckins() {{
     try {{ return JSON.parse(localStorage.getItem(KEY) || '{{}}'); }}
     catch (e) {{ return {{}}; }}
@@ -410,18 +423,18 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       var tab = document.createElement('div');
       tab.className = 'tab' + (ph.is_current ? ' active' : '');
       tab.dataset.id = ph.id;
-      tab.innerHTML = ph.name + '<span class="tab-pct">' + done + '/' + ph.total + ' · ' + pct + '%</span>';
+      tab.innerHTML = esc(ph.name) + '<span class="tab-pct">' + done + '/' + ph.total + ' · ' + pct + '%</span>';
       tabsEl.appendChild(tab);
 
-      var badge = ph.badge ? '<span class="badge ' + ph.badge_cls + '">' + ph.badge + '</span>' : '';
+      var badge = ph.badge ? '<span class="badge ' + esc(ph.badge_cls) + '">' + esc(ph.badge) + '</span>' : '';
       var cur = ph.is_current ? '<span class="cur-tag">[当前]</span>' : '';
-      var company = ph.company ? '<div class="company">' + ph.company
-        + (ph.rationale ? ' <span class="meta">— ' + ph.rationale + '</span>' : '') + '</div>' : '';
+      var company = ph.company ? '<div class="company">' + esc(ph.company)
+        + (ph.rationale ? ' <span class="meta">— ' + esc(ph.rationale) + '</span>' : '') + '</div>' : '';
       var kpi = ph.kpi_metric
-        ? '<div class="kpi">KPI：' + ph.kpi_metric + ' → ' + ph.kpi_target
-          + (ph.kpi_evidence ? '（验证：' + ph.kpi_evidence + '）' : '') + '</div>' : '';
-      var resume = ph.resume_value ? '<div class="resume">简历价值：' + ph.resume_value + '</div>' : '';
-      var jd = ph.jd_text ? '<div class="jd">' + ph.jd_text.slice(0, 400) + '</div>' : '';
+        ? '<div class="kpi">KPI：' + esc(ph.kpi_metric) + ' → ' + esc(ph.kpi_target)
+          + (ph.kpi_evidence ? '（验证：' + esc(ph.kpi_evidence) + '）' : '') + '</div>' : '';
+      var resume = ph.resume_value ? '<div class="resume">简历价值：' + esc(ph.resume_value) + '</div>' : '';
+      var jd = ph.jd_text ? '<div class="jd">' + esc(ph.jd_text.slice(0, 400)) + '</div>' : '';
 
       var tasksHtml = '';
       if (ph.tasks.length) {{
@@ -430,34 +443,35 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
           var msLabel = '';
           if (t.milestone_id && t.milestone_id !== lastMs) {{
             lastMs = t.milestone_id;
-            msLabel = '<div class="ms">里程碑：' + (ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
+            msLabel = '<div class="ms">里程碑：' + esc(ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
           }}
           var pr = {{ high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }}[t.priority] || 'pr-medium';
           var nameCls = t.state === 'done' ? ' task-name done' : ' task-name';
+          var tid = esc(t.id);
           var ctl = '';
           if (t.state === 'done') {{
             // 已完成：显示打勾状态 + 完成标记
             ctl = '<span class="done-badge">完成</span>';
           }} else if (t.mode === 'daily') {{
-            ctl = '<span class="ck-ctl" data-mode="daily" data-id="' + t.id + '">'
+            ctl = '<span class="ck-ctl" data-mode="daily" data-id="' + tid + '">'
               + '打卡 ' + Math.floor(t.progress) + '/' + (t.goal || '?') + ' 天'
-              + ' <button class="ck-btn" data-action="daily" data-id="' + t.id + '">今天打卡</button>'
+              + ' <button class="ck-btn" data-action="daily" data-id="' + tid + '">今天打卡</button>'
               + '</span>';
           }} else if (t.mode === 'percent') {{
-            ctl = '<span class="ck-ctl" data-mode="percent" data-id="' + t.id + '">'
+            ctl = '<span class="ck-ctl" data-mode="percent" data-id="' + tid + '">'
               + '进度 ' + Math.floor(t.progress) + '%/' + (t.goal || 100) + '%'
               + ' <input type="range" min="0" max="' + (t.goal || 100) + '" value="' + Math.floor(t.progress)
-              + '" data-action="percent" data-id="' + t.id + '" style="vertical-align:middle">'
+              + '" data-action="percent" data-id="' + tid + '" style="vertical-align:middle">'
               + '</span>';
           }} else {{
-            ctl = '<input type="checkbox" data-action="once" data-id="' + t.id + '">';
+            ctl = '<input type="checkbox" data-action="once" data-id="' + tid + '">';
           }}
           tasksHtml += msLabel
             + '<label class="task">'
             + ctl
             + '<span class="' + nameCls + '">'
-            + '<span class="pr ' + pr + '"></span>' + t.name + '</span>'
-            + '<span class="task-meta">' + t.id + '</span>'
+            + '<span class="pr ' + pr + '"></span>' + esc(t.name) + '</span>'
+            + '<span class="task-meta">' + tid + '</span>'
             + '</label>';
         }});
       }} else if (ph.milestone_tasks.length) {{
@@ -470,12 +484,12 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       card.className = 'card' + (ph.is_current ? ' active' : '');
       card.dataset.id = ph.id;
       card.innerHTML =
-        '<div class="card-head"><span class="card-title">' + ph.name
-          + '<span class="type-pill">' + ph.type + '</span>' + badge + cur + '</span>'
+        '<div class="card-head"><span class="card-title">' + esc(ph.name)
+          + '<span class="type-pill">' + esc(ph.type) + '</span>' + badge + cur + '</span>'
           + '<span class="done-txt">' + done + '/' + ph.total + ' · ' + pct + '%</span></div>'
         + '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>'
         + company
-        + (ph.goal ? '<div class="goal">' + ph.goal + '</div>' : '')
+        + (ph.goal ? '<div class="goal">' + esc(ph.goal) + '</div>' : '')
         + kpi + resume + jd
         + '<div class="tasks">' + tasksHtml + '</div>';
       cardsEl.appendChild(card);
