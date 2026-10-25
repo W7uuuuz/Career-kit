@@ -14,29 +14,71 @@
 ```
 start_session()
 intake(section="who", data='{"name":"李四", "education":"计算机硕士", "status":"在职"}')
-intake(section="have", data='{"skills":["Python", "LangChain", "RAG"], "experience":"1年AI Agent开发"}')
+intake(section="have", data='{
+  "core_skills": [
+    {"skill":"Python","level":"熟练","evidence":"1年AI Agent开发","user_verified":true},
+    {"skill":"LangChain","level":"熟练","evidence":"线上项目使用","user_verified":true},
+    {"skill":"RAG","level":"熟练","evidence":"独立搭建检索链路","user_verified":true}
+  ],
+  "experience":"1年AI Agent开发"
+}')
 intake(section="want", data='{"target_role":"高级 AI Agent 工程师", "salary":"35k-50k", "city":"北京"}')
 finalize_profile()
 ```
 
-### 2. 分析
+### 2. 分析（先抓真实数据，再分析）
 
 ```
-analyze_gaps()
+list_data_sources()
+get_scraper_guide(company="bytedance")
 fetch_company_jobs(company="bytedance", params='{"keyword":"高级 AI Agent"}')
 fetch_jd_detail(url="...")
+analyze_gaps()
 save_gap_analysis(gap_json='{
   "match_score": 70,
+  "match_level": "partial_match",
+  "strengths": [
+    {"area": "Agent 开发", "description": "1 年 LangChain/RAG 实战",
+     "resume_highlight": "独立负责线上 Agent 链路", "interview_talk": "强调端到端交付"}
+  ],
+  "resume_optimization": {
+    "ats_keywords": ["Python", "LangChain", "RAG"],
+    "missing_keywords": ["多Agent", "Agent评估", "性能优化"],
+    "highlight_projects": [
+      {"project": "线上 Agent", "how_to_package": "突出架构与稳定性",
+       "quantified_result": "可用性 99.9%"}
+    ],
+    "resume_tips": ["补充多 Agent 协作与评估指标"],
+    "missing_experiences": [
+      {"experience": "多 Agent 系统", "how_to_create": "做一个双 Agent 协作项目"}
+    ]
+  },
+  "interview_preparation": {
+    "must_prepare": [
+      {"topic": "多 Agent 架构", "type": "项目", "priority": "high",
+       "estimated_time": "2 周", "prepare_advice": "讲清分工、通信与失败恢复"}
+    ],
+    "project_deep_dive": [
+      {"project": "线上 Agent", "likely_questions": ["怎么做评估？"],
+       "key_points": ["离线评测", "线上监控"], "star_story": "S:效果不稳 T:建评估 A:指标+回归 R:稳定提升"}
+    ],
+    "system_design_topics": [{"topic": "多 Agent 协作", "framework": "角色分工→通信→仲裁→观测"}],
+    "behavioral_questions": [{"question": "为什么想晋升？", "story_template": "能力已超出当前职级 + 有落地证据"}],
+    "study_plan": {"week_1": ["多 Agent 论文"], "week_2": ["评估流水线"]}
+  },
   "skill_gaps": [
-    {"skill": "多Agent系统", "priority": "high", "source": "BOSS直聘 JD"},
-    {"skill": "Agent评估", "priority": "medium", "source": "BOSS直聘 JD"},
-    {"skill": "性能优化", "priority": "medium", "source": "BOSS直聘 JD"}
+    {"skill": "多Agent系统", "priority": "high", "current_level": "了解",
+     "required_level": "熟练", "how_to_improve": "设计并实现双 Agent 协作项目", "source": "字节跳动 JD"},
+    {"skill": "Agent评估", "priority": "medium", "current_level": "了解",
+     "required_level": "熟练", "how_to_improve": "搭建自动化评估流水线", "source": "字节跳动 JD"},
+    {"skill": "性能优化", "priority": "medium", "current_level": "了解",
+     "required_level": "熟练", "how_to_improve": "对现有项目做优化并量化", "source": "字节跳动 JD"}
   ],
   "priority_actions": [
-    "学习多Agent系统设计",
-    "学习Agent评估方法",
-    "优化现有项目性能"
-  ]
+    {"action": "学习多Agent系统设计", "timeline": "2 周", "impact": "高", "difficulty": "中"},
+    {"action": "搭建 Agent 评估流水线", "timeline": "2 周", "impact": "高", "difficulty": "高"}
+  ],
+  "market_context": "字节跳动高级 AI Agent 岗位要求多 Agent 协作与评估经验"
 }')
 ```
 
@@ -54,9 +96,12 @@ save_roadmap(roadmap_json='{
       "kpi": {"metric": "完成学习并产出笔记", "target": "3 个专题", "evidence": "技术笔记"},
       "resume_value": "",
       "milestones": [
-        {"name": "多Agent系统", "done_criteria": "能设计双Agent协作架构"},
-        {"name": "Agent评估", "done_criteria": "能搭建自动化评估流水线"},
-        {"name": "性能优化", "done_criteria": "现有项目关键指标提升有数据"}
+        {"name": "多Agent系统", "done_criteria": "能设计双Agent协作架构",
+         "tasks": [{"name": "阅读多Agent综述并做笔记", "priority": "high"}]},
+        {"name": "Agent评估", "done_criteria": "能搭建自动化评估流水线",
+         "tasks": [{"name": "实现离线评测脚本", "priority": "high"}]},
+        {"name": "性能优化", "done_criteria": "现有项目关键指标提升有数据",
+         "tasks": [{"name": "定位现有项目性能瓶颈", "priority": "medium"}]}
       ]
     },
     {
@@ -66,8 +111,10 @@ save_roadmap(roadmap_json='{
       "kpi": {"metric": "GitHub star", "target": "30+", "evidence": "仓库链接"},
       "resume_value": "独立开发多Agent协作系统与性能优化实践",
       "milestones": [
-        {"name": "多Agent项目", "done_criteria": "端到端 demo 可运行"},
-        {"name": "性能优化项目", "done_criteria": "优化前后对比报告"}
+        {"name": "多Agent项目", "done_criteria": "端到端 demo 可运行",
+         "tasks": [{"name": "实现双Agent协作 Demo", "priority": "high"}]},
+        {"name": "性能优化项目", "done_criteria": "优化前后对比报告",
+         "tasks": [{"name": "输出优化前后对比报告", "priority": "medium"}]}
       ]
     },
     {
@@ -77,8 +124,10 @@ save_roadmap(roadmap_json='{
       "kpi": {"metric": "模拟面试", "target": "连续 2 次通过", "evidence": "模拟记录"},
       "resume_value": "",
       "milestones": [
-        {"name": "简历优化", "done_criteria": "ATS 关键词全覆盖且项目量化"},
-        {"name": "面试题准备", "done_criteria": "高频题能脱稿讲解"}
+        {"name": "简历优化", "done_criteria": "ATS 关键词全覆盖且项目量化",
+         "tasks": [{"name": "按 JD 关键词重写简历", "priority": "high"}]},
+        {"name": "面试题准备", "done_criteria": "高频题能脱稿讲解",
+         "tasks": [{"name": "整理并练习高频题", "priority": "high"}]}
       ]
     }
   ]
@@ -89,15 +138,25 @@ save_roadmap(roadmap_json='{
 
 ```
 generate_tasks()
-get_next_tasks()
-checkin_task(task_id="task_001", status="completed", notes="多Agent系统学习完成")
+get_next_tasks()   # 从返回值中取 task_id
+checkin_task(task_id="<get_next_tasks 返回的 ID>", status="completed", notes="多Agent系统学习完成")
 ```
 
 ### 5. 洞察调整（阶段完成后审计）
 
 ```
 trigger_insight(trigger_type="stage_audit")
-apply_insight(insight_json='{"trigger_type":"stage_audit", "status":"ahead", "summary":"进度超前，可以加深难度", "adjustment_needed":true, "changes":[{"type":"add_task", "details":{"name":"多Agent系统深入研究"}}]}')
+apply_insight(insight_json='{
+  "trigger_type": "stage_audit",
+  "status": "ahead",
+  "summary": "进度超前，可以加深难度",
+  "insights": ["学习速度超预期", "可以加深难度"],
+  "adjustment_needed": true,
+  "adjustment_type": "auto",
+  "adjustment_reason": "当前任务完成质量高",
+  "changes": [{"type": "add_task", "details": {"name": "多Agent系统深入研究"}}],
+  "user_message": "进度超前，已为你增加进阶任务"
+}')
 ```
 
 ### 用户想要日程表？

@@ -98,10 +98,9 @@
 
 | 分类 | 模块 |
 |------|------|
-| 建档 | `src/tools/session_tools.py` |
-| 档案管理 | `src/tools/profile_tools.py` |
-| 数据获取 | `src/tools/data_tools.py`、`src/scrapers/` |
-| 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py` |
-| 任务执行 | `src/tools/task_tools.py` |
-| 洞察 | `src/tools/insight.py` |
-| HTML 渲染 | `src/tools/dashboard.py` |
+| 建档 | `src/tools/session_tools.py`（简历解析在 `resume_parser.py`） |
+| 档案管理 | `src/tools/profile_tools.py`（领域层 `profile.py`） |
+| 数据获取 | `src/tools/data_tools.py`、`src/tools/knowledge_search.py`、`src/scrapers/` |
+| 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`（`import_plan` 在 `data_tools.py`） |
+| 任务执行 | `src/tools/task_tools.py`（领域层 `task_manager.py`） |
+| 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py` |

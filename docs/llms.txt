@@ -36,6 +36,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 ```
 start_session()
+→ parse_resume(file_path)         # 可选：先解析简历素材，再逐项确认证据
 → intake(who / have / want)       # 关键技能追问证据，带 evidence + verified
 → finalize_profile()              # 有技能无证据时会被摸排门禁拦截
 ```
@@ -60,6 +61,7 @@ analyze_gaps() → save_gap_analysis(gap_json)
 
 ```
 generate_roadmap() → save_roadmap(roadmap_json)
+# 已有规划文档时：import_plan(file_path) → 对话中整理取舍 → save_roadmap
 ```
 
 - 禁止任何时长字段（duration / estimated_days 等）
@@ -101,6 +103,9 @@ export_dashboard(mode="progress")    # 进度仪表盘
 export_dashboard(mode="roadmap")     # 可交互职业地图
 ```
 
+多档案场景：`list_profiles` / `switch_profile` / `delete_profile`（回收站式）/
+`list_trash` / `restore_profile`。
+
 ## 返回值与错误
 
 结构化工具返回 JSON 字符串，通常包含 `message`、`next_steps`、`context`。
@@ -133,6 +138,7 @@ export_dashboard(mode="roadmap")     # 可交互职业地图
 
 ## 文档索引
 
+- [文档地图](README.md)：所有文档的唯一入口
 - [工具总览](tools.md)：32 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业库](scrapers.md)：已收录数据源

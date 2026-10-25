@@ -103,7 +103,7 @@ h1 { font-size: 24px; letter-spacing: .3px; }
 <div class="wrap">
   <header>
     <h1>Career Kit 职业地图</h1>
-    <span class="meta">生成于 2026-10-18 15:31 · 路线图 v41</span>
+    <span class="meta">生成于 2026-10-25 14:21 · 路线图 v41</span>
   </header>
 
   <p class="start">起点层级：<b id="start-level">—</b>（差距分析产出，路线图按此对齐）</p>
@@ -137,6 +137,13 @@ h1 { font-size: 24px; letter-spacing: .3px; }
   'use strict';
   var DATA = JSON.parse(document.getElementById('career-data').textContent);
   var KEY = 'career-kit-checkins-' + DATA.profile;
+
+  // HTML 转义：任务名/阶段名/JD 等来自 LLM 与用户输入，拼接进 innerHTML 前必须转义
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 
   function loadCheckins() {
     try { return JSON.parse(localStorage.getItem(KEY) || '{}'); }
@@ -188,18 +195,18 @@ h1 { font-size: 24px; letter-spacing: .3px; }
       var tab = document.createElement('div');
       tab.className = 'tab' + (ph.is_current ? ' active' : '');
       tab.dataset.id = ph.id;
-      tab.innerHTML = ph.name + '<span class="tab-pct">' + done + '/' + ph.total + ' · ' + pct + '%</span>';
+      tab.innerHTML = esc(ph.name) + '<span class="tab-pct">' + done + '/' + ph.total + ' · ' + pct + '%</span>';
       tabsEl.appendChild(tab);
 
-      var badge = ph.badge ? '<span class="badge ' + ph.badge_cls + '">' + ph.badge + '</span>' : '';
+      var badge = ph.badge ? '<span class="badge ' + esc(ph.badge_cls) + '">' + esc(ph.badge) + '</span>' : '';
       var cur = ph.is_current ? '<span class="cur-tag">[当前]</span>' : '';
-      var company = ph.company ? '<div class="company">' + ph.company
-        + (ph.rationale ? ' <span class="meta">— ' + ph.rationale + '</span>' : '') + '</div>' : '';
+      var company = ph.company ? '<div class="company">' + esc(ph.company)
+        + (ph.rationale ? ' <span class="meta">— ' + esc(ph.rationale) + '</span>' : '') + '</div>' : '';
       var kpi = ph.kpi_metric
-        ? '<div class="kpi">KPI：' + ph.kpi_metric + ' → ' + ph.kpi_target
-          + (ph.kpi_evidence ? '（验证：' + ph.kpi_evidence + '）' : '') + '</div>' : '';
-      var resume = ph.resume_value ? '<div class="resume">简历价值：' + ph.resume_value + '</div>' : '';
-      var jd = ph.jd_text ? '<div class="jd">' + ph.jd_text.slice(0, 400) + '</div>' : '';
+        ? '<div class="kpi">KPI：' + esc(ph.kpi_metric) + ' → ' + esc(ph.kpi_target)
+          + (ph.kpi_evidence ? '（验证：' + esc(ph.kpi_evidence) + '）' : '') + '</div>' : '';
+      var resume = ph.resume_value ? '<div class="resume">简历价值：' + esc(ph.resume_value) + '</div>' : '';
+      var jd = ph.jd_text ? '<div class="jd">' + esc(ph.jd_text.slice(0, 400)) + '</div>' : '';
 
       var tasksHtml = '';
       if (ph.tasks.length) {
@@ -208,34 +215,35 @@ h1 { font-size: 24px; letter-spacing: .3px; }
           var msLabel = '';
           if (t.milestone_id && t.milestone_id !== lastMs) {
             lastMs = t.milestone_id;
-            msLabel = '<div class="ms">里程碑：' + (ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
+            msLabel = '<div class="ms">里程碑：' + esc(ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
           }
           var pr = { high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }[t.priority] || 'pr-medium';
           var nameCls = t.state === 'done' ? ' task-name done' : ' task-name';
+          var tid = esc(t.id);
           var ctl = '';
           if (t.state === 'done') {
             // 已完成：显示打勾状态 + 完成标记
             ctl = '<span class="done-badge">完成</span>';
           } else if (t.mode === 'daily') {
-            ctl = '<span class="ck-ctl" data-mode="daily" data-id="' + t.id + '">'
+            ctl = '<span class="ck-ctl" data-mode="daily" data-id="' + tid + '">'
               + '打卡 ' + Math.floor(t.progress) + '/' + (t.goal || '?') + ' 天'
-              + ' <button class="ck-btn" data-action="daily" data-id="' + t.id + '">今天打卡</button>'
+              + ' <button class="ck-btn" data-action="daily" data-id="' + tid + '">今天打卡</button>'
               + '</span>';
           } else if (t.mode === 'percent') {
-            ctl = '<span class="ck-ctl" data-mode="percent" data-id="' + t.id + '">'
+            ctl = '<span class="ck-ctl" data-mode="percent" data-id="' + tid + '">'
               + '进度 ' + Math.floor(t.progress) + '%/' + (t.goal || 100) + '%'
               + ' <input type="range" min="0" max="' + (t.goal || 100) + '" value="' + Math.floor(t.progress)
-              + '" data-action="percent" data-id="' + t.id + '" style="vertical-align:middle">'
+              + '" data-action="percent" data-id="' + tid + '" style="vertical-align:middle">'
               + '</span>';
           } else {
-            ctl = '<input type="checkbox" data-action="once" data-id="' + t.id + '">';
+            ctl = '<input type="checkbox" data-action="once" data-id="' + tid + '">';
           }
           tasksHtml += msLabel
             + '<label class="task">'
             + ctl
             + '<span class="' + nameCls + '">'
-            + '<span class="pr ' + pr + '"></span>' + t.name + '</span>'
-            + '<span class="task-meta">' + t.id + '</span>'
+            + '<span class="pr ' + pr + '"></span>' + esc(t.name) + '</span>'
+            + '<span class="task-meta">' + tid + '</span>'
             + '</label>';
         });
       } else if (ph.milestone_tasks.length) {
@@ -248,12 +256,12 @@ h1 { font-size: 24px; letter-spacing: .3px; }
       card.className = 'card' + (ph.is_current ? ' active' : '');
       card.dataset.id = ph.id;
       card.innerHTML =
-        '<div class="card-head"><span class="card-title">' + ph.name
-          + '<span class="type-pill">' + ph.type + '</span>' + badge + cur + '</span>'
+        '<div class="card-head"><span class="card-title">' + esc(ph.name)
+          + '<span class="type-pill">' + esc(ph.type) + '</span>' + badge + cur + '</span>'
           + '<span class="done-txt">' + done + '/' + ph.total + ' · ' + pct + '%</span></div>'
         + '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>'
         + company
-        + (ph.goal ? '<div class="goal">' + ph.goal + '</div>' : '')
+        + (ph.goal ? '<div class="goal">' + esc(ph.goal) + '</div>' : '')
         + kpi + resume + jd
         + '<div class="tasks">' + tasksHtml + '</div>';
       cardsEl.appendChild(card);

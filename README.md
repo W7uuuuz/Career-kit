@@ -120,9 +120,11 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 
 ## 工具与文档
 
-32 个 MCP 工具覆盖建档、分析、规划、执行、洞察五类。完整清单与调用时机见
-[工具总览](docs/tools.md)；LLM 运行时还会通过 MCP Resources 自动读取工作流和企业库。
+32 个 MCP 工具覆盖建档、档案管理、数据获取、分析规划、任务执行、洞察产出六类。
+完整清单与调用时机见[工具总览](docs/tools.md)，文档全貌见[文档地图](docs/README.md)；
+LLM 运行时还会通过 MCP Resources 自动读取工作流和企业库。
 
+- [文档地图](docs/README.md)：所有文档的唯一入口
 - [LLM 使用指南](docs/llms.txt)：工作流、规则、常见场景
 - [工作流详解](docs/workflow.md)：各阶段前置条件、输入输出
 - [工具总览](docs/tools.md)：32 个 MCP 工具的唯一事实源

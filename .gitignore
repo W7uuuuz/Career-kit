@@ -27,10 +27,5 @@ tests/career-kit-test/
 artifacts/e2e/
 
 # 内部开发文档（不随开源仓库发布，保留本地）
-docs/architecture.md
-docs/design.md
-docs/research.md
-docs/roadmap.md
-docs/todo.md
-docs/e2e-verification.md
+docs/internal/
 

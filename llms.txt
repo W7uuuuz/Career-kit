@@ -5,6 +5,7 @@
 
 ## 文档索引
 
+- [文档地图](docs/README.md): 所有文档的唯一入口
 - [LLM 使用指南](docs/llms.txt): 工作流、工具分类、常见场景
 - [工作流详解](docs/workflow.md): 完整工作流、前置条件、输入输出
 - [企业库](docs/scrapers.md): 已收录企业、数据源说明
@@ -16,16 +17,17 @@
 
 ```
 1. start_session()
-2. intake(who/have/want)                       # 技能需附证据与置信度
-3. finalize_profile()
-4. list_data_sources()                        # 查看可用企业数据源
-5. fetch_company_jobs(company=..., params=...)  # 抓取真实岗位（含薪资）
-6. analyze_gaps() → save_gap_analysis()       # 基于真实数据分析
-7. generate_roadmap() → save_roadmap()        # 只定顺序与完成标准，无时长
-8. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks()
-9. get_next_tasks()
-10. checkin_task(...)                         # 完成即沉淀能力证据
-11. export_dashboard()                        # 生成阶段进度仪表盘
+2. parse_resume(file_path)                     # 可选：先解析简历素材
+3. intake(who/have/want)                       # 技能需附证据与置信度
+4. finalize_profile()
+5. list_data_sources()                        # 查看可用企业数据源
+6. fetch_company_jobs(company=..., params=...)  # 抓取真实岗位（含薪资）
+7. analyze_gaps() → save_gap_analysis()       # 基于真实数据分析
+8. generate_roadmap() → save_roadmap()        # 只定顺序与完成标准，无时长
+9. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks()
+10. get_next_tasks()
+11. checkin_task(...)                         # 完成即沉淀能力证据
+12. export_dashboard()                        # 生成阶段进度仪表盘
 ```
 
 ## 核心原则

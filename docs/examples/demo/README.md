@@ -31,7 +31,7 @@
 ## 复现
 
 ```bash
-python docs/examples/build_demo.py   # 用本仓库真实管线重建以上产物
+"<venv-python>" docs/examples/build_demo.py   # 用本仓库真实管线重建以上产物
 ```
 
-> 需要已按 README 完成 `pip install -e .`。
+> 解释器需与执行过 `pip install -e .` 的一致；多 Python 环境请用 venv 绝对路径。

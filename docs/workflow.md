@@ -22,13 +22,14 @@
 
 ```
 1. start_session()
-2. intake(who)      # 姓名、教育、当前状态；缺毕业年份时补 graduation_year
-3. intake(have)     # 技能、经历、资源；关键技能追问 evidence + verified
-4. 确定目标：
+2. parse_resume(file_path)   # 可选：解析简历素材，技能仍需逐项确认
+3. intake(who)      # 姓名、教育、当前状态；缺毕业年份时补 graduation_year
+4. intake(have)     # 技能、经历、资源；关键技能追问 evidence + verified
+5. 确定目标：
    - 有明确目标 → intake(want)
    - 方向模糊 → explore_goals() → 对话选定 → intake(want)
    - 有 JD 文件 → import_jd_file() / import_jd()
-5. finalize_profile()
+6. finalize_profile()
 ```
 
 **输出**：
@@ -88,6 +89,8 @@
 1. generate_roadmap()
 2. save_roadmap(roadmap_json)
 ```
+
+已有规划文档时，先 `import_plan(file_path)` 导入，在对话中对比取舍后再保存为路线图。
 
 **输出**：
 
@@ -160,6 +163,20 @@
 | `event` | 用户报告事件 | 拿到大厂面试 |
 
 > 「主动检查 / 超期压缩」已移除——产品不为任务设定时限。
+
+---
+
+## 档案管理
+
+多档案场景（一台电脑多人使用、转行前后多份规划）：
+
+| 工具 | 作用 |
+|------|------|
+| `list_profiles` | 列出所有档案 |
+| `switch_profile` | 切换当前档案 |
+| `delete_profile` | 回收站式删除（需 `confirm="true"`，可恢复） |
+| `list_trash` | 查看回收站 |
+| `restore_profile` | 从回收站恢复 |
 
 ---
 

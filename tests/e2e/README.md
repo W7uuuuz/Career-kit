@@ -8,23 +8,26 @@
 
 默认单测不会收集本目录；使用 `cli.py` 或显式设置 `CAREER_KIT_E2E=1`。
 
+手工走查手册见 [docs/internal/e2e-verification.md](../../docs/internal/e2e-verification.md)
+（内部文档，不随开源仓库发布）。
+
 ## 快速开始
 
 ```bash
 # 核心套件：无网络、无 LLM、无浏览器
-python tests/e2e/cli.py --suite core
+"<venv-python>" tests/e2e/cli.py --suite core
 
 # 真实数据源（腾讯/百度/阿里）
-python tests/e2e/cli.py --suite live --sources tencent,baidu,alibaba
+"<venv-python>" tests/e2e/cli.py --suite live --sources tencent,baidu,alibaba
 
 # 浏览器交互（需要 playwright install chromium）
-python tests/e2e/cli.py --suite browser
+"<venv-python>" tests/e2e/cli.py --suite browser
 
 # 真实 LLM Agent（需要 ANTHROPIC_API_KEY）
-python tests/e2e/cli.py --suite llm
+"<venv-python>" tests/e2e/cli.py --suite llm
 
 # 全部
-python tests/e2e/cli.py --suite all
+"<venv-python>" tests/e2e/cli.py --suite all
 ```
 
 ## 覆盖范围

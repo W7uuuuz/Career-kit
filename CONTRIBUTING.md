@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你对 Career Kit 的兴趣！
+感谢你对 Career Kit 的兴趣！文档结构见 [docs/README.md](docs/README.md)。
 
 ## 如何贡献
 
@@ -33,29 +33,31 @@
 首次配置或遇到启动问题时：
 
 ```bash
-python -m src.doctor
+"<venv-python>" -m src.doctor
 ```
 
 需要检查浏览器内核/数据源连通性时：
 
 ```bash
-python -m src.doctor --browser --network
+"<venv-python>" -m src.doctor --browser --network
 ```
+
+解释器必须与执行过 `pip install -e .` 的那个一致；多 Python 环境请用绝对路径。
 
 ### 端到端测试
 
 新增功能或修改工作流后，至少跑核心 E2E：
 
 ```bash
-python tests/e2e/cli.py --suite core
+"<venv-python>" tests/e2e/cli.py --suite core
 ```
 
 真实数据源、浏览器交互、LLM Agent 是独立 opt-in 套件：
 
 ```bash
-python tests/e2e/cli.py --suite live --sources tencent,baidu,alibaba
-python tests/e2e/cli.py --suite browser
-python tests/e2e/cli.py --suite llm
+"<venv-python>" tests/e2e/cli.py --suite live --sources tencent,baidu,alibaba
+"<venv-python>" tests/e2e/cli.py --suite browser
+"<venv-python>" tests/e2e/cli.py --suite llm
 ```
 
 质量评分与优化清单输出在 `artifacts/e2e/<run-id>/`，说明见
