@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -11,13 +10,11 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from src.scrapers.base import CompanyScraper
 from src.scrapers.loader import (
-    get_scraper,
+    _load_config,
+    get_job_detail,
     list_scrapers,
     search_company_jobs,
-    get_job_detail,
-    _load_config,
 )
-
 
 # === 模拟 Scraper ===
 
@@ -88,7 +85,7 @@ def test_scraper_interface():
     assert isinstance(detail, dict)
     assert detail["title"] == "AI Agent 开发工程师"
     assert detail["salary"] == "30-60k"
-    print(f"[OK] get_detail 返回岗位详情")
+    print("[OK] get_detail 返回岗位详情")
 
     print()
 
@@ -101,7 +98,7 @@ def test_config_loading():
 
     config = _load_config()
     assert "scrapers" in config
-    print(f"[OK] config.yaml 加载成功")
+    print("[OK] config.yaml 加载成功")
 
     scrapers = list_scrapers()
     assert isinstance(scrapers, list)
@@ -111,13 +108,13 @@ def test_config_loading():
     # 验证 bytedance 已注册
     ids = [s["id"] for s in scrapers]
     assert "bytedance" in ids, "bytedance 未注册"
-    print(f"[OK] bytedance 已注册")
+    print("[OK] bytedance 已注册")
 
     # 验证参数定义
     bd = next(s for s in scrapers if s["id"] == "bytedance")
     assert "keyword" in bd["params"]
     assert "city" in bd["params"]
-    print(f"[OK] bytedance 参数定义正确")
+    print("[OK] bytedance 参数定义正确")
     print()
 
 
@@ -183,16 +180,16 @@ def test_mock_scraper_integration():
     detail = scraper.get_detail(results[0]["url"])
     assert "description" in detail
     assert "requirements" in detail
-    print(f"[OK] 详情包含描述和要求")
+    print("[OK] 详情包含描述和要求")
 
     # 验证字段规范
     for field in ["title", "url", "company", "location", "summary"]:
         assert field in results[0], f"search 结果缺少 {field}"
-    print(f"[OK] search 字段规范正确")
+    print("[OK] search 字段规范正确")
 
     for field in ["title", "company", "description", "requirements"]:
         assert field in detail, f"get_detail 结果缺少 {field}"
-    print(f"[OK] get_detail 字段规范正确")
+    print("[OK] get_detail 字段规范正确")
 
     print()
 

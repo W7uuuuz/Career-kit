@@ -14,8 +14,8 @@ sys.stderr.reconfigure(encoding='utf-8')
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 import anthropic
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 

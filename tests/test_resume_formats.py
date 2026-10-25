@@ -8,7 +8,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-
 from src.tools.resume_parser import extract_text
 
 TEST_DIR = Path(__file__).parent.parent / "dev" / "test"

@@ -10,9 +10,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 import pytest
-
 import src.tools.profile as profile_module
 from src.models import CareerProfile
+
 
 @pytest.fixture()
 def temp_profile(tmp_path, monkeypatch):
@@ -254,7 +254,7 @@ def test_mcp_delete_profile_requires_confirm(temp_profile):
     assert not profile_module.list_trash()
 
     # confirm 非 "true" 同样拒绝
-    out2 = delete_profile(profile_name="alice", confirm="yes")
+    delete_profile(profile_name="alice", confirm="yes")
     assert (profile_module.PROFILE_DIR / "alice.json").exists()
 
 

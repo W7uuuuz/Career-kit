@@ -20,7 +20,6 @@ from ..models import (
 )
 from .task_manager import next_task_id
 
-
 VALID_TRIGGER_TYPES = ("stage_audit", "event")
 
 
@@ -265,7 +264,7 @@ def format_insight_report(insight_result: dict[str, Any]) -> str:
 
     user_message = insight_result.get("user_message", "")
     if user_message:
-        lines.append(f"---")
+        lines.append("---")
         lines.append(f"*{user_message}*")
 
     return "\n".join(lines)

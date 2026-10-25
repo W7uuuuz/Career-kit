@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from ..base import CompanyScraper
-from .auth import load_cookies, has_valid_cookies
+from .auth import has_valid_cookies, load_cookies
 from .stoken import get_stoken, handle_code37
 
 # 常量

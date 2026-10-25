@@ -5,8 +5,10 @@ LLM agent 拿到上下文后自主决定执行路径。
 """
 
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any
+
 import yaml
 
 from ..models import CareerProfile

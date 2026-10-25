@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import os
 import re
@@ -34,7 +33,7 @@ class Check:
 
 
 def check_interpreter() -> Check:
-    if sys.version_info < (3, 11):
+    if sys.version_info < (3, 11):  # noqa: UP036 —— doctor 恰恰要给装错解释器的用户跑，运行时可能真低于 3.11
         return Check(
             "解释器",
             FAIL,

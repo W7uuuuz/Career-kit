@@ -225,7 +225,6 @@ def get_next_tasks() -> str:
 
     if view is None:
         lines.append("所有阶段已完成！建议回顾目标，规划下一步方向。")
-        next_step = "trigger_insight(event)"
     else:
         pct = int(view["done"] / view["total"] * 100) if view["total"] else 0
         lines.append(f"## 当前阶段：{view['phase_name']}（{view['done']}/{view['total']}，{pct}%）")
@@ -237,7 +236,6 @@ def get_next_tasks() -> str:
             desc = f"—{t.description}" if t.description else ""
             lines.append(f"- {status_mark} **{t.name}** (ID: {t.id}){desc}")
         lines.append("")
-        next_step = "checkin_task"
 
     lines.append(format_progress_overview(profile))
     lines.append("---")
@@ -261,12 +259,12 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
         amount: 本次打卡量（可选）——daily 打卡传 1（当天完成），
             percent 打卡传本次完成比例（如完成 20% 传 20）
     """
+    from .insight import completed_phase_ids
     from .task_manager import (
         checkin_task as do_checkin,
         format_progress_overview,
         record_capability_evidence,
     )
-    from .insight import completed_phase_ids
 
     profile = load_profile()
 

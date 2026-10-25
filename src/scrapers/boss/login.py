@@ -106,14 +106,14 @@ def _launch(p, channel: str, force_direct: bool = True):
     if force_direct:
         window_args += ["--no-proxy-server"]
 
-    kwargs = dict(
-        user_data_dir=str(PROFILE_DIR),
-        channel=channel,    # chrome / msedge，绝不回退 chromium
-        headless=False,     # headless 本身就是被检测特征
-        no_viewport=True,   # 页面视口跟随窗口真实尺寸，浏览器自适应
-        ignore_default_args=["--enable-automation"],
-        args=window_args,
-    )
+    kwargs = {
+        "user_data_dir": str(PROFILE_DIR),
+        "channel": channel,    # chrome / msedge，绝不回退 chromium
+        "headless": False,     # headless 本身就是被检测特征
+        "no_viewport": True,   # 页面视口跟随窗口真实尺寸，浏览器自适应
+        "ignore_default_args": ["--enable-automation"],
+        "args": window_args,
+    }
     return p.chromium.launch_persistent_context(**kwargs)
 
 

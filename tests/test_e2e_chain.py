@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 import src.tools.profile as profile_module
-from src.models import CheckIn, CareerProfile
 from src.tools.gap_analyzer import format_gap_report
 from src.tools.methodology import build_methodology_context
 from src.tools.roadmap import format_roadmap, parse_roadmap
@@ -29,7 +28,6 @@ from src.tools.task_manager import (
     format_progress_overview,
     next_task_id,
 )
-
 
 # === 模拟 LLM 响应 ===
 

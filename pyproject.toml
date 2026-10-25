@@ -32,6 +32,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "anthropic>=0.40",
+    "ruff>=0.6",
 ]
 
 [tool.pytest.ini_options]
@@ -48,3 +49,27 @@ markers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# 基线规则集：未用导入/变量、未定义名、语法风险、import 排序、现代化与简化建议
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",   # 行宽交给格式化与 review，HTML f-string 场景误报多
+    "SIM108", # 三元改写建议不强制
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true   # 带别名的 import 合并成块，避免装配层被拆散
+
+[tool.ruff.lint.per-file-ignores]
+# server.py 是装配层：import 即注册 @mcp.tool()，并向测试 re-export 工具函数
+"src/server.py" = ["F401"]
+# 测试用 sys.path.insert 引导 src，模块级 import 必然不在顶部；
+# assert False / 嵌套 with / 单字母变量是测试常见模式，放宽
+"tests/**" = ["E402", "B011", "SIM105", "SIM115", "SIM117", "E741", "C401"]
+"tests/e2e/**" = ["E402", "F401", "B011", "SIM105", "SIM115", "SIM117", "E741", "C401"]

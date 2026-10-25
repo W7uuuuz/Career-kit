@@ -1,7 +1,7 @@
 """Career Kit MCP 服务器——入口与工具装配。"""
 
-from .mcp_app import mcp
 from . import resources  # noqa: F401  注册 MCP Resources
+from .mcp_app import mcp
 from .tools.analysis_tools import analyze_gaps, explore_goals, save_gap_analysis
 from .tools.dashboard import (
     render_progress_html as _render_progress_html,

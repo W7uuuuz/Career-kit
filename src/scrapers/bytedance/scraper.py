@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -145,8 +144,9 @@ class Scraper(CompanyScraper):
         """通过 Playwright 拦截 XHR 获取搜索结果。"""
         import os
         import random
-        from playwright.sync_api import sync_playwright
         from urllib.parse import quote
+
+        from playwright.sync_api import sync_playwright
 
         # 清除代理环境变量
         for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
@@ -264,7 +264,7 @@ class Scraper(CompanyScraper):
                 if limit > 10:
                     total = captured_data["total"]
                     pages_needed = min((total + 9) // 10, (limit + 9) // 10, 6)  # 最多翻 5 页
-                    for page_num in range(1, pages_needed):
+                    for _page_num in range(1, pages_needed):
                         if len(captured_data["posts"]) >= limit:
                             break
                         try:

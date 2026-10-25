@@ -12,9 +12,9 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 from src.models import CareerProfile
 from src.tools.gap_analyzer import format_gap_report
-from src.tools.methodology import build_methodology_context, load_methodology
 from src.tools.knowledge_search import search_knowledge
-from src.tools.profile import load_profile, merge_section, save_profile
+from src.tools.methodology import build_methodology_context, load_methodology
+from src.tools.profile import load_profile, save_profile
 
 
 def test_sop_config_loading():

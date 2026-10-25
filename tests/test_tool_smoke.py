@@ -10,16 +10,13 @@ from __future__ import annotations
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 import pytest
-
 import src.tools.profile as profile_module
-from src.models import CareerProfile
 
 
 @pytest.fixture()
@@ -107,7 +104,6 @@ def test_intake_rejects_invalid_json(temp_profile):
 
 def test_import_plan_rejects_binary_garbage(temp_profile):
     """OBS-003 回归：控制字符垃圾内容返回结构化错误，不透传给 LLM。"""
-    from pathlib import Path
 
     from src.server import import_plan
 
@@ -684,6 +680,7 @@ def test_intake_who_guides_graduation_year(temp_profile):
 def test_roadmap_yaml_has_rubric_and_audit():
     """SOP 规则化：roadmap.yaml 含 start_level 打分表与审计清单；resume_screening 含负面信号。"""
     from pathlib import Path
+
     import yaml
 
     sop_dir = Path(__file__).parent.parent / "sop"
@@ -801,7 +798,7 @@ def test_generate_tasks_merges_checkin_points(temp_profile):
     p.tasks = [Task(id="task_001", name="学Python", phase_id="phase_1")]
     profile_module.save_profile(p)
 
-    out = _parse(generate_tasks())
+    _parse(generate_tasks())
     final = profile_module.load_profile()
     t = final.get_task("task_001")
     assert t.checkin_mode == "daily", "打卡点未合并"
@@ -929,6 +926,7 @@ def test_gap_gate_accepts_anchored_analysis(temp_profile):
 def test_fetch_failure_suggests_manual_import(temp_profile, monkeypatch):
     """抓取失败时恢复建议包含手动导入（import_jd），流程不停摆。"""
     import asyncio
+
     import src.server as server_module
     import src.tools.data_tools as data_tools
 

@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime
-from typing import Any
 
 from ..mcp_app import mcp
 from .errors import InvalidJsonError, error_response
 from .profile import get_active_profile_name, load_profile, merge_section, save_profile
 from .resume_parser import extract_text
 from .session import get_welcome_message
-from .tool_helpers import _json, _parse_json_param
+from .tool_helpers import _parse_json_param
 
 
 @mcp.tool()
@@ -221,9 +219,7 @@ def _has_goal(profile) -> bool:
                 "job_family", "target_company", "target_companies"):
         if want.get(key):
             return True
-    if profile.target_jd:
-        return True
-    return False
+    return bool(profile.target_jd)
 
 
 def _collect_skills(have: dict) -> list:

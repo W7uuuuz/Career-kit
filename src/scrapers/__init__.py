@@ -4,7 +4,7 @@
 """
 
 from .base import CompanyScraper
-from .loader import get_scraper, list_scrapers, search_company_jobs, get_job_detail
+from .loader import get_job_detail, get_scraper, list_scrapers, search_company_jobs
 
 __all__ = [
     "CompanyScraper",

@@ -16,8 +16,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ..tools.cache import CacheManager, cache_key as _cache_key_fn
 from ..paths import CACHE_DIR
+from ..tools.cache import CacheManager, cache_key as _cache_key_fn
 
 
 class CompanyScraper(ABC):

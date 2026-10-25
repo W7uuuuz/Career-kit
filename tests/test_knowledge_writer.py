@@ -10,7 +10,6 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -24,7 +23,6 @@ from src.scrapers.knowledge_writer import (
     write_interview_to_knowledge,
     write_to_knowledge,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

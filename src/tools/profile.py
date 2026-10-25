@@ -153,7 +153,7 @@ def restore_profile(name: str) -> Path | None:
     if not trash_dir.exists():
         return None
 
-    candidates = [p for p in trash_dir.glob(f"{name}*.json")]
+    candidates = list(trash_dir.glob(f"{name}*.json"))
     if not candidates:
         return None
     # 取最新一份（mtime 最大）

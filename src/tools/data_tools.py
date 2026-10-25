@@ -11,7 +11,6 @@ from ..scrapers.loader import read_scraper_guide
 from .errors import error_response
 from .plan_importer import parse_plan_file
 from .profile import load_profile
-from .tool_helpers import _json
 
 
 @mcp.tool()

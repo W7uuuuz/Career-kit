@@ -18,11 +18,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 class MemoryBackend:
@@ -73,13 +75,11 @@ class FileBackend:
 
     def set(self, key: str, value: Any) -> None:
         path = self._path(key)
-        try:
+        with contextlib.suppress(Exception):
             path.write_text(
                 json.dumps({"ts": time.time(), "value": value}, ensure_ascii=False),
                 encoding="utf-8",
             )
-        except Exception:
-            pass
 
     def clear(self) -> None:
         for f in self._dir.glob("*.json"):

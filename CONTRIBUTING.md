@@ -78,6 +78,13 @@ python tests/e2e/cli.py --suite llm
 - 类型提示
 - 文档字符串
 
+提交前跑 lint 与单元测试（CI 同样会跑）：
+
+```bash
+ruff check src tests
+pytest tests --ignore=tests/e2e -q
+```
+
 ## 问题？
 
 有问题随时开 Issue，我们会尽快回复。

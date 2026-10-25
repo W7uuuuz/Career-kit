@@ -252,4 +252,4 @@ def test_new_scraper_url_routing():
     }
     for url, expected in cases.items():
         scraper = get_scraper_for_url(url)
-        assert scraper is not None and scraper.COMPANY_SLUG == expected
+        assert scraper is not None and expected == scraper.COMPANY_SLUG

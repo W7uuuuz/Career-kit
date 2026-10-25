@@ -6,7 +6,6 @@ import importlib
 from pathlib import Path
 
 import pytest
-
 import src.paths as paths
 
 
@@ -20,7 +19,7 @@ def _reload_with_env(monkeypatch: pytest.MonkeyPatch, value: str | None) -> None
 
 def test_default_root_is_home_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     _reload_with_env(monkeypatch, None)
-    assert paths.DATA_ROOT == Path.home() / ".career-kit"
+    assert Path.home() / ".career-kit" == paths.DATA_ROOT
     assert paths.PROFILE_DIR == paths.DATA_ROOT
     assert paths.KNOWLEDGE_DIR == paths.DATA_ROOT / "knowledge"
     assert paths.CACHE_DIR == paths.DATA_ROOT / "cache"
@@ -28,9 +27,9 @@ def test_default_root_is_home_dir(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_env_var_overrides_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reload_with_env(monkeypatch, str(tmp_path))
-    assert paths.DATA_ROOT == tmp_path
-    assert paths.KNOWLEDGE_DIR == tmp_path / "knowledge"
-    assert paths.CACHE_DIR == tmp_path / "cache"
+    assert tmp_path == paths.DATA_ROOT
+    assert tmp_path / "knowledge" == paths.KNOWLEDGE_DIR
+    assert tmp_path / "cache" == paths.CACHE_DIR
 
 
 def test_modules_share_paths_constants(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -44,9 +43,9 @@ def test_modules_share_paths_constants(monkeypatch: pytest.MonkeyPatch, tmp_path
     importlib.reload(profile)
 
     try:
-        assert knowledge_writer.KNOWLEDGE_DIR == tmp_path / "knowledge"
-        assert knowledge_search.KNOWLEDGE_DIR == tmp_path / "knowledge"
-        assert profile.PROFILE_DIR == tmp_path
+        assert tmp_path / "knowledge" == knowledge_writer.KNOWLEDGE_DIR
+        assert tmp_path / "knowledge" == knowledge_search.KNOWLEDGE_DIR
+        assert tmp_path == profile.PROFILE_DIR
     finally:
         # 还原其他模块的常量绑定，避免污染后续测试
         _reload_with_env(monkeypatch, None)

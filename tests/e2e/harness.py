@@ -51,7 +51,7 @@ class ToolResult:
     def ok(self) -> bool:
         return not self.maybe_json().get("isError")
 
-    def assert_ok(self) -> "ToolResult":
+    def assert_ok(self) -> ToolResult:
         data = self.maybe_json()
         assert not data.get("isError"), (
             f"{self.name} 返回错误：{data.get('code')} {data.get('message')}\n"
@@ -59,14 +59,14 @@ class ToolResult:
         )
         return self
 
-    def assert_contains(self, *needles: str) -> "ToolResult":
+    def assert_contains(self, *needles: str) -> ToolResult:
         for needle in needles:
             assert needle in self.text, (
                 f"{self.name} 返回内容缺少 {needle!r}：{self.text[:300]}"
             )
         return self
 
-    def assert_error(self, code: str | None = None) -> "ToolResult":
+    def assert_error(self, code: str | None = None) -> ToolResult:
         data = self.maybe_json()
         assert data.get("isError") is True, (
             f"{self.name} 预期错误，实际成功：{self.text[:300]}"
@@ -90,7 +90,7 @@ class Sandbox:
     env: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def create(cls, test_name: str, run_root: Path) -> "Sandbox":
+    def create(cls, test_name: str, run_root: Path) -> Sandbox:
         safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in test_name)[:80]
         artifacts = run_root / safe
         artifacts.mkdir(parents=True, exist_ok=True)
@@ -168,13 +168,13 @@ class McpSession:
         self._transcript = sandbox.artifacts / "transcript.jsonl"
         self._call_count = 0
 
-    async def __aenter__(self) -> "McpSession":
+    async def __aenter__(self) -> McpSession:
         return await self.start()
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         await self.close()
 
-    async def start(self) -> "McpSession":
+    async def start(self) -> McpSession:
         self._errlog = open(self.sandbox.artifacts / "server.log", "a", encoding="utf-8")
         params = StdioServerParameters(
             command=os.sys.executable,
@@ -201,7 +201,7 @@ class McpSession:
             self._errlog = None
         self.session = None
 
-    async def restart(self) -> "McpSession":
+    async def restart(self) -> McpSession:
         await self.close()
         return await self.start()
 
