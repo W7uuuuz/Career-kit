@@ -562,6 +562,16 @@ def test_trigger_insight_stage_audit_still_blocked_without_tasks(temp_profile):
     assert out["context"]["phase"] == "no_tasks"
 
 
+def test_record_application_schema_company_optional():
+    """FastMCP 生成 schema 的运行时保证：company 可选（更新路径不再强制传），notes 在列。"""
+    from src.server import mcp
+
+    tools = {t.name: t for t in mcp._tool_manager.list_tools()}
+    schema = tools["record_application"].parameters
+    assert "company" not in (schema.get("required") or [])
+    assert "notes" in schema["properties"]
+
+
 def test_apply_insight_end_to_end(temp_profile):
     """BUG-005 回归：apply_insight 可导入、可执行、调整可落地。"""
     from src.models import Task
