@@ -45,3 +45,56 @@ jobs:
         env:
           CAREER_KIT_DATA_DIR: ${{ runner.temp }}/career-kit-ci
         run: pytest tests --ignore=tests/e2e -q
+
+  e2e-core:
+    # 离线 e2e 场景（建档→差距→路线图→打卡→漏斗→洞察→产出），不需要网络/浏览器/LLM
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio
+      - name: Run core e2e (offline)
+        env:
+          CAREER_KIT_E2E: "1"
+          CAREER_KIT_DATA_DIR: ${{ runner.temp }}/career-kit-e2e
+        run: pytest tests/e2e/scenarios -q -m "not e2e_live and not e2e_browser and not e2e_llm"
+
+  doctor:
+    # 从非仓库目录跑体检：验证 editable 安装后的通用可寻址（用户实际注册 MCP 的方式）
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: pip check
+        run: pip check
+      - name: Doctor from non-repo cwd
+        env:
+          CAREER_KIT_DATA_DIR: ${{ runner.temp }}/career-kit-doctor
+          PYTHONIOENCODING: utf-8
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m src.doctor > doctor_output.txt || cat doctor_output.txt
+          grep "34 个工具" doctor_output.txt || (cat doctor_output.txt && exit 1)
+          if grep -q "\[FAIL\]" doctor_output.txt; then cat doctor_output.txt && exit 1; fi
