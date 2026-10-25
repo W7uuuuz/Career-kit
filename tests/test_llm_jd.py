@@ -12,10 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-import anthropic
-import pytest
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+# 可选依赖：LLM 集成测试需要 anthropic；未安装（如最小 CI 环境）时优雅跳过而非收集失败
+import pytest  # noqa: E402
+from mcp import ClientSession, StdioServerParameters  # noqa: E402
+from mcp.client.stdio import stdio_client  # noqa: E402
+
+anthropic = pytest.importorskip("anthropic", reason="未安装 anthropic（可选 LLM 集成依赖），跳过")  # noqa: E402
 
 # 配置：LLM 端点与密钥从环境变量读取（密钥不得写死进源码）
 PYTHON_EXE = sys.executable

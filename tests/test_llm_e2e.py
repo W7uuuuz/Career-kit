@@ -10,10 +10,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import anthropic
+# 可选依赖：LLM 集成测试需要 anthropic；未安装（如最小 CI 环境）时优雅跳过而非收集失败
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+anthropic = pytest.importorskip("anthropic", reason="未安装 anthropic（可选 LLM 集成依赖），跳过")
 
 # 配置：LLM 端点与密钥从环境变量读取（密钥不得写死进源码）
 DEFAULT_BASE_URL = os.environ.get(
