@@ -6,6 +6,12 @@ from datetime import datetime
 
 from ..mcp_app import mcp
 from .errors import InvalidJsonError, error_response
+from .probing import (
+    SELF_ASSESSMENT_INSTRUCTIONS,
+    collect_skills as _collect_skills,  # noqa: F401  re-export 供 analysis_tools 兼容导入
+    find_self_assessment_issues,
+    is_verified_skill,
+)
 from .profile import get_active_profile_name, load_profile, merge_section, save_profile
 from .resume_parser import extract_text
 from .session import get_welcome_message
@@ -49,15 +55,18 @@ def parse_resume(file_path: str) -> str:
         "**简历有美化成分——写入档案前必须先验证：**\n"
         "1. 对关键技能/项目逐项向用户求证：这个项目是不是你独立完成的？\n"
         "   团队里有没有人 review 你的代码？某个难点具体怎么解决的？\n"
-        "   实际掌握到什么程度？\n"
-        "2. 证据（evidence）必须来自用户确认，**不得照抄简历原文**；\n"
+        "   实际掌握到什么程度？\n\n"
+        f"2. {SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
+        "3. 证据（evidence）必须来自用户确认，**不得照抄简历原文**；\n"
         "   未经用户确认的技能标 `verified: false`，确认过的标 `verified: true`。\n"
-        "3. 学历/城市/届别等身份信息直接可用；技能与项目必须验证后再写入 have。\n\n"
+        "4. 学历/城市/届别等身份信息直接可用；技能与项目必须验证后再写入 have。\n\n"
         "请调用 intake 工具填充：\n"
         '- "who" section：姓名、联系方式、教育背景、当前状态\n'
-        '- "have" section：技能、工作经历、项目经验、证书（每项带 evidence 与 verified）\n\n'
+        '- "have" section：技能、工作经历、项目经验、证书——每个技能条目附 '
+        "evidence / user_verified / authorship / control_level，"
+        "并写入 have.self_assessment 整份简历自评\n\n"
         '示例：intake(section="who", data=\'{"name":"张三", "education":"..."}\')\n'
-        "下一步：先向用户求证关键技能证据，再调用 intake(section=\"have\")；"
+        "下一步：自评与求证完成后调用 intake(section=\"have\")；"
         "目标明确后调用 intake(section=\"want\")。"
     )
 
@@ -72,7 +81,9 @@ def intake(section: str, data: str) -> str:
     Args:
         section: 填充到哪个 section，只接受 who / have / want
             - who: 你是谁（姓名、教育、状态）
-            - have: 你有什么（技能、经历、资源）；关键技能请附带证据与置信度
+            - have: 你有什么（技能、经历、资源）；关键技能请附带证据与置信度，
+                并标 authorship（作者身份）+ control_level（把控度自评 0-10），
+                整份简历自评写入 have.self_assessment
             - want: 你想要什么（目标岗位、行业、薪资）
         data: 用户提供的信息，必须是 JSON 对象字符串
             示例：'{"name":"张三", "education":"计算机本科", "skills":["Python", "React"]}'
@@ -116,9 +127,11 @@ def finalize_profile(skip_probing: bool = False) -> str:
 
     Args:
         skip_probing: 是否跳过「简历技能摸排」（默认 False）。
-            摸排是硬性必选步骤（BUG-001）：have 有技能但无用户确认证据时，
+            摸排是硬性必选步骤（BUG-001/BUG-021）：have 有技能但无用户确认证据
+            （user_verified）或缺 authorship/control_level/self_assessment 自评时，
             本工具拒绝放行，除非用户明确表示跳过，此时 LLM 传 skip_probing=True
-            并记录留痕——不得以置信度高或简历字面为由自动跳过。
+            并记录留痕——不得以置信度高或简历字面为由自动跳过，
+            也不得由 AI 代填 authorship/control_level。
 
     何时调用：当用户已经通过 intake 填充了 who/have/want 三个 section 后调用。
     不要在档案不完整时调用此工具。
@@ -134,12 +147,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
     has_evidence = bool(
         have.get("evidence")
         or have.get("capability_evidence")
-        or any(
-            isinstance(s, dict)
-            and s.get("evidence")
-            and (s.get("user_verified") or s.get("verified"))
-            for s in skills
-        )
+        or any(is_verified_skill(s) for s in skills)
     )
     needs_probe = bool(skills) and not has_evidence
 
@@ -152,17 +160,39 @@ def finalize_profile(skip_probing: bool = False) -> str:
             "请先对关键技能逐项向用户求证：\n"
             "  1. 这个项目是不是你独立完成的？\n"
             "  2. 团队里有没有人 review 你的代码？\n"
-            "  3. 某个难点具体怎么解决的？实际掌握到什么程度？\n"
-            "然后把确认过的证据（evidence）写入技能条目并标 user_verified=true。\n\n"
+            "  3. 某个难点具体怎么解决的？实际掌握到什么程度？\n\n"
+            f"{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
+            "然后把确认过的证据（evidence）写入技能条目并标 user_verified=true，"
+            "同时写入 authorship / control_level 与 have.self_assessment。\n\n"
             "唯一跳过方式：用户明确表示不需要摸排时，LLM 以 finalize_profile(skip_probing=True) "
             "继续，此跳过会被记录留痕。",
             {"needs_probe": True, "skip_via": "finalize_profile(skip_probing=True)"},
         )
 
+    # 摸排硬门禁（BUG-021 自评）：证据齐全但缺作者身份/把控度自评时仍不放行
+    self_issues = find_self_assessment_issues(have)
+    needs_self_assessment = bool(skills) and bool(self_issues)
+
+    if needs_self_assessment and not skip_probing:
+        return error_response(
+            "PROBING_REQUIRED",
+            "技能证据已确认，但缺「作者身份与把控度自评」（BUG-021）——"
+            "AI 编程时代「独立完成」可能是「AI 生成+人工验证」，"
+            "按简历字面水平分析会系统性高估手写能力：\n"
+            + "\n".join(f"- {i}" for i in self_issues)
+            + f"\n\n{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
+            "唯一跳过方式：用户明确表示不需要时 finalize_profile(skip_probing=True)（留痕）。",
+            {
+                "needs_probe": True,
+                "missing": self_issues,
+                "skip_via": "finalize_profile(skip_probing=True)",
+            },
+        )
+
     # 记录摸排状态：技能有证据 / 用户主动跳过
-    if needs_probe and skip_probing:
+    if skip_probing and (needs_probe or needs_self_assessment):
         profile.probe_skipped = True
-    elif not needs_probe:
+    elif not needs_probe and not needs_self_assessment:
         profile.probe_skipped = False
 
     # 生成简单的结构化摘要
@@ -219,25 +249,6 @@ def _has_goal(profile) -> bool:
         if want.get(key):
             return True
     return bool(profile.target_jd)
-
-
-def _collect_skills(have: dict) -> list:
-    """聚合 have 中的技能条目（兼容 skills / core_skills / skill_evidence）。
-
-    Returns:
-        技能条目列表（dict 或 str）
-    """
-    skills: list = []
-    for key in ("skills", "core_skills"):
-        val = have.get(key, [])
-        if isinstance(val, list):
-            skills.extend(val)
-        elif isinstance(val, dict):
-            skills.append(val)
-    ev = have.get("skill_evidence", [])
-    if isinstance(ev, list):
-        skills.extend(ev)
-    return skills
 
 
 @mcp.tool()

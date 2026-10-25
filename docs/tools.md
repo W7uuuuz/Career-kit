@@ -10,9 +10,9 @@
 | 工具 | 作用 |
 |------|------|
 | `start_session` | 初始化会话，返回欢迎信息与当前档案 |
-| `parse_resume` | 解析 PDF / DOCX / MD / TXT 简历，输出待验证素材 |
-| `intake` | 逐步填充 `who` / `have` / `want`；技能建议带证据与置信度 |
-| `finalize_profile` | 确认档案并生成摘要；技能无确认证据时触发摸排门禁 |
+| `parse_resume` | 解析 PDF / DOCX / MD / TXT 简历，输出待验证素材与自评三问 |
+| `intake` | 逐步填充 `who` / `have` / `want`；技能带证据 + authorship + control_level 自评，整份自评写 `have.self_assessment` |
+| `finalize_profile` | 确认档案并生成摘要；技能无确认证据或缺 authorship/control_level/self_assessment 自评时触发摸排门禁 |
 | `import_jd` | 导入目标 JD 文本 |
 | `import_jd_file` | 从文件导入目标 JD |
 

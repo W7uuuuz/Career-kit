@@ -22,6 +22,11 @@ methodology:
         1. 能力轴（已有）：读取 have——技能、经历、教育、能力证据。用户是零基础就如实标注。
            **若 have 技能无 user_verified 标记（可能来自简历导入），先逐项求证技能**（摸排是
            硬性必选，BUG-001）：项目是不是你独立写的？讲一个难点？实际掌握到什么程度？
+           **并同轮完成自评三问（BUG-021）**：简历哪几条描述面试现场站得住/站不住（诚实回答）；
+           每条技能标 authorship（self_written/ai_assisted/ai_generated/referenced，
+           AI 生成+人验证迭代是主流形态，如实记录）；把控度自评 control_level 0-10
+           （3=讲架构，6=逐行讲清，8+=手写重写）；整份自评写 have.self_assessment。
+           authorship/control_level 必须来自用户本人回答，AI 不得代填。
            confidence 自标不算证据；最终 finalize_profile 会硬门禁阻塞，
            仅当 skills 为空（真零基础）才跳过技能追问，转而问软性约束。
         2. 兴趣轴（对话挖掘，3-5 个问题足矣，不啰嗦）：

@@ -32,6 +32,15 @@ async def test_guards_and_recovery(sandbox):
         probing = await mcp.call("finalize_profile")
         probing.assert_error("PROBING_REQUIRED")
 
+        # BUG-021 门禁：证据齐全但缺 authorship/control_level/self_assessment 仍阻塞
+        await driver.intake(
+            "have",
+            {"skills": [{"skill": "Python", "evidence": "课程项目", "user_verified": True}]},
+        )
+        probing2 = await mcp.call("finalize_profile")
+        probing2.assert_error("PROBING_REQUIRED")
+        probing2.assert_contains("authorship")
+
         await driver.intake("have", HAVE)
         await driver.finalize()
 
@@ -46,6 +55,22 @@ async def test_guards_and_recovery(sandbox):
         )
         rejected.assert_error("INCOMPLETE_ANALYSIS")
         rejected.assert_contains("source")
+
+        # BUG-021 质量门：AI 作者身份（React=ai_assisted）要求 red flag 显式暴露
+        no_flag = json.loads(json.dumps(GAP, ensure_ascii=False))
+        no_flag["resume_red_flags"] = [
+            rf for rf in no_flag["resume_red_flags"]
+            if "AI" not in rf["signal"]
+        ]
+        no_flag["skill_gaps"] = [
+            {**sg, "source": "导入 JD：AI Agent 开发工程师"} for sg in no_flag["skill_gaps"]
+        ]
+        flagged = await mcp.call(
+            "save_gap_analysis",
+            {"gap_json": json.dumps(no_flag, ensure_ascii=False)},
+        )
+        flagged.assert_error("INCOMPLETE_ANALYSIS")
+        flagged.assert_contains("AI")
 
         await driver.save_gap(GAP)
 

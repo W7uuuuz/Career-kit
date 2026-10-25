@@ -7,8 +7,15 @@ from ..models import JourneyEntry
 from .errors import InvalidJsonError, error_response
 from .gap_analyzer import format_gap_report
 from .methodology import build_methodology_context
+from .probing import (
+    SELF_ASSESSMENT_INSTRUCTIONS,
+    ai_authored_skill_names,
+    collect_skills as _collect_skills,
+    find_self_assessment_issues,
+    is_verified_skill,
+)
 from .profile import load_profile, save_profile
-from .session_tools import _collect_skills, _has_goal, _summarize_dict
+from .session_tools import _has_goal, _summarize_dict
 from .tool_helpers import _json, _parse_json_param
 
 
@@ -147,12 +154,7 @@ def analyze_gaps() -> str:
     has_evidence = bool(
         have.get("evidence")
         or have.get("capability_evidence")
-        or any(
-            isinstance(s, dict)
-            and s.get("evidence")
-            and (s.get("user_verified") or s.get("verified"))
-            for s in skills
-        )
+        or any(is_verified_skill(s) for s in skills)
     )
     if skills and not has_evidence and not profile.probe_skipped:
         return error_response(
@@ -160,10 +162,28 @@ def analyze_gaps() -> str:
             "档案中的技能没有用户确认过的证据，摸排是硬性必选步骤（BUG-001）：\n"
             "请先对关键技能逐项向用户求证（独立完成/讲难点/掌握程度），"
             "写入 user_verified=true 的证据后再分析。\n"
-            "不能以 confidence=高 或 evidence 照抄简历绕过。\n"
+            "不能以 confidence=高 或 evidence 照抄简历绕过。\n\n"
+            f"{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
             "唯一跳过方式：用户明确表示不需要摸排时，重新 finalize_profile(skip_probing=True) "
             "再继续分析。",
             {"needs_probe": True, "skip_via": "finalize_profile(skip_probing=True)"},
+        )
+
+    # 摸排硬门禁（BUG-021 双保险）：缺作者身份/把控度自评时同样拒绝分析
+    self_issues = find_self_assessment_issues(have)
+    if skills and self_issues and not profile.probe_skipped:
+        return error_response(
+            "PROBING_REQUIRED",
+            "档案技能缺「作者身份与把控度自评」（BUG-021）——AI 编程时代「独立完成」"
+            "可能是「AI 生成+人工验证」，不校准会系统性高估手写能力：\n"
+            + "\n".join(f"- {i}" for i in self_issues)
+            + f"\n\n{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
+            "补齐后重新 finalize_profile（或用户明确跳过时 skip_probing=True，留痕）。",
+            {
+                "needs_probe": True,
+                "missing": self_issues,
+                "skip_via": "finalize_profile(skip_probing=True)",
+            },
         )
 
     # 加载两个方法论
@@ -192,17 +212,26 @@ def analyze_gaps() -> str:
             "   —— 若抓取不可用（无网/需登录/无数据源），不要停摆：改用用户导入的 target_jd\n"
             "   （import_jd / import_jd_file）或已填 want 作为数据来源，source 标注真实出处\n"
             "3. 基于真实数据从简历过筛和面试通过两个维度分析差距\n"
-            "4. 分析前先核对 have 技能的证据来源：若技能条目的 evidence 未经用户确认\n"
-            "   （无 user_verified 标记），先追问证据（做过什么项目/讲一个难点）再分析，\n"
-            "   避免基于简历字面水平做系统性失真判断\n"
-            "5. 每条 skill_gaps 必须带 source（真实数据来源：抓取的 JD / 导入材料），\n"
+            "4. 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
+            "   - authorship=ai_assisted/ai_generated 或 control_level<6 的技能是\n"
+            "     「能讲清架构、能驱动验证」而非「能手写」——不得在 strengths 里赋予\n"
+            "     「可手撕源码级」的面试深度，match_score 按自评校准后的真实水平评估；\n"
+            "   - 存在这类技能时：skill_gaps 必须新增「手写实现/现场逐行讲解」类差距\n"
+            "     （source 标「用户自评」），resume_red_flags 必须新增「代码主要 AI 生成」\n"
+            "     条目（signal/risk/evidence_fix 三件套），interview_preparation.must_prepare\n"
+            "     按把控度分层（先补能逐行讲清，再冲源码级）——质量门会硬检查 AI 署名风险；\n"
+            "   - 不贬损 AI-native 工程价值：生产落地、验证迭代照常计入优势，\n"
+            "     目标 JD 的 AI 编码工具加分项照常对齐；\n"
+            "   - 未经用户确认（无 user_verified）的技能先追问证据（做过什么项目/讲一个难点）\n"
+            "     再分析，避免基于简历字面水平做系统性失真判断\n"
+            "5. 每条 skill_gaps 必须带 source（真实数据来源：抓取的 JD / 导入材料 / 用户自评），\n"
             "   match_score 为 0-100；save_gap_analysis 有内容质量门，无依据/编造的结果会被拒绝\n"
             "6. 调用 save_gap_analysis(gap_json) 保存结构化结果"
         ),
     })
 
 
-def _validate_gap_content(gap_data: dict) -> list[str]:
+def _validate_gap_content(gap_data: dict, have: dict) -> list[str]:
     """差距分析内容质量门（BUG-002/003 收尾）：把「不编造真实数据」落成代码。
 
     结构校验由 _parse_json_param / format_gap_report 负责（能否解析、能否渲染）；
@@ -210,6 +239,8 @@ def _validate_gap_content(gap_data: dict) -> list[str]:
     - match_score 必须是 0-100 的数字（不能缺、不能是乱值）
     - skill_gaps 非空，且每条必须有 skill 与 source（真实数据来源）
     - resume_red_flags（若提供）每条必须有 signal / risk / evidence_fix
+    - 技能 authorship 为 ai_assisted/ai_generated 时（BUG-021），resume_red_flags
+      必须含「AI 生成/手写」相关风险条目——AI 作者身份风险不得静默吞掉
     返回问题列表（空 = 通过）。
     """
     issues: list[str] = []
@@ -249,7 +280,35 @@ def _validate_gap_content(gap_data: dict) -> list[str]:
                         "每条负面信号必须给出风险说明与补证据动作"
                     )
 
+    # BUG-021 轻量门：AI 作者身份风险必须显式进 red_flags，不得静默吞掉
+    issues.extend(_ai_authorship_flag_issues(gap_data, ai_authored_skill_names(have)))
+
     return issues
+
+
+def _ai_authorship_flag_issues(gap_data: dict, ai_names: list[str]) -> list[str]:
+    """BUG-021 轻量门：AI 生成/辅助技能的作者身份风险必须显式进 red_flags。
+
+    关键词命中要求宽（AI/手写/生成任一），只在存量技能确有 ai_* 标记时触发，
+    误伤面小；目的是防止 LLM 把「代码主要 AI 生成」这个最大面试风险静默消化。
+    """
+    if not ai_names:
+        return []
+    red_flags = gap_data.get("resume_red_flags") or []
+    if not isinstance(red_flags, list):
+        return ["resume_red_flags 必须是数组——AI 作者身份风险需要显式条目承载"]
+    combined = "".join(
+        str(rf.get(k, ""))
+        for rf in red_flags if isinstance(rf, dict)
+        for k in ("signal", "risk", "evidence_fix", "narrative_fix")
+    )
+    if "AI" in combined or "手写" in combined or "生成" in combined:
+        return []
+    return [
+        "技能 " + "、".join(ai_names) +
+        " 的 authorship 为 AI 生成/辅助，但 resume_red_flags 没有含「AI 生成/手写」"
+        "的风险条目——不得静默消化作者身份风险，必须显式给出面试应对"
+    ]
 
 
 @mcp.tool()
@@ -318,14 +377,18 @@ def save_gap_analysis(gap_json: str) -> str:
     - match_score 必须是 0-100 的数字
     - skill_gaps 非空，且每条必须带 source（真实数据来源，抓取/导入）
     - resume_red_flags 若提供，每条必须有 signal / risk / evidence_fix
+    - 技能 authorship 为 ai_assisted/ai_generated 时，resume_red_flags 必须有
+      「AI 生成/手写」相关风险条目——AI 作者身份风险不得静默吞掉（BUG-021）
     """
     try:
         gap_data = _parse_json_param(gap_json, "差距分析")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
+    profile = load_profile()
+
     # 内容质量门（BUG-002/003 收尾）：结构合法还不够——无依据/编造的内容一律拒绝落盘
-    content_issues = _validate_gap_content(gap_data)
+    content_issues = _validate_gap_content(gap_data, profile.have or {})
     if content_issues:
         return error_response(
             "INCOMPLETE_ANALYSIS",
@@ -339,7 +402,6 @@ def save_gap_analysis(gap_json: str) -> str:
     # 先生成报告——格式非法时在此暴露，避免把半成品写进档案
     report = format_gap_report(gap_data)
 
-    profile = load_profile()
     profile.gap = gap_data
     profile.touch()
     save_profile(profile)

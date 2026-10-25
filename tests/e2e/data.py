@@ -21,14 +21,22 @@ HAVE = {
             "level": "能独立写后端服务",
             "evidence": "课程项目：FastAPI 待办服务，含鉴权与 PostgreSQL",
             "user_verified": True,
+            "authorship": "self_written",
+            "control_level": 7,
         },
         {
             "skill": "React",
             "level": "能改业务页面",
             "evidence": "实习期间维护 3 个后台页面",
             "user_verified": True,
+            "authorship": "ai_assisted",
+            "control_level": 5,
         },
     ],
+    "self_assessment": {
+        "resume_trust": "medium",
+        "notes": "Python 项目全部手写；React 页面为 AI 生成+实习期验证迭代",
+    },
     "experience_level": "小厂",
     "projects": ["FastAPI 待办服务", "React 运营后台"],
 }
@@ -115,7 +123,13 @@ GAP = {
             "risk": "无法证明工程能力",
             "narrative_fix": "用问题-方案-结果结构重写",
             "evidence_fix": "补 QPS、延迟、用户数等指标",
-        }
+        },
+        {
+            "signal": "React 页面主要由 AI 生成，人工只做验证迭代",
+            "risk": "面试被要求手写组件/逐行讲解时暴露",
+            "narrative_fix": "按把控度如实描述（能改业务页面，不写精通）",
+            "evidence_fix": "补手写组件练习与 PR 记录",
+        },
     ],
     "priority_actions": [
         {"action": "完成一个带工具调用的 Agent 项目", "impact": "high", "difficulty": "medium"},

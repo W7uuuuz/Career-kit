@@ -78,3 +78,57 @@ def test_scraper_config_matches_public_docs():
     docs = _read("docs", "scrapers.md")
     missing = [i for i in ids if i not in docs]
     assert not missing, f"docs/scrapers.md 缺少企业：{missing}"
+
+
+BUG021_ANCHORS = ("authorship", "control_level", "self_assessment")
+
+
+def _probe_text() -> str:
+    from src.tools.probing import SELF_ASSESSMENT_INSTRUCTIONS
+
+    return SELF_ASSESSMENT_INSTRUCTIONS
+
+
+def test_bug021_instructions_reach_all_delivery_channels():
+    """BUG-021 防漂移：自评三问话术必须同步到全部交付面，缺一处即失败。
+
+    覆盖面：
+    - 话术常量本身带三个锚点词（authorship/control_level/self_assessment）
+    - parse_resume 指令正文
+    - session.py 手册（WELCOME_PROMPT Phase 1）
+    - 两份命令剧本（.opencode/commands 与 .claude/commands，探针②文本一致）
+    - 两份 sop 方法论（resume_screening / goal_selection）
+    - 三份公开文档（docs/llms.txt / docs/workflow.md / docs/tools.md）
+    """
+    probe = _probe_text()
+    for anchor in BUG021_ANCHORS:
+        assert anchor in probe, f"话术常量缺锚点 {anchor}"
+
+    surfaces = [
+        ("src", "tools", "session_tools.py"),
+        ("src", "tools", "session.py"),
+        (".opencode", "commands", "career-kit.md"),
+        (".claude", "commands", "career-kit.md"),
+        ("sop", "resume_screening.yaml"),
+        ("sop", "goal_selection.yaml"),
+        ("docs", "llms.txt"),
+        ("docs", "workflow.md"),
+        ("docs", "tools.md"),
+    ]
+    for rel in surfaces:
+        text = _read(*rel)
+        missing = [a for a in BUG021_ANCHORS if a not in text]
+        assert not missing, f"{rel} 未同步 BUG-021 自评话术，缺：{missing}"
+
+
+def test_bug021_command_scripts_have_identical_probe_text():
+    """BUG-021：两份命令剧本的「自评三问」块必须逐字一致（历史漂移过）。"""
+    oc = _read(".opencode", "commands", "career-kit.md")
+    cc = _read(".claude", "commands", "career-kit.md")
+
+    start_oc = oc.find("并同轮完成自评三问")
+    start_cc = cc.find("并同轮完成自评三问")
+    assert start_oc != -1 and start_cc != -1, "剧本缺少自评三问探针"
+    end_oc = oc.find("skip_probing=True)", start_oc) + len("skip_probing=True)")
+    end_cc = cc.find("skip_probing=True)", start_cc) + len("skip_probing=True)")
+    assert oc[start_oc:end_oc] == cc[start_cc:end_cc], "两份剧本的探针文本漂移了"

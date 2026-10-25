@@ -36,9 +36,10 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 ```
 start_session()
-→ parse_resume(file_path)         # 可选：先解析简历素材，再逐项确认证据
-→ intake(who / have / want)       # 关键技能追问证据，带 evidence + verified
-→ finalize_profile()              # 有技能无证据时会被摸排门禁拦截
+→ parse_resume(file_path)         # 可选：先解析简历素材，再逐项确认证据 + 自评三问
+→ intake(who / have / want)       # 技能带 evidence + verified + authorship + control_level，
+                                   # 整份简历自评写 have.self_assessment
+→ finalize_profile()              # 技能无证据或缺 authorship/control_level 自评会被摸排门禁拦截
 ```
 
 无目标时先 `explore_goals()`，用「能力 × 兴趣 × 真实岗位」选出方向，再 `intake(want)` 落定。
@@ -55,7 +56,8 @@ analyze_gaps() → save_gap_analysis(gap_json)
 ```
 
 `skill_gaps` 每项必须带 `source`；`resume_red_flags` 每项必须带 `signal/risk/evidence_fix`，
-否则内容质量门会拒绝保存。
+否则内容质量门会拒绝保存。技能 authorship 为 ai_assisted/ai_generated 时，
+red_flags 必须包含「AI 生成/手写」风险条目——AI 作者身份不得静默吞掉（BUG-021）。
 
 ### 3. 规划
 

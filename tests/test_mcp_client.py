@@ -84,7 +84,7 @@ async def _run_mcp_server(data_dir: Path):
 
             result = await session.call_tool("intake", {
                 "section": "have",
-                "data": '{"core_skills": [{"skill": "React", "evidence": "3年项目实战，用户已确认", "user_verified": true}], "experience": "3年"}'
+                "data": '{"core_skills": [{"skill": "React", "evidence": "3年项目实战，用户已确认", "user_verified": true, "authorship": "ai_assisted", "control_level": 7}], "experience": "3年", "self_assessment": {"resume_trust": "medium", "notes": "React 为 AI 生成+人工验证迭代"}}'
             })
             have_result = result.content[0].text
             print(f"[OK] intake have: {have_result}")

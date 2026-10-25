@@ -175,8 +175,10 @@ class CareerProfile(BaseModel):
     section_updated_at: dict[str, str] = Field(default_factory=dict, description="各 section 最近一次写入时间")
     plan_saved_at: str = ""  # save_roadmap 每次覆盖
 
-    # 摸排门禁（BUG-001 硬性要求）：have 有技能但无用户确认证据时 finalize 不放行，
-    # 唯一跳过方式是用户明确提出（finalize_profile(skip_probing=True)），标记留痕
+    # 摸排门禁（BUG-001 + BUG-021 硬性要求）：have 有技能但无用户确认证据
+    # （user_verified），或缺 authorship/control_level/self_assessment 自评时
+    # finalize 不放行；唯一跳过方式是用户明确提出（finalize_profile(skip_probing=True)），
+    # 标记留痕。authorship 四档：self_written / ai_assisted / ai_generated / referenced
     probe_skipped: bool = False
 
     summary: str = ""

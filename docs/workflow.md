@@ -14,7 +14,7 @@
 
 ## 阶段 1：建档
 
-**目标**：建立档案，摸清真实水平（简历有美化成分）。
+**目标**：建立档案，摸清真实水平（简历有美化成分，包括 AI 写的代码——作者身份要说清）。
 
 **前置条件**：无。
 
@@ -22,15 +22,23 @@
 
 ```
 1. start_session()
-2. parse_resume(file_path)   # 可选：解析简历素材，技能仍需逐项确认
+2. parse_resume(file_path)   # 可选：解析简历素材；随后「求证 + 自评三问」同轮完成
 3. intake(who)      # 姓名、教育、当前状态；缺毕业年份时补 graduation_year
-4. intake(have)     # 技能、经历、资源；关键技能追问 evidence + verified
+4. intake(have)     # 技能、经历、资源；每条技能带 evidence + verified + authorship
+                    # （self_written/ai_assisted/ai_generated/referenced）
+                    # + control_level（0-10：3=讲架构，6=逐行讲清，8+=手写），
+                    # 整份自评写 have.self_assessment（resume_trust + notes）
 5. 确定目标：
    - 有明确目标 → intake(want)
    - 方向模糊 → explore_goals() → 对话选定 → intake(want)
    - 有 JD 文件 → import_jd_file() / import_jd()
 6. finalize_profile()
 ```
+
+> 摸排硬门禁（BUG-001/BUG-021）：技能无用户确认证据，或缺 authorship/control_level/
+> self_assessment 自评时，finalize 与 analyze_gaps 都会拒绝放行；
+> authorship/control_level 必须来自用户本人回答，AI 不得代填；
+> 唯一跳过方式是用户明确要求时 `finalize_profile(skip_probing=True)`（留痕）。
 
 **输出**：
 

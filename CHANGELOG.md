@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **摸排盲区修复（BUG-021）**：真实运行测试发现，简历重度美化（代码全部 AI 生成）时
+  摸排全关通过、match_score 虚高——AI 作者身份与把控度不建模，分析就会美化技能画像
+  - 技能摸排升级为「求证 + 自评三问」：简历哪几条面试现场站得住（诚实回答）；
+    每条技能标 `authorship`（self_written / ai_assisted / ai_generated / referenced）；
+    把控度自评 `control_level` 0-10（3=讲架构，6=逐行讲清，8+=手写）；
+    整份简历自评写 `have.self_assessment`——`authorship`/`control_level` 必须来自用户本人，AI 不得代填
+  - `finalize_profile` 与 `analyze_gaps` 双保险硬门禁：缺自评即阻塞（`skip_probing=True` 仍是唯一用户主动旁路，留痕不变）
+  - 内容质量门轻量扩展：存在 AI 作者身份技能时，`resume_red_flags` 必须含
+    「AI 生成/手写」风险条目——不得静默吞掉；分析指令同步校准
+    match_score 口径（按把控度打折、不贬损 AI-native 生产落地价值）、必加手写差距与分层面试准备
+  - 话术纪律以 `src/tools/probing.py` 单一事实源下发：parse_resume / finalize 门禁 /
+    session 手册 / 命令剧本 / sop 方法论（新增防漂移测试锁定）
+
 ## 0.1.0 - 2026-10-25
 
 首个公开版本。

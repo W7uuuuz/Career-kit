@@ -237,6 +237,7 @@ def test_finalize_profile_probes_when_no_evidence(temp_profile):
     assert out.get("isError") is True
     assert out["code"] == "PROBING_REQUIRED"
     assert "user_verified" in out["message"]
+    assert "authorship" in out["message"], "BUG-021：阻塞文案应含作者身份自评指引"
 
     # BUG-001 收紧：confidence 自标不算证据，仍需 user_verified，仍阻塞
     intake("have", '{"skill_evidence": [{"skill": "Python", "evidence": "爬虫项目", "confidence": "high"}]}')
@@ -244,8 +245,13 @@ def test_finalize_profile_probes_when_no_evidence(temp_profile):
     assert out2.get("isError") is True and out2["code"] == "PROBING_REQUIRED", \
         "confidence 自标不应豁免摸排"
 
-    # 用户确认过的证据（user_verified=true）才放行
-    intake("have", '{"core_skills": [{"skill": "Python", "evidence": "爬虫项目", "user_verified": true}]}')
+    # 用户确认过的证据（user_verified=true）+ 自评三件套（BUG-021）才放行
+    intake(
+        "have",
+        '{"core_skills": [{"skill": "Python", "evidence": "爬虫项目", "user_verified": true, '
+        '"authorship": "self_written", "control_level": 5}], '
+        '"self_assessment": {"resume_trust": "high", "notes": "均手写"}}',
+    )
     out3 = finalize_profile()
     assert "档案已确认" in out3
 
@@ -285,6 +291,116 @@ def test_analyze_gaps_blocked_without_probing(temp_profile):
     finalize_profile(skip_probing=True)
     out2 = analyze_gaps()
     assert "methodologies" in out2, "跳过摸排后应能分析"
+
+
+def test_finalize_blocks_missing_authorship(temp_profile):
+    """BUG-021 回归：证据齐全但缺 authorship/control_level/self_assessment 时阻塞。"""
+    from src.server import finalize_profile, intake
+
+    intake("who", '{"name": "张三"}')
+    intake("want", '{"target_role": "AI 工程师"}')
+    intake(
+        "have",
+        '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true}]}',
+    )
+
+    out = json.loads(finalize_profile())
+    assert out.get("isError") is True and out["code"] == "PROBING_REQUIRED"
+    assert "authorship" in out["message"]
+    assert "AI" in out["message"], "阻塞文案应说明 AI 生成/验证形态需要用户自评"
+
+    # 补齐自评三件套后放行
+    intake(
+        "have",
+        '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
+        '"authorship": "ai_assisted", "control_level": 6}], '
+        '"self_assessment": {"resume_trust": "medium", "notes": "LangGraph 为 AI 生成+人工验证"}}',
+    )
+    out2 = finalize_profile()
+    assert "档案已确认" in out2
+    assert profile_module.load_profile().probe_skipped is False
+
+
+def test_finalize_authorship_skip_path_keeps_trace(temp_profile):
+    """BUG-021：自评缺失时 skip_probing 是唯一旁路，且必须留痕。"""
+    from src.server import finalize_profile, intake
+
+    intake("who", '{"name": "张三"}')
+    intake("have", '{"skills": ["Python"], "evidence": "多年实战（用户口头确认）"}')
+
+    # 不带 skip → 阻塞（证据有了但整体自评缺失）
+    out = json.loads(finalize_profile())
+    assert out.get("isError") is True and out["code"] == "PROBING_REQUIRED"
+    assert "self_assessment" in out["message"]
+
+    # 用户明确要求跳过 → 放行 + 留痕
+    out2 = finalize_profile(skip_probing=True)
+    assert "档案已确认" in out2
+    assert "已按用户要求跳过技能摸排" in out2
+    assert profile_module.load_profile().probe_skipped is True
+
+
+def test_analyze_gaps_blocks_late_skill_without_authorship(temp_profile):
+    """BUG-021 双保险：finalize 后又录入缺自评的技能，analyze_gaps 拦截。"""
+    from src.server import analyze_gaps, finalize_profile, intake
+
+    intake("who", '{"name": "张三"}')
+    intake("want", '{"target_role": "AI 工程师"}')
+    intake(
+        "have",
+        '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
+        '"authorship": "ai_assisted", "control_level": 6}], '
+        '"self_assessment": {"resume_trust": "medium", "notes": "AI 生成+验证"}}',
+    )
+    assert "档案已确认" in finalize_profile()
+
+    # finalize 后又录了一个技能但没带自评（列表替换语义）
+    intake("have", '{"core_skills": ["Docker"]}')
+    out = json.loads(analyze_gaps())
+    assert out.get("isError") is True and out["code"] == "PROBING_REQUIRED"
+    assert "authorship" in out["message"]
+
+    # 补齐后放行（core_skills 整体替换：两个技能都带自评）
+    intake(
+        "have",
+        '{"core_skills": ['
+        '{"skill": "Docker", "evidence": "部署实践", "user_verified": true, '
+        '"authorship": "self_written", "control_level": 5}, '
+        '{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
+        '"authorship": "ai_assisted", "control_level": 6}]}',
+    )
+    out2 = analyze_gaps()
+    assert "methodologies" in out2
+
+
+def test_save_gap_ai_authorship_requires_red_flag(temp_profile):
+    """BUG-021 质量门：AI 作者身份技能保存差距分析时必须有「AI 生成/手写」red flag。"""
+    from src.server import intake, save_gap_analysis
+
+    intake(
+        "have",
+        '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
+        '"authorship": "ai_generated", "control_level": 6}], '
+        '"self_assessment": {"resume_trust": "medium", "notes": "AI 生成"}}',
+    )
+
+    bad = {
+        "match_score": 70,
+        "skill_gaps": [{"skill": "手写实现", "priority": "high", "source": "用户自评"}],
+    }
+    out = json.loads(save_gap_analysis(gap_json=json.dumps(bad, ensure_ascii=False)))
+    assert out.get("isError") is True and out["code"] == "INCOMPLETE_ANALYSIS"
+    assert "AI" in out["message"], "质量门应指出 AI 作者身份风险未显式暴露"
+
+    good = dict(bad)
+    good["resume_red_flags"] = [{
+        "signal": "代码主要由 AI 生成，人工只做验证迭代",
+        "risk": "面试被要求手写/逐行讲解时暴露",
+        "evidence_fix": "补手写小项目与 PR 记录",
+    }]
+    out2 = json.loads(save_gap_analysis(gap_json=json.dumps(good, ensure_ascii=False)))
+    assert out2.get("isError") is not True, out2
+    assert "差距分析已保存" in out2.get("message", "")
 
 
 def test_get_next_tasks_shows_full_overview(temp_profile):
@@ -769,6 +885,9 @@ def test_parse_resume_requires_verification(tmp_path, temp_profile):
     assert "简历有美化成分" in out
     assert "逐项向用户求证" in out or "求证" in out
     assert "user_verified" in out or "verified" in out
+    assert "authorship" in out and "control_level" in out, \
+        "BUG-021：应引导 per-skill 作者身份与把控度自评"
+    assert "self_assessment" in out, "BUG-021：应引导整份简历自评"
     assert "不得照抄简历" in out
 
 
