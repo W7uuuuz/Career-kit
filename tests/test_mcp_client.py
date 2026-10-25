@@ -1,8 +1,13 @@
-"""MCP 客户端测试——通过 stdio 协议真实调用 MCP 服务器。"""
+"""MCP 客户端测试——通过 stdio 协议真实调用 MCP 服务器。
+
+数据目录必须隔离到沙箱：本测试会 start_session/intake/finalize 写档案，
+曾经直接写进用户真实 ~/.career-kit（回归教训）。
+"""
 
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -14,17 +19,21 @@ from mcp.client.stdio import stdio_client
 PYTHON_EXE = sys.executable
 
 
-async def _run_mcp_server():
+async def _run_mcp_server(data_dir: Path):
     """连接 MCP 服务器并测试所有工具（异步主体）。"""
     print("=" * 60)
     print("MCP 客户端测试")
     print("=" * 60)
 
-    # 配置服务器启动参数
+    # 配置服务器启动参数：数据目录隔离到沙箱，绝不写真实 ~/.career-kit
+    env = dict(os.environ)
+    env["CAREER_KIT_DATA_DIR"] = str(data_dir)
+    env["PYTHONIOENCODING"] = "utf-8"
     server_params = StdioServerParameters(
         command=PYTHON_EXE,
         args=["-m", "src.server"],
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
 
     print("\n[1] 启动 MCP 服务器...")
@@ -50,10 +59,12 @@ async def _run_mcp_server():
 
             # 测试 parse_resume（用测试文件）
             print("\n[4] 测试 parse_resume...")
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write("Zhang San\nFrontend Developer\n3 years React experience")
-                tmp_path = f.name
+            resume_file = data_dir / "test_resume.txt"
+            resume_file.parent.mkdir(parents=True, exist_ok=True)
+            resume_file.write_text(
+                "Zhang San\nFrontend Developer\n3 years React experience", encoding="utf-8"
+            )
+            tmp_path = str(resume_file)
 
             result = await session.call_tool("parse_resume", {"file_path": tmp_path})
             resume_text = result.content[0].text
@@ -96,10 +107,12 @@ async def _run_mcp_server():
     print("=" * 60)
 
 
-def test_mcp_server():
-    """同步入口：pytest 无需 asyncio 插件即可运行。"""
-    assert asyncio.run(_run_mcp_server()) is None
+def test_mcp_server(tmp_path):
+    """同步入口：pytest 无需 asyncio 插件即可运行；数据目录隔离到沙箱。"""
+    assert asyncio.run(_run_mcp_server(tmp_path / "data")) is None
 
 
 if __name__ == "__main__":
-    asyncio.run(_run_mcp_server())
+    import tempfile
+
+    asyncio.run(_run_mcp_server(Path(tempfile.mkdtemp(prefix="ck_mcp_client_"))))

@@ -27,7 +27,9 @@
 9. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks()
 10. get_next_tasks()
 11. checkin_task(...)                         # 完成即沉淀能力证据
-12. export_dashboard()                        # 生成阶段进度仪表盘
+12. record_application(company, role)          # 投递/过筛/面试/offer 全程登记（求职漏斗）
+13. get_weekly_review(days=7)                  # 周检视：打卡 + 阶段 + 漏斗事实复盘
+14. export_dashboard()                        # 生成阶段进度仪表盘
 ```
 
 ## 核心原则
