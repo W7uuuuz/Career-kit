@@ -90,11 +90,13 @@ jobs:
       - name: pip check
         run: pip check
       - name: Doctor from non-repo cwd
+        # 显式 bash：Windows 默认 shell 是 pwsh，bash 语法会 ParserError
+        shell: bash
         env:
           CAREER_KIT_DATA_DIR: ${{ runner.temp }}/career-kit-doctor
           PYTHONIOENCODING: utf-8
         working-directory: ${{ runner.temp }}
         run: |
-          python -m src.doctor > doctor_output.txt || cat doctor_output.txt
-          grep "34 个工具" doctor_output.txt || (cat doctor_output.txt && exit 1)
-          if grep -q "\[FAIL\]" doctor_output.txt; then cat doctor_output.txt && exit 1; fi
+          python -X utf8 -m src.doctor > doctor_output.txt || cat doctor_output.txt
+          grep -q "34 个工具" doctor_output.txt || (cat doctor_output.txt && exit 1)
+          if grep -q "\[FAIL\]" doctor_output.txt; then cat doctor_output.txt; exit 1; fi
