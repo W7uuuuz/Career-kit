@@ -150,3 +150,43 @@ def test_roadmap_map_js_escapes_interpolation(tmp_path, monkeypatch):
     assert "esc(ph.name)" in html        # 阶段名拼接走转义
     assert "esc(ph.jd_text" in html      # JD 文本拼接走转义
 
+
+def test_progress_html_renders_funnel_and_weekly_cards(tmp_path, monkeypatch):
+    """进度仪表盘：求职漏斗与近 7 天卡片渲染，公司名必须转义。"""
+    import src.tools.profile as profile_module
+    from src.server import export_dashboard, intake, record_application
+
+    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
+
+    intake("who", '{"name":"漏斗"}')
+    record_application(
+        company="字节<script>alert(1)</script>", role="Agent 实习"
+    )
+    record_application(
+        company="字节<script>alert(1)</script>", role="Agent 实习",
+        status="interview", application_id="app_001",
+    )
+
+    out = export_dashboard()
+    html = Path(Path(out.split("：")[1].split("\n")[0].strip())).read_text(encoding="utf-8")
+
+    assert "求职漏斗" in html
+    assert "近 7 天" in html
+    assert "<script>alert(1)</script>" not in html     # 公司名必须转义
+    assert "字节&lt;script&gt;" in html
+    assert "面试" in html
+
+
+def test_funnel_card_escapes_application_fields(tmp_path, monkeypatch):
+    """漏斗卡片中的投递列表逐字段走 html.escape。"""
+    from src.models import Application, CareerProfile
+    from src.tools.dashboard import _funnel_card_html
+
+    profile = CareerProfile()
+    profile.applications.append(Application(
+        id="app_001", company=" Evil<",
+        events=[{"status": "applied", "at": "2026-10-20T10:00:00"}],
+    ))
+    html = _funnel_card_html(profile)
+    assert "Evil&lt;" in html and " Evil<" not in html
+

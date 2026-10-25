@@ -114,6 +114,28 @@ class FlowDriver:
             )
         ).assert_ok()
 
+    async def record_application(
+        self,
+        company: str,
+        role: str = "",
+        *,
+        status: str = "",
+        application_id: str = "",
+        channel: str = "",
+        note: str = "",
+    ) -> ToolResult:
+        args = {"company": company}
+        for key, value in (("role", role), ("status", status), ("application_id", application_id),
+                           ("channel", channel), ("note", note)):
+            if value:
+                args[key] = value
+        return (
+            await self.mcp.call("record_application", args)
+        ).assert_ok()
+
+    async def weekly_review(self, days: int = 7) -> ToolResult:
+        return (await self.mcp.call("get_weekly_review", {"days": days})).assert_ok()
+
     async def progress(self) -> ToolResult:
         return (await self.mcp.call("get_progress")).assert_ok()
 

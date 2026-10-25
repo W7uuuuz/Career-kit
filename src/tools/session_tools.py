@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 from ..mcp_app import mcp
@@ -260,21 +259,14 @@ def import_jd(jd_text: str) -> str:
         )
 
     try:
-        jd_data = json.loads(jd_text)
-    except json.JSONDecodeError as exc:
+        jd_data = _parse_json_param(jd_text, "JD")
+    except InvalidJsonError as exc:
         return error_response(
             "INVALID_JSON",
             "JD 不是合法 JSON。请提供结构化 JD："
             '{"company":..., "role":..., "requirements":[...]}（至少含其中一项）；'
             "或将 JD 文件交给 import_jd_file 解析。",
-            {"raw": jd_text[:200], "parse_error": str(exc)},
-        )
-
-    if not isinstance(jd_data, dict):
-        return error_response(
-            "INVALID_JSON",
-            f"JD JSON 必须是对象（dict），收到的是 {type(jd_data).__name__}。",
-            {"received": jd_text[:200]},
+            {"raw": str(jd_text)[:200], "parse_error": exc.message},
         )
 
     # 最小校验（BUG-010）：缺岗位业务字段的 JD 拒绝导入，防示例/垃圾污染 target_jd

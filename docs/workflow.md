@@ -7,7 +7,7 @@
 ## 工作流总览
 
 ```
-建档 → 分析 → 规划 → 任务执行 → 打卡 → 阶段审计/事件洞察 → 循环
+建档 → 分析 → 规划 → 任务执行 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
 ```
 
 ---
@@ -131,17 +131,29 @@
 - `profile.plan.current_detail`：当前阶段详细路线
 - `profile.have.capability_evidence`：完成任务自动沉淀
 
+**投递记录（求职漏斗）**：
+
+```
+record_application(company, role, status, ...)   # 新建/更新投递记录
+```
+
+- 用户口述「投了 X 公司」→ 新建；「进面试了/挂了/拿 offer」→ 传 `application_id` 更新状态
+- 同公司+同岗位的活跃记录不重复新建（返回现有 `application_id`）
+- 转化率按**事件历史**统计：面试后被拒仍计入面试数；样本 <5 时转化率降级为参考
+- 进面试/拿 offer 是重大事件：按返回值提示触发 `trigger_insight(event)`
+
 **关键规则**：
 
 - `checkin_mode`：`once`（默认）/ `daily`（`amount` 累加天数）/
   `percent`（`amount` 累加完成比例）
 - 完成得轻松时可在对话中建议加深，但不自动繁殖任务
+- 只记录用户口述的投递事实；不编造、不代用户"估计"状态
 
 ---
 
-## 阶段 5：洞察调整
+## 阶段 5：洞察调整与周检视
 
-**目标**：阶段完成后审计，用户报告事件时重估计划。
+**目标**：阶段完成后审计，用户报告事件时重估计划，定期周检视复盘。
 
 **前置条件**：`profile.tasks` 已生成。
 
@@ -150,19 +162,27 @@
 ```
 1. trigger_insight(trigger_type="stage_audit" | "event", event_description)
 2. apply_insight(insight_json)
+3. get_weekly_review(days=7)          # 周期事实复盘（打卡/阶段/漏斗）
 ```
 
 **输出**：
 
 - `profile.adjustments`：调整记录
 - `profile.audited_phases`：已审计阶段（每阶段只审计一次）
+- 周检视为 Markdown，可在对话中直接交付或存档；调用后记录 `last_review_at`
 
 | 类型 | 触发时机 | 示例 |
 |------|----------|------|
 | `stage_audit` | 完成阶段后 | 完成实习后评估含金量 |
-| `event` | 用户报告事件 | 拿到大厂面试 |
+| `event` | 用户报告事件 | 拿到大厂面试 / 拿到 offer（可由 record_application 软提示联动） |
+| `get_weekly_review` | 定期或久未打卡时 | get_workflow_status 在距上次打卡/上次检视 ≥7 天时提示 |
 
 > 「主动检查 / 超期压缩」已移除——产品不为任务设定时限。
+> 周检视只陈述事实（如「距上次打卡 N 天」），不判定超期、不催促。
+
+**洞察输入的漏斗归因**：`trigger_insight` 的 prompt 内含求职漏斗事实——
+过筛率低（样本足够）归因简历、面试转化低归因面试准备、零投递归因执行；
+漏斗样本 <5 时不下转化结论。
 
 ---
 
@@ -184,9 +204,10 @@
 
 | 工具 | 产出 |
 |------|------|
-| `get_progress` | 整体进度 |
-| `get_workflow_status` | 当前阶段 + 下一步 + 目标变更检测 |
-| `export_dashboard("progress")` | 自包含进度仪表盘 |
+| `get_progress` | 整体进度（含求职漏斗与投递清单） |
+| `get_workflow_status` | 当前阶段 + 下一步 + 目标变更检测 + 周检视提示 |
+| `get_weekly_review` | 周检视 Markdown（打卡/阶段/漏斗 + 规则化建议） |
+| `export_dashboard("progress")` | 自包含进度仪表盘（含近 7 天与漏斗卡片） |
 | `export_dashboard("roadmap")` | 可交互职业地图 |
 
 日程表不存储：用户需要时，LLM 在对话中直接写 markdown/HTML，时间由用户自己填。

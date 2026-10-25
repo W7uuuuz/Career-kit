@@ -23,6 +23,22 @@ OK = "OK"
 WARN = "WARN"
 FAIL = "FAIL"
 
+# 预期工具数：与 docs/tools.md、README 保持一致
+EXPECTED_TOOL_COUNT = 34
+
+# 核心工具：缺失即判定注册损坏（比单纯计数更可诊断）
+CORE_TOOLS = (
+    "start_session",
+    "finalize_profile",
+    "analyze_gaps",
+    "save_roadmap",
+    "generate_tasks",
+    "checkin_task",
+    "record_application",
+    "get_weekly_review",
+    "export_dashboard",
+)
+
 
 @dataclass
 class Check:
@@ -74,17 +90,29 @@ def check_server() -> Check:
             "确认当前目录是 Career Kit 仓库，且已执行 pip install -e .",
         )
     try:
-        count = len(server.mcp._tool_manager.list_tools())
+        tools = server.mcp._tool_manager.list_tools()
+        count = len(tools)
+        names = {t.name for t in tools}
     except Exception as exc:
         return Check("MCP 服务", FAIL, f"无法读取工具列表：{exc}")
-    if count != 32:
+    missing = [name for name in CORE_TOOLS if name not in names]
+    if missing:
+        return Check(
+            "MCP 服务",
+            FAIL,
+            f"核心工具缺失：{', '.join(missing)}",
+            "确认代码版本与依赖一致；如刚升级，重启 Agent 会话。",
+        )
+    if count != EXPECTED_TOOL_COUNT:
         return Check(
             "MCP 服务",
             WARN,
-            f"工具数为 {count}，预期 32",
-            "确认代码版本与依赖一致；如刚升级，重启 Agent 会话。",
+            f"工具数为 {count}，预期 {EXPECTED_TOOL_COUNT}",
+            "文档（docs/tools.md）与实际注册数不一致；确认代码版本。",
         )
-    return Check("MCP 服务", OK, "32 个工具已注册")
+    return Check(
+        "MCP 服务", OK, f"{count} 个工具已注册，核心 {len(CORE_TOOLS)} 个齐全"
+    )
 
 
 def check_data_dir() -> Check:

@@ -27,6 +27,74 @@ def write_html(html: str, filename: str) -> str:
     return str(out_path)
 
 
+def _weekly_card_html(profile) -> str:
+    """「近 7 天」卡片：打卡/活跃/完成任务 + 窗口内投递增量（事实快照）。"""
+    from .review import summarize_period
+
+    facts = summarize_period(profile, days=7)
+    if facts["checkin_count"]:
+        exec_line = (
+            f"打卡 {facts['checkin_count']} 次 · 活跃 {len(facts['active_days'])} 天"
+            f" · 完成 {len(facts['completed'])} 个任务"
+            + (f" · 跳过 {len(facts['skipped'])}" if facts["skipped"] else "")
+        )
+    else:
+        days_since = facts["days_since_checkin"]
+        exec_line = (
+            f"窗口内无打卡（最近一次打卡在 {days_since} 天前）"
+            if days_since is not None
+            else "窗口内无打卡（尚无打卡记录）"
+        )
+    d = facts["funnel_delta"]
+    funnel_line = (
+        f"新投递 {d['new_applications']} · 进初筛 {d['screened']}"
+        f" · 进面试 {d['interviewed']} · offer {d['offers']} · 拒信 {d['rejected']}"
+        if facts["funnel_now"]["total"]
+        else "投递：暂无记录"
+    )
+    return (
+        f"<p><b>{escape(exec_line)}</b></p>"
+        f"<p class='goal'>{escape(funnel_line)}</p>"
+        "<p class='meta'>近 7 天为事实快照，不是考核——完整复盘用 get_weekly_review。</p>"
+    )
+
+
+def _funnel_card_html(profile) -> str:
+    """「求职漏斗」卡片：事件口径的转化事实。"""
+    from .application_tracker import funnel_stats
+
+    stats = funnel_stats(profile)
+    if not stats["total"]:
+        return (
+            "<p class='goal'>暂无投递记录——用户口述「投了」后用 record_application 登记事实。</p>"
+        )
+    rates = stats["rates"]
+
+    def _pct(rate) -> str:
+        return f"{int(rate * 100)}%" if isinstance(rate, (int, float)) else "-"
+
+    line1 = (
+        f"<p><b>投递 {stats['total']} → 过筛 {stats['screened']}（{_pct(rates['screen'])}）"
+        f" → 面试 {stats['interviewed']}（{_pct(rates['interview'])}）"
+        f" → offer {stats['offers']}（{_pct(rates['offer'])}）</b>"
+        + ("" if stats["sample_sufficient"] else " <span class='meta'>（样本不足，仅供参考）</span>")
+        + "</p>"
+    )
+    line2 = f"<p class='goal'>当前活跃 {stats['active']} · 已拒绝 {stats['rejected']} · 转化按事件历史统计（面试后被拒仍计入面试数）</p>"
+    items = []
+    _STATUS_LABELS = {
+        "applied": "已投递", "screening": "进初筛", "interview": "进面试",
+        "offer": "offer", "rejected": "已拒绝", "withdrawn": "已撤回",
+    }
+    for a in reversed(profile.applications[-5:]):
+        label = _STATUS_LABELS.get(a.status, a.status)
+        role = f" · {escape(a.role)}" if a.role else ""
+        items.append(f"<li>{escape(a.company)}{role} <small>{label}</small></li>")
+    if items:
+        line2 += f"<ul class='apps-list'>{''.join(items)}</ul>"
+    return line1 + line2
+
+
 def render_progress_html(profile) -> str:
     """渲染进度仪表盘 HTML（mode="progress"）。"""
     total_tasks = len(profile.tasks)
@@ -79,6 +147,9 @@ def render_progress_html(profile) -> str:
     ) or "<li>暂无调整记录</li>"
     adjustments_html = f"<ul>{adj_items}</ul>"
 
+    weekly_html = _weekly_card_html(profile)
+    funnel_html = _funnel_card_html(profile)
+
     overall_pct = int(completed / total_tasks * 100) if total_tasks else 0
 
     html = f"""<!DOCTYPE html>
@@ -114,6 +185,10 @@ ul {{ padding-left: 20px; }} li {{ margin: 4px 0; font-size: 14px; }}
 {phases_html or '<p>尚未生成路线图。</p>'}</div>
 
 <div class="card"><h2>接下来做</h2>{current_html}</div>
+
+<div class="card"><h2>近 7 天</h2>{weekly_html}</div>
+
+<div class="card"><h2>求职漏斗</h2>{funnel_html}</div>
 
 <div class="card"><h2>能力证据（来自打卡沉淀）</h2>{evidence_html}</div>
 

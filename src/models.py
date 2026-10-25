@@ -75,6 +75,46 @@ class CheckIn(BaseModel):
     amount: float = 0  # 本次打卡量（daily: 1 天；percent: 本次完成比例）
 
 
+class ApplicationStatus(str):
+    """投递状态。状态流转进 events 历史，当前 status 只是最新快照。"""
+    APPLIED = "applied"        # 已投递
+    SCREENING = "screening"    # 笔试/初筛
+    INTERVIEW = "interview"    # 面试中
+    OFFER = "offer"            # 已获 offer
+    REJECTED = "rejected"      # 已拒绝
+    WITHDRAWN = "withdrawn"    # 已撤回
+
+
+class ApplicationEvent(BaseModel):
+    """投递状态事件——漏斗转化率依据事件历史而非当前状态。"""
+    status: str
+    at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    note: str = ""
+
+
+class Application(BaseModel):
+    """单次求职投递记录。id 由 application_tracker 分配（app_NNN）。"""
+    id: str
+    company: str
+    role: str = ""
+    channel: str = ""  # boss | 官网 | 内推 | 其他
+    status: str = ApplicationStatus.APPLIED
+    applied_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    source: str = ""  # JD 来源：URL / 文件名
+    notes: str = ""
+    events: list[dict[str, Any]] = Field(default_factory=list)
+
+    def transition(self, status: str, note: str = "") -> None:
+        """更新状态：写最新快照、追加事件、刷新 updated_at。"""
+        self.status = status
+        self.updated_at = datetime.now().isoformat()
+        event = {"status": status, "at": self.updated_at}
+        if note:
+            event["note"] = note
+        self.events.append(event)
+
+
 class Adjustment(BaseModel):
     """调整记录。"""
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
@@ -120,6 +160,10 @@ class CareerProfile(BaseModel):
     tasks: list[Task] = Field(default_factory=list, description="任务列表")
     checkins: list[CheckIn] = Field(default_factory=list, description="打卡记录")
     adjustments: list[Adjustment] = Field(default_factory=list, description="调整历史")
+
+    # Phase 5: 求职漏斗——投递记录与转化事实（事件驱动）
+    applications: list[Application] = Field(default_factory=list, description="投递记录列表")
+    last_review_at: str = ""  # 最近一次生成周检视的时间
 
     plan_history: list[PlanVersion] = Field(default_factory=list, description="计划版本历史")
     journey: list[JourneyEntry] = Field(default_factory=list, description="学习轨迹——记录每次交互的知识和产出")
@@ -190,4 +234,16 @@ class CareerProfile(BaseModel):
     def add_adjustment(self, adjustment: Adjustment) -> None:
         """添加调整记录。"""
         self.adjustments.append(adjustment)
+        self.touch()
+
+    def get_application(self, application_id: str) -> Application | None:
+        """获取指定 ID 的投递记录。"""
+        for app in self.applications:
+            if app.id == application_id:
+                return app
+        return None
+
+    def add_application(self, application: Application) -> None:
+        """添加投递记录。"""
+        self.applications.append(application)
         self.touch()

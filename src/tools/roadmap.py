@@ -10,9 +10,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .tool_helpers import _json_candidates
+
 
 def parse_roadmap(llm_response: str) -> dict[str, Any]:
     """解析 LLM 输出为结构化路线图。
+
+    解析策略链（原文 → markdown 围栏 → 首个平衡对象）由 tool_helpers 提供；
+    全部失败时降级为 raw_roadmap，不抛异常、不产生半成品。
 
     Args:
         llm_response: LLM 的原始输出
@@ -20,21 +25,17 @@ def parse_roadmap(llm_response: str) -> dict[str, Any]:
     Returns:
         结构化的路线图 dict，可直接写入 profile.plan
     """
-    json_str = llm_response
+    result: dict[str, Any] | None = None
+    for candidate in _json_candidates(llm_response):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            result = parsed
+            break
 
-    # 兼容 markdown code block 包裹
-    if "```json" in llm_response:
-        start = llm_response.index("```json") + 7
-        end = llm_response.index("```", start)
-        json_str = llm_response[start:end].strip()
-    elif "```" in llm_response:
-        start = llm_response.index("```") + 3
-        end = llm_response.index("```", start)
-        json_str = llm_response[start:end].strip()
-
-    try:
-        result = json.loads(json_str)
-    except json.JSONDecodeError:
+    if result is None:
         return {
             "raw_roadmap": llm_response,
             "roadmap": {

@@ -25,8 +25,8 @@ JD_FILE = Path(__file__).resolve().parents[1] / "fixtures" / "jds" / "agent_jd.m
 
 async def test_new_user_full_flow_quality(sandbox, quality):
     async with flow(sandbox) as (mcp, driver):
-        assert len(mcp.tools) == 32
         assert {"start_session", "fetch_company_jobs", "export_dashboard"} <= mcp.tool_names()
+        assert {"record_application", "get_weekly_review"} <= mcp.tool_names()
 
         await driver.begin()
         await driver.intake("who", WHO)
@@ -57,6 +57,22 @@ async def test_new_user_full_flow_quality(sandbox, quality):
         once_id = driver.task_id_by_name("实现工具调用 Agent")
         await driver.checkin(daily_id, amount=1, notes="E2E 每日推进")
         await driver.checkin(once_id, notes="E2E 完成 demo")
+
+        # 求职漏斗：记录投递 → 推进面试 → 周检视
+        await driver.record_application("字节跳动", "Agent 工程师", note="E2E 登记投递")
+        funnel_step = await driver.record_application(
+            "字节跳动", "Agent 工程师", status="interview", application_id="app_001",
+            note="E2E 推进面试",
+        )
+        funnel_step.assert_contains("trigger_insight")
+        dup = await mcp.call(
+            "record_application",
+            {"company": "字节跳动", "role": "Agent 工程师"},
+        )
+        assert dup.ok is False and "DUPLICATE_APPLICATION" in dup.text, dup.text
+        weekly = await driver.weekly_review()
+        weekly.assert_contains("周检视")
+        assert sandbox.profile_json()["applications"], "投递记录未落盘"
 
         insight_prompt = await driver.trigger_insight("stage_audit")
         apply_insight = await driver.apply_insight(INSIGHT)

@@ -18,6 +18,7 @@ from ..models import (
     Task,
     TaskStatus,
 )
+from .application_tracker import _funnel_line, funnel_stats
 from .task_manager import next_task_id
 
 VALID_TRIGGER_TYPES = ("stage_audit", "event")
@@ -62,6 +63,11 @@ def build_insight_prompt(
         indent=2,
     ) if recent_checkins else "（无打卡记录）"
 
+    # 求职漏斗（事实数据，事件口径）：用于归因分析
+    funnel_text = (
+        _funnel_line(funnel_stats(profile)) if profile.applications else "（暂无投递记录）"
+    )
+
     # 触发上下文
     if trigger_type == "stage_audit":
         trigger_context = "用户刚完成了当前阶段的任务，请审计该阶段成果，评估是否需要调整后续计划。"
@@ -81,6 +87,9 @@ def build_insight_prompt(
 
 ## 近期打卡
 {checkin_text}
+
+## 求职漏斗（fact，事件口径）
+{funnel_text}
 
 ## 能力证据
 {json.dumps(profile.have.get('capability_evidence', []), ensure_ascii=False)}
@@ -121,8 +130,13 @@ def build_insight_prompt(
    - 调整的是未来计划而非已执行部分——已执行的只记录事实与偏差，不评判
 3. 如果某类任务反复跳过，建议调整内容或顺序
 4. 结合能力证据评估真实水平是否匹配目标
-5. 如果用户报告事件，评估目标是否需要调整
-6. 给出鼓励或建议"""
+5. 结合求职漏斗归因（仅当投栽数据存在时考虑）：
+   - 过筛率低（投得多、进初筛/面试少）→ 瓶颈在简历，建议复盘简历与投递策略
+   - 面试转化低（过筛多、offer 少）→ 瓶颈在面试，建议用 gap.interview_preparation 专项准备
+   - 投递数为 0 → 瓶颈在投递动作本身，建议明确一个最小投递目标（数量由用户自定）
+6. 漏斗样本不足（投递 < 5）时不下转化率结论，只提示继续积累事实
+7. 如果用户报告事件，评估目标是否需要调整
+8. 给出鼓励或建议"""
 
 
 def apply_adjustment(

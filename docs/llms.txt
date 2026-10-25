@@ -29,7 +29,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 ## 工作流
 
 ```
-建档 → 差距分析 → 路线图 → 阶段任务 → 打卡 → 阶段审计/事件洞察 → 循环
+建档 → 差距分析 → 路线图 → 阶段任务 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
 ```
 
 ### 1. 建档
@@ -79,27 +79,37 @@ generate_tasks()
 → generate_tasks()                   # 合并打卡点
 → get_next_tasks()
 → checkin_task(task_id, status, notes, amount)
+→ record_application(company, role, status, ...)   # 用户口述投递/面试/offer 事实时
 ```
 
 完成任务会自动沉淀能力证据到 `have.capability_evidence`。
 
-### 5. 洞察
+投递纪律：只记录用户口述的真实事实，禁止编造或代替用户"估计"状态；
+同公司+同岗位的活跃记录会拒重复，更新需传返回的 `application_id`；
+进面试/拿 offer 属重大事件，按返回提示触发 `trigger_insight(event)`。
+
+### 5. 洞察与周检视
 
 ```
 trigger_insight(trigger_type="stage_audit" | "event", event_description)
 → apply_insight(insight_json)
+get_weekly_review(days=7)            # 周期事实复盘（打卡/阶段/漏斗）
 ```
 
 - 阶段审计每阶段只触发一次（`audited_phases`）
 - 事件示例：「拿到大厂面试」→ 增加面试冲刺阶段
 - 调整类型只有 add_task / remove_task / modify_task
+- 洞察 prompt 内含求职漏斗事实：过筛率低（样本足够）归因简历、
+  面试转化低归因面试准备、零投递归因执行；样本 <5 不下结论
+- 周检视只陈列事实与规则化建议：距上次打卡 N 天是事实陈述，
+  不是超期判定；禁止催促、禁止替用户排时间
 
 ### 6. 产出与状态
 
 ```
-get_progress()
-get_workflow_status()                # 目标变更检测：want/target_jd 晚于路线图时提示重分析
-export_dashboard(mode="progress")    # 进度仪表盘
+get_progress()                       # 整体进度（含求职漏斗与投递清单）
+get_workflow_status()                # 目标变更检测 + 久未打卡时的周检视提示
+export_dashboard(mode="progress")    # 进度仪表盘（含近 7 天与漏斗卡片）
 export_dashboard(mode="roadmap")     # 可交互职业地图
 ```
 
@@ -124,6 +134,8 @@ export_dashboard(mode="roadmap")     # 可交互职业地图
 |--------|--------|
 | 我想转行 / 不知道做什么 | `start_session` → `intake` → `explore_goals` → `analyze_gaps` |
 | 这步做完了 | `get_next_tasks` → `checkin_task` |
+| 我投了 X 公司 / 进面试了 / 我挂了 / 拿到 offer | `record_application` →（面试/offer 时）`trigger_insight(event)` → `apply_insight` |
+| 给我做个周报 / 最近怎么样 | `get_weekly_review(days=7 或 30)` |
 | 我拿到面试了 | `trigger_insight(event)` → `apply_insight` |
 | 我换了目标公司 | `import_jd` / `intake(want)` → `get_workflow_status` 提示变更 → 重新分析规划 |
 | 想看看进度 / 路线 | `export_dashboard("progress")` / `export_dashboard("roadmap")` |
@@ -131,15 +143,17 @@ export_dashboard(mode="roadmap")     # 可交互职业地图
 ## 反模式
 
 1. 没抓取真实数据就做差距分析
-2. 编造 skill_gaps、薪资或 JD 细节
+2. 编造 skill_gaps、薪资、JD 细节或投递记录
 3. 输出时长字段或替用户排时间
 4. 用户没要求就自动增加任务
 5. 同一阶段重复触发 `stage_audit`
+6. 催促用户投递/打卡，或把「距上次打卡 N 天」说成超期
+7. 漏斗样本 <5 时下转化率结论
 
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：32 个工具的唯一事实源
+- [工具总览](tools.md)：34 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业库](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式

@@ -1,6 +1,6 @@
 # MCP 工具总览
 
-> 32 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
+> 34 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
 > 工作流与前置条件见 [工作流详解](workflow.md)。
 
 ## 工具总览
@@ -47,7 +47,7 @@
 | `save_roadmap` | 保存路线图（起点/层级/届别硬校验，自动生成职业地图） |
 | `import_plan` | 导入既有规划文档，对比取舍在对话中完成 |
 
-### 任务执行工具（5）
+### 任务执行与求职漏斗工具（6）
 
 | 工具 | 作用 |
 |------|------|
@@ -56,21 +56,23 @@
 | `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点） |
 | `get_next_tasks` | 返回当前阶段下一步任务（关卡式） |
 | `checkin_task` | 打卡；完成自动沉淀能力证据 |
+| `record_application` | 记录/更新投递进展（求职漏斗）；重复投递有去重保护 |
 
-### 洞察与产出工具（5）
+### 洞察与产出工具（6）
 
 | 工具 | 作用 |
 |------|------|
-| `trigger_insight` | 触发洞察（仅 `stage_audit` / `event`） |
+| `trigger_insight` | 触发洞察（仅 `stage_audit` / `event`）；prompt 内含漏斗归因事实 |
 | `apply_insight` | 应用洞察结果（add/remove/modify 任务） |
-| `get_progress` | 查看整体进度 |
-| `get_workflow_status` | 工作流状态 + 目标变更检测 |
-| `export_dashboard` | 自包含 HTML：`progress` 仪表盘 / `roadmap` 职业地图 |
+| `get_progress` | 查看整体进度（含求职漏斗与投递清单） |
+| `get_weekly_review` | 周检视：周期事实复盘（打卡/阶段/漏斗），规则化建议，不设时限 |
+| `get_workflow_status` | 工作流状态 + 目标变更检测 + 久未打卡时的周检视提示 |
+| `export_dashboard` | 自包含 HTML：`progress` 仪表盘（含近 7 天与漏斗卡片）/ `roadmap` 职业地图 |
 
 ## 工作流
 
 ```
-建档 → 分析 → 规划 → 任务执行 → 打卡 → 阶段审计/事件洞察 → 循环
+建档 → 分析 → 规划 → 任务执行 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
 ```
 
 ## 返回约定
@@ -102,5 +104,5 @@
 | 档案管理 | `src/tools/profile_tools.py`（领域层 `profile.py`） |
 | 数据获取 | `src/tools/data_tools.py`、`src/tools/knowledge_search.py`、`src/scrapers/` |
 | 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`（`import_plan` 在 `data_tools.py`） |
-| 任务执行 | `src/tools/task_tools.py`（领域层 `task_manager.py`） |
-| 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py` |
+| 任务与漏斗 | `src/tools/task_tools.py`、`src/tools/application_tools.py`（领域层 `task_manager.py`、`application_tracker.py`） |
+| 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py`（周检视领域层 `review.py`） |

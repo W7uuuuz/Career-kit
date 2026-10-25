@@ -1,0 +1,132 @@
+"""求职漏斗 MCP 工具——投递记录的写入与状态流转。"""
+
+from __future__ import annotations
+
+from ..mcp_app import mcp
+from .application_tracker import (
+    _STATUS_LABELS,
+    VALID_STATUSES,
+    add_application,
+    application_summary,
+    find_active_duplicate,
+    format_funnel_report,
+    funnel_stats,
+    update_application_status,
+)
+from .errors import error_response
+from .profile import load_profile, save_profile
+from .tool_helpers import _json
+
+
+@mcp.tool()
+def record_application(
+    company: str,
+    role: str = "",
+    status: str = "applied",
+    channel: str = "",
+    source: str = "",
+    notes: str = "",
+    application_id: str = "",
+) -> str:
+    """记录或更新求职投递进展（求职漏斗）。
+
+    何时调用：
+    - 用户报告「投了某家公司」→ 不传 application_id 新建记录
+    - 用户报告进展变动（进面试/挂了/拿 offer）→ 传 application_id 更新状态
+
+    数据纪律：
+    - 只记录用户口述的真实事实，禁止编造投递记录或代替用户"估计"状态
+    - 同公司+同岗位且有活跃（未拒绝/未撤回）记录时拒绝重复新建，
+      需更新请传返回值中的 application_id
+    - 转化率基于事件历史，「面试后被拒」仍计入面试数
+
+    Args:
+        company: 公司名称（必填）
+        role: 岗位名称
+        status: 当前状态（applied/screening/interview/offer/rejected/withdrawn）
+        channel: 投递渠道（boss/官网/内推/其他）
+        source: JD 来源（URL 或文件名，可选）
+        notes: 备注（可选，如面试反馈、拒信原因）
+        application_id: 更新目标（app_NNN）；为空时新建记录
+    """
+    if not company.strip():
+        return error_response(
+            "MISSING_DATA",
+            "company 不能为空——记录投递必须写明公司。",
+            {"field": "company"},
+        )
+    if status not in VALID_STATUSES:
+        return error_response(
+            "INVALID_SECTION",
+            f"非法状态「{status}」，必须是 {sorted(VALID_STATUSES)} 之一",
+            {"received": status, "valid": sorted(VALID_STATUSES)},
+        )
+
+    profile = load_profile()
+
+    if application_id:
+        app = profile.get_application(application_id)
+        if not app:
+            return error_response(
+                "MISSING_DATA",
+                f"投递记录 {application_id} 不存在。完整清单见 get_progress。",
+                {"application_id": application_id, "total": len(profile.applications)},
+            )
+        changed = update_application_status(profile, app, status, notes)
+        if not changed:
+            msg = f"{app.company}·{app.role or '该岗位'} 当前已是「{_STATUS_LABELS[status]}」，状态未变化。"
+        else:
+            msg = (
+                f"{app.company}·{app.role or '该岗位'} 状态已更新为「{_STATUS_LABELS[status]}」。"
+            )
+    else:
+        dup = find_active_duplicate(profile, company, role)
+        if dup:
+            return error_response(
+                "DUPLICATE_APPLICATION",
+                (
+                    f"已存在 {dup.company}·{dup.role or '同岗位'} 的活跃投递记录（{dup.id}，"
+                    f"状态 {_STATUS_LABELS.get(dup.status, dup.status)}），未重复新建。\n"
+                    f"要更新状态请传 application_id=\"{dup.id}\"；"
+                    "若确属另一次独立投递，请向用户确认后说明情况。"
+                ),
+                {"application_id": dup.id},
+            )
+        app = add_application(profile, company, role, status, channel, source, notes)
+        msg = f"已记录投递：{app.company}（{app.role or '岗位未填'}）· {_STATUS_LABELS[app.status]}"
+
+    save_profile(profile)
+
+    # 事件联动（软提示）：面试/offer 是重大事件，建议触发洞察；拒绝提示复盘
+    next_steps = ["get_progress"]
+    lines = [msg, ""]
+    if status == "interview":
+        role_label = app.role or "该岗位"
+        lines.append(
+            f"进入面试是重大事件——建议调用 trigger_insight(trigger_type='event', "
+            f"event_description='进入「{app.company}/{role_label}」面试')，评估是否需要加面试冲刺阶段。"
+        )
+        next_steps = ["trigger_insight", "get_progress"]
+    elif status == "offer":
+        role_label = app.role or "该岗位"
+        lines.append(
+            f"拿到 offer 是重大事件——建议调用 trigger_insight(trigger_type='event', "
+            f"event_description='拿到「{app.company}/{role_label}」offer')，评估目标是否需要升级。"
+        )
+        next_steps = ["trigger_insight", "get_progress"]
+    elif status == "rejected":
+        lines.append(
+            "被拒只说明单次匹配失败，不是能力判决——可在 notes 里记下原因，"
+            "多次被拒后用 get_progress 看漏斗，定位问题在简历还是面试。"
+        )
+
+    stats = funnel_stats(profile)
+    lines += [format_funnel_report(profile), ""]
+
+    return _json({
+        "message": "\n".join(lines),
+        "application": application_summary(app),
+        "next_app_id_hint": application_id or app.id,
+        "next_steps": next_steps,
+        "context": {"phase": "application_recorded", "funnel": stats},
+    })

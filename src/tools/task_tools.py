@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+from datetime import datetime
 
 from ..mcp_app import mcp
 from .dashboard import (
@@ -241,6 +241,7 @@ def get_next_tasks() -> str:
     lines.append("---")
     lines.append("下一步：完成任务后调用 checkin_task 打卡。")
     lines.append("节奏由用户掌握：快了可以加深或推进下一项，慢了随时调整顺序。")
+    lines.append("已投递的公司可用 record_application 登记，周检视会带出求职漏斗。")
 
     return "\n".join(lines)
 
@@ -426,9 +427,9 @@ def apply_insight(insight_json: str) -> str:
     profile = load_profile()
 
     try:
-        insight_result = json.loads(insight_json)
-    except json.JSONDecodeError as e:
-        return error_response("INVALID_JSON", f"洞察 JSON 解析失败：{e}", {"raw": insight_json[:200]})
+        insight_result = _parse_json_param(insight_json, "洞察分析")
+    except InvalidJsonError as exc:
+        return error_response(exc.code, exc.message, exc.details)
 
     # 应用调整
     if insight_result.get("adjustment_needed"):
@@ -458,19 +459,27 @@ def get_progress() -> str:
     何时调用：用户想查看整体进度时调用。
     返回任务统计、打卡记录、调整历史。
     """
+    from .application_tracker import (
+        format_application_list,
+        format_funnel_report,
+    )
     from .task_manager import format_progress_overview
 
     profile = load_profile()
 
-    if not profile.tasks:
+    if not profile.tasks and not profile.applications:
         return _json({
-            "message": "暂无任务。请先调用 generate_tasks 从路线图生成任务。",
+            "message": "暂无任务与投递记录。请先调用 generate_tasks 从路线图生成任务。",
             "next_steps": ["generate_tasks"],
             "context": {"phase": "no_tasks"},
         })
 
-    lines = []
-    lines.append(format_progress_overview(profile))
+    # 求职漏斗（存在投递记录时展示）
+    lines = [format_progress_overview(profile)]
+    if profile.applications:
+        lines.append(format_funnel_report(profile))
+        lines.append(format_application_list(profile, limit=10))
+        lines.append("")
 
     # 调整历史
     if profile.adjustments:
@@ -481,6 +490,81 @@ def get_progress() -> str:
 
     lines.append("下一步：继续执行用 get_next_tasks；需要分享进度用 export_dashboard。")
     return "\n".join(lines)
+
+
+@mcp.tool()
+def get_weekly_review(days: int = 7) -> str:
+    """周检视——周期性事实复盘（打卡/阶段/求职漏斗）。
+
+    何时调用：
+    - 用户想回顾一段时间表现（"给我做个周报/最近怎么样"）
+    - 用户隔了很久回来（get_workflow_status 会提示）
+    - 阶段审计前想先看事实
+
+    原则：只陈列事实与规则化建议，不设时限、不催促。
+    事件数字（如距上次打卡 N 天）是事实陈述，不是超期判定。
+
+    Args:
+        days: 回看天数（1-90，默认 7；月度复盘传 30）
+    """
+    from .review import format_weekly_review, summarize_period
+
+    if not isinstance(days, int) or days < 1 or days > 90:
+        days = min(max(int(days) if isinstance(days, (int, float)) else 7, 1), 90)
+
+    profile = load_profile()
+
+    if not profile.checkins and not profile.applications and not profile.tasks:
+        return _json({
+            "message": (
+                "档案还没有执行或投递记录——先开始第一阶段任务（get_next_tasks），"
+                "做了几步后周检视才有事实可看。"
+            ),
+            "next_steps": ["get_next_tasks"],
+            "context": {"phase": "nothing_to_review"},
+        })
+
+    profile.last_review_at = datetime.now().isoformat()
+    save_profile(profile)
+
+    facts = summarize_period(profile, days=days)
+    review = format_weekly_review(profile, facts)
+
+    follow_up = (
+        "认可就继续 get_next_tasks；想调整随时说，"
+        "或用 trigger_insight 触发一次正式审计。"
+        if facts["suggestions"]
+        else "数据都健康——继续 get_next_tasks 即可。"
+    )
+
+    return f"{review}\n\n下一步：{follow_up}"
+
+
+def _review_nudge_hint() -> str:
+    """回访提示：距上次打卡/检视较久时建议周检视（事实陈述，不催促）。"""
+    from .review import days_since_last_checkin
+
+    profile = load_profile()
+    days_since = days_since_last_checkin(profile)
+    if days_since is None:
+        return ""  # 从未打卡：还在起步阶段，不提示
+
+    last_review = profile.last_review_at
+    try:
+        review_dt = datetime.fromisoformat(last_review) if last_review else None
+    except ValueError:
+        review_dt = None
+    now = datetime.now()
+    review_stale = review_dt is None or (now - review_dt).days >= 7
+
+    if days_since >= 7 and review_stale:
+        return (
+            f"距上次打卡已 {days_since} 天（事实陈述，不设时限）。"
+            "建议调用 get_weekly_review 做一次周检视，看完事实再决定继续、调整或休息。"
+        )
+    if review_stale and days_since < 7:
+        return "距上次周检视已超过 7 天，可用 get_weekly_review 快速回顾。"
+    return ""
 
 
 @mcp.tool()
@@ -585,6 +669,10 @@ def get_workflow_status() -> str:
     if goal_change_alert:
         lines.append(goal_change_alert.rstrip())
         lines.append("")
+    review_nudge = _review_nudge_hint() if phase in ("execution", "execution_prep") else ""
+    if review_nudge:
+        lines.append(f"**回顾提示**：{review_nudge}")
+        lines.append("")
     lines.append(f"**下一步**：{next_step}")
     lines.append("")
     lines.append("### 已完成步骤")
@@ -601,6 +689,7 @@ def get_workflow_status() -> str:
     lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap → generate_tasks")
     lines.append("- 执行：generate_tasks → detail_current_phase（可选，按当前阶段细化打卡点）→ get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
+    lines.append("- 复盘：get_weekly_review 做周检视；投递/面试/offer 进展用 record_application 登记")
     lines.append("")
     lines.append("节奏原则：顺序归产品，时间归用户——不为任务设定时限。")
 

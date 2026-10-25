@@ -3,6 +3,7 @@
 from . import resources  # noqa: F401  注册 MCP Resources
 from .mcp_app import mcp
 from .tools.analysis_tools import analyze_gaps, explore_goals, save_gap_analysis
+from .tools.application_tools import record_application
 from .tools.dashboard import (
     render_progress_html as _render_progress_html,
     render_roadmap_map as _render_roadmap_map,
@@ -40,6 +41,7 @@ from .tools.task_tools import (
     generate_tasks,
     get_next_tasks,
     get_progress,
+    get_weekly_review,
     get_workflow_status,
     save_current_detail,
     trigger_insight,
