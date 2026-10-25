@@ -20,7 +20,7 @@ from .tool_helpers import _json
 
 @mcp.tool()
 def record_application(
-    company: str,
+    company: str = "",
     role: str = "",
     status: str = "applied",
     channel: str = "",
@@ -31,8 +31,8 @@ def record_application(
     """记录或更新求职投递进展（求职漏斗）。
 
     何时调用：
-    - 用户报告「投了某家公司」→ 不传 application_id 新建记录
-    - 用户报告进展变动（进面试/挂了/拿 offer）→ 传 application_id 更新状态
+    - 用户报告「投了某家公司」→ 不传 application_id 新建记录（company 必填）
+    - 用户报告进展变动（进面试/挂了/拿 offer）→ 传 application_id 更新状态（company 可省略）
 
     数据纪律：
     - 只记录用户口述的真实事实，禁止编造投递记录或代替用户"估计"状态
@@ -41,7 +41,7 @@ def record_application(
     - 转化率基于事件历史，「面试后被拒」仍计入面试数
 
     Args:
-        company: 公司名称（必填）
+        company: 公司名称（新建时必填；更新时可省略，与记录不符时以记录为准）
         role: 岗位名称
         status: 当前状态（applied/screening/interview/offer/rejected/withdrawn）
         channel: 投递渠道（boss/官网/内推/其他）
@@ -49,12 +49,6 @@ def record_application(
         notes: 备注（可选，如面试反馈、拒信原因）
         application_id: 更新目标（app_NNN）；为空时新建记录
     """
-    if not company.strip():
-        return error_response(
-            "MISSING_DATA",
-            "company 不能为空——记录投递必须写明公司。",
-            {"field": "company"},
-        )
     if status not in VALID_STATUSES:
         return error_response(
             "INVALID_SECTION",
@@ -63,6 +57,7 @@ def record_application(
         )
 
     profile = load_profile()
+    company_mismatch_note = ""
 
     if application_id:
         app = profile.get_application(application_id)
@@ -72,14 +67,24 @@ def record_application(
                 f"投递记录 {application_id} 不存在。完整清单见 get_progress。",
                 {"application_id": application_id, "total": len(profile.applications)},
             )
+        if company.strip() and company.strip() != app.company:
+            company_mismatch_note = (
+                f"（入参 company「{company.strip()}」与记录「{app.company}」不符，"
+                "已按记录为准；若确属另一次投递请不传 application_id）"
+            )
         changed = update_application_status(profile, app, status, notes)
         if not changed:
             msg = f"{app.company}·{app.role or '该岗位'} 当前已是「{_STATUS_LABELS[status]}」，状态未变化。"
         else:
-            msg = (
-                f"{app.company}·{app.role or '该岗位'} 状态已更新为「{_STATUS_LABELS[status]}」。"
-            )
+            msg = f"{app.company}·{app.role or '该岗位'} 状态已更新为「{_STATUS_LABELS[status]}」。"
+        msg += company_mismatch_note
     else:
+        if not company.strip():
+            return error_response(
+                "MISSING_DATA",
+                "company 不能为空——新建投递记录必须写明公司；更新既有记录请传 application_id。",
+                {"field": "company"},
+            )
         dup = find_active_duplicate(profile, company, role)
         if dup:
             return error_response(

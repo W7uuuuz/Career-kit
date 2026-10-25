@@ -59,10 +59,10 @@ async def test_new_user_full_flow_quality(sandbox, quality):
         await driver.checkin(once_id, notes="E2E 完成 demo")
 
         # 求职漏斗：记录投递 → 推进面试 → 周检视
-        await driver.record_application("字节跳动", "Agent 工程师", note="E2E 登记投递")
+        await driver.record_application("字节跳动", "Agent 工程师", notes="E2E 登记投递")
         funnel_step = await driver.record_application(
             "字节跳动", "Agent 工程师", status="interview", application_id="app_001",
-            note="E2E 推进面试",
+            notes="E2E 推进面试",
         )
         funnel_step.assert_contains("trigger_insight")
         dup = await mcp.call(

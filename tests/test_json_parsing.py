@@ -39,6 +39,30 @@ def test_prose_wrapped_object():
     assert _parse_json_param(raw)["match_score"] == 50
 
 
+def test_dotted_braces_junk_then_real_object():
+    """散文里的 {x} 假象不应挡住后面的真实对象（候选连续扫描）。"""
+    raw = "| a | {x} |\n|---|---|\n| {y: 1} | z |\n\n{\"ok\": 6}"
+    assert _parse_json_param(raw)["ok"] == 6
+
+
+def test_junk_object_does_not_shadow_real_nested_object():
+    """{x} 在前、含嵌套完整对象在后：仍应解析出后者。"""
+    raw = '先看这个 {x}，再看 {"a": {"b": "c}d"}, "n": 9}'
+    data = _parse_json_param(raw)
+    assert data["n"] == 9 and data["a"] == {"b": "c}d"}
+
+
+def test_empty_braces_do_not_shadow_later_object():
+    """`{}` 能空 parse，但应优先取后面的真实对象。"""
+    raw = "{} }}} {\"n\": 8}"
+    assert _parse_json_param(raw)["n"] == 8
+
+
+def test_empty_brace_fall_back():
+    """全链只有空对象可 parse 时，返回它而不是报错。"""
+    assert _parse_json_param("前后解释 {} 后记") == {}
+
+
 def test_braces_inside_strings_do_not_confuse_scanner():
     raw = '前言 {"text": "包含 { 与 } 的字符串", "n": 1} 后记'
     assert _parse_json_param(raw)["n"] == 1

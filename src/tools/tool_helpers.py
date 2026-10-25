@@ -12,13 +12,13 @@ from .errors import InvalidJsonError
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
-def _scan_first_object(text: str) -> str | None:
+def _scan_first_object(text: str, start_from: int = 0) -> str | None:
     """字符串感知扫描：提取首个平衡的 {...} 片段。
 
     正确处理引号内的花括号与转义（"a{b}" 不会被当成结构字符），
     找不到平衡对象返回 None。禁止 eval、禁止语义修复（如补逗号）。
     """
-    start = text.find("{")
+    start = text.find("{", start_from)
     if start < 0:
         return None
     depth = 0
@@ -45,13 +45,29 @@ def _scan_first_object(text: str) -> str | None:
     return None
 
 
+def _scan_all_objects(text: str, limit: int = 8) -> list[str]:
+    """扫描全部平衡 {...} 片段（跳过解析失败候选的位置继续向后找）。
+
+    用途：夹解释文字的输出里可能混入形如 ``{x}`` 的假象片段，
+    只取首个会漏掉后面的真实对象；逐位置推进有限次，防文本爆量：
+    上限 limit 个候选（后出现的通常更可能是最终结果，保持出现顺序）。
+    """
+    found: list[str] = []
+    pos = 0
+    while len(found) < limit:
+        obj = _scan_first_object(text, pos)
+        if obj is None:
+            break
+        found.append(obj)
+        pos = text.find(obj, pos) + len(obj)
+    return found
+
+
 def _json_candidates(raw: str) -> list[str]:
-    """按可靠度排列的解析候选：原文 → 围栏内容 → 首个平衡对象。"""
+    """按可靠度排列的解析候选：原文 → 围栏内容 → 全部平衡对象片段。"""
     candidates = [raw]
     candidates.extend(m.strip() for m in _FENCE_RE.findall(raw))
-    obj = _scan_first_object(raw)
-    if obj is not None:
-        candidates.append(obj)
+    candidates.extend(_scan_all_objects(raw))
     # 原文去重（fence 内容可能等于原文）
     seen: set[str] = set()
     ordered = []
@@ -83,6 +99,7 @@ def _parse_json_param(raw: Any, field_name: str = "参数") -> dict:
 
     parse_errors: list[str] = []
     non_object: type | None = None
+    empty_dict: dict | None = None
     for candidate in _json_candidates(raw):
         try:
             data = json.loads(candidate)
@@ -90,9 +107,16 @@ def _parse_json_param(raw: Any, field_name: str = "参数") -> dict:
             parse_errors.append(str(exc))
             continue
         if isinstance(data, dict):
-            return data
-        non_object = type(data)
+            if data:
+                return data
+            # 空对象 {} 先搁置——可能只是散文里的假象片段，
+            # 继续尝试后面的候选；若全链只有它能 parse 才返回
+            empty_dict = empty_dict or data
+        else:
+            non_object = type(data)
 
+    if empty_dict is not None:
+        return empty_dict
     if non_object is not None:
         raise InvalidJsonError(
             f"{field_name} 必须是 JSON 对象（dict），收到的是 {non_object.__name__}",

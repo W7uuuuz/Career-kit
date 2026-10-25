@@ -251,6 +251,46 @@ def test_record_application_empty_company(temp_profile):
     assert result["code"] == "MISSING_DATA"
 
 
+def test_record_application_update_needs_no_company(temp_profile):
+    """BUG 修复回归：纯状态更新不该被迫传 company。"""
+    from src.server import record_application
+
+    record_application(company="字节", role="实习")
+    for company_arg in ("", "   "):
+        result = json.loads(
+            record_application(
+                company=company_arg, status="screening", application_id="app_001"
+            )
+        )
+        assert not result.get("isError"), result
+    profile = profile_module.load_profile()
+    assert profile.applications[0].status == "screening"
+
+
+def test_record_application_update_company_mismatch_notes_it(temp_profile):
+    """更新时 company 与记录不符：以记录为准，并在返回值里明说。"""
+    from src.server import record_application
+
+    record_application(company="字节", role="实习")
+    result = json.loads(
+        record_application(
+            company="腾讯", status="interview", application_id="app_001"
+        )
+    )
+    assert not result.get("isError"), result
+    assert "不符" in result["message"]
+    assert profile_module.load_profile().applications[0].company == "字节"
+
+
+def test_record_application_notes_recorded(temp_profile):
+    """notes 透传到记录（防参数名漂移导致备注被吞）。"""
+    from src.server import record_application
+
+    record_application(company="字节", role="实习", notes="面试反馈： strengthening 算法")
+    profile = profile_module.load_profile()
+    assert profile.applications[0].notes == "面试反馈： strengthening 算法"
+
+
 def test_get_progress_shows_funnel(temp_profile):
     from src.server import get_progress, record_application
 

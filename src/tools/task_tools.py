@@ -358,12 +358,14 @@ def trigger_insight(trigger_type: str = "stage_audit", event_description: str = 
 
     profile = load_profile()
 
-    if not profile.tasks:
+    if not profile.tasks and trigger_type == "stage_audit":
         return _json({
             "message": "暂无任务，请先调用 generate_tasks。",
             "next_steps": ["generate_tasks"],
             "context": {"phase": "no_tasks"},
         })
+    # event 型不需要任务存在：面试/offer 等事件可能发生在建任务之前，
+    # 漏斗链接（record_application 软提示）也会引导到这里，不能拒绝。
 
     # 构建 prompt
     prompt = build_insight_prompt(profile, trigger_type, event_description)

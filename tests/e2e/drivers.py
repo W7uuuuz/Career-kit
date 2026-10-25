@@ -116,17 +116,23 @@ class FlowDriver:
 
     async def record_application(
         self,
-        company: str,
+        company: str = "",
         role: str = "",
         *,
         status: str = "",
         application_id: str = "",
         channel: str = "",
-        note: str = "",
+        notes: str = "",
     ) -> ToolResult:
-        args = {"company": company}
-        for key, value in (("role", role), ("status", status), ("application_id", application_id),
-                           ("channel", channel), ("note", note)):
+        args: dict[str, Any] = {}
+        for key, value in (
+            ("company", company),
+            ("role", role),
+            ("status", status),
+            ("application_id", application_id),
+            ("channel", channel),
+            ("notes", notes),
+        ):
             if value:
                 args[key] = value
         return (

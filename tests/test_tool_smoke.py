@@ -535,6 +535,33 @@ def test_explore_goals_guards_when_goal_exists(temp_profile):
     assert "methodology" not in out  # 未直接返回方法论
 
 
+def test_trigger_insight_event_available_without_tasks(temp_profile):
+    """BUG 修复回归：event 型洞察在无任务时可用（漏斗软提示依赖它）。"""
+    from src.server import record_application, trigger_insight
+
+    record_application(company="字节", role="Agent 实习")
+    record_application(
+        company="字节", role="Agent 实习", status="interview", application_id="app_001"
+    )
+
+    out = _parse(
+        trigger_insight(trigger_type="event", event_description="进入字节 Agent 实习面试")
+    )
+    assert "prompt" in out
+    assert out["context"]["phase"] == "insight_ready"
+
+    # 漏斗事实块应进入 prompt（归因点依赖）
+    assert "漏斗" in out["prompt"] or "投递" in out["prompt"]
+
+
+def test_trigger_insight_stage_audit_still_blocked_without_tasks(temp_profile):
+    """stage_audit 在无任务时仍守卫（引导先建任务）。"""
+    from src.server import trigger_insight
+
+    out = _parse(trigger_insight(trigger_type="stage_audit"))
+    assert out["context"]["phase"] == "no_tasks"
+
+
 def test_apply_insight_end_to_end(temp_profile):
     """BUG-005 回归：apply_insight 可导入、可执行、调整可落地。"""
     from src.models import Task
