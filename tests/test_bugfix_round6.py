@@ -304,6 +304,7 @@ def test_gather_returns_roster_not_full_text(temp_profile, monkeypatch):
     assert long_description not in message, "岗位全文不得进入上下文"
     assert "read_research_details" in message
     assert "子 Agent" in message
+    assert "research-analyst" in message
     assert "harness" in message
 
 
@@ -311,6 +312,7 @@ def test_delegate_plan_batches_and_output_schema():
     from src.tools.research_tools import _delegate_plan
 
     plan = _delegate_plan("jd", [f"JD{i:02d}" for i in range(1, 13)])
+    assert plan["subagent"] == "research-analyst"
     assert plan["id_batches"] == [
         [f"JD{i:02d}" for i in range(1, 11)],
         ["JD11", "JD12"],
@@ -319,6 +321,20 @@ def test_delegate_plan_batches_and_output_schema():
     assert "evidence_ids" in plan["prompt"]
     assert set(plan["output_schema"]) == {"conclusions", "shortlist", "gaps"}
     assert "harness" in plan["mechanism"]
+    assert 'subagent_type="research-analyst"' in plan["invoke_example"]
+
+
+def test_research_analyst_agent_definitions_exist():
+    """两份 harness 定义必须同步存在，否则委派指令无法真正执行。"""
+    repo = Path(__file__).parent.parent
+    opencode = repo / ".opencode" / "agent" / "research-analyst.md"
+    claude = repo / ".claude" / "agents" / "research-analyst.md"
+    for path in (opencode, claude):
+        assert path.exists(), f"缺少子 Agent 定义：{path}"
+        text = path.read_text(encoding="utf-8")
+        assert "read_research_details" in text
+        assert "conclusions" in text and "shortlist" in text and "gaps" in text
+        assert "3-5" in text
 
 
 def test_read_research_details_roster_and_selection(temp_profile, monkeypatch):
@@ -332,6 +348,7 @@ def test_read_research_details_roster_and_selection(temp_profile, monkeypatch):
     assert all(item["brief"] for item in roster["items"])
     assert roster["digest"]["jd_count"] == 2
     delegate = roster["delegate"]
+    assert delegate["subagent"] == "research-analyst"
     assert "read_research_details" in delegate["prompt"]
     assert delegate["id_batches"] == [["JD01", "JD02"]]
 

@@ -72,8 +72,9 @@
      不得静默跳过 BOSS 或直接宣布调研失败
 5. 报告三件套自动落盘（代码渲染，不经 LLM），向用户汇报三要素
 6. 按需读取全文：从花名册中选择 3-5 条，调用 read_research_details(ids=..., kind="jd"/"case")；
-   宿主 harness 支持子 Agent 时（opencode task/subagent、Claude Code Task 等），
-   由父 Agent 发起子 Agent 并采用 `delegate` 方案，子 Agent 返回结论与重点名单
+   宿主 harness 支持子 Agent 时，用 Task 发起 research-analyst（仓库提供
+   `.opencode/agent/research-analyst.md` 与 `.claude/agents/research-analyst.md`），
+   把花名册、聚合摘要与 `delegate.prompt` 交给它，由它返回结论与重点名单
 7. 用户确认后进入差距分析
 ```
 
@@ -91,8 +92,8 @@
 2. 每条岗位/案例带来源链接、来源平台、抓取时间，用户可逐条点开验证
 3. 岗位详情必抓：未取得详情的岗位不纳入报告，并在数据缺口如实说明
 4. 花名册优先：工具返回「花名册（标识与摘要）+ 聚合摘要」，不一次性注入岗位正文；
-   读取全文时选取 3-5 条；子 Agent 由宿主 harness 发起（opencode task/subagent、
-   Claude Code Task 等），父 Agent 按 `delegate` 方案委派并汇总结论与重点名单
+   读取全文时选取 3-5 条；宿主 harness 支持子 Agent 时，用 Task 发起 research-analyst，
+   父 Agent 按 `delegate` 方案委派并汇总结论与重点名单
 5. BOSS 直聘需扫码登录：抓取前必须询问用户；工具返回 `CONFIRMATION_REQUIRED`
    （尚未确认）/ `LOGIN_REQUIRED`（尚未登录）时先询问用户，不得静默跳过或直接判定失败
 6. 任一源失败不中断，失败原因进报告「来源状态面板」如实展示；

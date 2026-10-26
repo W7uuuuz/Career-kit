@@ -10,9 +10,10 @@
     条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径，单次上限 10 条）；
     岗位/案例全文仅落盘到报告、`profile.research` 与 JSON，不一次性注入模型上下文
   - 子 Agent 委派：子 Agent 属宿主 harness 能力（opencode task/subagent、
-    Claude Code Task 等），由父 Agent 发起；工具返回可直接使用的委派指令、按 10 条
-    分组的 id 批次与输出契约（conclusions / shortlist / gaps），父 Agent 仅汇总
-    子 Agent 的结论与重点名单
+    Claude Code Task 等），由父 Agent 发起；新增 `research-analyst` 子 Agent 定义
+    （`.opencode/agent/research-analyst.md` 与 `.claude/agents/research-analyst.md`，
+    只读、无 bash），工具返回可直接使用的委派指令、按 10 条分组的 id 批次与输出契约
+    （conclusions / shortlist / gaps），父 Agent 仅汇总子 Agent 的结论与重点名单
   - 新增 `src/research_digest.py`：确定性聚合统计（城市/薪资区间/高频要求/
     学历与层级信号/案例结构），供父 Agent 直接获得结论要素
   - 报告展示：取消二次截断（报告结构与 JSON 保留原文）；md 增加「岗位详情（完整 JD）」

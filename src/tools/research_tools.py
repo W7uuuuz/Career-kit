@@ -115,10 +115,10 @@ def research_market() -> str:
             "name": "衔接分析",
             "action": "按需读取全文：从花名册中选择 3-5 条，调用 "
                       "read_research_details(ids=...)，岗位用 kind=\"jd\"，"
-                      "面经与他人路径用 kind=\"case\"；宿主 harness 支持子 Agent 时"
-                      "（如 opencode 的 task/subagent、Claude Code 的 Task），"
-                      "由父 Agent 发起子 Agent：把花名册、聚合摘要与 delegate 方案交给它，"
-                      "由子 Agent 返回分析结论与重点名单，父 Agent 仅汇总结论。"
+                      "面经与他人路径用 kind=\"case\"；宿主 harness 支持子 Agent 时，"
+                      "由父 Agent 用 Task 发起 research-analyst（仓库已提供定义）："
+                      "把花名册、聚合摘要与 delegate.prompt 交给它，由它自行筛选、分批读取"
+                      "并返回分析结论与重点名单，父 Agent 仅汇总结论。"
                       "随后进入差距分析（第 3 步），差距分析将直接引用本次调研数据；"
                       "用户可先阅读报告，确认后进入分析",
             "output": "用户确认后进入 analyze_gaps 流程",
@@ -138,9 +138,9 @@ def research_market() -> str:
         "汇报时须说明「已剔除 N 条未取得详情的岗位」，不得以标题代替完整 JD。\n"
         "花名册机制：gather 返回的花名册仅含标识与摘要，岗位/案例全文已写入报告与档案。"
         "读取全文须按 id 定向调用 read_research_details，单次建议 3-5 条；"
-        "样本量较大时，若宿主 harness 支持子 Agent（opencode task/subagent、"
-        "Claude Code Task 等），由父 Agent 发起子 Agent 分批读取，"
-        "并将结论与重点名单返回父 Agent 汇总。\n"
+        "样本量较大时，若宿主 harness 支持子 Agent，用 Task 发起 research-analyst"
+        "（仓库提供 .opencode/agent 与 .claude/agents 定义），把花名册、聚合摘要与"
+        " delegate.prompt 交给它，父 Agent 仅汇总其结论与重点名单。\n"
         "播报纪律：调用 gather_research_data 前说明「抓取哪些来源 + 约半分钟至一分钟」，"
         "不得静默执行。\n"
         "汇报口径：摘要须包含样本数与来源成败；路径展示工具返回的完整位置（不得编造）；"
@@ -499,8 +499,9 @@ def _case_content(case: dict[str, Any]) -> str:
 def _delegate_plan(kind: str, available: list[str]) -> dict[str, Any]:
     """子 Agent 委派方案。
 
-    子 Agent 是宿主 harness 的能力（opencode 的 task/subagent、Claude Code 的 Task 等）：
-    由父 Agent 发起；MCP 服务只提供可委派的数据、分批清单与输出契约，不自行创建子 Agent。
+    子 Agent 由宿主 harness 的 Task 工具发起（opencode task/subagent、Claude Code Task）；
+    仓库已提供 research-analyst 定义（.opencode/agent 与 .claude/agents）。
+    服务端只提供数据、分批清单与输出契约，不自行创建子 Agent。
     """
     scope = "岗位 JD" if kind == "jd" else "面经与他人发展路径"
     batches = [
@@ -508,19 +509,27 @@ def _delegate_plan(kind: str, available: list[str]) -> dict[str, Any]:
         for index in range(0, len(available), _DETAIL_MAX_IDS)
     ]
     prompt = (
-        f"任务：阅读调研数据（{scope}）并返回结论。只通过 "
-        f'read_research_details(kind="{kind}", ids=[...]) 读取指定标识，'
-        f"每批不超过 {_DETAIL_MAX_IDS} 条，不得请求全量数据。"
-        "输出仅包含 JSON："
+        f"任务：审阅调研数据（{scope}）并返回结论。\n"
+        f'1) 先调用 read_research_details(kind="{kind}") 获取花名册与聚合摘要；\n'
+        f'2) 依据岗位方向、技能匹配、届别/学历/城市等条件，选择 3-5 条最相关的条目，'
+        f'再调用 read_research_details(kind="{kind}", ids=[...]) 读取全文；'
+        f"单次不超过 {_DETAIL_MAX_IDS} 条，必要时参考 id_batches 分批；\n"
+        "3) 只返回 JSON："
         '{"conclusions": [{"point": "...", "evidence_ids": ["..."]}], '
         '"shortlist": [{"id": "...", "reason": "...", "evidence": "..."}], '
         '"gaps": ["..."]}。'
-        "每条结论必须引用具体标识作为依据，不要复述原文。"
+        "每条结论必须引用具体标识作为依据，不复述原文。"
     )
     return {
+        "subagent": "research-analyst",
         "mechanism": (
-            "子 Agent 由宿主 harness 发起（如 opencode 的 task/subagent、Claude Code 的 Task）；"
-            "父 Agent 负责汇总子 Agent 返回的结论与重点名单，服务端不创建子 Agent。"
+            "子 Agent 由宿主 harness 发起（opencode 的 task/subagent、Claude Code 的 Task）；"
+            "仓库已提供 research-analyst 定义。父 Agent 负责发起并汇总其返回的结论与重点名单，"
+            "服务端不创建子 Agent。"
+        ),
+        "invoke_example": (
+            'task(subagent_type="research-analyst", description="调研 JD/面经分析", '
+            'prompt="<delegate.prompt> + 调研方向/城市/学历等上下文")'
         ),
         "prompt": prompt,
         "id_batches": batches,
@@ -539,8 +548,9 @@ def read_research_details(ids: str = "", kind: str = "jd", limit: int = 6) -> st
     何时调用：
     - 调研完成后需要深读少量岗位或案例：先不传 ids 调用，获取花名册与聚合摘要；
       从中选择 3-5 个标识，再带 ids 读取全文；
-    - 交由子 Agent 执行（宿主 harness 支持时）：把花名册、聚合摘要与返回的
-      `delegate` 委派方案交给子 Agent，由子 Agent 读取选定条目并回传结论与重点名单，
+    - 交由子 Agent 执行（宿主 harness 支持时）：用 Task 发起 research-analyst
+      （仓库已提供 .opencode/agent 与 .claude/agents 定义），把花名册、聚合摘要与
+      返回的 `delegate` 方案交给它，由它自行筛选并读取选定条目，回传结论与重点名单，
       父 Agent 仅汇总结论。
 
     Args:
@@ -617,9 +627,9 @@ def read_research_details(ids: str = "", kind: str = "jd", limit: int = 6) -> st
             "delegate": _delegate_plan(kind, available),
             "instructions": [
                 "先根据摘要选择 3-5 个标识，再带 ids 调用本工具读取全文；避免一次性读取全量。",
-                "宿主 harness 支持子 Agent 时（如 opencode 的 task/subagent、Claude Code 的 Task），"
-                "父 Agent 可直接发起：把花名册、聚合摘要与 delegate 方案交给子 Agent，"
-                "由子 Agent 读取选定条目并回传结论与重点名单，父 Agent 汇总结论。",
+                "宿主 harness 支持子 Agent 时，由父 Agent 用 Task 发起 research-analyst"
+                "（仓库已提供 .opencode/agent 与 .claude/agents 定义）：把花名册、聚合摘要与"
+                " delegate.prompt 交给它，由它自行筛选并读取全文，回传结论与重点名单。",
             ],
             "next_steps": [
                 f'read_research_details(ids="{available[0] if available else "JD01"}", kind="{kind}")',
@@ -808,10 +818,9 @@ def _render_report_message(report: dict[str, Any], paths: dict[str, str]) -> str
             "下一步（按需读取，单次 3-5 条为宜）：",
             '- 直接读取：read_research_details(ids="JD01,JD03", kind="jd")；'
             '面经与他人路径使用 kind="case"',
-            "- 发起子 Agent（宿主 harness 能力，如 opencode 的 task/subagent、"
-            "Claude Code 的 Task）：把花名册、聚合摘要与 read_research_details() 返回的"
-            " delegate 方案交给子 Agent，由子 Agent 按标识分批读取并回传"
-            "「结论 + 重点名单（含 id 与依据）」，父 Agent 负责合并",
+            "- 发起子 Agent（宿主 harness 能力）：用 Task 调起 research-analyst，"
+            "把花名册、聚合摘要与 delegate.prompt 交给它；由它自行筛选并分批读取，"
+            "回传「结论 + 重点名单（含 id 与依据）」，父 Agent 负责合并",
             "",
             "差距分析（第 3 步）将直接引用本次调研数据。"
             "4 步流程：现状盘点 → 读取调研 → 两维分析 → 结果预览；"

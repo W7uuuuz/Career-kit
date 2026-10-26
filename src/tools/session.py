@@ -115,9 +115,9 @@ WELCOME_PROMPT = """\
    - 资产总览：双击 `~/CareerKit/index.html`（全部产出统一入口）
 9. 花名册机制（关键）：工具返回岗位/案例花名册与聚合摘要；岗位与案例全文写入报告
    与档案，不进入上下文。按需读取时选取 3-5 条调用
-   `read_research_details(ids=..., kind="jd"/"case")`；宿主 harness 支持子 Agent 时
-   （opencode task/subagent、Claude Code Task 等），由父 Agent 发起子 Agent 并采用
-   `delegate` 方案，父 Agent 仅汇总结论与重点名单。
+   `read_research_details(ids=..., kind="jd"/"case")`；宿主 harness 支持子 Agent 时，
+   用 Task 发起 `research-analyst`（仓库提供定义）并采用 `delegate.prompt`，
+   父 Agent 仅汇总结论与重点名单。
 10. 向用户汇报（完成汇报三要素）：拿到了什么（样本数/来源成败）→ 报告完整路径 →
     下一步衔接分析；缺口如实陈述（没抓到就是没抓到），绝不编造
 
