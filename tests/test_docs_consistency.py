@@ -132,3 +132,59 @@ def test_bug021_command_scripts_have_identical_probe_text():
     end_oc = oc.find("skip_probing=True)", start_oc) + len("skip_probing=True)")
     end_cc = cc.find("skip_probing=True)", start_cc) + len("skip_probing=True)")
     assert oc[start_oc:end_oc] == cc[start_cc:end_cc], "两份剧本的探针文本漂移了"
+
+
+WELCOME_OVERVIEW_ANCHORS = [
+    "Career Kit 是你的 AI 职业陪练",
+    "从起步到上岸全流程 5 步",
+    "建档摸底",
+    "差距分析",
+    "路线图规划",
+    "阶段顺序定、节奏自己掌握",
+    "执行打卡",
+    "持续陪跑",
+    "每完成一步我都会告诉你到了哪一步",
+]
+
+
+def test_first_reply_overview_reaches_all_surfaces():
+    """第一轮流程概览模板必须下发到全部四份入口文本（用户实测反馈的修复）。
+
+    用户实测：/career-kit 发起后直接问个人情况，用户仍不知道全流程——
+    概览模板漂移到只剩部分载体时该体验会回归，用锚点锁定四处载体。
+    """
+    surfaces = [
+        ("src", "tools", "session.py"),
+        (".opencode", "commands", "career-kit.md"),
+        (".claude", "commands", "career-kit.md"),
+        ("docs", "llms.txt"),
+    ]
+    for rel in surfaces:
+        text = _read(*rel)
+        missing = [a for a in WELCOME_OVERVIEW_ANCHORS if a not in text]
+        # llms.txt 是给 LLM 的概览型描述，不逐字含模板句子，只查阶段名链
+        if rel == ("docs", "llms.txt"):
+            missing = [a for a in missing if a not in (
+                "Career Kit 是你的 AI 职业陪练",
+                "从起步到上岸全流程 5 步",
+                "路线图规划",
+                "阶段顺序定、节奏自己掌握",
+                "每完成一步我都会告诉你到了哪一步",
+            )]
+        assert not missing, f"{rel} 未同步第一轮流程概览模板，缺：{missing}"
+
+
+def test_welcome_overview_scripts_identical():
+    """两份命令剧本的「第一轮流程概览」块必须逐字一致（不让模板漂移）。"""
+    oc = _read(".opencode", "commands", "career-kit.md")
+    cc = _read(".claude", "commands", "career-kit.md")
+
+    probe = "Career Kit 是你的 AI 职业陪练"
+    start_oc = oc.find(probe)
+    start_cc = cc.find(probe)
+    assert start_oc != -1 and start_cc != -1, "剧本缺少流程概览探针"
+    tail = "不复述手册其余部分。"
+    end_oc = oc.find(tail, start_oc) + len(tail)
+    end_cc = cc.find(tail, start_cc) + len(tail)
+    assert end_oc != len(tail) - 1 and end_cc != len(tail) - 1, "概览块结尾对不上"
+    assert oc[start_oc:end_oc] == cc[start_cc:end_cc], "两份剧本的概览模板漂移了"
