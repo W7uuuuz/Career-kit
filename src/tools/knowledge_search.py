@@ -1,6 +1,7 @@
 """知识库检索——搜索本地积累的求职资料。
 
-只检索 data/knowledge/ 目录（含 scraper 自动写入的 JD/面经 + 用户手动放入的资料）。
+只检索用户主目录 ~/.career-kit/knowledge/ 目录
+（含 scraper 自动写入的 JD/面经 + 用户手动放入的资料；路径常量见 paths.KNOWLEDGE_DIR）。
 不做任何网络请求，不调用 LLM——没有数据时诚实告知，
 并引导使用 fetch_company_jobs 获取实时数据。
 """

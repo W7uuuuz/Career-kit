@@ -26,7 +26,7 @@ async def search_cases(
     Args:
         role: 岗位方向（如 "AI Agent 开发"、"后端"）
         education: 学历条件，支持「双非本」「211硕」「985」「专科」等（五档四层自动归一，
-            展开为搜索关键词 + 精确打分；给不出想去位就留空）
+            展开为搜索关键词 + 精确打分；给不出想去档位就留空）
         company: 目标公司（可选，命中官方源时按面试要求口径补 JD；"字节"/"boss" 等别名可直传）
         city: 城市（可选，官方/BOSS 源生效）
         kind: "both"（默认）/ "success"（只要成功经验）/ "requirements"（只要面试要求）

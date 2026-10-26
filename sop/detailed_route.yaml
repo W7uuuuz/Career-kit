@@ -41,9 +41,9 @@ methodology:
         1. name + description（含怎么做、依据哪个真实岗位要求）
         2. priority: high/medium/low
         3. checkin_mode 打卡方式：
-           - once: 一次性完成（如"写一篇技术博客"）
-           - daily: 按天打卡，checkin_goal = 目标天数（如"每天刷 5 题 LeetCode"→ daily, goal=30）
-           - percent: 按比例打卡，checkin_goal = 目标比例（如"学完 LangChain 官方文档 80%"→ percent, goal=80）
+           - once: 一次性完成（如「写一篇技术博客」）
+           - daily: 按天打卡，checkin_goal = 目标天数（如「每天刷 5 题 LeetCode」→ daily, goal=30）
+           - percent: 按比例打卡，checkin_goal = 目标比例（如「学完 LangChain 官方文档 80%」→ percent, goal=80）
         任务不要过多：当前阶段 5-15 个即可，粒度「一次坐下来可完成」。
       quality_gate: "每个任务有打卡方式；daily/percent 有明确目标；总数合理不臃肿"
 

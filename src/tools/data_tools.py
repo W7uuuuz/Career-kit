@@ -17,7 +17,7 @@ from .profile import load_profile
 def search_knowledge(query: str) -> str:
     """检索本地知识库（用户积累的求职资料）。
 
-    只搜索本地 data/knowledge/ 目录：scraper 抓取自动存入的 JD/面经，
+    只搜索用户主目录 ~/.career-kit/knowledge/：scraper 抓取自动存入的 JD/面经，
     以及用户手动放入的简历、市场资料。不联网，不调用 LLM。
 
     何时调用：
@@ -26,7 +26,7 @@ def search_knowledge(query: str) -> str:
 
     Args:
         query: 搜索关键词
-            示例："AI Agent 面经"、"字节跳动 JD"、"双非 转 AI"
+            示例：「AI Agent 面经」「字节跳动 JD」「双非 转 AI」
 
     Returns:
         每条含来源文件路径、相关度、内容预览。
@@ -172,7 +172,8 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
 
     Returns:
         每行一个岗位：标题 | 地点 | 薪资（如有）、链接、内容摘要。
-        boss/bytedance 返回岗位（含薪资范围）；nowcoder 返回面经。
+        boss 返回岗位（含薪资范围）；其余 JD 源不公开薪资（见各源 guide）；
+        nowcoder 返回面经，github 返回经验帖。
         失败时返回错误原因和恢复建议——此时如实告知用户，不要编造数据。
     """
     try:
@@ -234,7 +235,7 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
 
     if warnings_list:
         lines.append("---")
-        lines.append(" 部分数据获取失败：")
+        lines.append("部分数据获取失败：")
         for w in warnings_list:
             lines.append(f"   - {w}")
         lines.append("")

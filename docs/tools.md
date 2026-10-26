@@ -30,7 +30,7 @@
 
 | 工具 | 作用 |
 |------|------|
-| `list_data_sources` | 列出可用企业源及各自支持的参数 |
+| `list_data_sources` | 列出可用企业数据源及各自支持的参数 |
 | `get_scraper_guide` | 读取指定企业源的完整使用教程 |
 | `fetch_company_jobs` | 抓取真实岗位/面经，自动写入知识库 |
 | `fetch_jd_detail` | 获取 JD 全文或面经正文 |
@@ -92,7 +92,7 @@
 | `career-kit://docs/llms` | LLM 使用指南 |
 | `career-kit://docs/workflow` | 工作流详解 |
 | `career-kit://docs/tools` | 本文件 |
-| `career-kit://docs/scrapers` | 企业库总览 |
+| `career-kit://docs/scrapers` | 企业数据源总览 |
 | `career-kit://docs/scrapers/{id}` | 指定企业使用教程 |
 | `career-kit://docs/knowledge` | 知识库结构 |
 | `career-kit://docs/examples` | 示例目录 |

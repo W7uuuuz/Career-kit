@@ -499,7 +499,7 @@ def get_weekly_review(days: int = 7) -> str:
     """周检视——周期性事实复盘（打卡/阶段/求职漏斗）。
 
     何时调用：
-    - 用户想回顾一段时间表现（"给我做个周报/最近怎么样"）
+    - 用户想回顾一段时间表现（「给我做个周报/最近怎么样」）
     - 用户隔了很久回来（get_workflow_status 会提示）
     - 阶段审计前想先看事实
 
@@ -591,7 +591,7 @@ def get_workflow_status() -> str:
         want_at = profile.section_updated_at.get("want", "")
         if want_at and want_at > plan_saved_at:
             goal_change_alert = (
-                " 检测到用户目标（want）在路线图生成之后发生了变更。\n"
+                "检测到用户目标（want）在路线图生成之后发生了变更。\n"
                 "旧路线图可能已不适用，建议重新调用 analyze_gaps 进行分析。\n\n"
             )
         else:

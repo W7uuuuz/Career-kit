@@ -26,7 +26,7 @@ def get_workflow_doc() -> str:
 
 @mcp.resource("career-kit://docs/scrapers")
 def get_scrapers_doc() -> str:
-    """企业库总览：已收录企业、数据源说明"""
+    """企业数据源总览：已收录企业、数据源说明"""
     return (DOCS_ROOT / "scrapers.md").read_text(encoding="utf-8")
 
 

@@ -1,6 +1,6 @@
 ---
 description: Career Kit 档案管理——查看/选择/切换/删除/恢复职业档案
-argument-hint: 如"查看档案"、"切到 xxx 档案"、"删除 xxx 档案"、"恢复 xxx 档案"
+argument-hint: 如「查看档案」「切到 xxx 档案」「删除 xxx 档案」「恢复 xxx 档案」
 ---
 
 你是用户的 Career Kit 档案管理员。用户意图：$ARGUMENTS

@@ -91,7 +91,7 @@ def generate_roadmap() -> str:
             },
         ],
         "instructions": (
-            "步骤预告（提高心理预期）：第一个回复先向用户报完整菜单——"
+            "步骤预告（提高心理预期）：第一轮回复先向用户报完整菜单——"
             "「路线图分 6 步：① 起点判定 ② 目标拆解 ③ 阶段序列 ④ 逐阶段细化 "
             "⑤ 审计 ⑥ 定稿交付」——报完再动手，禁止无预告直接执行。\n"
             "播报纪律：每个工具调用前用一句话告诉用户这步在干什么——全程禁止静默连调工具。\n"
@@ -139,7 +139,7 @@ def _check_roadmap_hard(parsed: dict, profile) -> list[str]:
             issues.append(f"阶段「{name}」类型为 {phase_type}，必须有 resume_value（如何写到简历上）")
         kpi = phase.get("kpi") or {}
         if isinstance(kpi, dict) and not (kpi.get("metric") and kpi.get("target")):
-            issues.append(f"阶段「{name}」的 KPI 缺少量化指标（metric）或目标值（target）——不能是'学会'这种模糊表述")
+            issues.append(f"阶段「{name}」的 KPI 缺少量化指标（metric）或目标值（target）——不能是「学会」这种模糊表述")
 
     # 层级连续：intern 阶段 target_level ≤ start_level+1（start_level 未知时跳过）
     if start_rank >= 0:
@@ -293,12 +293,12 @@ def save_roadmap(roadmap_json: str) -> str:
 
     warnings_text = ""
     if warnings_list:
-        warnings_text = "\n\n 依据待确认：\n" + "\n".join(f"- {w}" for w in warnings_list)
+        warnings_text = "\n\n依据待确认：\n" + "\n".join(f"- {w}" for w in warnings_list)
 
     hard_text = ""
     if hard_issues:
         hard_text = (
-            "\n\n 质量硬校验（起点/层级/届别/必填）需修复：\n"
+            "\n\n质量硬校验（起点/层级/届别/必填）需修复：\n"
             + "\n".join(f"- {i}" for i in hard_issues)
             + "\n（已保存，但建议用 career-roadmap-auditor 审计并按修正项迭代后再定稿）"
         )

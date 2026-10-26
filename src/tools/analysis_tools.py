@@ -29,8 +29,8 @@ def explore_goals() -> str:
     落定目标。
 
     何时调用：
-    - 用户说"我不知道想做什么" / "帮我选方向" / 完全没有目标时
-    - 建档后发现 want 为空或方向模糊（如只有"想转行"没有具体目标）
+    - 用户说「我不知道想做什么」/「帮我选方向」/ 完全没有目标时
+    - 建档后发现 want 为空或方向模糊（如只有「想转行」没有具体目标）
 
     前置条件：档案已有 who/have（用户现状）。
     后续步骤：用户选定后 intake(section="want") 写入，然后走 analyze_gaps。
@@ -49,9 +49,9 @@ def explore_goals() -> str:
     if _has_goal(profile):
         want_summary = _summarize_dict(profile.want or {})
         return (
-            f" 档案中已有目标：{want_summary}\n\n"
+            f"档案中已有目标：{want_summary}\n\n"
             "如果用户只是想把现有规划继续推进，直接走 analyze_gaps 即可，无需 explore_goals。\n"
-            "如果用户明确想换个方向（如'我之前选的不合适'），则继续本流程重新探索，"
+            "如果用户明确想换个方向（如「我之前选的不合适」），则继续本流程重新探索，"
             "选定后用 intake(section='want') 覆盖目标。\n"
             "请先向用户确认意图再决定下一步。"
         )
@@ -80,7 +80,7 @@ def explore_goals() -> str:
     )
     next_question = (
         "如果不考虑现实限制，你最想做哪类工作？"
-        "再想想你明确不想做什么，这两点比“热门行业”更有用。"
+        "再想想你明确不想做什么，这两点比「热门行业」更有用。"
     )
 
     return _json({
@@ -100,7 +100,7 @@ def explore_goals() -> str:
             "1. 先用 get_workflow_status / 档案信息摸清用户现状（零基础就如实对待，不美化）\n"
             "2. 用对话挖掘兴趣轴与约束轴（Genie Goal 式提问，2-3 个问题一轮，不啰嗦）\n"
             "3. 用 search_cases / fetch_company_jobs 抓真实岗位与同背景案例支撑候选方向，"
-            "绝不用 LLM 知识编造'热门方向'\n"
+            "绝不用 LLM 知识编造「热门方向」\n"
             "4. 主动给出 2-3 个候选方向（标注假设 + Fit Filters + 零基础友好度），让用户纠正\n"
             "5. 对锁定方向给出三档目标（冲/稳/保）：挑战档=比当前能力高一档需补短板，"
             "一般档=经路线图提升后大概率够到，兜底档=当前即可覆盖的下限；"
@@ -136,7 +136,7 @@ def analyze_gaps() -> str:
         )
 
     # 链路守卫：没有实质目标（want 为空/仅模糊表述）时先 explore_goals，
-    # 避免对"无目标"做差距分析产出无意义报告
+    # 避免对「无目标」做差距分析产出无意义报告
     if not _has_goal(profile):
         return error_response(
             "MISSING_DATA",
@@ -162,7 +162,7 @@ def analyze_gaps() -> str:
     if skills and not has_evidence and not profile.probe_skipped:
         return error_response(
             "PROBING_REQUIRED",
-            "档案中的技能没有用户确认过的证据，摸排是硬性必选步骤（BUG-001）：\n"
+            "档案中的技能没有用户确认过的证据，摸排是硬性必选步骤：\n"
             "请先对关键技能逐项向用户求证（独立完成/讲难点/掌握程度），"
             "写入 user_verified=true 的证据后再分析。\n"
             "不能以 confidence=高 或 evidence 照抄简历绕过。\n\n"
@@ -177,7 +177,7 @@ def analyze_gaps() -> str:
     if skills and self_issues and not profile.probe_skipped:
         return error_response(
             "PROBING_REQUIRED",
-            "档案技能缺「作者身份与把控度自评」（BUG-021）——AI 编程时代「独立完成」"
+            "档案技能缺「作者身份与把控度自评」——AI 编程时代「独立完成」"
             "可能是「AI 生成+人工验证」，不校准会系统性高估手写能力：\n"
             + "\n".join(f"- {i}" for i in self_issues)
             + f"\n\n{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
@@ -212,9 +212,9 @@ def analyze_gaps() -> str:
             {
                 "step": 1,
                 "name": "现状盘点",
-                "action": "用大白话把档案货底子讲给用户：届别/城市/目标；技能清单及逐项把控度"
-                          "（authorship 分布要点名哪些是 AI 生成/辅助——AI 编程时代这是底牌里最关键的一张）；"
-                          "简历信任度（self_assessment）。不倒字段名，这是用户第一次看到自己的底牌",
+                "action": "用大白话把档案的真实水平讲给用户：届别/城市/目标；技能清单及逐项把控度"
+                          "（authorship 分布要点名哪些是 AI 生成/辅助——AI 编程时代这是最关键的背景项）；"
+                          "简历信任度（self_assessment）。不倒字段名，这是用户第一次看清自己的真实状况",
                 "output": {
                     "goal": "目标岗位与公司",
                     "have_summary": "技能与经历一句话盘点",
@@ -255,7 +255,7 @@ def analyze_gaps() -> str:
                     "match_score_draft": 0,
                 },
                 "checkpoint": False,
-                "checkpoint_note": "讲清「为什么」即可继续，无需用户逐项点头",
+                "checkpoint_note": "讲清「为什么」即可继续，无需用户逐项确认",
             },
             {
                 "step": 4,
@@ -268,7 +268,7 @@ def analyze_gaps() -> str:
             },
         ],
         "instructions": (
-            "步骤预告（提高心理预期）：第一个回复先向用户报完整菜单——"
+            "步骤预告（提高心理预期）：第一轮回复先向用户报完整菜单——"
             "「我现在做 4 步：① 现状盘点 ② 搜案例（本地+牛客+GitHub+目标企业 JD）"
             "③ 两维分析 ④ 结果预览，你确认后落盘」——报完再动手，禁止无预告直接执行。\n"
             "播报纪律：每个工具调用前用一句话告诉用户这步在干什么、在等什么"
@@ -289,7 +289,7 @@ def analyze_gaps() -> str:
             "   - 存在这类技能时：skill_gaps 必须新增「手写实现/现场逐行讲解」类差距\n"
             "     （source 标「用户自评」），resume_red_flags 必须新增「代码主要 AI 生成」\n"
             "     条目（signal/risk/evidence_fix 三件套），interview_preparation.must_prepare\n"
-            "     按把控度分层（先补能逐行讲清，再冲源码级）——质量门会硬检查 AI 署名风险；\n"
+            "     按把控度分层（先补能逐行讲清，再冲源码级）——质量门会硬检查 AI 作者身份风险；\n"
             "   - 不贬损 AI-native 工程价值：生产落地、验证迭代照常计入优势，\n"
             "     目标 JD 的 AI 编码工具加分项照常对齐；\n"
             "   - 未经用户确认（无 user_verified）的技能先追问证据（做过什么项目/讲一个难点）\n"
@@ -449,7 +449,7 @@ def save_gap_analysis(gap_json: str) -> str:
     - skill_gaps 非空，且每条必须带 source（真实数据来源，抓取/导入）
     - resume_red_flags 若提供，每条必须有 signal / risk / evidence_fix
     - 技能 authorship 为 ai_assisted/ai_generated 时，resume_red_flags 必须有
-      「AI 生成/手写」相关风险条目——AI 作者身份风险不得静默吞掉（BUG-021）
+      「AI 生成/手写」相关风险条目——AI 作者身份风险不得静默吞掉
     """
     try:
         gap_data = _parse_json_param(gap_json, "差距分析")

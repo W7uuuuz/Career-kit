@@ -124,7 +124,7 @@ def delete_profile(profile_name: str, confirm: str = "") -> str:
     """
     if confirm != "true":
         return (
-            f" 即将删除档案「{profile_name}」——这是不可逆的用户决策，"
+            f"即将删除档案「{profile_name}」——这是不可逆的用户决策，"
             "请先与用户确认（展示该档案的身份/目标/更新时间），确认后重试：\n"
             'delete_profile(profile_name="<档案名>", confirm="true")\n\n'
             "说明：删除是回收站式的，档案会移入本地回收站（trash/），"

@@ -14,13 +14,13 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 - 只输出 3-5 句，不要复述内部手册、Phase 或工具名
 - 只问两件事：有没有简历文件；目标岗位/公司/方向
-- 用户说“不知道做什么”时，先走 `explore_goals`，不要直接分析
+- 用户说「不知道做什么」时，先走 `explore_goals`，不要直接分析
 
 ## 真实数据规则
 
 | 数据源 | 内容 | 获取方式 |
 |--------|------|----------|
-| 企业 Scraper（BOSS/字节/腾讯/百度/阿里/牛客） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
+| 企业数据源（BOSS/字节/腾讯/百度/阿里/牛客） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
 | GitHub 经验帖 | 秋招成功经验/面经（学历自述） | `search_cases`（聚合）或 `fetch_company_jobs(company="github")` |
 | 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
 | 聚合案例搜寻 | 同背景成功经验 + 面试要求（学历五档四层打分） | `search_cases(role, education, company, kind)` |
@@ -60,12 +60,12 @@ analyze_gaps() → save_gap_analysis(gap_json)
 
 `analyze_gaps` 会返回 4 步 step_template（现状盘点 → 案例搜寻 → 两维分析 → 结果预览）：
 **step 2 案例搜寻是独立步骤，必须调用 `search_cases`**，不得用散抓 JD 替代；
-把第一份回复先做成「步骤预告」（报完 4 步菜单再动手），每步产出用户看得见的中间结果，
+把第一轮回复先做成「步骤预告」（报完 4 步菜单再动手），每步产出用户看得见的中间结果，
 工具调用前先播报，表格必须带「为什么」，案例卡必须标来源，用户确认预览后才 `save_gap_analysis`。
 
 `skill_gaps` 每项必须带 `source`；`resume_red_flags` 每项必须带 `signal/risk/evidence_fix`，
 否则内容质量门会拒绝保存。技能 authorship 为 ai_assisted/ai_generated 时，
-red_flags 必须包含「AI 生成/手写」风险条目——AI 作者身份不得静默吞掉（BUG-021）。
+red_flags 必须包含「AI 生成/手写」风险条目——AI 作者身份不得静默吞掉。
 
 ### 3. 规划
 
@@ -94,7 +94,7 @@ generate_tasks()
 
 完成任务会自动沉淀能力证据到 `have.capability_evidence`。
 
-投递纪律：只记录用户口述的真实事实，禁止编造或代替用户"估计"状态；
+投递纪律：只记录用户口述的真实事实，禁止编造或代替用户「估计」状态；
 同公司+同岗位的活跃记录会拒重复，更新需传返回的 `application_id`；
 进面试/拿 offer 属重大事件，按返回提示触发 `trigger_insight(event)`。
 
@@ -165,6 +165,6 @@ export_dashboard(mode="roadmap")     # 可交互职业地图
 - [文档地图](README.md)：所有文档的唯一入口
 - [工具总览](tools.md)：35 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
-- [企业库](scrapers.md)：已收录数据源
+- [企业数据源](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式
 - [示例](examples/README.md)：职业地图与场景示例

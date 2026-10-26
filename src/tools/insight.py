@@ -112,7 +112,7 @@ def build_insight_prompt(
     "adjustment_reason": "调整原因",
     "changes": [
         {{
-            "type": "add_task|remove_task|modify_task|add_phase",
+            "type": "add_task|remove_task|modify_task",
             "task_id": "被操作的任务 ID（add_task 时省略）",
             "description": "具体调整内容",
             "details": {{}}
@@ -125,9 +125,11 @@ def build_insight_prompt(
 分析要点：
 1. 对比各阶段完成情况，判断推进节奏是否健康
 2. 重点是基于「现实 vs 计划」的偏差调整**后续未执行的阶段计划**：
-   - 执行不足（如预期进目标企业实习却未成）→ 增加/替换中间阶段（如先到另一家企业攒经历）
-   - 执行超出预期（如意外进了更厉害的企业）→ 删减重复阶段、提升目标
+   - 执行不足（如预期进目标企业实习却未成）→ 增加/替换中间阶段的任务（如先补另一段经历所需任务）
+   - 执行超出预期（如意外进了更厉害的企业）→ 删减重复任务、提升目标
    - 调整的是未来计划而非已执行部分——已执行的只记录事实与偏差，不评判
+   - 只能调整任务（add_task/remove_task/modify_task）；要增删整个阶段时，
+     建议用户走 generate_roadmap → save_roadmap 链路重建
 3. 如果某类任务反复跳过，建议调整内容或顺序
 4. 结合能力证据评估真实水平是否匹配目标
 5. 结合求职漏斗归因（仅当投栽数据存在时考虑）：

@@ -35,7 +35,7 @@
 6. finalize_profile()
 ```
 
-> 摸排硬门禁（BUG-001/BUG-021）：技能无用户确认证据，或缺 authorship/control_level/
+> 摸排硬门禁：技能无用户确认证据，或缺 authorship/control_level/
 > self_assessment 自评时，finalize 与 analyze_gaps 都会拒绝放行；
 > authorship/control_level 必须来自用户本人回答，AI 不得代填；
 > 唯一跳过方式是用户明确要求时 `finalize_profile(skip_probing=True)`（留痕）。
@@ -47,9 +47,7 @@
 
 **关键规则**：
 
-- 技能必须经过用户确认，简历原文不能直接当证据
-- 有技能但无确认证据时，`finalize_profile` 会拒绝放行；仅用户明确要求时可
-  `skip_probing=True` 并留痕
+- 技能必须经过用户确认，简历原文不能直接当证据（门禁细节见上方「摸排硬门禁」）
 
 ---
 
@@ -164,7 +162,7 @@ record_application(company, role, status, ...)   # 新建/更新投递记录
 - `checkin_mode`：`once`（默认）/ `daily`（`amount` 累加天数）/
   `percent`（`amount` 累加完成比例）
 - 完成得轻松时可在对话中建议加深，但不自动繁殖任务
-- 只记录用户口述的投递事实；不编造、不代用户"估计"状态
+- 只记录用户口述的投递事实；不编造、不代用户「估计」状态
 
 ---
 

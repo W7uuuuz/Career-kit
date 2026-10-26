@@ -1,4 +1,4 @@
-# 企业库
+# 企业数据源
 
 > Career Kit 已收录的企业数据源。教程的唯一事实源是各 scraper 包内的 `guide.md`。
 
@@ -11,8 +11,8 @@
 | `tencent` | 腾讯 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/tencent/guide.md) |
 | `baidu` | 百度 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/baidu/guide.md) |
 | `alibaba` | 阿里巴巴 | JD | 校招 / 实习 | [guide](../src/scrapers/alibaba/guide.md) |
-| `nowcoder` | 牛客网 | 面经 | 面经 | [guide](../src/scrapers/nowcoder/guide.md) |
-| `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | 秋招/春招复盘 | [guide](../src/scrapers/github/guide.md) |
+| `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
+| `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 
 > `get_scraper_guide(company)` 运行时读取同一份 guide.md。新增企业时在包内附
 > guide.md 即自动生效（模板见 `_template/guide.md`）。

@@ -95,7 +95,7 @@ def normalize_education_tag(text: str) -> dict[str, Any]:
 
 
 def canonical_education(raw: str) -> dict[str, Any]:
-    """把用户输入的教育条件归一为结构化条件（区别于 normalize_education_tag 的''抽取''）。
+    """把用户输入的教育条件归一为结构化条件（区别于 normalize_education_tag 的「抽取」）。
 
     语义：调用方明确给了学历条件——未识别时 raise ValueError，让工具返回可读的参数纠错。
     """

@@ -1,7 +1,7 @@
 """案例搜寻聚合器——search_cases 工具的逻辑层。
 
 三类源聚合为统一案例卡：
-1. local      —— data/knowledge/ 本地积累（此前抓过的 JD/面经/经验帖 + 用户手放）
+1. local      —— ~/.career-kit/knowledge/ 本地积累（此前抓过的 JD/面经/经验帖 + 用户手放）
 2. nowcoder   —— 牛客面经（成功经验/面试题主矿）
 3. github     —— GitHub 秋招经验帖（开源无墙，标题自述学历）
 4. official   —— company 匹配到的官方/BOSS 源的岗位 JD（面试要求口径；boss 含薪资+学历参数）

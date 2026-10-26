@@ -34,7 +34,7 @@ SCOPE_TO_TYPE = {
 _TYPE_TO_SCOPE = {v: k for k, v in SCOPE_TO_TYPE.items()}
 MAX_PAGE_SIZE = 20
 
-# 列表页已带完整 JD；详情接口偶发“发布中”，用列表数据兜底
+# 列表页已带完整 JD；详情接口偶发「发布中」，用列表数据兜底
 _FALLBACK: dict[str, dict[str, Any]] = {}
 
 

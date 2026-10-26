@@ -32,7 +32,7 @@ fetch_company_jobs(company="github", params='{"keyword": "AI Agent", "education"
 | url | issue 详情页链接（可传给 fetch_jd_detail） |
 | date | issue 创建日期 |
 | snippet | 正文摘要（前 300 字） |
-| education_tag | 归一化学历标签（"双非本"/"211硕" 等） |
+| education_tag | 归一化学历标签（「双非本」「211硕」等） |
 | reactions | 帖子点赞数——高赞通常质量更高 |
 | source | `github` |
 

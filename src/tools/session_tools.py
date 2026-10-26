@@ -127,7 +127,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
 
     Args:
         skip_probing: 是否跳过「简历技能摸排」（默认 False）。
-            摸排是硬性必选步骤（BUG-001/BUG-021）：have 有技能但无用户确认证据
+            摸排是硬性必选步骤：have 有技能但无用户确认证据
             （user_verified）或缺 authorship/control_level/self_assessment 自评时，
             本工具拒绝放行，除非用户明确表示跳过，此时 LLM 传 skip_probing=True
             并记录留痕——不得以置信度高或简历字面为由自动跳过，
@@ -154,7 +154,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
     if needs_probe and not skip_probing:
         return error_response(
             "PROBING_REQUIRED",
-            "档案中的技能没有用户确认过的证据，摸排是硬性必选步骤（BUG-001）：\n"
+            "档案中的技能没有用户确认过的证据，摸排是硬性必选步骤：\n"
             "简历有美化成分——按简历字面水平做差距分析会系统性失真，"
             "不能以 confidence=高 或 evidence 照抄简历来绕过。\n"
             "请先对关键技能逐项向用户求证：\n"
@@ -176,7 +176,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
     if needs_self_assessment and not skip_probing:
         return error_response(
             "PROBING_REQUIRED",
-            "技能证据已确认，但缺「作者身份与把控度自评」（BUG-021）——"
+            "技能证据已确认，但缺「作者身份与把控度自评」——"
             "AI 编程时代「独立完成」可能是「AI 生成+人工验证」，"
             "按简历字面水平分析会系统性高估手写能力：\n"
             + "\n".join(f"- {i}" for i in self_issues)
@@ -241,7 +241,7 @@ def _summarize_dict(d: dict) -> str:
 def _has_goal(profile) -> bool:
     """是否已有可分析的实质目标（want 关键字段或 target_jd）。
 
-    want 中的 raw（如"想转行"这种模糊表述）不算实质目标——正是 explore_goals 的场景。
+    want 中的 raw（如「想转行」这种模糊表述）不算实质目标——正是 explore_goals 的场景。
     """
     want = profile.want or {}
     for key in ("target_role", "role", "position", "direction", "industry",
@@ -324,7 +324,7 @@ def import_jd_file(file_path: str) -> str:
         f"--- JD CONTENT ---\n{text}\n--- END ---\n\n"
         "根据以上 JD 内容，请调用 import_jd 工具导入，字段结构如下：\n"
         'import_jd(jd_text=\'{"company": "<公司名>", "role": "<岗位名>", "requirements": ["<要求1>", "<要求2>"]}\')\n'
-        " 请用上面 JD 的真实内容填充字段（company/role/requirements/description 至少一项），"
+        "请用上面 JD 的真实内容填充字段（company/role/requirements/description 至少一项），"
         "禁止原样复制示例占位文本。\n"
         "下一步：调用 import_jd 导入结构化字段。"
     )

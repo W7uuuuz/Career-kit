@@ -23,7 +23,7 @@ AUTHORSHIP_VALUES = ("self_written", "ai_assisted", "ai_generated", "referenced"
 AI_AUTHORED = ("ai_assisted", "ai_generated")
 
 SELF_ASSESSMENT_INSTRUCTIONS = (
-    "**简历自评三问（BUG-021，与求证同轮一起问；authorship/control_level 必须"
+    "**简历自评三问（与求证同轮一起问；authorship/control_level 必须"
     "来自用户本人回答，AI 不得代填）：**\n"
     "① 总问：简历有美化成分（包括 AI 写的代码——项目算你的，但作者身份要说清）。"
     "诚实回答：简历里哪几条描述你面试现场站得住、哪些站不住？\n"

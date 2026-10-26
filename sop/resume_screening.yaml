@@ -60,7 +60,7 @@ methodology:
         - type: user_have
           query_hint: "从 profile 中获取"
           local_paths: []
-      quality_gate: "五个维度均有具体差距项，每个差距有明确描述；负面信号审计必须覆盖独立开发/协作/时长度"
+      quality_gate: "五个维度均有具体差距项，每个差距有明确描述；负面信号审计必须覆盖独立开发、协作缺失、实习时长"
       depends_on: [gather_data]
 
     - id: generate_advice
