@@ -91,6 +91,9 @@ def generate_roadmap() -> str:
             },
         ],
         "instructions": (
+            "步骤预告（提高心理预期）：第一个回复先向用户报完整菜单——"
+            "「路线图分 6 步：① 起点判定 ② 目标拆解 ③ 阶段序列 ④ 逐阶段细化 "
+            "⑤ 审计 ⑥ 定稿交付」——报完再动手，禁止无预告直接执行。\n"
             "播报纪律：每个工具调用前用一句话告诉用户这步在干什么——全程禁止静默连调工具。\n"
             "请严格按照 step_template 的 6 步分步执行，禁止一步到位。\n"
             "1. 每步必须产出该步的 output 结构后再进入下一步；"
@@ -98,7 +101,7 @@ def generate_roadmap() -> str:
             "2. checkpoint=true 的步骤必须先把中间产物展示给用户确认，确认后再继续\n"
             "3. 步骤 1 用 roadmap.yaml 的 start_level_rubric 打分表判定，不是直觉\n"
             "4. 步骤 5 必须调用 career-roadmap-auditor 审计，审计通过才算定稿候选\n"
-            "5. 过程中需要真实岗位数据时用 fetch_company_jobs / fetch_jd_detail 获取，"
+            "5. 过程中需要真实岗位数据时用 search_cases / fetch_company_jobs / fetch_jd_detail 获取，"
             "拿不到就 jd 占位（pending_user_import），绝不编造\n"
             "6. 最终调用 save_roadmap(roadmap_json) 保存；定稿产物除结构化数据外还有一份"
             "路线图 HTML 活地图，交付时要向用户说明它的用途与用法（结构总览+勾选打卡，浏览器本地存进度）"

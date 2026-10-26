@@ -12,6 +12,7 @@
 | `baidu` | 百度 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/baidu/guide.md) |
 | `alibaba` | 阿里巴巴 | JD | 校招 / 实习 | [guide](../src/scrapers/alibaba/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | 面经 | [guide](../src/scrapers/nowcoder/guide.md) |
+| `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | 秋招/春招复盘 | [guide](../src/scrapers/github/guide.md) |
 
 > `get_scraper_guide(company)` 运行时读取同一份 guide.md。新增企业时在包内附
 > guide.md 即自动生效（模板见 `_template/guide.md`）。
@@ -42,6 +43,7 @@
 |----------|------|----------|
 | JD | 了解岗位要求 | 差距分析、路线图规划 |
 | 面经 | 了解面试内容 | 面试准备、技能补充 |
+| 经验帖（experiences） | 同背景成功路径（学历/届别自述） | 案例搜寻（search_cases）、方向可行性佐证 |
 | 薪资 | 了解市场行情 | 目标设定、期望管理（并非所有源公开） |
 
 ## 参考实现

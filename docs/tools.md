@@ -1,6 +1,6 @@
 # MCP 工具总览
 
-> 34 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
+> 35 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
 > 工作流与前置条件见 [工作流详解](workflow.md)。
 
 ## 工具总览
@@ -26,7 +26,7 @@
 | `list_trash` | 列出回收站中的档案 |
 | `restore_profile` | 从回收站恢复档案 |
 
-### 数据获取工具（5）
+### 数据获取工具（6）
 
 | 工具 | 作用 |
 |------|------|
@@ -35,6 +35,7 @@
 | `fetch_company_jobs` | 抓取真实岗位/面经，自动写入知识库 |
 | `fetch_jd_detail` | 获取 JD 全文或面经正文 |
 | `search_knowledge` | 检索本地知识库 `~/.career-kit/knowledge/` |
+| `search_cases` | 聚合搜寻同背景成功经验与面试要求（本地 + 牛客 + GitHub + 目标企业 JD，学历五档四层归一打分） |
 
 ### 分析规划工具（6）
 

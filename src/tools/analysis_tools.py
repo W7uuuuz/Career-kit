@@ -99,7 +99,7 @@ def explore_goals() -> str:
             "请按照目标选择方法论指引，通过对话帮用户选定职业方向：\n"
             "1. 先用 get_workflow_status / 档案信息摸清用户现状（零基础就如实对待，不美化）\n"
             "2. 用对话挖掘兴趣轴与约束轴（Genie Goal 式提问，2-3 个问题一轮，不啰嗦）\n"
-            "3. 用 list_data_sources → fetch_company_jobs 抓真实岗位数据支撑候选方向，"
+            "3. 用 search_cases / fetch_company_jobs 抓真实岗位与同背景案例支撑候选方向，"
             "绝不用 LLM 知识编造'热门方向'\n"
             "4. 主动给出 2-3 个候选方向（标注假设 + Fit Filters + 零基础友好度），让用户纠正\n"
             "5. 对锁定方向给出三档目标（冲/稳/保）：挑战档=比当前能力高一档需补短板，"
@@ -108,7 +108,10 @@ def explore_goals() -> str:
             "无真实数据就如实标注缺失，绝不编造，允许用户按档组合选择\n"
             "6. 引导用户选择（1-10 打分），选定后用 intake(section='want') 写入档案，"
             "如实记录 experience_level（含选定的目标档位）\n"
-            "7. 提示用户可继续 analyze_gaps 差距分析；方向不合适可随时回来重新探索"
+            "7. 提示用户可继续 analyze_gaps 差距分析；方向不合适可随时回来重新探索\n\n"
+            "步骤预告用得像菜单：候选方向定下来前要抓真实数据支撑——"
+            "先告诉用户「接下来我会：① 摸现状 → ② 用 search_cases 搜同背景案例佐证方向 "
+            "（成功经验打分带学历标签）→ ③ 出候选方向让挑」，让用户对等待有心理预期"
         ),
     })
 
@@ -224,18 +227,17 @@ def analyze_gaps() -> str:
             {
                 "step": 2,
                 "name": "案例搜寻",
-                "action": "先播报（在搜什么、大概多久）；然后 search_knowledge 搜本地积累的"
-                          "同背景案例/JD/面经 → list_data_sources + fetch_company_jobs 抓目标企业真实岗位"
-                          " → fetch_jd_detail 深挖 1-2 条关键 JD；把搜寻结果展示给用户："
-                          "岗位列表（含薪资）、共性要求清单、同背景案例卡片，每条标来源；"
-                          "抓不到或本地无积累就如实说明并引导 import_jd，绝不编造",
+                "action": "独立步骤（不得用散抓 JD 替代）：调用 search_cases(role=..., "
+                          "education=..., company=...) 一次聚合本地知识库 + 牛客面经 + "
+                          "GitHub 经验帖 + 目标企业 JD；把搜寻结果作为案例卡展示给用户"
+                          "（成功经验一节 + 面试要求一节，每条标来源平台/url/时间/学历标签），"
+                          "抓不到或全源失败就把 warnings 如实报给用户并引导补充材料，绝不编造",
                 "output": {
-                    "searched": {"local_count": 0, "companies": ["字节"]},
-                    "jobs_found": 0,
-                    "common_requirements": ["..."],
-                    "salary_spans": ["20k-35k"],
-                    "cases": [{"title": "", "takeaway": "", "source": ""}],
-                    "missing": "抓不到时如实标注",
+                    "cases_shown": 0,
+                    "success_experience": 0,
+                    "interview_requirements": 0,
+                    "common_requirements": "从案例提炼的共性要求",
+                    "missing": "失败/缺失来源的如实说明",
                 },
                 "checkpoint": False,
                 "checkpoint_note": "展示搜寻结果后无异议直接进分析；用户要补充案例就停下来",
@@ -266,15 +268,20 @@ def analyze_gaps() -> str:
             },
         ],
         "instructions": (
+            "步骤预告（提高心理预期）：第一个回复先向用户报完整菜单——"
+            "「我现在做 4 步：① 现状盘点 ② 搜案例（本地+牛客+GitHub+目标企业 JD）"
+            "③ 两维分析 ④ 结果预览，你确认后落盘」——报完再动手，禁止无预告直接执行。\n"
             "播报纪律：每个工具调用前用一句话告诉用户这步在干什么、在等什么"
-            "（抓取一般十几秒）——全程禁止静默连调工具。\n"
+            "（案例搜寻约十几秒）——全程禁止静默连调工具。\n"
             "请严格按 step_template 的 4 步顺序执行，禁止一步到位，"
             "每步必须产生用户看得见的输出：\n"
-            "1. step 1 现状盘点后再进入案例搜寻\n"
-            "2. step 2 案例找寻顺序：先 search_knowledge 查本地积累（data/knowledge/，"
-            "   涵盖此前抓过的 JD 与面经）——不限于目标企业，同背景案例也要搜；"
-            "   没有/抓取不可用就如实说明，引导用户 import_jd / import_jd_file，"
-            "   绝不编造，source 标注真实出处\n"
+            "1. step 1 现状盘点（等用户认领/纠正）后再进入案例搜寻\n"
+            "2. step 2 是独立步骤：直接调用 search_cases（role 必填；education 用"
+            "   档案 who/自评里能确认的学历条件，如「双非本」；company 给目标企业），"
+            "   把返回的案例卡原样展示（标来源），不得用 fetch_company_jobs 散抓替代；"
+            "   search_cases 之后需要单条详情再 fetch_jd_detail；"
+            "   全源失败就如实说明并引导 import_jd / import_jd_file，绝不编造，"
+            "   source 标注真实出处\n"
             "3. step 3 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
             "   - authorship=ai_assisted/ai_generated 或 control_level<6 的技能是\n"
             "     「能讲清架构、能驱动验证」而非「能手写」——不得在 strengths 里赋予\n"

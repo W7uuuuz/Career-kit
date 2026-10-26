@@ -549,7 +549,7 @@ def test_step8_mcp_tools_registered():
         "list_trash", "restore_profile",
         # 数据获取与分析
         "list_data_sources", "get_scraper_guide", "fetch_company_jobs",
-        "fetch_jd_detail", "search_knowledge",
+        "fetch_jd_detail", "search_knowledge", "search_cases",
         "explore_goals", "analyze_gaps", "save_gap_analysis",
         # 规划
         "generate_roadmap", "save_roadmap",

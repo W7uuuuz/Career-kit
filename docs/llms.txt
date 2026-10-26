@@ -21,9 +21,11 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 | 数据源 | 内容 | 获取方式 |
 |--------|------|----------|
 | 企业 Scraper（BOSS/字节/腾讯/百度/阿里/牛客） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
+| GitHub 经验帖 | 秋招成功经验/面经（学历自述） | `search_cases`（聚合）或 `fetch_company_jobs(company="github")` |
 | 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
+| 聚合案例搜寻 | 同背景成功经验 + 面试要求（学历五档四层打分） | `search_cases(role, education, company, kind)` |
 
-分析或规划前必须至少调用一次 `fetch_company_jobs` 或 `search_knowledge`。
+分析或规划前必须至少调用一次 `search_cases` 或 `fetch_company_jobs`。
 数据不可用时如实告知，并引导 `import_jd` / `import_jd_file` 导入用户手头 JD，不要编造。
 
 ## 工作流
@@ -49,15 +51,17 @@ start_session()
 ```
 list_data_sources()                                  # 查看可用源与参数
 get_scraper_guide(company)                           # 首次使用某源前读取
-fetch_company_jobs(company, params)                  # 真实岗位/面经
-fetch_jd_detail(url)                                 # JD 全文
+search_cases(role, education, company)               # 案例搜寻（独立步骤，一次调用聚合多源）
+fetch_company_jobs(company, params)                  # 真实岗位/面经（search_cases 的底层单源抓取）
+fetch_jd_detail(url)                                 # JD 全文或面经/经验帖详情
 search_knowledge(query)                              # 本地资料
 analyze_gaps() → save_gap_analysis(gap_json)
 ```
 
 `analyze_gaps` 会返回 4 步 step_template（现状盘点 → 案例搜寻 → 两维分析 → 结果预览）：
-每步产出用户看得见的中间结果，工具调用前先播报，表格必须带「为什么」，
-用户确认预览后才 `save_gap_analysis`。
+**step 2 案例搜寻是独立步骤，必须调用 `search_cases`**，不得用散抓 JD 替代；
+把第一份回复先做成「步骤预告」（报完 4 步菜单再动手），每步产出用户看得见的中间结果，
+工具调用前先播报，表格必须带「为什么」，案例卡必须标来源，用户确认预览后才 `save_gap_analysis`。
 
 `skill_gaps` 每项必须带 `source`；`resume_red_flags` 每项必须带 `signal/risk/evidence_fix`，
 否则内容质量门会拒绝保存。技能 authorship 为 ai_assisted/ai_generated 时，
@@ -159,7 +163,7 @@ export_dashboard(mode="roadmap")     # 可交互职业地图
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：34 个工具的唯一事实源
+- [工具总览](tools.md)：35 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业库](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式

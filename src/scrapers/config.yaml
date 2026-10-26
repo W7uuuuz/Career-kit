@@ -64,3 +64,11 @@ scrapers:
     description: 牛客网面经分享平台（nowcoder.com），面试经验与面试题数据源
     url_patterns:
       - "nowcoder.com"
+
+  github:
+    name: GitHub 经验帖
+    module: github.scraper
+    class: Scraper
+    description: GitHub 秋招/春招经验帖（Search API），offer 复盘与面经，无需登录
+    url_patterns:
+      - "github.com"

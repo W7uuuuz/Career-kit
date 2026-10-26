@@ -395,16 +395,79 @@ def test_analyze_gaps_returns_step_template(temp_profile):
     assert [s["checkpoint"] for s in steps] == [True, False, False, True]
 
     case_step = steps[1]
-    assert "search_knowledge" in case_step["action"], "案例搜寻必须搜本地积累"
-    assert "cases" in json.dumps(case_step["output"], ensure_ascii=False)
+    assert "search_cases" in case_step["action"], "案例搜寻必须点名独立工具"
+    assert "不得用散抓 JD 替代" in case_step["action"]
+    assert "cases_shown" in json.dumps(case_step["output"], ensure_ascii=False)
 
     # 分析步先讲方法论；结果预览步用户确认后才落盘
     assert "方法论" in steps[2]["action"]
     assert "用户确认" in steps[3]["action"]
 
-    # 播报纪律：禁止静默连调工具
+    # 播报纪律：禁止静默连调工具 + 步骤预告（先报菜单再动手）
     assert "播报" in out["instructions"]
     assert "禁止静默连调工具" in out["instructions"]
+    assert "步骤预告" in out["instructions"]
+    assert "先向用户报完整菜单" in out["instructions"]
+
+
+def test_search_cases_tool_renders_cases(temp_profile, monkeypatch):
+    """search_cases：聚合层被打桩时不联网——返回案例卡文本 + 各源状态。"""
+    import asyncio
+
+    import src.tools.case_tools as ct
+    from src.server import search_cases
+
+    fake = {
+        "cases": [
+            {
+                "kind": "success_experience",
+                "title": "27届双非本 字节 offer 复盘",
+                "source": "github",
+                "url": "https://github.com/a/b/issues/1",
+                "date": "2026-06-01",
+                "background": {"education_tag": "双非本", "year": "27届", "company": "", "position": ""},
+                "highlights": ["先小厂后大厂"],
+                "match_score": 6.5,
+            },
+            {
+                "kind": "interview_requirements",
+                "title": "AI Agent 开发工程师",
+                "source": "boss",
+                "url": "https://zhipin.com/job/1",
+                "date": "",
+                "background": {"education_tag": "", "year": "", "company": "BOSS直聘", "position": ""},
+                "highlights": ["熟悉 LangGraph/RAG"],
+                "salary": "20-35K",
+                "location": "深圳",
+            },
+        ],
+        "warnings": ["nowcoder: Playwright 执行失败"],
+        "sources": {"local": 0, "nowcoder": 0, "github": 1, "boss": 1},
+    }
+    monkeypatch.setattr(ct, "collect_cases", lambda *a, **k: fake)
+
+    out = asyncio.run(search_cases(
+        role="AI Agent 开发", education="双非本", company="字节"
+    ))
+
+    assert "同背景成功经验" in out and "面试要求" in out
+    assert "27届双非本" in out
+    assert "20-35K" in out
+    assert "nowcoder: Playwright 执行失败" in out, "源失败必须如实上报"
+    assert "不标注来源不诚实" in out
+
+    # kind 过滤参数透传
+    captured = {}
+
+    def fake_collect(role, company, city, education, kind, limit):
+        captured["kind"] = kind
+        captured["limit"] = limit
+        return {"cases": [], "warnings": [], "sources": {}}
+
+    monkeypatch.setattr(ct, "collect_cases", fake_collect)
+    out2 = asyncio.run(search_cases(role="后端", kind="requirements"))
+    assert captured["kind"] == "requirements"
+    assert "未命中" in out2 or "失败" in out2
 
 
 def test_save_gap_ai_authorship_requires_red_flag(temp_profile):
