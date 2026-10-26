@@ -98,5 +98,6 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           python -X utf8 -m src.doctor > doctor_output.txt || cat doctor_output.txt
-          grep -q "34 个工具" doctor_output.txt || (cat doctor_output.txt && exit 1)
+          # 工具数在 doctor.py 只维护一份（EXPECTED_TOOL_COUNT），这里只验证输出了注册数
+          grep -qE "[0-9]+ 个工具" doctor_output.txt || (cat doctor_output.txt && exit 1)
           if grep -q "\[FAIL\]" doctor_output.txt; then cat doctor_output.txt; exit 1; fi
