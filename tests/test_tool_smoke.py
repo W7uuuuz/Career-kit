@@ -374,7 +374,7 @@ def test_analyze_gaps_blocks_late_skill_without_authorship(temp_profile):
 
 
 def test_analyze_gaps_returns_step_template(temp_profile):
-    """黑盒感修复回归：analyze_gaps 返回 4 步 step_template + 播报纪律 + 案例搜寻步。"""
+    """黑盒感修复回归：analyze_gaps 返回 4 步 step_template + 播报纪律 + 读取调研步。"""
     from src.server import analyze_gaps, finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
@@ -391,12 +391,13 @@ def test_analyze_gaps_returns_step_template(temp_profile):
 
     steps = out["step_template"]
     assert len(steps) == 4
-    assert [s["name"] for s in steps] == ["现状盘点", "案例搜寻", "两维分析", "结果预览与定稿"]
+    assert [s["name"] for s in steps] == ["现状盘点", "读取调研", "两维分析", "结果预览与定稿"]
     assert [s["checkpoint"] for s in steps] == [True, False, False, True]
 
     case_step = steps[1]
-    assert "search_cases" in case_step["action"], "案例搜寻必须点名独立工具"
-    assert "不得用散抓 JD 替代" in case_step["action"]
+    assert "profile.research" in case_step["action"], "读取调研步必须点名调研数据源"
+    assert "search_cases" in case_step["action"], "不足处要求向后兼容 search_cases 兜底"
+    assert "软提示" in case_step["action"], "无调研时是软提示，不锁死分析"
     assert "cases_shown" in json.dumps(case_step["output"], ensure_ascii=False)
 
     # 分析步先讲方法论；结果预览步用户确认后才落盘
@@ -573,8 +574,8 @@ def test_save_roadmap_soft_check_and_html(temp_profile):
     result2 = json.loads(save_roadmap(json.dumps(clean, ensure_ascii=False)))
     assert "依据待确认" not in result2["message"]
 
-    # 定稿自动产出路线图 HTML
-    assert "career_kit_roadmap.html" in result2["message"]
+    # 定稿自动产出路线图 HTML（落用户资产目录，固定名）
+    assert "路线图.html" in result2["message"]
 
 
 def test_export_dashboard_roadmap_map(temp_profile):
@@ -598,7 +599,7 @@ def test_export_dashboard_roadmap_map(temp_profile):
     profile_module.save_profile(p)
 
     out = export_dashboard(mode="roadmap")
-    assert "career_kit_roadmap.html" in out
+    assert "路线图.html" in out
 
     path = Path(out.split("：")[1].splitlines()[0].strip())
     html = path.read_text(encoding="utf-8")

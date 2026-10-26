@@ -136,14 +136,17 @@ def test_bug021_command_scripts_have_identical_probe_text():
 
 WELCOME_OVERVIEW_ANCHORS = [
     "Career Kit 是你的 AI 职业陪练",
-    "从起步到上岸全流程 5 步",
+    "从起步到上岸全流程 6 步",
     "建档摸底",
+    "市场调研",
     "差距分析",
     "路线图规划",
     "阶段顺序定、节奏自己掌握",
     "执行打卡",
     "持续陪跑",
-    "每完成一步我都会告诉你到了哪一步",
+    "拿到了什么、下一步做什么",
+    "双击 index.html",
+    "回复信息密度",
 ]
 
 
@@ -166,10 +169,12 @@ def test_first_reply_overview_reaches_all_surfaces():
         if rel == ("docs", "llms.txt"):
             missing = [a for a in missing if a not in (
                 "Career Kit 是你的 AI 职业陪练",
-                "从起步到上岸全流程 5 步",
+                "从起步到上岸全流程 6 步",
                 "路线图规划",
                 "阶段顺序定、节奏自己掌握",
-                "每完成一步我都会告诉你到了哪一步",
+                "拿到了什么、下一步做什么",
+                "双击 index.html",
+                "回复信息密度",
             )]
         assert not missing, f"{rel} 未同步第一轮流程概览模板，缺：{missing}"
 

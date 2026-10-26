@@ -30,7 +30,8 @@ def test_export_dashboard_smoke(tmp_path, monkeypatch):
     assert "已打卡" in result or "已跳过" not in result
 
     out = export_dashboard()
-    assert "career_kit_dashboard.html" in out
+    assert "进度仪表盘.html" in out
+    assert "CareerKit" in out.split("：")[1]  # 落在用户资产目录
 
     html = Path(Path(out.split("：")[1].split("\n")[0].strip())).read_text(encoding="utf-8")
     assert "基础" in html          # 阶段名

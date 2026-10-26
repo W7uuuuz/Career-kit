@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ..assets import INDEX_FILENAME, get_assets_root
 from ..mcp_app import mcp
 from .dashboard import (
     render_progress_html as _render_progress_html,
@@ -629,7 +630,16 @@ def get_workflow_status() -> str:
         phase = "analysis"
         if not profile.gap:
             if _has_goal(profile):
-                next_step = "analyze_gaps"
+                if not (profile.research or {}).get("report_md"):
+                    # 调研是独立一步（软引导，不硬挡）：报告是一切分析的地基
+                    phase = "research"
+                    next_step = (
+                        "research_market（推荐先做：真实市场是分析的地基，约半分钟）；"
+                        "也可直接 analyze_gaps"
+                    )
+                else:
+                    completed_steps.append("research_market")
+                    next_step = "analyze_gaps"
             else:
                 next_step = "explore_goals（尚无明确目标——先用三轴定位选定方向，再 analyze_gaps）"
         else:
@@ -685,9 +695,22 @@ def get_workflow_status() -> str:
     lines.append(f"- 总计：{total_tasks} 个")
     lines.append(f"- 已完成：{completed_tasks} 个")
     lines.append("")
+    research = profile.research or {}
+    if research.get("report_md"):
+        counts = research.get("counts") or {}
+        lines.append("### 市场调研（来源真实）")
+        lines.append(
+            f"- 生成于 {research.get('generated_at', '')} · "
+            f"岗位样本 {counts.get('jd_samples', 0)} 条 · 案例 {counts.get('cases', 0)} 条"
+        )
+        report_html = research.get("report_html") or research.get("report_md") or ""
+        lines.append(f"- 报告：{report_html}")
+        lines.append(f"- 资产总览：{research.get('index') or (get_assets_root() / INDEX_FILENAME)}")
+        lines.append("")
     lines.append("### 工作流指南")
     lines.append("- 建档：start_session → intake(who/have/want) → finalize_profile；无目标用 explore_goals 选方向")
-    lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps → save_gap_analysis")
+    lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
+    lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
     lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap → generate_tasks")
     lines.append("- 执行：generate_tasks → detail_current_phase（可选，按当前阶段细化打卡点）→ get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
@@ -717,13 +740,15 @@ def export_dashboard(mode: str = "progress") -> str:
 
     if mode == "roadmap":
         html = _render_roadmap_map(profile)
-        out_path = _write_html(html, "career_kit_roadmap.html")
+        out_path = _write_html(html, kind="roadmap")
+        index_hint = f"{get_assets_root() / INDEX_FILENAME}"
         return (
             f"职业地图已生成：{out_path}\n\n"
             "用浏览器打开即可查看。这是一个可交互打卡应用：\n"
             "- 勾选任务即打卡，进度实时更新，状态保存在浏览器（localStorage）\n"
             "- 顶部 tab 切换阶段；「导出打卡数据」可复制打卡指令回传，由你同步到档案\n"
             "重新生成时已打卡记录不会丢失。\n"
+            f"资产总览：双击 {index_hint}（调研报告/路线图/仪表盘都在里面）。\n"
             "下一步：用户回传打卡数据后调用 checkin_task 同步到档案。"
         )
 
@@ -735,11 +760,13 @@ def export_dashboard(mode: str = "progress") -> str:
         )
 
     html = _render_progress_html(profile)
-    out_path = _write_html(html, "career_kit_dashboard.html")
+    out_path = _write_html(html, kind="progress")
+    index_hint = f"{get_assets_root() / INDEX_FILENAME}"
 
     return (
         f"仪表盘已生成：{out_path}\n\n"
         "用浏览器打开即可查看。数据为生成时刻的快照，进度更新后可重新导出。\n"
+        f"资产总览：双击 {index_hint}（调研报告/路线图/仪表盘都在里面）。\n"
         "如需日程表，请直接在对话中为用户编写 markdown/HTML 日程文档（时间由用户自己填）。\n"
         "下一步：继续执行用 get_next_tasks，更新进度后用 export_dashboard 重新导出。"
     )

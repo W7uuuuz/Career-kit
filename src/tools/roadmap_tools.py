@@ -69,7 +69,8 @@ def generate_roadmap() -> str:
                 "step": 4,
                 "name": "逐阶段深入细化",
                 "action": "对每个阶段深入展开，不是列名式走过场：KPI（量化+验证证据）、里程碑（2-3 个带完成标准）、"
-                          "任务（一次坐下可完成粒度）、jd 三件套（company/rationale 常识可写，jd/jd_status 真实数据才填）",
+                          "任务（一次坐下可完成粒度）、jd 三件套（company/rationale 常识可写，jd/jd_status 真实数据才填——"
+                          "优先引用档案 research 里的调研 JD 样本与来源，不再重复抓取）",
                 "output": "完整 roadmap JSON（strategy_summary + phases，符合 roadmap.yaml output_schema）",
                 "checkpoint": False,
             },
@@ -287,7 +288,7 @@ def save_roadmap(roadmap_json: str) -> str:
     map_path = ""
     try:
         map_html = _render_roadmap_map(profile)
-        map_path = _write_html(map_html, "career_kit_roadmap.html")
+        map_path = _write_html(map_html, kind="roadmap")
     except Exception:
         map_path = ""
 
@@ -309,6 +310,7 @@ def save_roadmap(roadmap_json: str) -> str:
             f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
             "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡，进度在浏览器本地保存），"
             "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
+            "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
             "接下来调用 generate_tasks 生成任务列表；生成后引导用户按路线图开始第一阶段执行"
             "（或先 detail_current_phase 细化当前阶段的打卡路线）。"

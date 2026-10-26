@@ -9,7 +9,7 @@
 |------|------|----------|
 | [llms.txt](llms.txt) | LLM 运行时操作手册：规则、工作流、反模式 | 接入的 AI Agent |
 | [workflow.md](workflow.md) | 各阶段前置条件、流程、输入输出 | 使用者 / LLM |
-| [tools.md](tools.md) | 35 个 MCP 工具的唯一事实源 | 使用者 / 贡献者 |
+| [tools.md](tools.md) | 37 个 MCP 工具的唯一事实源 | 使用者 / 贡献者 |
 | [scrapers.md](scrapers.md) | 已收录企业数据源与贡献流程 | 使用者 / 贡献者 |
 | [knowledge.md](knowledge.md) | 本地知识库目录与文件格式 | 使用者 |
 | [examples/](examples/README.md) | 可交互职业地图、场景示例、示例数据 | 使用者 |

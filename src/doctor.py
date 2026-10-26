@@ -24,12 +24,14 @@ WARN = "WARN"
 FAIL = "FAIL"
 
 # 预期工具数：与 docs/tools.md、README 保持一致
-EXPECTED_TOOL_COUNT = 35
+EXPECTED_TOOL_COUNT = 37
 
 # 核心工具：缺失即判定注册损坏（比单纯计数更可诊断）
 CORE_TOOLS = (
     "start_session",
     "finalize_profile",
+    "research_market",
+    "gather_research_data",
     "analyze_gaps",
     "search_cases",
     "save_roadmap",

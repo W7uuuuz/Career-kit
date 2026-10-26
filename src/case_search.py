@@ -43,6 +43,13 @@ _COMPANY_ALIASES: dict[str, str] = {
 _RECENT_DAYS = 730  # 近两年新鲜度全额分，之后线性衰减
 
 
+def resolve_company(company: str) -> str:
+    """公司别名 → 源 slug（未知名字原样返回，交给调用方自行处理）。"""
+    if not company:
+        return ""
+    return _COMPANY_ALIASES.get(company.lower().strip(), company.strip())
+
+
 def collect_cases(
     role: str,
     company: str = "",

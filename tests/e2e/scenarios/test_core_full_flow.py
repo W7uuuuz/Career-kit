@@ -89,8 +89,8 @@ async def test_new_user_full_flow_quality(sandbox, quality):
         assert profile["have"].get("capability_evidence"), profile["have"]
         assert profile["adjustments"], profile["adjustments"]
 
-        dashboard_html = (sandbox.tmp / "career_kit_dashboard.html").read_text(encoding="utf-8")
-        roadmap_html = (sandbox.tmp / "career_kit_roadmap.html").read_text(encoding="utf-8")
+        dashboard_html = (sandbox.assets_dir / "默认档案" / "进度" / "进度仪表盘.html").read_text(encoding="utf-8")
+        roadmap_html = (sandbox.assets_dir / "默认档案" / "路线图" / "路线图.html").read_text(encoding="utf-8")
         assert "Career Kit" in dashboard_html
         assert "career-data" in roadmap_html
 

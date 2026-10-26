@@ -7,7 +7,7 @@
 ## 工作流总览
 
 ```
-建档 → 分析 → 规划 → 任务执行 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
+建档 → 市场调研 → 分析 → 规划 → 任务执行 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
 ```
 
 ---
@@ -51,7 +51,44 @@
 
 ---
 
-## 阶段 2：分析
+## 阶段 2：市场调研（核心卖点「来源真实」）
+
+**目标**：抓取真实市场事实，生成可查证的调研报告——后续分析的地基。
+
+**前置条件**：`finalize_profile` 已调用（推荐；无调研也可直接分析，只是软提示）。
+
+**流程**：
+
+```
+1. research_market()                              # 调研方法论与 4 步模板
+2. 向用户播报调研菜单（抓哪家、约半分钟、报告落在哪），宣告即执行
+3. gather_research_data(jd_specs, case_query)      # 一次批量抓取
+   - jd_specs：目标公司 1 家 + 同方向对照 2-4 家（优先含薪来源如 BOSS）
+   - case_query：role + education（五档四层写法如「双非本」）+ company/city
+4. 报告三件套自动落盘（代码渲染，不经 LLM），向用户汇报三要素
+5. 用户确认后进入差距分析
+```
+
+**输出**：
+
+- 报告三件套：`~/CareerKit/<档案>/调研报告/<日期_方向>.{md,html,json}`
+- `profile.research`：`{generated_at, direction, report_md, report_html, report_json,
+  index, jd_samples, cases, source_status, gaps, counts}`——差距分析与路线图直接引用
+- 资产总览入口：`~/CareerKit/index.html`
+
+**关键规则**：
+
+1. 报告内容 100% 代码渲染自抓取数据，不经 LLM——「来源真实」的硬保证
+2. 每条岗位/案例带来源链接、来源平台、抓取时间，用户可逐条点开验证
+3. 任一源失败不中断，失败原因进报告「来源状态面板」如实展示；
+   没抓到的明确写「未获取」，绝不编造
+4. 全部失败时返回 `MISSING_DATA` 并引导 `import_jd` / `import_jd_file`，不落空报告
+5. 多次调研各自留档（文件名带日期与方向），旧报告不覆盖
+6. 汇报口径：样本数与来源成败 → 报告完整路径 → 下一步；解读留给差距分析
+
+---
+
+## 阶段 3：分析
 
 **目标**：基于真实市场数据找出差距。
 
@@ -60,13 +97,16 @@
 **流程**：
 
 ```
-1. list_data_sources()                         # 查看可用源与参数
-2. get_scraper_guide(company)                  # 首次使用前读取教程
-3. fetch_company_jobs(company, params)         # 真实岗位/面经
-4. fetch_jd_detail(url)                        # 需要的 JD 全文
-5. search_knowledge(query)                     # 本地已积累资料
-6. analyze_gaps()
-7. save_gap_analysis(gap_json)
+1. 优先引用调研：profile.research 有报告时，step 2 直接展示岗位样本与案例（标来源）
+2. 无调研时软提示（建议先走阶段 2 市场调研），用户同意后再用如下数据链路补数据
+3. list_data_sources()                         # 查看可用源与参数
+4. get_scraper_guide(company)                  # 首次使用前读取教程
+5. fetch_company_jobs(company, params)         # 真实岗位/面经
+6. fetch_jd_detail(url)                        # 需要的 JD 全文
+7. search_knowledge(query)                     # 本地已积累资料
+8. search_cases(role, education, company)      # 定向补充同背景案例兜底
+9. analyze_gaps()
+10. save_gap_analysis(gap_json)
 ```
 
 **输出**：
@@ -76,9 +116,9 @@
 
 **关键规则**：
 
-1. 分析前必须抓取或检索真实数据；无数据时引导用户导入 JD
-2. 同背景案例从本地知识库（`search_knowledge`）与 JD 详情/面经中搜寻，展示案例卡片时标明来源
-3. 过程透明（硬纪律）：`analyze_gaps` 返回 4 步 step_template（现状盘点 → 案例搜寻 →
+1. 分析前必须基于真实数据；无数据时引导用户导入 JD，绝不编造
+2. 有调研报告直接引用（不重复全量抓取）；案例卡片展示时标明来源
+3. 过程透明（硬纪律）：`analyze_gaps` 返回 4 步 step_template（现状盘点 → 读取调研 →
    两维分析 → 结果预览），每步产出用户看得见的中间结果；
    调用工具前先播报该步在干什么，落盘前用户确认；所有表格必须带「为什么」
 4. 每个 `skill_gaps` 条目必须标注 `source`
@@ -87,7 +127,7 @@
 
 ---
 
-## 阶段 3：规划
+## 阶段 4：规划
 
 **目标**：基于差距生成分阶段路线图，只定顺序与完成标准。
 
@@ -118,12 +158,13 @@
 
 1. 禁止 `duration` / `estimated_days` 等时长字段
 2. 里程碑必须有 `done_criteria`
-3. JD 细节必须有真实数据，否则留空并标 `jd_status=pending_user_import`
+3. JD 细节必须有真实数据，否则留空并标 `jd_status=pending_user_import`；
+   有调研报告时优先引用 `profile.research` 的真实样本
 4. 起点层级取 `gap.start_level`；目标超起点时插入过渡阶段
 
 ---
 
-## 阶段 4：任务执行与打卡
+## 阶段 5：任务执行与打卡
 
 **目标**：把路线图转成可执行任务，关卡式推进。
 
@@ -166,7 +207,7 @@ record_application(company, role, status, ...)   # 新建/更新投递记录
 
 ---
 
-## 阶段 5：洞察调整与周检视
+## 阶段 6：洞察调整与周检视
 
 **目标**：阶段完成后审计，用户报告事件时重估计划，定期周检视复盘。
 
@@ -217,12 +258,15 @@ record_application(company, role, status, ...)   # 新建/更新投递记录
 
 ## 产出与状态
 
+用户资产统一落 `~/CareerKit/`（`CAREER_KIT_ASSETS_DIR` 可覆盖）：`index.html`
+是总入口，调研报告按 `<日期_方向>` 留档，路线图与仪表盘用固定文件名。
+
 | 工具 | 产出 |
 |------|------|
 | `get_progress` | 整体进度（含求职漏斗与投递清单） |
-| `get_workflow_status` | 当前阶段 + 下一步 + 目标变更检测 + 周检视提示 |
+| `get_workflow_status` | 当前阶段（含 research）+ 下一步 + 目标变更检测 + 周检视提示 |
 | `get_weekly_review` | 周检视 Markdown（打卡/阶段/漏斗 + 规则化建议） |
-| `export_dashboard("progress")` | 自包含进度仪表盘（含近 7 天与漏斗卡片） |
-| `export_dashboard("roadmap")` | 可交互职业地图 |
+| `export_dashboard("progress")` | 进度仪表盘 → `~/CareerKit/<档案>/进度/进度仪表盘.html`（含近 7 天与漏斗卡片） |
+| `export_dashboard("roadmap")` | 可交互职业地图 → `~/CareerKit/<档案>/路线图/路线图.html` |
 
 日程表不存储：用户需要时，LLM 在对话中直接写 markdown/HTML，时间由用户自己填。

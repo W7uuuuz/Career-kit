@@ -18,13 +18,57 @@ from .profile import get_active_profile_name
 _FINISHED_STATUS = ("completed", "skipped")
 
 
-def write_html(html: str, filename: str) -> str:
-    """把 HTML 写入临时目录并返回路径。"""
-    import tempfile
+def _research_card_html(profile) -> str:
+    """「市场调研」卡片：样本数、来源状态与报告入口（无调研时给引导）。"""
+    research = getattr(profile, "research", None) or {}
+    if not research.get("report_md"):
+        return (
+            "<p class='goal'>还没有调研报告。</p>"
+            "<p>在建档后调用 research_market → gather_research_data 生成：真实 JD + "
+            "同学历经历，全部带来源链接，落盘到你的 CareerKit 资产夹，随时可查证。</p>"
+        )
+    counts = research.get("counts") or {}
+    fails = [
+        s for s in (research.get("source_status") or []) if s.get("status") == "failed"
+    ]
+    fail_note = ""
+    if fails:
+        names = "、".join(str(s.get("source") or "?") for s in fails[:4])
+        fail_note = f" <span class='meta'>失败源（如实标注）：{escape(names)}</span>"
+    lines = (
+        f"<p><b>岗位样本 {counts.get('jd_samples', 0)} 条 · 案例 {counts.get('cases', 0)} 条</b>"
+        f"{fail_note}</p>"
+        f"<p class='goal'>生成于 {escape(str(research.get('generated_at') or ''))} · "
+        "每条带来源链接，可逐条验证；未获取的内容明确写了「未获取」。</p>"
+    )
+    links = []
+    for label, key in (("阅读版", "report_html"), ("可读全文", "report_md"), ("资产总览", "index")):
+        p = research.get(key)
+        if p:
+            encoded = Path(str(p)).as_uri()
+            links.append(f"<a href='{encoded}'>{label}</a>")
+    if links:
+        lines += f"<p>{' · '.join(links)}</p>"
+    return lines
 
-    out_path = Path(tempfile.gettempdir()) / filename
-    out_path.write_text(html, encoding="utf-8")
-    return str(out_path)
+
+def write_html(html: str, filename: str | None = None, kind: str = "analysis") -> str:
+    """把 HTML 写入用户资产目录（自动分目录 + 刷新 index），返回文件路径。
+
+    filename 缺省取该类型的固定名；kind: research/analysis/roadmap/progress。
+    """
+    profile_name = get_active_profile_name()
+    if filename is None:
+        from ..assets import ASSETS_FILENAME_BY_KIND
+
+        filename = ASSETS_FILENAME_BY_KIND[kind]
+
+    from ..assets import kind_assets_dir, rebuild_index
+
+    target = kind_assets_dir(kind, profile_name) / filename
+    target.write_text(html, encoding="utf-8")
+    rebuild_index()
+    return str(target)
 
 
 def _weekly_card_html(profile) -> str:
@@ -149,6 +193,7 @@ def render_progress_html(profile) -> str:
 
     weekly_html = _weekly_card_html(profile)
     funnel_html = _funnel_card_html(profile)
+    research_html = _research_card_html(profile)
 
     overall_pct = int(completed / total_tasks * 100) if total_tasks else 0
 
@@ -187,6 +232,8 @@ ul {{ padding-left: 20px; }} li {{ margin: 4px 0; font-size: 14px; }}
 <div class="card"><h2>接下来做</h2>{current_html}</div>
 
 <div class="card"><h2>近 7 天</h2>{weekly_html}</div>
+
+<div class="card"><h2>市场调研（来源真实）</h2>{research_html}</div>
 
 <div class="card"><h2>求职漏斗</h2>{funnel_html}</div>
 

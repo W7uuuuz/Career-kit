@@ -86,6 +86,7 @@ class Sandbox:
     data_dir: Path
     home: Path
     tmp: Path
+    assets_dir: Path
     artifacts: Path
     env: dict[str, str] = field(default_factory=dict)
 
@@ -99,6 +100,7 @@ class Sandbox:
         data_dir = root / "data"
         home = root / "home"
         tmp = root / "tmp"
+        assets = home / "CareerKit"
         for path in (data_dir, home, tmp):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -106,6 +108,7 @@ class Sandbox:
         env.update(
             {
                 "CAREER_KIT_DATA_DIR": str(data_dir),
+                "CAREER_KIT_ASSETS_DIR": str(assets),
                 "HOME": str(home),
                 "USERPROFILE": str(home),
                 "TMP": str(tmp),
@@ -115,7 +118,7 @@ class Sandbox:
                 "CAREER_KIT_E2E": "1",
             }
         )
-        return cls(root=root, data_dir=data_dir, home=home, tmp=tmp, artifacts=artifacts, env=env)
+        return cls(root=root, data_dir=data_dir, home=home, tmp=tmp, assets_dir=assets, artifacts=artifacts, env=env)
 
     @property
     def profile_file(self) -> Path:

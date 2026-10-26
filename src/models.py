@@ -150,6 +150,10 @@ class CareerProfile(BaseModel):
     who: dict[str, Any] = Field(default_factory=dict, description="你是谁")
     have: dict[str, Any] = Field(default_factory=dict, description="你有什么")
     want: dict[str, Any] = Field(default_factory=dict, description="你想要什么")
+    research: dict[str, Any] = Field(
+        default_factory=dict,
+        description="市场调研——批量抓取的真实 JD 与同学学历经历（含来源与数据缺口）",
+    )
     gap: dict[str, Any] = Field(default_factory=dict, description="差距是什么")
     plan: dict[str, Any] = Field(default_factory=dict, description="怎么走")
 

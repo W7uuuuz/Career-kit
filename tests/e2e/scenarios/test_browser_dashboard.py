@@ -30,7 +30,7 @@ async def test_dashboard_checkin_interaction(sandbox):
         await driver.generate_tasks()
 
         await driver.export("roadmap")
-        dashboard = sandbox.tmp / "career_kit_roadmap.html"
+        dashboard = sandbox.assets_dir / "默认档案" / "路线图" / "路线图.html"
         assert dashboard.exists(), f"未找到职业地图：{dashboard}"
 
     try:

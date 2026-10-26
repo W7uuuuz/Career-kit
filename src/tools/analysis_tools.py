@@ -226,14 +226,18 @@ def analyze_gaps() -> str:
             },
             {
                 "step": 2,
-                "name": "案例搜寻",
-                "action": "独立步骤（不得用散抓 JD 替代）：调用 search_cases(role=..., "
-                          "education=..., company=...) 一次聚合本地知识库 + 牛客面经 + "
-                          "GitHub 经验帖 + 目标企业 JD；把搜寻结果作为案例卡展示给用户"
-                          "（成功经验一节 + 面试要求一节，每条标来源平台/url/时间/学历标签），"
-                          "抓不到或全源失败就把 warnings 如实报给用户并引导补充材料，绝不编造",
+                "name": "读取调研",
+                "action": "档案已有市场调研（profile.research）时直接引用：把调研里的"
+                          "岗位样本与同背景案例按来源展示给用户（每条标来源平台/url/时间/学历标签），"
+                          "不得重复全量抓取；个别不足用 search_cases 定向补充。"
+                          "档案还没有调研时，先给用户一句软提示（下轮回复建议先走"
+                          " research_market → gather_research_data，报告会落盘可查证），"
+                          "用户不愿意就当场用 search_cases 搜集案例顶上——"
+                          "展示时必须如实说明「这批是临时搜的，正式调研报告还没有」；"
+                          "抓不到或全源失败就把现状如实报给用户并引导补充材料，绝不编造",
                 "output": {
                     "cases_shown": 0,
+                    "research_used": False,
                     "success_experience": 0,
                     "interview_requirements": 0,
                     "common_requirements": "从案例提炼的共性要求",
@@ -269,19 +273,18 @@ def analyze_gaps() -> str:
         ],
         "instructions": (
             "步骤预告（提高心理预期）：第一轮回复先向用户报完整菜单——"
-            "「我现在做 4 步：① 现状盘点 ② 搜案例（本地+牛客+GitHub+目标企业 JD）"
+            "「我现在做 4 步：① 现状盘点 ② 读取调研（引用你的市场调研报告）"
             "③ 两维分析 ④ 结果预览，你确认后落盘」——报完再动手，禁止无预告直接执行。\n"
-            "播报纪律：每个工具调用前用一句话告诉用户这步在干什么、在等什么"
+            "播报三件套：每个工具调用前说「做什么 + 大约多久 + 你会看到什么」"
             "（案例搜寻约十几秒）——全程禁止静默连调工具。\n"
             "请严格按 step_template 的 4 步顺序执行，禁止一步到位，"
             "每步必须产生用户看得见的输出：\n"
-            "1. step 1 现状盘点（等用户认领/纠正）后再进入案例搜寻\n"
-            "2. step 2 是独立步骤：直接调用 search_cases（role 必填；education 用"
-            "   档案 who/自评里能确认的学历条件，如「双非本」；company 给目标企业），"
-            "   把返回的案例卡原样展示（标来源），不得用 fetch_company_jobs 散抓替代；"
-            "   search_cases 之后需要单条详情再 fetch_jd_detail；"
-            "   全源失败就如实说明并引导 import_jd / import_jd_file，绝不编造，"
-            "   source 标注真实出处\n"
+            "1. step 1 现状盘点（等用户认领/纠正）后再进入读取调研\n"
+            "2. step 2 读取调研：档案 research 有报告（research.report_md 非空）就直接引用——"
+            "   把岗位样本与同背景案例按来源展示（标来源/学历标签/抓取时间），不得重复全量抓取，"
+            "   不足处用 search_cases 定向补充；没有调研报告则先给一句软提示"
+            "   （建议先 research_market → gather_research_data，报告落盘可查证），"
+            "   用户不愿意再当场 search_cases 兜底——并如实说明「正式调研报告还没有，这是临时搜的」；\n"
             "3. step 3 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
             "   - authorship=ai_assisted/ai_generated 或 control_level<6 的技能是\n"
             "     「能讲清架构、能驱动验证」而非「能手写」——不得在 strengths 里赋予\n"
