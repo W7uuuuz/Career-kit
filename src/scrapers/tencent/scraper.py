@@ -311,7 +311,7 @@ class Scraper(CompanyScraper):
             "company": "腾讯",
             "location": post.get("LocationName", ""),
             "department": post.get("BGName", ""),
-            "summary": _truncate(post.get("Responsibility", ""), 200),
+            "summary": _truncate(post.get("Responsibility", ""), 500),
             "post_id": str(post.get("PostId", "")),
             "category": post.get("CategoryName", ""),
             "source": "tencent",

@@ -13,6 +13,7 @@ from .probing import (
     collect_skills as _collect_skills,
     find_self_assessment_issues,
     is_verified_skill,
+    skill_display_name,
 )
 from .profile import load_profile, save_profile
 from .session_tools import _has_goal, _summarize_dict
@@ -71,8 +72,11 @@ def explore_goals() -> str:
 
     who_text = _summarize_dict(profile.who or {}) or "尚未填写身份信息"
     skills = _collect_skills(profile.have or {})
+    # BUG（实测）：只认 have.skills[].skill，LLM 用 name 字段时摘要全是 None——
+    # 统一走 probing.skill_display_name 的多键名回退
     skill_text = "、".join(
-        str(s.get("skill")) if isinstance(s, dict) else str(s) for s in skills[:5]
+        skill_display_name(s, i) if isinstance(s, dict) else str(s)
+        for i, s in enumerate(skills[:5])
     ) or "尚未确认技能"
     user_summary = (
         f"你目前是：{who_text}；已确认的能力：{skill_text}。"
@@ -200,10 +204,18 @@ def analyze_gaps() -> str:
     ))
     save_profile(profile)
 
+    research = profile.research or {}
     return _json({
-        "next_steps": ["fetch_company_jobs", "save_gap_analysis"],
+        "next_steps": ["read_research_details", "search_cases", "save_gap_analysis"],
         "methodologies": [ctx1["methodology"], ctx2["methodology"]],
         "profile": ctx1["profile"],
+        "research": {
+            "available": bool(research.get("report_md")),
+            "jd_count": len(research.get("jd_samples") or []),
+            "case_count": len(research.get("cases") or []),
+            "digest": research.get("digest") or {},
+            "detail_tool": "read_research_details(ids=..., kind=\"jd\"/\"case\")",
+        },
         "existing_journey": [
             {"phase": j.phase, "decision": j.decision, "timestamp": j.timestamp}
             for j in (profile.journey or [])[-5:]
@@ -227,17 +239,23 @@ def analyze_gaps() -> str:
             {
                 "step": 2,
                 "name": "读取调研",
-                "action": "档案已有市场调研（profile.research）时直接引用：把调研里的"
-                          "岗位样本与同背景案例按来源展示给用户（每条标来源平台/url/时间/学历标签），"
-                          "不得重复全量抓取；个别不足用 search_cases 定向补充。"
-                          "档案还没有调研时，先给用户一句软提示（下轮回复建议先走"
-                          " research_market → gather_research_data，报告会落盘可查证），"
-                          "用户不愿意就当场用 search_cases 搜集案例顶上——"
-                          "展示时必须如实说明「这批是临时搜的，正式调研报告还没有」；"
-                          "抓不到或全源失败就把现状如实报给用户并引导补充材料，绝不编造",
+                "action": "档案已有市场调研（profile.research）时：先调用 "
+                          "read_research_details() 获取花名册与聚合摘要，"
+                          "从中选择 3-5 条最相关的条目，再以 "
+                          "read_research_details(ids=..., kind=\"jd\"/\"case\") 读取全文；"
+                          "避免一次性注入全量岗位正文。也可将花名册与聚合摘要交由子 Agent "
+                          "深读，由子 Agent 返回分析结论与重点名单，父 Agent 仅汇总结论。"
+                          "展示时每条标注来源/时间/学历标签，不得重复全量抓取；"
+                          "个别不足用 search_cases 定向补充。"
+                          "档案尚无调研时，先给用户一句软提示（建议先走 "
+                          "research_market → gather_research_data，报告落盘可查证），"
+                          "用户暂不需要时以 search_cases 定向搜集案例作为补充——"
+                          "展示时须如实说明「本批为临时检索结果，尚无正式调研报告」；"
+                          "抓取失败或来源全部不可用时，如实说明并引导用户补充材料，绝不编造",
                 "output": {
                     "cases_shown": 0,
                     "research_used": False,
+                    "shortlist_ids": [],
                     "success_experience": 0,
                     "interview_requirements": 0,
                     "common_requirements": "从案例提炼的共性要求",
@@ -280,9 +298,13 @@ def analyze_gaps() -> str:
             "请严格按 step_template 的 4 步顺序执行，禁止一步到位，"
             "每步必须产生用户看得见的输出：\n"
             "1. step 1 现状盘点（等用户认领/纠正）后再进入读取调研\n"
-            "2. step 2 读取调研：档案 research 有报告（research.report_md 非空）就直接引用——"
-            "   把岗位样本与同背景案例按来源展示（标来源/学历标签/抓取时间），不得重复全量抓取，"
-            "   不足处用 search_cases 定向补充；没有调研报告则先给一句软提示"
+            "2. step 2 读取调研：档案 research 有报告（research.report_md 非空）时——"
+            "   先调用 read_research_details() 获取花名册与聚合摘要，选择 3-5 条最相关条目，"
+            "   再以 read_research_details(ids=..., kind=\"jd\"/\"case\") 读取全文，"
+            "   避免一次性注入全量正文；也可交由子 Agent 深读，由子 Agent 返回"
+            "   分析结论与重点名单，父 Agent 仅汇总结论。展示时按来源标注"
+            "   （平台/url/时间/学历标签），不得重复全量抓取；不足处用 search_cases 定向补充；"
+            "   尚无调研报告时先给用户一句软提示"
             "   （建议先 research_market → gather_research_data，报告落盘可查证），"
             "   用户不愿意再当场 search_cases 兜底——并如实说明「正式调研报告还没有，这是临时搜的」；\n"
             "   注意：若会话中没有 search_cases 工具（可能连了错误实例），岗位/案例样本不足时\n"

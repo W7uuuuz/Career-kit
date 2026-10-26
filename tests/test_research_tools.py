@@ -103,8 +103,16 @@ def test_gather_research_data_writes_report_trio(temp_profile):
 
     original_loader = rt.search_company_jobs
     original_cases = rt.collect_cases
+    original_detail = rt.get_job_detail
     rt.search_company_jobs = loader
     rt.collect_cases = lambda **kwargs: {"cases": [_case()], "warnings": [], "sources": {}}
+    rt.get_job_detail = lambda url, company=None: {
+        "title": "AI Agent 工程师",
+        "description": "负责 Agent 产品后端与 RAG 链路，构建评测集，"
+                       "与算法团队协作上线（完整 JD 正文，不截断）。",
+        "requirements": "熟悉 Python / LangGraph / RAG；有线上项目经验；"
+                        "能独立定位性能瓶颈并给出优化方案。",
+    }
     original_boss_auth = rt.boss_has_valid_cookies
     rt.boss_has_valid_cookies = lambda: True
     try:
@@ -117,6 +125,7 @@ def test_gather_research_data_writes_report_trio(temp_profile):
     finally:
         rt.search_company_jobs = original_loader
         rt.collect_cases = original_cases
+        rt.get_job_detail = original_detail
         rt.boss_has_valid_cookies = original_boss_auth
 
     # 播报三要素齐备：数字样本 → 路径 → 下一步
@@ -141,6 +150,8 @@ def test_gather_research_data_writes_report_trio(temp_profile):
     assert research and research["counts"]["jd_samples"] == 2
     assert research["counts"]["cases"] == 1
     assert research["jd_samples"][0]["salary"] == "30-50K·16薪"
+    assert research["jd_samples"][0]["description"], "详情必须落进报告与 json"
+    assert research["jd_samples"][0]["requirements"]
     assert research["source_status"], "来源状态必须记录"
     assert Path(research["report_md"]).exists()
 
@@ -161,8 +172,13 @@ def test_gather_research_data_tolerates_failed_source(temp_profile):
 
     original_loader = rt.search_company_jobs
     original_cases = rt.collect_cases
+    original_detail = rt.get_job_detail
     rt.search_company_jobs = loader
     rt.collect_cases = lambda **kwargs: {"cases": [_case()], "warnings": [], "sources": {}}
+    rt.get_job_detail = lambda url, company=None: {
+        "description": "负责 Agent 产品后端与 RAG 链路。",
+        "requirements": "熟悉 Python / LangGraph。",
+    }
     try:
         message = asyncio.run(rt.gather_research_data(
             json.dumps([{"company": "字节", "limit": 6}, {"company": "腾讯", "limit": 6}]),
@@ -171,6 +187,7 @@ def test_gather_research_data_tolerates_failed_source(temp_profile):
     finally:
         rt.search_company_jobs = original_loader
         rt.collect_cases = original_cases
+        rt.get_job_detail = original_detail
 
     assert "1 个源失败" in message
     assert "登录已过期" in message  # 失败原因原样展示

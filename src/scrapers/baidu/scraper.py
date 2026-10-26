@@ -182,7 +182,7 @@ class Scraper(CompanyScraper):
             "company": "百度",
             "location": row.get("workPlace", ""),
             "department": row.get("bgShortName", ""),
-            "summary": _truncate(row.get("workContent", ""), 200),
+            "summary": _truncate(row.get("workContent", ""), 500),
             "post_id": post_id,
             "post_type": row.get("postType", ""),
             "source": "baidu",

@@ -25,7 +25,7 @@ from .tools.profile_tools import (
     restore_profile,
     switch_profile,
 )
-from .tools.research_tools import gather_research_data, research_market
+from .tools.research_tools import gather_research_data, read_research_details, research_market
 from .tools.roadmap_tools import generate_roadmap, save_roadmap, save_roadmap_audit
 from .tools.session_tools import (
     finalize_profile,

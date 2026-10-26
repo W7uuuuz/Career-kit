@@ -550,7 +550,7 @@ def test_step8_mcp_tools_registered():
         # 数据获取与分析
         "list_data_sources", "get_scraper_guide", "fetch_company_jobs",
         "fetch_jd_detail", "search_knowledge", "search_cases",
-        "research_market", "gather_research_data",
+        "research_market", "gather_research_data", "read_research_details",
         "explore_goals", "analyze_gaps", "save_gap_analysis",
         # 规划
         "generate_roadmap", "save_roadmap", "save_roadmap_audit",

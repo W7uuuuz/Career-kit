@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **调研详情分层读取（花名册 + 按需全文）+ 2026-10-27 复测 5 项修复**：
+  - 岗位详情必抓：`gather_research_data` 逐条补抓 `description/requirements`，
+    未取得详情的岗位不纳入报告，剔除数量进入来源面板与数据缺口（不再以标题充数）
+  - 上下文控制：新增 `read_research_details`（总 40 个工具）——不带 `ids` 返回
+    「花名册（标识与摘要）+ 聚合摘要」，带 `ids` 按需读取选定条目全文
+    （`kind="jd"` 岗位 / `"case"` 面经与他人路径，单次上限 10 条）；岗位/案例全文
+    仅落盘到报告、`profile.research` 与 JSON，不一次性注入模型上下文
+  - 新增 `src/research_digest.py`：确定性聚合统计（城市/薪资区间/高频要求/
+    学历与层级信号/案例结构），供父 Agent 直接获得结论要素
+  - 报告展示：取消二次截断（报告结构与 JSON 保留原文）；md 增加「岗位详情（完整 JD）」
+    区；HTML 表格保留摘要预览并提供 `<details>` 展开全文；来源错误与缺口原因不再
+    截断；薪资空值统一显示「未获取」
+  - `explore_goals` 技能名改用 `skill_display_name` 多键名回退（修复 `None` 摘要）
+  - 案例分类：标题成功信号优先（上岸/offer/拿到/入职/复盘…），避免「面试」二字
+    把上岸帖误判为「面试要求」；案例意图词移除裸「面试」，过滤学习日志类条目
+  - 本地知识库 JSON 卡片：按字段抽取可读摘要（公司/地点/薪资/正文），不再把原始
+    JSON 当要点；本地 JD 与本次 JD 表按 URL/标题去重，避免「同背景经历」重复计数
+  - 字节社招检索修复：搜索页只识别 `keywords` / `location`（旧参数 `keyword`、
+    `location_code_list` 被 SPA 忽略，导致搜什么返回都一样）；保留城市后置过滤，
+    多城市岗位命中目标城市保留，地点缺失无法核实者剔除
+  - 文档与工具数同步（40 个工具）：README、docs/README、docs/llms.txt、docs/tools.md、
+    workflow、session 手册更新「花名册→按需读取→子 Agent 汇总结论」协作方式
+
 - **BOSS 直聘登录流程改为交互式关卡（实测：登录缺失被静默当失败）**：
   - `gather_research_data` 新增 `boss_confirmed`：调研范围含 BOSS 且未确认时返回
     `CONFIRMATION_REQUIRED`（附问题/选项），强制先问用户「是否抓取 BOSS」（需扫码登录）；

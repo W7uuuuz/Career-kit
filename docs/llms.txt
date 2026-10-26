@@ -69,9 +69,13 @@ research_market()                                    # 调研方法论与 4 步�
 ```
 
 - case_query：role=目标方向；education=学历档（五档四层写法如「双非本」）
-- BOSS 直聘需扫码登录：抓取前必须问用户是否抓取，同意后传 `boss_confirmed=true`；
+- BOSS 直聘需扫码登录：抓取前必须询问用户是否抓取，同意后传 `boss_confirmed=true`；
   工具返回 `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时把问题转问用户并等待答复，
-  不得静默跳过或直接把登录缺失当调研失败
+  不得静默跳过或直接将登录缺失视为调研失败
+- 岗位详情必抓：未取得详情的岗位不纳入报告，并在数据缺口如实说明
+- 花名册机制：`gather_research_data` 返回「花名册（标识与摘要）+ 聚合摘要」，
+  岗位全文仅写入报告与档案；读取全文用 `read_research_details(ids=..., kind="jd"/"case")`，
+  单次 3-5 条为宜，样本较多时交由子 Agent 深读并回传结论与重点名单
 - 任一源失败不中断，失败原因原样进报告的来源状态面板；无数据报错不给空报告
 - 报告 md/html/json 自动落盘 `~/CareerKit/<档案>/调研报告/`，`profile.research`
   同步更新，后续分析/规划直接引用；资产总览：双击 `~/CareerKit/index.html`
@@ -82,6 +86,7 @@ research_market()                                    # 调研方法论与 4 步�
 list_data_sources()                                  # 查看可用源与参数
 get_scraper_guide(company)                           # 首次使用某源前读取
 research_market() → gather_research_data(...)        # 建档后先做（报告落盘可查证）
+read_research_details(ids, kind)                     # 按花名册标识读取全文（先筛选后读取）
 search_cases(role, education, company)               # 有调研直接引用；不足处定向补充
 fetch_company_jobs(company, params)                  # 真实岗位/面经（底层单源抓取）
 fetch_jd_detail(url)                                 # JD 全文或面经/经验帖详情
@@ -90,9 +95,10 @@ analyze_gaps() → save_gap_analysis(gap_json)
 ```
 
 `analyze_gaps` 会返回 4 步 step_template（现状盘点 → 读取调研 → 两维分析 → 结果预览）：
-**step 2 读取调研：有 `profile.research` 就直接引用展示（标来源），不重复全量抓取**；
+**step 2 读取调研：有 `profile.research` 时先 `read_research_details()` 取花名册与聚合摘要，
+选取 3-5 条读取全文（标注来源），不一次性注入全量正文**；
 没有调研先给一句软提示（建议先 `research_market` → `gather_research_data`），
-用户不愿意再 `search_cases` 兜底并如实说明「临时搜的、正式调研还没有」；
+用户暂不需要时以 `search_cases` 补充，并如实说明「临时检索、尚无正式调研报告」；
 把第一轮回复先做成「步骤预告」（报完 4 步菜单再动手），每步产出用户看得见的中间结果，
 工具调用前先播报，表格必须带「为什么」，案例卡必须标来源，用户确认预览后才 `save_gap_analysis`。
 
@@ -208,7 +214,7 @@ export_dashboard(mode="roadmap")     # 可交互职业地图（落到 ~/CareerKi
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：39 个工具的唯一事实源
+- [工具总览](tools.md)：40 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业数据源](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式

@@ -67,30 +67,37 @@
 4. gather_research_data(jd_specs, case_query, boss_confirmed)
    - jd_specs：目标公司 1 家 + 同方向对照 2-4 家（优先含薪来源如 BOSS）
    - case_query：role + education（五档四层写法如「双非本」）+ company/city
+   - 逐条补抓岗位详情（无详情岗位剔除并计入数据缺口）
    - 返回 CONFIRMATION_REQUIRED / LOGIN_REQUIRED 时把问题转问用户并等待答复，
      不得静默跳过 BOSS 或直接宣布调研失败
 5. 报告三件套自动落盘（代码渲染，不经 LLM），向用户汇报三要素
-6. 用户确认后进入差距分析
+6. 按需读取全文：从花名册中选择 3-5 条，调用 read_research_details(ids=..., kind="jd"/"case")；
+   或将花名册与聚合摘要交由子 Agent 深读，由子 Agent 返回结论与重点名单
+7. 用户确认后进入差距分析
 ```
 
 **输出**：
 
 - 报告三件套：`~/CareerKit/<档案>/调研报告/<日期_方向>.{md,html,json}`
 - `profile.research`：`{generated_at, direction, report_md, report_html, report_json,
-  index, jd_samples, cases, source_status, gaps, counts}`——差距分析与路线图直接引用
+  index, jd_samples, cases, source_status, gaps, digest, counts}`
+  ——差距分析与路线图直接引用；岗位全文仅存于档案/报告/json，不进入模型上下文
 - 资产总览入口：`~/CareerKit/index.html`
 
 **关键规则**：
 
 1. 报告内容 100% 代码渲染自抓取数据，不经 LLM——「来源真实」的硬保证
 2. 每条岗位/案例带来源链接、来源平台、抓取时间，用户可逐条点开验证
-3. BOSS 直聘需扫码登录：抓取前必须问用户；工具返回 `CONFIRMATION_REQUIRED`
-   （尚未确认）/ `LOGIN_REQUIRED`（尚未登录）时先问用户，不得静默跳过或直接判失败
-4. 任一源失败不中断，失败原因进报告「来源状态面板」如实展示；
-   没抓到的明确写「未获取」，绝不编造
-5. 全部失败时返回 `MISSING_DATA` 并引导 `import_jd` / `import_jd_file`，不落空报告
-6. 多次调研各自留档（文件名带日期与方向），旧报告不覆盖
-7. 汇报口径：样本数与来源成败 → 报告完整路径 → 下一步；解读留给差距分析
+3. 岗位详情必抓：未取得详情的岗位不纳入报告，并在数据缺口如实说明
+4. 花名册优先：工具返回「花名册（标识与摘要）+ 聚合摘要」，不一次性注入岗位正文；
+   读取全文时选取 3-5 条，推荐交由子 Agent 完成并将结论与重点名单返回父 Agent
+5. BOSS 直聘需扫码登录：抓取前必须询问用户；工具返回 `CONFIRMATION_REQUIRED`
+   （尚未确认）/ `LOGIN_REQUIRED`（尚未登录）时先询问用户，不得静默跳过或直接判定失败
+6. 任一源失败不中断，失败原因进报告「来源状态面板」如实展示；
+   未获取的内容明确写「未获取」，绝不编造
+7. 全部失败时返回 `MISSING_DATA` 并引导 `import_jd` / `import_jd_file`，不生成空报告
+8. 多次调研分别留档（文件名含日期与方向），不覆盖既有报告
+9. 汇报口径：样本数与来源成败 → 报告完整路径 → 下一步；解读留给差距分析
 
 ---
 
@@ -103,8 +110,9 @@
 **流程**：
 
 ```
-1. 优先引用调研：profile.research 有报告时，step 2 直接展示岗位样本与案例（标来源）
-2. 无调研时软提示（建议先走阶段 2 市场调研），用户同意后再用如下数据链路补数据
+1. 优先引用调研：profile.research 有报告时，先 read_research_details() 获取花名册与
+   聚合摘要，选取 3-5 条读取全文（标注来源）；不一次性注入全量正文
+2. 无调研时软提示（建议先走阶段 2 市场调研），用户同意后再按以下数据链路补充
 3. list_data_sources()                         # 查看可用源与参数
 4. get_scraper_guide(company)                  # 首次使用前读取教程
 5. fetch_company_jobs(company, params)         # 真实岗位/面经

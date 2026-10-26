@@ -47,7 +47,15 @@ _RECENT_DAYS = 730  # 近两年新鲜度全额分，之后线性衰减
 # 因此 gh/nowcoder 源的卡片必须有至少一个意图词命中（标题或摘要），其余丢弃。
 _CASE_INTENT_WORDS = (
     "秋招", "春招", "校招", "面经", "offer", "上岸",
-    "实习", "笔试", "面试", "一面", "二面", "三面", "HR面", "求职",
+    "实习", "笔试", "一面", "二面", "三面", "HR面", "求职",
+)
+
+# 案例分类：上岸/拿 offer 的帖子正文必然提「面试」，不能因此判成「面试要求」。
+# 标题命中成功信号优先；JD 特征次之；其余经验帖默认成功经验（复测 BUG #4）。
+_SUCCESS_HINTS = ("上岸", "offer", "拿到", "入职", "通过", "成功", "经验", "复盘", "记录")
+_REQUIREMENT_HINTS = (
+    "岗位职责", "任职要求", "职位描述", "职位要求", "技能要求",
+    "招聘", "面试题", "真题", "八股",
 )
 
 
@@ -212,17 +220,23 @@ def _first_role_token(role: str) -> str:
 
 
 def _local_row_to_item(row: dict) -> dict:
-    """search_knowledge 的命中 → 统一 item 轮廓。"""
+    """search_knowledge 的命中 → 统一 item 轮廓。
+
+    本地 JSON（scraper 写入的 JD/经验帖）必须按字段抽取可读正文——
+    直接把 JSON 文本当 snippet 会让报告出现 `{"title": ...}` 噪声（复测 BUG #2）。
+    """
     src = row.get("source", "")
     content = row.get("content", "")
     meta: dict[str, Any] = {}
     full_path = KNOWLEDGE_DIR / src
+    is_json = src.endswith(".json")
 
-    if src.endswith(".json") and full_path.exists():
+    if is_json and full_path.exists():
         try:
-            meta = json.loads(full_path.read_text(encoding="utf-8"))
+            parsed = json.loads(full_path.read_text(encoding="utf-8"))
         except Exception:
-            meta = {}
+            parsed = {}
+        meta = parsed if isinstance(parsed, dict) else {}
     else:
         # md 面经：只看 front-matter 行
         for line in content.splitlines()[:12]:
@@ -230,17 +244,40 @@ def _local_row_to_item(row: dict) -> dict:
                 key, _, value = line.partition(":")
                 meta[key.strip()] = value.strip()
 
+    snippet = _json_snippet(meta) if is_json else _md_meta_strip(content)[:280]
+    norm_src = src.replace("\\", "/")
     return {
         "title": meta.get("title") or Path(src).stem,
         "url": meta.get("url", ""),
-        "snippet": _md_meta_strip(content)[:280],
+        "snippet": snippet,
+        "summary": snippet,
+        "description": str(meta.get("description") or "").strip(),
+        "requirements": str(meta.get("requirements") or "").strip(),
         "date": str(meta.get("date") or meta.get("_fetched_at") or "")[:10],
         "source": meta.get("source", "") or ("github" if "/experiences/github/" in src else "local"),
+        "company": str(meta.get("company") or "").strip(),
+        "position": str(meta.get("position") or "").strip(),
+        "location": str(meta.get("location") or "").strip(),
+        "salary": str(meta.get("salary") or "").strip(),
         "education_tag": meta.get("education_tag", ""),
         "year_tag": meta.get("year_tag", ""),
+        "origin": "local_jd" if norm_src.startswith("jds/") or "/jds/" in norm_src else "local",
         "local_path": str(full_path),
         "_rel_path": src,
     }
+
+
+def _json_snippet(meta: dict) -> str:
+    """本地 JSON 的可读摘要：公司/地点/薪资 + 正文（description/requirements/summary）。"""
+    head = " · ".join(
+        str(meta.get(key)).strip()
+        for key in ("company", "location", "salary")
+        if str(meta.get(key) or "").strip()
+    )
+    body = str(
+        meta.get("description") or meta.get("requirements") or meta.get("summary") or ""
+    ).strip()
+    return " | ".join(part for part in (head, body) if part)
 
 
 def _md_meta_strip(content: str) -> str:
@@ -265,9 +302,7 @@ def _row_to_card(row: dict) -> dict | None:
         if not hits:
             return None  # 无求职意图词命中（技术讨论/杂项 issue）——不入案例卡污染对标
         tag = normalize_education_tag(text)
-        kind = "interview_requirements" if any(
-            w in text for w in ("面经", "复盘", "面试", "一面", "二面", "三面", "HR面")
-        ) else "success_experience"
+        kind = _classify_kind(title, text)
         return _card({
             "kind": kind,
             "title": title,
@@ -278,26 +313,46 @@ def _row_to_card(row: dict) -> dict | None:
             "year_tag": row.get("year_tag") or tag["year"],
             "highlights": _highlights(row, kind),
             "hit_terms": hits[:4],
+            "origin": row.get("origin", ""),
         })
 
-    # 官方/BOSS 岗位 JD → 面试要求口径
+    # 官方/BOSS/本地 JD → 面试要求口径
     return _card({
         "kind": "interview_requirements",
         "title": title,
         "source": source or "official",
         "url": row.get("url", ""),
-        "date": "",
-        "education_tag": "",
-        "year_tag": "",
+        "date": row.get("date", ""),
+        "education_tag": row.get("education_tag", ""),
+        "year_tag": row.get("year_tag", ""),
         "highlights": _highlights(row, "interview_requirements"),
         "salary": row.get("salary", ""),
         "location": row.get("location", ""),
+        "company": row.get("company", ""),
+        "position": row.get("position", ""),
+        "origin": row.get("origin", ""),
     })
 
 
+def _classify_kind(title: str, text: str) -> str:
+    """成功经验 vs 面试要求：标题成功信号优先，其次 JD/题库特征，其余按经验帖算成功。"""
+    title_lower = title.lower()
+    combined = f"{title} {text}".lower()
+    if any(word in title_lower for word in _SUCCESS_HINTS):
+        return "success_experience"
+    if any(word in combined for word in _REQUIREMENT_HINTS):
+        return "interview_requirements"
+    if any(word in combined for word in ("面经", "面试", "一面", "二面", "三面", "hr面")):
+        return "interview_requirements"
+    return "success_experience"
+
+
 def _highlights(row: dict, kind: str) -> list[str]:
-    """卡片要点：jd 摘要 / 面试题线索 / 帖子正文前几句。"""
-    summary = (row.get("summary") or row.get("snippet") or "").strip()
+    """卡片要点：JD 摘要/正文 / 面试题线索 / 帖子正文前几句（不截断正文）。"""
+    summary = str(
+        row.get("summary") or row.get("description") or row.get("requirements")
+        or row.get("snippet") or ""
+    ).strip()
     if summary:
         return [s.strip() for s in summary.splitlines() if s.strip()][:3]
     return []
@@ -326,6 +381,10 @@ def _card(base: dict) -> dict:
         card["local_path"] = base["local_path"]
     if base.get("hit_terms"):
         card["hit_terms"] = base["hit_terms"]
+    if base.get("origin"):
+        card["origin"] = base["origin"]
+    if base.get("position"):
+        card["background"]["position"] = base["position"]
     return card
 
 
@@ -453,7 +512,8 @@ def render_cases(result: dict[str, Any], role: str, education: str, company: str
     lines.extend([
         "",
         "向用户展示案例卡时必须标明来源（平台/名称/时间）——不标注来源不诚实。",
-        "需要详情深挖：fetch_jd_detail(url=...)（案例详情全文）。",
+        "案例卡为候选清单：建议选取 3-5 条最相关条目，以 fetch_jd_detail(url=...) 读取原帖全文；"
+        "也可将案例卡交由子 Agent 深读并返回结论与重点名单，父 Agent 不重复加载全文。",
         "这些案例的共性要求将作为差距分析的核心输入，别漏出 match_score 校准与 red flags。",
     ])
     return "\n".join(lines)

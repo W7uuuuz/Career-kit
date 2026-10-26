@@ -213,7 +213,7 @@ class Scraper(CompanyScraper):
                             items.push({
                                 title: title.substring(0, 200),
                                 url: fullUrl,
-                                snippet: snippet.substring(0, 300),
+                                snippet: snippet.substring(0, 500),
                             });
                         }
                     }
@@ -309,7 +309,7 @@ class Scraper(CompanyScraper):
             if match:
                 desc = match.group(1).strip()
                 if len(desc) >= 8:
-                    return re.sub(r"\s+", " ", desc)[:300]
+                    return re.sub(r"\s+", " ", desc)[:500]
         return ""
 
     def _fetch_detail_via_playwright(self, url: str) -> dict[str, Any]:

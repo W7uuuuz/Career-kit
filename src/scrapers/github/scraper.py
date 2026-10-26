@@ -150,7 +150,7 @@ class Scraper(CompanyScraper):
             formatted.append({
                 "title": title[:200],
                 "url": it.get("html_url", ""),
-                "snippet": body[:300].replace("\n", " "),
+                "snippet": body[:500].replace("\n", " "),
                 "date": (it.get("created_at") or "")[:10],
                 "company": company,
                 "position": keyword if keyword_lower in title_lower else "",

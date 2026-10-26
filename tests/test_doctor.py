@@ -29,7 +29,7 @@ def test_doctor_reports_healthy_server(tmp_path):
     result = _run(tmp_path, tmp_path / "data")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "[OK] MCP 服务" in result.stdout
-    assert "39 个工具" in result.stdout
+    assert "40 个工具" in result.stdout
     assert "核心" in result.stdout
     assert "[OK] 数据目录" in result.stdout
 

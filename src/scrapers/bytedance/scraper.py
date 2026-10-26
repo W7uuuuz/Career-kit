@@ -75,7 +75,7 @@ class Scraper(CompanyScraper):
         key = self._cache_key(keyword=keyword, city=city, job_type=job_type, portal=portal)
         cached = search_cache.get(key)
         if cached is not None:
-            return cached[:limit]
+            return self._post_filter(str(keyword or ""), str(city or ""), cached)[:limit]
 
         # 抓取（搜索页首次加载偶尔超时/未拦截到 XHR——失败自动重试一次再报错）
         results = self._search_via_playwright(
@@ -90,14 +90,34 @@ class Scraper(CompanyScraper):
             if retry and not (len(retry) == 1 and retry[0].get("error")):
                 results = retry
 
-        # 缓存成功结果（知识库写入由 loader 自动处理）
+        results = self._post_filter(str(keyword or ""), str(city or ""), results)
+
+        # 缓存过滤后的结果（知识库写入由 loader 自动处理）
         if results and "error" not in results[0]:
             search_cache.set(key, results)
 
-        # BUG-025：站点搜索的弱相关结果（搜 AI 混进财务/游戏音乐设计）二次过滤
-        results = self._keyword_post_filter(str(keyword or ""), results)
-
         return results
+
+    def _post_filter(self, keyword: str, city: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """搜索结果的统一后置过滤：城市 → 关键词弱相关。"""
+        results = self._city_post_filter(city, results)
+        return self._keyword_post_filter(keyword, results)
+
+    @staticmethod
+    def _city_post_filter(city: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """城市后置过滤（实测：社招接口的 location 参数不能保证结果仅含该城市）。
+
+        多城市岗位（如「北京、上海、杭州」）只要包含目标城市即保留；
+        地点缺失的条目无法核实是否同城，一并剔除；全部不匹配时返回空列表
+        （上层如实显示「该城市无匹配」并计入数据缺口）。
+        """
+        city = (city or "").strip()
+        if not city or not results or results[0].get("error"):
+            return results
+        return [
+            r for r in results
+            if city in str(r.get("location") or "")
+        ]
 
     def get_detail(self, url: str) -> dict[str, Any]:
         """获取岗位详情。先查缓存，未命中再调 API。"""
@@ -180,11 +200,46 @@ class Scraper(CompanyScraper):
         if last_error is not None:
             raise last_error
 
+    @staticmethod
+    def _build_search_url(keyword: str, city: str, job_type: str, portal: str) -> str:
+        """构建搜索页 URL（校招/社招参数名不同）。
+
+        实测（2026-10）：社招页只识别 keywords / location；
+        keyword、location_code_list 会被 SPA 忽略（结果与不筛选时完全相同）。
+        """
+        from urllib.parse import quote
+
+        city_code = CITY_MAP.get(city, "")
+        type_id = JOB_TYPE_MAP.get(job_type, "")
+
+        if portal == "campus":
+            url_params = {
+                "keywords": keyword or "",
+                "category": type_id or "",
+                "location": city_code or "",
+                "project": "", "type": "", "job_hot_flag": "",
+                "current": "1", "limit": "10",
+                "functionCategory": "", "tag": "",
+            }
+            qs = "&".join(f"{k}={quote(v)}" for k, v in url_params.items())
+            return f"{BASE_URL}/campus/position?{qs}"
+
+        url_params = {
+            "keywords": keyword or "",
+            "limit": "10", "offset": "0",
+            "job_category_id_list": type_id or "",
+            "tag_id_list": "", "location": city_code or "",
+            "subject_id_list": "", "recruitment_id_list": "",
+            "portal_type": "2", "job_function_id_list": "",
+            "storefront_id_list": "", "portal_entrance": "1",
+        }
+        qs = "&".join(f"{k}={quote(str(v))}" for k, v in url_params.items())
+        return f"{BASE_URL}/experienced/position?{qs}"
+
     def _search_via_playwright(self, **params: Any) -> list[dict[str, Any]]:
         """通过 Playwright 拦截 XHR 获取搜索结果。"""
         import os
         import random
-        from urllib.parse import quote
 
         from playwright.sync_api import sync_playwright
 
@@ -198,33 +253,7 @@ class Scraper(CompanyScraper):
         portal = params["portal"]
         limit = params["limit"]
 
-        city_code = CITY_MAP.get(city, "")
-        type_id = JOB_TYPE_MAP.get(job_type, "")
-
-        # 构建 URL（校招/社招参数名不同）
-        if portal == "campus":
-            url_params = {
-                "keywords": keyword or "",
-                "category": type_id or "",
-                "location": city_code or "",
-                "project": "", "type": "", "job_hot_flag": "",
-                "current": "1", "limit": "10",
-                "functionCategory": "", "tag": "",
-            }
-            qs = "&".join(f"{k}={quote(v)}" for k, v in url_params.items())
-            target_url = f"{BASE_URL}/campus/position?{qs}"
-        else:
-            url_params = {
-                "keyword": keyword or "",
-                "limit": "10", "offset": "0",
-                "job_category_id_list": type_id or "",
-                "tag_id_list": "", "location_code_list": city_code or "",
-                "subject_id_list": "", "recruitment_id_list": "",
-                "portal_type": "2", "job_function_id_list": "",
-                "storefront_id_list": "", "portal_entrance": "1",
-            }
-            qs = "&".join(f"{k}={v}" for k, v in url_params.items())
-            target_url = f"{BASE_URL}/experienced/position?{qs}"
+        target_url = self._build_search_url(keyword, city, job_type, portal)
 
         captured_data: dict[str, Any] = {"posts": [], "total": 0}
 
@@ -361,7 +390,7 @@ class Scraper(CompanyScraper):
                 "company": "字节跳动",
                 "location": location,
                 "department": job_cat.get("name", ""),
-                "summary": self._truncate(post.get("description", ""), 200),
+                "summary": self._truncate(post.get("description", ""), 500),
                 "job_id": post.get("id", ""),
                 "job_code": post.get("code", ""),
                 "recruit_type": recruit.get("name", ""),
@@ -378,7 +407,8 @@ class Scraper(CompanyScraper):
         """BUG-025 二次过滤：剔除标题/摘要与搜索词毫无交集的弱相关岗位。
 
         站点侧 ES 按 ID/热门度混排，搜「AI」会混入财务专家、游戏音乐设计等岗位；
-        站点结果如果全部不过滤会污染分析，全部被滤掉时保守保留原结果（宁多勿漏）。
+        与搜索词完全无交集的条目一律剔除（宁可返回空结果并如实上报数据缺口，
+        也不把无关岗位带进调研）。
         """
         tokens = [t for t in keyword.split() if len(t) >= 2]
         if not tokens or not results or results[0].get("error"):

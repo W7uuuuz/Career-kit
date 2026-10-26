@@ -109,6 +109,10 @@ def test_gather_proceeds_when_boss_confirmed_and_logged_in(temp_profile, monkeyp
         "cases": [], "warnings": [], "sources": {},
     })
     monkeypatch.setattr(rt, "boss_has_valid_cookies", lambda: True)
+    monkeypatch.setattr(rt, "get_job_detail", lambda url, company=None: {
+        "description": "负责 Agent 后端与 RAG 链路。",
+        "requirements": "熟悉 Python / LangGraph。",
+    })
 
     message = asyncio.run(rt.gather_research_data(
         json.dumps([{"company": "boss", "limit": 6}]),
@@ -130,6 +134,10 @@ def test_gather_without_boss_needs_no_confirmation(temp_profile, monkeypatch):
     )
     monkeypatch.setattr(rt, "collect_cases", lambda **kwargs: {
         "cases": [], "warnings": [], "sources": {},
+    })
+    monkeypatch.setattr(rt, "get_job_detail", lambda url, company=None: {
+        "description": "负责 Agent 后端与 RAG 链路。",
+        "requirements": "熟悉 Python / LangGraph。",
     })
     message = asyncio.run(rt.gather_research_data(
         json.dumps([{"company": "字节", "limit": 6}]),
