@@ -55,6 +55,10 @@ search_knowledge(query)                              # 本地资料
 analyze_gaps() → save_gap_analysis(gap_json)
 ```
 
+`analyze_gaps` 会返回 4 步 step_template（现状盘点 → 案例搜寻 → 两维分析 → 结果预览）：
+每步产出用户看得见的中间结果，工具调用前先播报，表格必须带「为什么」，
+用户确认预览后才 `save_gap_analysis`。
+
 `skill_gaps` 每项必须带 `source`；`resume_red_flags` 每项必须带 `signal/risk/evidence_fix`，
 否则内容质量门会拒绝保存。技能 authorship 为 ai_assisted/ai_generated 时，
 red_flags 必须包含「AI 生成/手写」风险条目——AI 作者身份不得静默吞掉（BUG-021）。

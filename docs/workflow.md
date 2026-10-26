@@ -79,9 +79,13 @@
 **关键规则**：
 
 1. 分析前必须抓取或检索真实数据；无数据时引导用户导入 JD
-2. 每个 `skill_gaps` 条目必须标注 `source`
-3. 每条 `resume_red_flags` 必须带 `signal` / `risk` / `evidence_fix`
-4. 薪资行情从岗位搜索结果的 `salary` 字段汇总
+2. 同背景案例从本地知识库（`search_knowledge`）与 JD 详情/面经中搜寻，展示案例卡片时标明来源
+3. 过程透明（硬纪律）：`analyze_gaps` 返回 4 步 step_template（现状盘点 → 案例搜寻 →
+   两维分析 → 结果预览），每步产出用户看得见的中间结果；
+   调用工具前先播报该步在干什么，落盘前用户确认；所有表格必须带「为什么」
+4. 每个 `skill_gaps` 条目必须标注 `source`
+5. 每条 `resume_red_flags` 必须带 `signal` / `risk` / `evidence_fix`
+6. 薪资行情从岗位搜索结果的 `salary` 字段汇总
 
 ---
 
@@ -97,6 +101,11 @@
 1. generate_roadmap()
 2. save_roadmap(roadmap_json)
 ```
+
+`generate_roadmap` 返回 6 步 step_template（起点判定 → 目标拆解 → 阶段序列 → 逐阶段细化 →
+审计 → 定稿交付），checkpoint 步必须把中间产物展示给用户确认；
+每个表格/清单必须给出「为什么这么拆」的依据。
+`save_roadmap` 定稿后自动生成路线图 HTML 活地图——交付前先向用户解释它的用途与用法。
 
 已有规划文档时，先 `import_plan(file_path)` 导入，在对话中对比取舍后再保存为路线图。
 

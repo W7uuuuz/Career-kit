@@ -205,14 +205,77 @@ def analyze_gaps() -> str:
             {"phase": j.phase, "decision": j.decision, "timestamp": j.timestamp}
             for j in (profile.journey or [])[-5:]
         ],
+        "step_template": [
+            {
+                "step": 1,
+                "name": "现状盘点",
+                "action": "用大白话把档案货底子讲给用户：届别/城市/目标；技能清单及逐项把控度"
+                          "（authorship 分布要点名哪些是 AI 生成/辅助——AI 编程时代这是底牌里最关键的一张）；"
+                          "简历信任度（self_assessment）。不倒字段名，这是用户第一次看到自己的底牌",
+                "output": {
+                    "goal": "目标岗位与公司",
+                    "have_summary": "技能与经历一句话盘点",
+                    "authorship_dist": {"self_written": 0, "ai_assisted": 0, "ai_generated": 0, "referenced": 0},
+                    "weakest": "把控度最低的技能及影响",
+                },
+                "checkpoint": True,
+                "checkpoint_note": "展示现状后等用户认领/纠正，再开始搜寻案例",
+            },
+            {
+                "step": 2,
+                "name": "案例搜寻",
+                "action": "先播报（在搜什么、大概多久）；然后 search_knowledge 搜本地积累的"
+                          "同背景案例/JD/面经 → list_data_sources + fetch_company_jobs 抓目标企业真实岗位"
+                          " → fetch_jd_detail 深挖 1-2 条关键 JD；把搜寻结果展示给用户："
+                          "岗位列表（含薪资）、共性要求清单、同背景案例卡片，每条标来源；"
+                          "抓不到或本地无积累就如实说明并引导 import_jd，绝不编造",
+                "output": {
+                    "searched": {"local_count": 0, "companies": ["字节"]},
+                    "jobs_found": 0,
+                    "common_requirements": ["..."],
+                    "salary_spans": ["20k-35k"],
+                    "cases": [{"title": "", "takeaway": "", "source": ""}],
+                    "missing": "抓不到时如实标注",
+                },
+                "checkpoint": False,
+                "checkpoint_note": "展示搜寻结果后无异议直接进分析；用户要补充案例就停下来",
+            },
+            {
+                "step": 3,
+                "name": "两维分析",
+                "action": "先用两句话告诉用户方法论：为什么从「简历过筛」和「面试通过」两个维度看差距"
+                          "（一个决定能不能被看见，一个决定能不能被选中）；然后基于真实数据逐维输出分析，"
+                          "每个表格/清单必须带「为什么」和依据（来源的 JD/案例/用户自评），"
+                          "AI 作者身份技能按把控度分层",
+                "output": {
+                    "screening_findings": [{"finding": "", "why": "", "evidence": ""}],
+                    "interview_findings": [{"finding": "", "why": "", "evidence": ""}],
+                    "match_score_draft": 0,
+                },
+                "checkpoint": False,
+                "checkpoint_note": "讲清「为什么」即可继续，无需用户逐项点头",
+            },
+            {
+                "step": 4,
+                "name": "结果预览与定稿",
+                "action": "把完整差距分析预览给用户：打分表（各维度分+扣分依据）、差距表、风险清单、"
+                          "优先行动；用户确认后调用 save_gap_analysis(gap_json)；有异议先修正再保存",
+                "output": "save_gap_analysis(gap_json)",
+                "checkpoint": True,
+                "checkpoint_note": "用户看过预览确认后才落盘；落盘后引导 generate_roadmap",
+            },
+        ],
         "instructions": (
-            "请按照上述方法论指引：\n"
-            "1. 先用 fetch_company_jobs 搜索目标企业的真实岗位（先 list_data_sources 查看可用企业）\n"
-            "2. 用 fetch_jd_detail 获取 JD 全文和同背景案例\n"
-            "   —— 若抓取不可用（无网/需登录/无数据源），不要停摆：改用用户导入的 target_jd\n"
-            "   （import_jd / import_jd_file）或已填 want 作为数据来源，source 标注真实出处\n"
-            "3. 基于真实数据从简历过筛和面试通过两个维度分析差距\n"
-            "4. 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
+            "播报纪律：每个工具调用前用一句话告诉用户这步在干什么、在等什么"
+            "（抓取一般十几秒）——全程禁止静默连调工具。\n"
+            "请严格按 step_template 的 4 步顺序执行，禁止一步到位，"
+            "每步必须产生用户看得见的输出：\n"
+            "1. step 1 现状盘点后再进入案例搜寻\n"
+            "2. step 2 案例找寻顺序：先 search_knowledge 查本地积累（data/knowledge/，"
+            "   涵盖此前抓过的 JD 与面经）——不限于目标企业，同背景案例也要搜；"
+            "   没有/抓取不可用就如实说明，引导用户 import_jd / import_jd_file，"
+            "   绝不编造，source 标注真实出处\n"
+            "3. step 3 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
             "   - authorship=ai_assisted/ai_generated 或 control_level<6 的技能是\n"
             "     「能讲清架构、能驱动验证」而非「能手写」——不得在 strengths 里赋予\n"
             "     「可手撕源码级」的面试深度，match_score 按自评校准后的真实水平评估；\n"
@@ -224,9 +287,10 @@ def analyze_gaps() -> str:
             "     目标 JD 的 AI 编码工具加分项照常对齐；\n"
             "   - 未经用户确认（无 user_verified）的技能先追问证据（做过什么项目/讲一个难点）\n"
             "     再分析，避免基于简历字面水平做系统性失真判断\n"
-            "5. 每条 skill_gaps 必须带 source（真实数据来源：抓取的 JD / 导入材料 / 用户自评），\n"
+            "4. 每条 skill_gaps 必须带 source（真实数据来源：抓取的 JD / 导入材料 / 用户自评），\n"
             "   match_score 为 0-100；save_gap_analysis 有内容质量门，无依据/编造的结果会被拒绝\n"
-            "6. 调用 save_gap_analysis(gap_json) 保存结构化结果"
+            "5. 所有表格/清单必须带「为什么」：只给结论不给依据的分析不完整，会被用户看不懂\n"
+            "6. step 4 的结果预览用户确认后，调用 save_gap_analysis(gap_json) 保存结构化结果"
         ),
     })
 

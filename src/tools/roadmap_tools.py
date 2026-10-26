@@ -91,14 +91,17 @@ def generate_roadmap() -> str:
             },
         ],
         "instructions": (
+            "播报纪律：每个工具调用前用一句话告诉用户这步在干什么——全程禁止静默连调工具。\n"
             "请严格按照 step_template 的 6 步分步执行，禁止一步到位。\n"
-            "1. 每步必须产出该步的 output 结构后再进入下一步\n"
+            "1. 每步必须产出该步的 output 结构后再进入下一步；"
+            "表格/清单必须带「为什么」（拆分的依据：真实 JD 要求/差距结果/层级跨度），只给结论不给理由不完整\n"
             "2. checkpoint=true 的步骤必须先把中间产物展示给用户确认，确认后再继续\n"
             "3. 步骤 1 用 roadmap.yaml 的 start_level_rubric 打分表判定，不是直觉\n"
             "4. 步骤 5 必须调用 career-roadmap-auditor 审计，审计通过才算定稿候选\n"
             "5. 过程中需要真实岗位数据时用 fetch_company_jobs / fetch_jd_detail 获取，"
             "拿不到就 jd 占位（pending_user_import），绝不编造\n"
-            "6. 最终调用 save_roadmap(roadmap_json) 保存"
+            "6. 最终调用 save_roadmap(roadmap_json) 保存；定稿产物除结构化数据外还有一份"
+            "路线图 HTML 活地图，交付时要向用户说明它的用途与用法（结构总览+勾选打卡，浏览器本地存进度）"
         ),
     })
 
@@ -300,7 +303,10 @@ def save_roadmap(roadmap_json: str) -> str:
     return _json({
         "message": (
             f"路线图已保存。\n\n{report}{hard_text}{warnings_text}\n\n"
-            f"路线图 HTML 已生成：{map_path}（双击即看，可随时用 export_dashboard(mode=\"roadmap\") 重新生成）\n\n"
+            f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
+            "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡，进度在浏览器本地保存），"
+            "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
+            "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
             "接下来调用 generate_tasks 生成任务列表；生成后引导用户按路线图开始第一阶段执行"
             "（或先 detail_current_phase 细化当前阶段的打卡路线）。"
         ),

@@ -44,11 +44,16 @@ argument-hint: [你的目标，如"转行 AI Agent 工程师"]
 - **profile_building**：继续补齐缺失 section，完成后 `finalize_profile`；
   若 want 一直为空且用户仍无方向 → 引导 `explore_goals`
 - **analysis / planning**：按 next_steps 走 `analyze_gaps` → `save_gap_analysis` →
-  `generate_roadmap` → `save_roadmap`；分析前必须先 `fetch_company_jobs` 抓真实岗位数据，
-  无数据就明说，绝不编造市场信息
+  `generate_roadmap` → `save_roadmap`；严格按工具返回的 step_template 顺序执行、
+  每步产出用户看得见的中间结果（现状盘点 → 案例搜寻（本地 `search_knowledge` + 真实 JD 抓取，
+  案例卡片带来源）→ 两维分析（先一句话讲方法论：为什么从简历过筛+面试通过两个维度看）
+  → 结果预览，用户确认再落盘）；分析前必须先 `fetch_company_jobs` 抓真实岗位数据，
+  无数据就明说，绝不编造市场信息；路线图 HTML 交付前先讲清阶段拆分理由和用法
 - **execution**：调用 `get_next_tasks` 展示当前阶段任务，用户反馈后 `checkin_task` 打卡
 
 ## 原则
 
 顺序归产品、时间归用户——不为任务设定时限；
 每步完成主动告知下一步；信息不足就追问，不要替用户假设。
+播报是硬纪律：调用工具前先用一句话告诉用户这步在干什么、在等什么；
+长分析拆成「现状/案例/分析/结果」段产出，禁止黑盒式静默等待之后只甩一张结果表。

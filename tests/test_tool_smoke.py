@@ -373,6 +373,40 @@ def test_analyze_gaps_blocks_late_skill_without_authorship(temp_profile):
     assert "methodologies" in out2
 
 
+def test_analyze_gaps_returns_step_template(temp_profile):
+    """黑盒感修复回归：analyze_gaps 返回 4 步 step_template + 播报纪律 + 案例搜寻步。"""
+    from src.server import analyze_gaps, finalize_profile, intake
+
+    intake("who", '{"name": "张三"}')
+    intake("want", '{"target_role": "AI 工程师"}')
+    intake(
+        "have",
+        '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
+        '"authorship": "ai_assisted", "control_level": 6}], '
+        '"self_assessment": {"resume_trust": "medium", "notes": "AI 生成+验证"}}',
+    )
+    finalize_profile()
+
+    out = json.loads(analyze_gaps())
+
+    steps = out["step_template"]
+    assert len(steps) == 4
+    assert [s["name"] for s in steps] == ["现状盘点", "案例搜寻", "两维分析", "结果预览与定稿"]
+    assert [s["checkpoint"] for s in steps] == [True, False, False, True]
+
+    case_step = steps[1]
+    assert "search_knowledge" in case_step["action"], "案例搜寻必须搜本地积累"
+    assert "cases" in json.dumps(case_step["output"], ensure_ascii=False)
+
+    # 分析步先讲方法论；结果预览步用户确认后才落盘
+    assert "方法论" in steps[2]["action"]
+    assert "用户确认" in steps[3]["action"]
+
+    # 播报纪律：禁止静默连调工具
+    assert "播报" in out["instructions"]
+    assert "禁止静默连调工具" in out["instructions"]
+
+
 def test_save_gap_ai_authorship_requires_red_flag(temp_profile):
     """BUG-021 质量门：AI 作者身份技能保存差距分析时必须有「AI 生成/手写」red flag。"""
     from src.server import intake, save_gap_analysis
