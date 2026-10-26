@@ -150,6 +150,36 @@ class Scraper(CompanyScraper):
 
     # === 内部方法 ===
 
+    @staticmethod
+    def _warm_up_page(page: Any) -> None:
+        """首页热身 = 尽力而为（失败不阻断，数据来自搜索页 XHR）。"""
+        try:
+            page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(1500)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _goto_with_retry(
+        page: Any,
+        url: str,
+        *,
+        attempts: int = 2,
+        timeout: int = 30000,
+    ) -> None:
+        """导航搜索页——超时重试一次（批量调研首次冷加载易超时，单独调用却正常）。"""
+        last_error: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    page.wait_for_timeout(1500)
+        if last_error is not None:
+            raise last_error
+
     def _search_via_playwright(self, **params: Any) -> list[dict[str, Any]]:
         """通过 Playwright 拦截 XHR 获取搜索结果。"""
         import os
@@ -228,76 +258,78 @@ class Scraper(CompanyScraper):
                     ],
                     proxy={"server": "direct://"},
                 )
-                # 随机化 viewport 和 user-agent
-                viewports = [
-                    {"width": 1920, "height": 1080},
-                    {"width": 1366, "height": 768},
-                    {"width": 1536, "height": 864},
-                    {"width": 1440, "height": 900},
-                ]
-                ua_list = [
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                ]
-                context = browser.new_context(
-                    user_agent=random.choice(ua_list),
-                    viewport=random.choice(viewports),
-                    locale="zh-CN",
-                    timezone_id="Asia/Shanghai",
-                )
-                # 注入反检测脚本
-                context.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                    Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
-                    window.chrome = {runtime: {}};
-                """)
-                page = context.new_page()
-                page.on("response", handle_response)
-
-                # 模拟人类行为：先访问首页再跳转
-                page.goto(BASE_URL, wait_until="domcontentloaded", timeout=20000)
-                page.wait_for_timeout(random.randint(1000, 2000))
-
-                # 导航到搜索页
-                # BUG-015：networkidle 在首次冷加载时会长时间不静默（埋点/预加载持续请求），
-                # 30 秒超时率高——改为 domcontentloaded + 主动等 XHR 数据落地
-                page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
-                for _ in range(20):
-                    if captured_data["posts"]:
-                        break
-                    page.wait_for_timeout(500)
-                page.wait_for_timeout(random.randint(1000, 2000))
-
-                # 关闭可能的遮罩层
                 try:
-                    mask_close = page.locator('[class*="guide"] [class*="close"], [class*="mask"] [class*="close"]')
-                    if mask_close.count() > 0 and mask_close.first.is_visible():
-                        mask_close.first.click(timeout=2000)
+                    # 随机化 viewport 和 user-agent
+                    viewports = [
+                        {"width": 1920, "height": 1080},
+                        {"width": 1366, "height": 768},
+                        {"width": 1536, "height": 864},
+                        {"width": 1440, "height": 900},
+                    ]
+                    ua_list = [
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                    ]
+                    context = browser.new_context(
+                        user_agent=random.choice(ua_list),
+                        viewport=random.choice(viewports),
+                        locale="zh-CN",
+                        timezone_id="Asia/Shanghai",
+                    )
+                    # 注入反检测脚本
+                    context.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                        Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
+                        window.chrome = {runtime: {}};
+                    """)
+                    page = context.new_page()
+                    page.on("response", handle_response)
+
+                    # 首页热身 = 尽力而为：批量调研时 Edge 冷启动/站点波动可能超过 20s，
+                    # 热身失败不应拖死整个检索（真正的数据来自搜索页 XHR）
+                    self._warm_up_page(page)
+
+                    # 导航到搜索页（超时重试一次）
+                    # BUG-015：networkidle 在首次冷加载时会长时间不静默（埋点/预加载持续请求），
+                    # 30 秒超时率高——改为 domcontentloaded + 主动等 XHR 数据落地
+                    self._goto_with_retry(page, target_url)
+                    for _ in range(20):
+                        if captured_data["posts"]:
+                            break
                         page.wait_for_timeout(500)
-                except Exception:
-                    pass
+                    page.wait_for_timeout(random.randint(1000, 2000))
 
-                # 仅在明确请求多页时翻页（默认不翻页，避免触发反爬）
-                if limit > 10 and captured_data["posts"]:
-                    total = captured_data["total"]
-                    pages_needed = min((total + 9) // 10, (limit + 9) // 10, 6)  # 最多翻 5 页
-                    for _page_num in range(1, pages_needed):
-                        if len(captured_data["posts"]) >= limit:
-                            break
-                        try:
-                            next_btn = page.locator('[class*="pagination"] [class*="next"]').first
-                            if next_btn.is_visible() and next_btn.is_enabled():
-                                page.wait_for_timeout(random.randint(800, 1500))
-                                next_btn.click()
-                                page.wait_for_timeout(random.randint(2000, 3000))
-                            else:
+                    # 关闭可能的遮罩层
+                    try:
+                        mask_close = page.locator('[class*="guide"] [class*="close"], [class*="mask"] [class*="close"]')
+                        if mask_close.count() > 0 and mask_close.first.is_visible():
+                            mask_close.first.click(timeout=2000)
+                            page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+
+                    # 仅在明确请求多页时翻页（默认不翻页，避免触发反爬）
+                    if limit > 10 and captured_data["posts"]:
+                        total = captured_data["total"]
+                        pages_needed = min((total + 9) // 10, (limit + 9) // 10, 6)  # 最多翻 5 页
+                        for _page_num in range(1, pages_needed):
+                            if len(captured_data["posts"]) >= limit:
                                 break
-                        except Exception:
-                            break
-
-                browser.close()
+                            try:
+                                next_btn = page.locator('[class*="pagination"] [class*="next"]').first
+                                if next_btn.is_visible() and next_btn.is_enabled():
+                                    page.wait_for_timeout(random.randint(800, 1500))
+                                    next_btn.click()
+                                    page.wait_for_timeout(random.randint(2000, 3000))
+                                else:
+                                    break
+                            except Exception:
+                                break
+                finally:
+                    # 异常路径也必须释放浏览器，避免泄漏 Playwright 进程
+                    browser.close()
         except Exception as e:
             return [{"error": f"Playwright 执行失败: {e}"}]
 

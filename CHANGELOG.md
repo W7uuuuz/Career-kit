@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **批量调研 bytedance 超时修复（单独调用成功、调研时报 20s timeout）**：
+  - 根因：Playwright 首页热身 `goto(BASE_URL, timeout=20000)` 超时直接终止整次
+    抓取——批量调研时 Edge 冷启动/站点波动更慢，比单独调用更易命中
+  - 首页热身改为「尽力而为」（失败继续走搜索页，数据来自搜索页 XHR）；
+    搜索页导航超时自动重试一次（30s × 2）；浏览器异常路径确保关闭不再泄漏
+
 - **复测第二轮 8 项 BUG 修复（ec77aa6 复测，dev/test/BUG.md）**：
   - `save_current_detail` 孤儿阶段守卫补全：无路线图 / 缺 `phase_id` / 未知
     `phase_id` 一律拒绝（`MISSING_DATA` / `INVALID_PARAM`），不再产出孤儿 detail
