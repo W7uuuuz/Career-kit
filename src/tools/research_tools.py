@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 from typing import Any
 
 from ..case_search import collect_cases, resolve_company
 from ..mcp_app import mcp
 from ..research_report import build_report, save_report
+from ..scrapers.boss.auth import has_valid_cookies as boss_has_valid_cookies
 from ..scrapers.loader import search_company_jobs
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
@@ -25,6 +27,7 @@ from .tool_helpers import _json
 
 _MAX_SPECS = 6
 _CASE_DEFAULT_LIMIT = 12
+_BOSS_ALIASES = {"boss", "boss直聘", "zhipin", "看准"}
 
 
 @mcp.tool()
@@ -61,17 +64,23 @@ def research_market() -> str:
             "name": "范围宣告",
             "action": "从 want/target_jd/who 提取目标方向、目标公司、城市、学历档，"
                       "向用户播报调研菜单：抓哪家（目标 1 + 对照 2-4 家）、约半分钟、"
-                      "报告会存到用户资产目录——给用户随时喊停/增减的机会，不必等确认",
+                      "报告会存到用户资产目录——给用户随时喊停/增减的机会，不必等确认。"
+                      "名单里若要放 BOSS 直聘，必须先单独问一句「是否抓取 BOSS 直聘"
+                      "（需要扫码登录一次）」，用户点头才加入并带 boss_confirmed=true；"
+                      "用户拒绝就换成其他源，不得静默跳过",
             "output": {"menu": "目标方向 + 抓取名单 + 预计耗时 + 产出位置"},
             "checkpoint": False,
-            "checkpoint_note": "宣告即执行；用户喊停才停",
+            "checkpoint_note": "宣告即执行；用户喊停才停；BOSS 源例外——必须先问用户",
         },
         {
             "step": 2,
             "name": "批量抓取",
-            "action": "调用 gather_research_data(jd_specs, case_query) 一次完成："
+            "action": "调用 gather_research_data(jd_specs, case_query, boss_confirmed) 一次完成："
                       "jd_specs 目标公司 1 条 + 对照 2-4 条（优先同城、优先含薪来源），"
                       "case_query 带 role/education（五档四层写法如「双非本」）/company/city。"
+                      "含 BOSS 源时必须先问过用户并传 boss_confirmed=true——否则工具会"
+                      "返回 CONFIRMATION_REQUIRED 让你去问；未登录会返回 LOGIN_REQUIRED，"
+                      "此时先问用户「是否现在扫码登录」，不要直接宣布调研失败。"
                       "调用前播报「正在抓 N 家 + 案例，约半分钟」",
             "output": {
                 "report_paths": {"md": "", "html": "", "json": "", "index": ""},
@@ -104,6 +113,10 @@ def research_market() -> str:
     instructions = (
         "步骤预告：先向用户报 4 步菜单（①范围宣告 ②批量抓取 ③报告落地 ④衔接分析），"
         "报完再动手。\n"
+        "BOSS 源纪律：名单含 BOSS 直聘时，抓取前必须先问用户「是否抓取 BOSS 直聘"
+        "（需要扫码登录一次）」——同意才传 boss_confirmed=true；不同意就换源，"
+        "绝不静默跳过。若工具返回 LOGIN_REQUIRED / CONFIRMATION_REQUIRED，"
+        "把问题原样转问用户并等待答复，不要自行判定调研失败。\n"
         "播报纪律：调用 gather_research_data 前说明「抓哪些家 + 约半分钟」，禁止静默。\n"
         "汇报口径：摘要必须含样本数与来源成功/失败数；路径展示完整文件位置"
         "（来自工具返回，不得口胡）；明确说「每条带来源链接可逐条验证，未获取的写了未获取」。\n"
@@ -154,12 +167,26 @@ def _parse_specs(raw: str, field_name: str) -> Any:
     )
 
 
+def _uses_boss(specs: list[dict[str, Any]], query: dict[str, Any]) -> bool:
+    """调研范围是否包含 BOSS 直聘（jd_specs 或 case_query.company）。"""
+    names = [str(spec.get("company") or "") for spec in specs]
+    names.append(str(query.get("company") or ""))
+    for name in names:
+        cleaned = name.strip().lower()
+        if not cleaned:
+            continue
+        if cleaned in _BOSS_ALIASES or resolve_company(cleaned) == "boss":
+            return True
+    return False
+
+
 @mcp.tool()
 async def gather_research_data(
     jd_specs: str = "",
     case_query: str = "",
     direction: str = "",
     city: str = "",
+    boss_confirmed: bool = False,
 ) -> str:
     """批量抓取真实市场数据并生成调研报告（调研步核心动作，一次调用完成）。
 
@@ -172,6 +199,9 @@ async def gather_research_data(
             ——education 用五档四层写法（985/211/双非/专科 × 博/硕/本/专）
         direction: 报告标题与档案归档使用的方向名（默认取 case_query.role）
         city: 报告上下文城市（默认取 case_query.city / want / who）
+        boss_confirmed: 范围含 BOSS 直聘时必须先问用户，用户同意后传 true。
+            BOSS 需要扫码登录（cookies 长期复用）；未确认会返回 CONFIRMATION_REQUIRED
+            让你先去问用户，未登录会返回 LOGIN_REQUIRED 让你问用户是否现在登录。
 
     Returns:
         汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（index.html 资产总览入口） +
@@ -179,6 +209,8 @@ async def gather_research_data(
 
     纪律：
     - 任一源失败不中断；失败原因进报告「来源状态面板」如实展示
+    - BOSS 抓取前必须先问用户（boss_confirmed=true 才算确认）；登录缺失时先问
+      「是否现在登录」再决定，不得把登录失败直接当调研失败宣布
     - 全部失败时返回可读错误并引导 import_jd / import_jd_file，绝不编造
     """
     try:
@@ -211,6 +243,37 @@ async def gather_research_data(
                     ],
                     "case_query": {"role": "AI Agent 开发", "education": "双非本"},
                 }
+            },
+        )
+
+    # BOSS 登录是交互式关卡：抓取前必须先问用户是否抓取/是否现在登录——
+    # 直接开抓会在未登录时静默变成「源失败」，用户根本没机会选择（实测反馈）
+    uses_boss = _uses_boss(specs, query)
+    if uses_boss and not boss_confirmed:
+        return error_response(
+            "CONFIRMATION_REQUIRED",
+            "调研范围含 BOSS 直聘：该源需要扫码登录（cookies 长期复用），"
+            "抓取前必须先问用户是否进行 BOSS 抓取。",
+            {
+                "question": "是否抓取 BOSS 直聘？需要你扫码登录一次（登录态长期有效）。",
+                "options": [
+                    "同意：带 boss_confirmed=true 重新调用 gather_research_data",
+                    "不同意：从 jd_specs / case_query 移除 boss 后重跑，其他源照常抓取",
+                ],
+                "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                "rule": "把 question 原样转问用户并等待答复；不得静默跳过 BOSS 或直接宣布失败",
+            },
+        )
+    if uses_boss and not boss_has_valid_cookies():
+        return error_response(
+            "LOGIN_REQUIRED",
+            "BOSS 直聘尚未登录：调研需要先扫码登录一次（cookies 长期复用）。",
+            {
+                "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
+                "decline": "用户不想登录时，从 jd_specs / case_query 移除 boss 再重跑（其他源照常）",
+                "rule": "先问用户是否现在登录；不要把登录缺失直接当调研失败宣布",
             },
         )
 

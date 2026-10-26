@@ -64,10 +64,14 @@ start_session()
 
 ```
 research_market()                                    # 调研方法论与 4 步模板
-→ gather_research_data(jd_specs, case_query)         # 一次批量抓取：JD 目标 1 家 + 对照 2-4 家
+→ 名单含 BOSS 时先问用户是否抓取（需扫码登录）
+→ gather_research_data(jd_specs, case_query, boss_confirmed)   # 一次批量抓取：JD 目标 1 家 + 对照 2-4 家
 ```
 
 - case_query：role=目标方向；education=学历档（五档四层写法如「双非本」）
+- BOSS 直聘需扫码登录：抓取前必须问用户是否抓取，同意后传 `boss_confirmed=true`；
+  工具返回 `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时把问题转问用户并等待答复，
+  不得静默跳过或直接把登录缺失当调研失败
 - 任一源失败不中断，失败原因原样进报告的来源状态面板；无数据报错不给空报告
 - 报告 md/html/json 自动落盘 `~/CareerKit/<档案>/调研报告/`，`profile.research`
   同步更新，后续分析/规划直接引用；资产总览：双击 `~/CareerKit/index.html`

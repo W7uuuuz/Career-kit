@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **BOSS 直聘登录流程改为交互式关卡（实测：登录缺失被静默当失败）**：
+  - `gather_research_data` 新增 `boss_confirmed`：调研范围含 BOSS 且未确认时返回
+    `CONFIRMATION_REQUIRED`（附问题/选项），强制先问用户「是否抓取 BOSS」（需扫码登录）；
+    已确认但 cookies 未就绪时返回 `LOGIN_REQUIRED`（附登录命令），先问用户
+    「是否现在登录」，登录后带 `boss_confirmed=true` 重试；不再静默跳过或直接判失败
+  - `fetch_company_jobs(company="boss")` 未登录时前置返回 `LOGIN_REQUIRED`
+    （问题 + 登录命令 + 改用其他源/导入 JD 的恢复建议），抓取后遇到登录错误同样
+    归为该码；非 BOSS 源行为不变
+  - 调研 4 步模板与说明、会话手册、`docs/workflow.md` / `docs/llms.txt` /
+    `docs/tools.md`、BOSS guide 同步「抓取前必须询问用户」的交互纪律
+
 - **批量调研 bytedance 超时修复（单独调用成功、调研时报 20s timeout）**：
   - 根因：Playwright 首页热身 `goto(BASE_URL, timeout=20000)` 超时直接终止整次
     抓取——批量调研时 Edge 冷启动/站点波动更慢，比单独调用更易命中

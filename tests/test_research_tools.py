@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -104,15 +105,19 @@ def test_gather_research_data_writes_report_trio(temp_profile):
     original_cases = rt.collect_cases
     rt.search_company_jobs = loader
     rt.collect_cases = lambda **kwargs: {"cases": [_case()], "warnings": [], "sources": {}}
+    original_boss_auth = rt.boss_has_valid_cookies
+    rt.boss_has_valid_cookies = lambda: True
     try:
         message = asyncio.run(rt.gather_research_data(
             json.dumps([{"company": "字节", "limit": 6}, {"company": "boss", "limit": 6}]),
             json.dumps({"role": "AI Agent 开发", "education": "双非本"}),
             direction="AI Agent 开发",
+            boss_confirmed=True,
         ))
     finally:
         rt.search_company_jobs = original_loader
         rt.collect_cases = original_cases
+        rt.boss_has_valid_cookies = original_boss_auth
 
     # 播报三要素齐备：数字样本 → 路径 → 下一步
     assert "2 条真实岗位样本" in message and "1 条同学历经历" in message
@@ -191,14 +196,18 @@ def test_gather_research_data_rejects_when_all_failed(temp_profile):
     original_cases = rt.collect_cases
     rt.search_company_jobs = loader
     rt.collect_cases = lambda **kwargs: {"cases": [], "warnings": ["全部失败"], "sources": {}}
+    original_boss_auth = rt.boss_has_valid_cookies
+    rt.boss_has_valid_cookies = lambda: True
     try:
         result = json.loads(asyncio.run(rt.gather_research_data(
             json.dumps([{"company": "字节"}, {"company": "boss"}]),
             json.dumps({"role": "AI Agent 开发", "education": "双非本"}),
+            boss_confirmed=True,
         )))
     finally:
         rt.search_company_jobs = original_loader
         rt.collect_cases = original_cases
+        rt.boss_has_valid_cookies = original_boss_auth
 
     assert result["isError"] is True
     assert result["code"] == "MISSING_DATA"
@@ -245,7 +254,7 @@ def test_save_report_dated_files_and_research_contract(temp_profile):
     paths = save_report(profile, report)
     assert Path(paths["md"]).exists() and Path(paths["html"]).exists()
     assert Path(paths["json"]).exists() and Path(paths["index"]).exists()
-    assert "2026-10-26_AI Agent 工程师" in paths["md"]  # 日期_方向留档
+    assert re.search(r"\d{4}-\d{2}-\d{2}_AI Agent 工程师", paths["md"]), "日期_方向留档"
 
     profile2 = profile_module.load_profile()
     assert profile2.research["counts"]["jd_samples"] == 1

@@ -37,7 +37,7 @@
 | `search_knowledge` | 检索本地知识库 `~/.career-kit/knowledge/` |
 | `search_cases` | 聚合搜寻同背景成功经验与面试要求（本地 + 牛客 + GitHub + 目标企业 JD，学历五档四层归一打分） |
 | `research_market` | 返回市场调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析） |
-| `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新 |
+| `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源须先问用户并传 `boss_confirmed=true`，未登录返回 `LOGIN_REQUIRED` 让用户决定是否登录 |
 
 ### 分析规划工具（7）
 

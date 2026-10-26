@@ -62,6 +62,9 @@ fetch_company_jobs(company="boss", params='{"keyword":"AI Agent", "city":"上海
    一条命令到底：patchright（Playwright 反检测 fork，驱动层消除 CDP 检测向量）
    拉起**系统默认浏览器（Chrome 或 Edge）** → 你在浏览器完成扫码 → 工具自动检测
    登录态落盘并退出，全程无需任何手动确认；cookies 长期复用，过期时重跑一次即可
+   **交互纪律**：工具在抓取前会要求先问用户是否抓取 BOSS；未登录时返回
+   `LOGIN_REQUIRED` / `CONFIRMATION_REQUIRED`，Agent 应把「是否现在扫码登录」
+   转问用户并等待答复，不得静默跳过该源或直接宣布抓取失败
 2. **浏览器原则**：登录只使用 Chrome / Edge，**绝不回退 Chromium**——
    开源内核的自动化指纹太明显，BOSS 一测一个准；未装 Chrome/Edge 时工具会
    明确报错而不是静默降级。窗口尺寸**由浏览器自适应**（仅 --start-maximized，

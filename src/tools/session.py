@@ -92,16 +92,21 @@ WELCOME_PROMPT = """\
    - `get_scraper_guide(company=...)` → 首次使用某源前，读取该源的完整教程
    - `fetch_company_jobs(company=..., params=...)` → 搜岗位/面经（薪资来自含薪来源）
    - `fetch_jd_detail(url=...)` → 获取 JD 全文
-   - `search_knowledge(query=...)` → 查本地已积累的资料（JD/面经）
-   - 抓取不可用（无网/需登录/无数据源）→ 让用户提供 JD 文本或用 `import_jd` /
-     `import_jd_file` 导入；数据来源如实标注，绝不编造，也不要因此停摆
+    - `search_knowledge(query=...)` → 查本地已积累的资料（JD/面经）
+    - 抓取不可用（无网/需登录/无数据源）→ 让用户提供 JD 文本或用 `import_jd` /
+      `import_jd_file` 导入；数据来源如实标注，绝不编造，也不要因此停摆
+    - BOSS 直聘需扫码登录：抓取前先问用户「是否抓取 BOSS」；未登录时工具会返回
+      `LOGIN_REQUIRED`——先问用户「是否现在扫码登录」再重试，不要直接判失败
 5. `finalize_profile` → 确认档案完整
 
 ### Phase 2: 市场调研（分析的地基，核心卖点「来源真实」）
 6. `research_market` → 返回调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析）
-7. `gather_research_data(jd_specs, case_query)` 一次批量抓取：
+7. `gather_research_data(jd_specs, case_query, boss_confirmed)` 一次批量抓取：
    - jd_specs：目标公司 1 家 + 同方向对照 2-4 家（优先同城、优先含薪来源如 BOSS）
    - case_query：role=目标方向；education=学历档（五档四层写法如「双非本」）；可选 company/city
+   - 含 BOSS 源：抓取前必须先问用户是否抓取 BOSS（需扫码登录），同意后传
+     `boss_confirmed=true`；工具返回 `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时
+     把问题转问用户并等待答复，不得静默跳过或直接宣布调研失败
    - 任一源失败不中断；失败原因原样进报告的来源状态面板
 8. 报告三件套（md/html/json）自动落盘到用户资产目录：
    - 报告内容 100% 代码渲染自抓取数据（不经 LLM），每条带来源链接

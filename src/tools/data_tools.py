@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 
 from ..mcp_app import mcp
 from ..scrapers import get_job_detail, list_scrapers, search_company_jobs
@@ -12,6 +13,9 @@ from .errors import error_response
 from .plan_importer import parse_plan_file
 from .profile import load_profile
 from .tool_helpers import server_fingerprint_line
+
+# BOSS 登录是交互式关卡：命中登录缺失时要把问题交给用户，而不是直接判失败
+_BOSS_IDS = {"boss", "boss直聘", "zhipin", "看准"}
 
 
 @mcp.tool()
@@ -183,6 +187,8 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         boss 返回岗位（含薪资范围）；其余 JD 源不公开薪资（见各源 guide）；
         nowcoder 返回面经，github 返回经验帖。
         失败时返回错误原因和恢复建议——此时如实告知用户，不要编造数据。
+        BOSS 直聘需要登录：未登录会返回 LOGIN_REQUIRED（附问题与登录命令）——
+        先问用户「是否现在扫码登录」，不要把登录缺失直接当抓取失败宣布。
     """
     try:
         params_dict = json.loads(params) if params else {}
@@ -193,25 +199,64 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
             {"raw": params[:200]},
         )
 
+    # BOSS 登录前置关卡：未登录时先让用户决定「是否现在登录」，不要抓完再报失败
+    if company.strip().lower() in _BOSS_IDS:
+        from ..scrapers.boss.auth import has_valid_cookies
+
+        if not has_valid_cookies():
+            return error_response(
+                "LOGIN_REQUIRED",
+                "BOSS 直聘尚未登录（cookies 未就绪）——该源需要扫码登录一次，"
+                "登录态长期复用。",
+                {
+                    "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                    "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                    "after_login": "登录成功后重试 fetch_company_jobs(company=\"boss\", ...)",
+                    "recovery": (
+                        "用户不想登录时改用其他数据源（bytedance/nowcoder 等），"
+                        "或用 import_jd / import_jd_file 导入用户手头的真实 JD"
+                    ),
+                    "rule": "把 question 转问用户并等待答复；不要把登录缺失直接当抓取失败宣布",
+                },
+            )
+
     # 抓取是阻塞 IO（含 Playwright 同步 API），移入工作线程执行，
     # 避免在事件循环线程内触发 "Sync API inside asyncio loop" 崩溃
     result = await asyncio.to_thread(search_company_jobs, company, **params_dict)
 
     if result.get("error"):
+        recovery = (
+            "可尝试：1) 换关键词重试 2) 换其他企业数据源 "
+            "3) 用 import_jd / import_jd_file 导入用户手头的真实 JD "
+            "4) 如确认数据不可用，如实告知用户，不要编造岗位数据\n"
+            "若上面的自检路径不是当前开发的 Career Kit 仓库，说明 MCP 服务连了旧实例——"
+            "重启 Agent 会话（opencode）即可切到新代码"
+        )
+        message = str(result["error"])
+        if company.strip().lower() in _BOSS_IDS and "登录" in message:
+            # BUG（实测）：BOSS 未登录时直接报失败，LLM 默认当「源不可用」跳过。
+            # 正确流程是把「是否现在登录」交给用户决定，登录成功即可重试
+            return error_response(
+                "LOGIN_REQUIRED",
+                f"{message}\n\n{server_fingerprint_line()}\n"
+                "BOSS 直聘需要先登录——先问用户：是否现在扫码登录？"
+                "同意（登录成功后重试 / 走 gather_research_data 时带 boss_confirmed=true）；"
+                "不同意（改用其他数据源或导入手头 JD）。",
+                {
+                    "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                    "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                    "recovery": recovery,
+                    "rule": "把 question 转问用户并等待答复；不要把登录缺失直接当抓取失败宣布",
+                },
+            )
         # BUG-014：错误信息附带 [服务自检] 行——报错里的解释器路径属于旧实例时，
         # 用户能立刻看出「MCP 服务连的是旧进程/旧仓库」，而不是照提示把依赖装错地方
         return error_response(
             "ANALYSIS_FAILED",
-            f"{result['error']}\n\n{server_fingerprint_line()}",
+            f"{message}\n\n{server_fingerprint_line()}",
             {
                 "available": result.get("available", []),
-                "recovery": (
-                    "可尝试：1) 换关键词重试 2) 换其他企业数据源 "
-                    "3) 用 import_jd / import_jd_file 导入用户手头的真实 JD "
-                    "4) 如确认数据不可用，如实告知用户，不要编造岗位数据\n"
-                    "若上面的自检路径不是当前开发的 Career Kit 仓库，说明 MCP 服务连了旧实例——"
-                    "重启 Agent 会话（opencode）即可切到新代码"
-                ),
+                "recovery": recovery,
             },
         )
 
