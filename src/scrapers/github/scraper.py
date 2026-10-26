@@ -23,8 +23,11 @@ from ..http_utils import ScraperHttpError, make_client, request_json
 
 SEARCH_URL = "https://api.github.com/search/issues"
 
-# 意图词：将「经验帖」与闲聊 repo issue 区分开
-_INTENT_WORDS = ("秋招", "春招", "暑期", "实习", "面经", "offer")
+# 意图词：将「经验帖」与闲聊 repo issue 区分开。
+# 注意：GitHub Search API 限制最多 5 个 AND/OR/NOT 运算符——
+# 全量拼接（6 个意图词 + keyword + education + company）必炸 422，
+# 因此只取前 3 个意图词，education/company 二选一补充时最多 6 段 = 5 个 OR。
+_INTENT_WORDS = ("秋招", "春招", "面经")
 
 
 class Scraper(CompanyScraper):
@@ -80,10 +83,9 @@ class Scraper(CompanyScraper):
         query_parts.extend(_INTENT_WORDS)
         if education and (education not in keyword):
             query_parts.append(education)
-        if company and (company not in keyword):
+        elif company and (company not in keyword):
             query_parts.append(f'"{company}"')
-        query = " OR ".join(f"{p}" if not p.startswith('"') and " " not in p else p
-                            for p in query_parts)
+        query = " OR ".join(query_parts)
         q = f"{query} type:issue"
 
         search_cache = self._make_cache("search")
@@ -92,10 +94,24 @@ class Scraper(CompanyScraper):
         if cached is not None:
             return cached[:limit]
 
+        # 完整查询失败（尤其 422 布尔运算符超限）时，降级为单一关键词重搜
         try:
             raw = self._search_api(q=q, order=order if order != "best" else "", page=page)
         except ScraperHttpError as e:
-            return [{"error": str(e)}]
+            if "422" not in str(e):
+                return [{"error": str(e)}]
+            try:
+                raw = self._search_api(
+                    q=f"{keyword} type:issue", order=order if order != "best" else "", page=page
+                )
+            except ScraperHttpError as e2:
+                return [{
+                    "error": (
+                        f"完整查询与降级查询均失败（query={q}）：{e}；"
+                        f"降级（仅 keyword）仍失败：{e2}"
+                    ),
+                    "query": q,
+                }]
 
         items = raw.get("items") or []
         if not items:

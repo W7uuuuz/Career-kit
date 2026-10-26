@@ -194,7 +194,11 @@ class Scraper(CompanyScraper):
                         if (container) {
                             const descEl = container.querySelector('.content, .desc, [class*="content"], [class*="desc"], [class*="summary"]');
                             if (descEl && descEl !== link) {
-                                snippet = descEl.textContent?.trim() || '';
+                                const text = descEl.textContent?.trim() || '';
+                                // 超长文本基本是页面级文章（整页复用同一片段的根源），单条摘要直接丢弃
+                                if (text.length > 0 && text.length <= 500) {
+                                    snippet = text;
+                                }
                             }
                         }
 
@@ -238,6 +242,24 @@ class Scraper(CompanyScraper):
                 "snippet": item.get("snippet", ""),
                 "source": "nowcoder",
             })
+
+        # BUG-024 兜底：所有条目 snippet 完全相同 = 页面级文本被整页复用，
+        # 无法区分每条真正问了什么——宁可直接置空，也不提供误导性摘要
+        snippets = [f.get("snippet", "") for f in formatted]
+        if formatted and any(snippets) and len(set(snippets)) == 1:
+            for f in formatted:
+                f["snippet"] = ""
+
+        # BUG-016 兜底：标题/摘要与搜索词毫无交集的条目（如搜「Agent 实习」
+        # 返回「拼多多客户端」）滤掉；全部被滤掉则保留原结果（宁多勿漏）
+        tokens = [t for t in re.split(r"\s+", query) if len(t) >= 2]
+        if tokens:
+            kept = [
+                f for f in formatted
+                if any(t.lower() in f"{f['title']}{f.get('snippet', '')}".lower() for t in tokens)
+            ]
+            if kept:
+                formatted = kept
 
         return formatted
 

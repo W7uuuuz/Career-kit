@@ -54,6 +54,12 @@ def _split_chinese_text(text: str) -> list[str]:
     return list(dict.fromkeys(result))
 
 
+# BUG-026：相关度阈值——低于该分数的结果不返回（弱相关材料容易被 LLM 误当证据，
+# 用数量凑结果比空结果危害更大）。观测样本：无意义词最高 3.9/1.3/0.4，
+# 有意义的资料通常 ≥3；阈值取 2.0（文件名/整词命中 +1 明显强于零散 2-gram 计数）。
+MIN_RELEVANCE = 2.0
+
+
 def search_knowledge(query: str, limit: int = 5) -> dict[str, Any]:
     """检索本地知识库。
 
@@ -104,8 +110,11 @@ def search_knowledge(query: str, limit: int = 5) -> dict[str, Any]:
             })
 
     results.sort(key=lambda x: x["relevance"], reverse=True)
+    filtered = [r for r in results if r["relevance"] >= MIN_RELEVANCE]
+    dropped = len(results) - len(filtered)
     return {
-        "results": results[:limit],
-        "count": len(results),  # 真实命中数，而非截断后的条数（显示「找到 N 条」时不能骗人）
+        "results": filtered[:limit],
+        "count": len(filtered),  # 真实命中数，而非截断后的条数（显示「找到 N 条」时不能骗人）
+        "weakest_dropped": dropped,  # 低分被截的条数（供上层如实提示「还有 N 条弱相关未返回」）
         "knowledge_dir": str(KNOWLEDGE_DIR),
     }

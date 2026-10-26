@@ -220,6 +220,8 @@ class Scraper(CompanyScraper):
                 "需要登录 BOSS 直聘。请在 career-kit 项目目录运行：\n"
                 f'    "{sys.executable}" -m src.scrapers.boss.login\n'
                 "使用当前 MCP 服务的解释器（绝对路径），避免裸 python 指向错误环境。\n"
+                "注意：如果这个路径不是你开发 Career Kit 的仓库，说明 MCP 服务连了旧实例"
+                "——重启 Agent 会话（opencode）即可切到当前代码。\n"
                 "按提示在浏览器完成扫码即可；cookies 保存后长期有效（过期时重跑一次）。"
             )}]
 

@@ -11,6 +11,7 @@ from ..scrapers.loader import read_scraper_guide
 from .errors import error_response
 from .plan_importer import parse_plan_file
 from .profile import load_profile
+from .tool_helpers import server_fingerprint_line
 
 
 @mcp.tool()
@@ -33,15 +34,19 @@ def search_knowledge(query: str) -> str:
         无结果时返回下一步指引（用 fetch_company_jobs 抓取）——
         此时不要基于自身知识编造市场数据。
     """
-    from .knowledge_search import search_knowledge as do_search
+    from .knowledge_search import MIN_RELEVANCE, search_knowledge as do_search
 
     result = do_search(query)
     results = result["results"]
 
     if not results:
+        weakest = result.get("weakest_dropped", 0)
+        dropped_note = (
+            f"另有 {weakest} 条弱相关材料未返回（低于相关度阈值 {MIN_RELEVANCE}）。\n\n" if weakest else ""
+        )
         return (
             f"【知识库检索】{query}\n\n"
-            "知识库中暂无相关资料。\n\n"
+            "知识库中暂无相关资料。\n\n" + dropped_note +
             "下一步建议：\n"
             "1. 调用 fetch_company_jobs 抓取实时岗位数据（自动存入知识库）\n"
             "2. 用 fetch_jd_detail 获取 JD 全文\n"
@@ -56,6 +61,9 @@ def search_knowledge(query: str) -> str:
         lines.append("")
 
     lines.append("需要完整内容时，直接读取对应文件路径。")
+    weakest = result.get("weakest_dropped", 0)
+    if weakest:
+        lines.append(f"另有 {weakest} 条弱相关材料未展示（低于相关度阈值，容易误导分析——需要时用更具体的关键词检索）。")
     lines.append("下一步：需要更多实时数据时调用 fetch_company_jobs；数据齐备后进入 analyze_gaps。")
     return "\n".join(lines)
 
@@ -190,15 +198,19 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
     result = await asyncio.to_thread(search_company_jobs, company, **params_dict)
 
     if result.get("error"):
+        # BUG-014：错误信息附带 [服务自检] 行——报错里的解释器路径属于旧实例时，
+        # 用户能立刻看出「MCP 服务连的是旧进程/旧仓库」，而不是照提示把依赖装错地方
         return error_response(
             "ANALYSIS_FAILED",
-            result["error"],
+            f"{result['error']}\n\n{server_fingerprint_line()}",
             {
                 "available": result.get("available", []),
                 "recovery": (
                     "可尝试：1) 换关键词重试 2) 换其他企业数据源 "
                     "3) 用 import_jd / import_jd_file 导入用户手头的真实 JD "
-                    "4) 如确认数据不可用，如实告知用户，不要编造岗位数据"
+                    "4) 如确认数据不可用，如实告知用户，不要编造岗位数据\n"
+                    "若上面的自检路径不是当前开发的 Career Kit 仓库，说明 MCP 服务连了旧实例——"
+                    "重启 Agent 会话（opencode）即可切到新代码"
                 ),
             },
         )

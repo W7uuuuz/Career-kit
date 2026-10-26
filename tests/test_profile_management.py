@@ -233,13 +233,13 @@ def test_mcp_switch_profile(temp_profile):
     # 不存在的档案 → 结构化错误
     result = json.loads(switch_profile(profile_name="nobody"))
     assert result.get("isError") is True
-    assert result["code"] == "MISSING_DATA"
+    assert result["code"] == "PROFILE_NOT_FOUND"
     assert profile_module.get_active_profile_name() == "alice"
 
     # 非法档案名 → 结构化错误
     result = json.loads(switch_profile(profile_name="../evil"))
     assert result.get("isError") is True
-    assert result["code"] == "INVALID_SECTION"
+    assert result["code"] == "INVALID_PROFILE"
 
 
 def test_mcp_delete_profile_requires_confirm(temp_profile):
@@ -272,15 +272,17 @@ def test_mcp_delete_profile_confirmed_moves_to_trash(temp_profile):
     assert not (profile_module.PROFILE_DIR / "bob.json").exists()
     assert len(profile_module.list_trash()) == 1
 
-    # 删除当前活跃档案也允许（回收站可恢复），并回退 default
-    out2 = delete_profile(profile_name="alice", confirm="true")
-    assert "已删除档案「alice」" in out2
-    assert profile_module.get_active_profile_name() == "default"
+    # 删除当前活跃档案被拒绝（BUG-020：先 switch 再删，会话不能失去上下文）
+    result = json.loads(delete_profile(profile_name="alice", confirm="true"))
+    assert result.get("isError") is True
+    assert result["code"] == "PROFILE_IN_USE"
+    assert (profile_module.PROFILE_DIR / "alice.json").exists()
+    assert profile_module.get_active_profile_name() == "alice"
 
     # 删除不存在的档案 → 错误
     result = json.loads(delete_profile(profile_name="nobody", confirm="true"))
     assert result.get("isError") is True
-    assert result["code"] == "MISSING_DATA"
+    assert result["code"] == "PROFILE_NOT_FOUND"
 
 
 def test_mcp_restore_profile(temp_profile):
@@ -297,7 +299,7 @@ def test_mcp_restore_profile(temp_profile):
     # 回收站没有的档案 → 错误
     result = json.loads(restore_profile(profile_name="nobody"))
     assert result.get("isError") is True
-    assert result["code"] == "MISSING_DATA"
+    assert result["code"] == "PROFILE_NOT_FOUND"
 
     # 目标已存在同名 → 拒绝
     profile_module.delete_profile("alice")

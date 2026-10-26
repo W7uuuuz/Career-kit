@@ -74,14 +74,28 @@ async def test_guards_and_recovery(sandbox):
 
         await driver.save_gap(GAP)
 
-        # 层级跳跃：小厂起点直接冲大厂实习 -> 返回硬校验问题
+        # 层级跳跃：小厂起点直接冲大厂实习 -> 先校验后落盘，直接拒绝（BUG-007）
         bad_roadmap = json.loads(json.dumps(ROADMAP, ensure_ascii=False))
         bad_roadmap["start_level"] = "小厂"
         bad_roadmap["phases"][-1]["target_level"] = "大厂"
-        result = await driver.save_roadmap(bad_roadmap)
-        data = result.assert_ok().json()
-        assert data["context"]["hard_issues"], data
-        assert any("层级" in issue for issue in data["context"]["hard_issues"])
+        result = await mcp.call(
+            "save_roadmap",
+            {"roadmap_json": json.dumps(bad_roadmap, ensure_ascii=False)},
+        )
+        data = result.assert_error("VALIDATION_FAILED").json()
+        assert data["details"]["hard_issues"], data
+        assert any("层级" in issue for issue in data["details"]["hard_issues"])
+
+        # force=true 显式带问题定稿（BUG-007 出口）
+        forced = await mcp.call(
+            "save_roadmap",
+            {
+                "roadmap_json": json.dumps(bad_roadmap, ensure_ascii=False),
+                "force": True,
+            },
+        )
+        forced_data = forced.assert_ok().json()
+        assert forced_data["context"]["accepted_risks"], forced_data
 
         # 未知企业源 -> 可诊断错误 + 可用列表
         unknown = await mcp.call(

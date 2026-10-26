@@ -136,3 +136,59 @@ def _json(obj: Any) -> str:
     所有工具的结构化返回值必须经过本函数。
     """
     return json.dumps(obj, ensure_ascii=False, indent=2)
+
+
+def server_fingerprint() -> dict[str, Any]:
+    """服务自检指纹：让客户端能确认连的是哪个实例、哪份代码。
+
+    防「代码里有、会话里没有」的旧进程问题：工具返回中携带
+    版本 / 注册工具数 / 代码所在仓库 / 数据目录，客户端比对此值即可发现
+    连到了旧克隆或旧进程。
+    """
+    import sys
+    from pathlib import Path
+
+    info: dict[str, Any] = {
+        "code_home": str(Path(__file__).resolve().parents[2]),
+        "python": sys.executable,
+    }
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        info["version"] = _pkg_version("career-kit")
+    except Exception:  # noqa: BLE001 —— 未安装 metadata 时跳过版本行
+        pass
+    try:
+        from src import mcp_app
+
+        info["tool_count"] = len(mcp_app.mcp._tool_manager.list_tools())
+    except Exception:  # noqa: BLE001 —— 指纹失败不应连带工具不可用
+        pass
+    try:
+        from src.paths import DATA_ROOT
+
+        info["data_dir"] = str(DATA_ROOT)
+    except Exception:  # noqa: BLE001
+        pass
+    return info
+
+
+def server_fingerprint_line() -> str:
+    """单行文本版指纹（拼在文本返回值尾部）。"""
+    import os
+
+    info = server_fingerprint()
+    bits = [
+        f"版本 {info.get('version', '?')}",
+        f"工具 {info.get('tool_count', '?')} 个",
+        f"代码 {info.get('code_home', '?')}",
+    ]
+    line = "；".join(bits)
+    cwd = os.getcwd()
+    if info.get("code_home") and info.get("code_home") not in {
+        cwd,
+        cwd.replace("\\\\", "/"),
+        cwd.replace("/", "\\\\"),
+    }:
+        line += f"（当前工作目录 {cwd}——若与代码目录不一致，会话可能与另一克隆通信）"
+    return f"[服务自检] {line}"

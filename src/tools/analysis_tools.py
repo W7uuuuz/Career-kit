@@ -285,6 +285,8 @@ def analyze_gaps() -> str:
             "   不足处用 search_cases 定向补充；没有调研报告则先给一句软提示"
             "   （建议先 research_market → gather_research_data，报告落盘可查证），"
             "   用户不愿意再当场 search_cases 兜底——并如实说明「正式调研报告还没有，这是临时搜的」；\n"
+            "   注意：若会话中没有 search_cases 工具（可能连了错误实例），岗位/案例样本不足时\n"
+            "   必须明确降级——在分析结果里标注「案例对标数据缺口」，禁止静默跳过或编造案例；\n"
             "3. step 3 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
             "   - authorship=ai_assisted/ai_generated 或 control_level<6 的技能是\n"
             "     「能讲清架构、能驱动验证」而非「能手写」——不得在 strengths 里赋予\n"
@@ -394,16 +396,24 @@ def save_gap_analysis(gap_json: str) -> str:
     Args:
         gap_json: 差距分析的 JSON 字符串
 
-    Schema（与 sop/resume_screening.yaml、sop/interview_prep.yaml 的 output_schema 一致）:
+    Schema（与 sop/resume_screening.yaml 的 output_schema 一致——以该 YAML 为唯一权威）:
         {
             "match_score": 65,            // 匹配度评分（0-100）
             "match_level": "partial_match",
+            "start_level": "小厂",         // 起点层级：大厂/中厂/小厂/暂不可入（路线图使用）
             "strengths": [                // 优势（对象数组）
                 {
                     "area": "前端开发",             // 领域
                     "description": "1年经验",       // 描述
                     "resume_highlight": "...",      // 可选：简历怎么写
                     "interview_talk": "..."         // 可选：面试怎么讲
+                }
+            ],
+            "resume_red_flags": [         // 简历负面信号（可选但强烈建议提供）
+                {
+                    "signal": "代码主要 AI 生成",   // 负面信号
+                    "risk": "现场手撕代码站不住",   // 风险说明
+                    "evidence_fix": "补 2 个完整手写项目"  // 补证据动作
                 }
             ],
             "resume_optimization": {      // 简历过筛维度
@@ -428,7 +438,7 @@ def save_gap_analysis(gap_json: str) -> str:
                 ],
                 "system_design_topics": [{"topic": "...", "framework": "..."}],
                 "behavioral_questions": [{"question": "...", "story_template": "..."}],
-                "study_plan": {"week_1": ["..."], "week_2": ["..."]}
+                "study_plan": {"unit_1": ["..."], "unit_2": ["..."]}   // 学习单元（不排时间，不用 week）
             },
             "skill_gaps": [               // 技能差距（对象数组）
                 {
@@ -477,6 +487,7 @@ def save_gap_analysis(gap_json: str) -> str:
     report = format_gap_report(gap_data)
 
     profile.gap = gap_data
+    profile.gap_stale_at = ""  # 新分析覆盖旧 JD 的过期标记
     profile.touch()
     save_profile(profile)
 

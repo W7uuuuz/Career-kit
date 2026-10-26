@@ -71,16 +71,15 @@ def switch_profile(profile_name: str) -> str:
     Returns:
         切换结果 + 新档案的当前状态摘要。
     """
-    # 先校验命名与存在性，全部通过才写入 active——失败路径不污染当前状态
+    # 先校验名称与存在性，全部通过才写入 active——失败路径不污染当前状态
     try:
         validate_profile_name(profile_name)
     except ValueError as e:
-        return error_response("INVALID_SECTION", str(e), {"profile_name": profile_name})
-
+        return error_response("INVALID_PROFILE", str(e), {"profile_name": profile_name})
     if not profile_exists(profile_name):
         available = ", ".join(p["name"] for p in do_list_profiles()) or "无"
         return error_response(
-            "MISSING_DATA",
+            "PROFILE_NOT_FOUND",
             f"档案「{profile_name}」不存在。",
             {"available": available, "hint": "先调用 list_profiles 查看可用档案"},
         )
@@ -131,17 +130,30 @@ def delete_profile(profile_name: str, confirm: str = "") -> str:
             "恢复可用 restore_profile(profile_name=\"<档案名>\")。"
         )
 
-    try:
-        target_path = do_delete_profile(profile_name)
-    except ValueError as e:
-        return error_response("INVALID_SECTION", str(e), {"profile_name": profile_name})
-
-    if target_path is None:
+    if profile_name == get_active_profile_name():
         return error_response(
-            "MISSING_DATA",
+            "PROFILE_IN_USE",
+            f"档案「{profile_name}」是当前使用中的档案，不能直接删除（否则会话会失去档案上下文）。",
+            {
+                "hint": "先用 switch_profile(profile_name=\"<其他档案名>\") 或新建档案后再删除；"
+                        "刚删除的内容在回收站可用 restore_profile 找回"
+            },
+        )
+
+    if not profile_exists(profile_name):
+        return error_response(
+            "PROFILE_NOT_FOUND",
             f"档案「{profile_name}」不存在。",
             {"hint": "先调用 list_profiles 查看可用档案"},
         )
+
+    try:
+        target_path = do_delete_profile(profile_name)
+    except ValueError as e:
+        return error_response("INVALID_PROFILE", str(e), {"profile_name": profile_name})
+
+    if target_path is None:
+        return error_response("PROFILE_NOT_FOUND", f"档案「{profile_name}」不存在。", {})
 
     remaining = do_list_profiles()
     remain_text = "、".join(p["name"] for p in remaining) or "无（仓库为空）"
@@ -191,13 +203,17 @@ def restore_profile(profile_name: str) -> str:
         恢复结果 + 档案摘要。
     """
     try:
+        validate_profile_name(profile_name)
+    except ValueError as e:
+        return error_response("INVALID_PROFILE", str(e), {"profile_name": profile_name})
+    try:
         target_path = do_restore_profile(profile_name)
     except ValueError as e:
-        return error_response("INVALID_SECTION", str(e), {"profile_name": profile_name})
+        return error_response("INVALID_PROFILE", str(e), {"profile_name": profile_name})
 
     if target_path is None:
         return error_response(
-            "MISSING_DATA",
+            "PROFILE_NOT_FOUND",
             f"回收站中没有档案「{profile_name}」。",
             {"hint": "先调用 list_trash 查看可恢复项"},
         )

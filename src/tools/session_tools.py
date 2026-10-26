@@ -15,7 +15,7 @@ from .probing import (
 from .profile import get_active_profile_name, load_profile, merge_section, save_profile
 from .resume_parser import extract_text
 from .session import get_welcome_message
-from .tool_helpers import _parse_json_param
+from .tool_helpers import _parse_json_param, server_fingerprint_line
 
 
 @mcp.tool()
@@ -23,14 +23,49 @@ def start_session() -> str:
     """初始化新的职业规划会话。
 
     何时调用：用户开始新的职业规划时首先调用此工具。
-    返回欢迎信息，引导用户开始建档流程。
+    按档案状态自动分流：空档案走建档引导；已有任务的档案直接给续跑指引，
+    不再把老用户当新用户重新问一遍简历和目标。
 
     工作流程：start_session → intake(who) → intake(have) → intake(want) → finalize_profile
     """
+    profile = load_profile()
+    pending = [t for t in profile.tasks if t.status != "completed"]
+
+    if pending:
+        # 续跑指引：不投放全量手册，与 get_workflow_status 方向一致（不把已有档案当空档案）
+        completed = len(profile.tasks) - len(pending)
+        has_gap = bool(profile.gap)
+        stale_note = (
+            "；目标 JD 在分析之后更新过——需先 analyze_gaps 重新分析，再考虑重新规划"
+            if profile.gap_stale_at else ""
+        )
+        return (
+            "—— 继续模式：检测到已有进行中的档案，不展示全量手册 ——\n\n"
+            f"当前档案 {get_active_profile_name()}：{len(profile.tasks)} 个任务、"
+            f"{len(pending)} 个未完成（已完成 {completed}）"
+            + (f"；差距分析已存在（match {profile.gap.get('match_score', '?')}）" if has_gap else "")
+            + stale_note
+            + "\n\n本会话应从续跑开始，而不是按新用户建档：\n"
+            "1. 跳过建档提问，直接调用 get_next_tasks 展示当前阶段任务，问用户想推进哪一项\n"
+            "2. 用户报告完成 → checkin_task 打卡（完成即沉淀能力证据）\n"
+            "3. 用户说目标变了 / 想换方向 → 按 get_workflow_status 提示重新分析规划\n"
+            "4. 用户明确要重新建档 → switch_profile 或 delete_profile 后走全量手册\n"
+            "5. 用户只想要市场调研概览 → research_market → gather_research_data\n\n"
+            f"[服务自检] {server_fingerprint_line()}"
+        )
+
+    summary_note = ""
+    if profile.summary:
+        summary_note = (
+            "档案摘要：" + profile.summary
+            + "（续档：补齐缺失信息；已分析过的内容不要重新问）\n"
+        )
     return (
         f"{get_welcome_message()}\n\n"
         f"当前档案：{get_active_profile_name()}\n"
-        "下一步：请调用 intake 工具填充档案信息。\n"
+        f"{summary_note}"
+        f"\n[服务自检] {server_fingerprint_line()}\n"
+        "\n下一步：请调用 intake 工具填充档案信息。\n"
         '示例：intake(section="who", data=\'{"name":"张三", "education":"计算机本科"}\')'
     )
 
@@ -297,11 +332,21 @@ def import_jd(jd_text: str) -> str:
     profile = load_profile()
     profile.target_jd = jd_data
     profile.section_updated_at["target_jd"] = datetime.now().isoformat()
+    # 换 JD 后旧分析失效：非空 gap 标记 stale，workflow 会强制重新分析
+    stale_note = ""
+    if profile.gap:
+        profile.gap_stale_at = datetime.now().isoformat()
+        stale_note = (
+            "\n\n注意：档案里已有旧目标的差距分析，已标记为过期——"
+            "下一步必须调用 analyze_gaps 重新分析，再决定是否重新规划，"
+            "不要直接基于旧分析生成路线图。"
+        )
     profile.touch()
     save_profile(profile)
 
     return (
-        f"已导入目标 JD。当前档案版本：v{profile.version}\n\n"
+        f"已导入目标 JD。当前档案版本：v{profile.version}"
+        f"{stale_note}\n\n"
         "下一步：调用 analyze_gaps 开始差距分析。"
     )
 

@@ -135,3 +135,47 @@ def record_application(
         "next_steps": next_steps,
         "context": {"phase": "application_recorded", "funnel": stats},
     })
+
+
+@mcp.tool()
+def delete_application(application_id: str) -> str:
+    """删除一条投递记录（录错、重复录入时使用，不可恢复）。
+
+    何时调用：仅当用户明确要求删除某条投递记录（如记错了公司/岗位、重复录入）。
+    正常的状态变迁（被拒/撤回/放养）不要删除——漏斗统计依赖完整历史。
+
+    Args:
+        application_id: 目标记录 ID（app_NNN）
+    """
+    application_id = str(application_id or "").strip()
+    if not application_id:
+        return error_response(
+            "INVALID_PARAM",
+            "application_id 不能为空——请传要删除的记录 ID（app_NNN）。",
+            {"field": "application_id"},
+        )
+
+    profile = load_profile()
+    app = profile.get_application(application_id)
+    if not app:
+        return error_response(
+            "MISSING_DATA",
+            f"投递记录 {application_id} 不存在，未删除任何数据。完整清单见 get_progress。",
+            {"application_id": application_id, "total": len(profile.applications)},
+        )
+
+    deleted_summary = application_summary(app)
+    profile.applications = [a for a in profile.applications if a.id != application_id]
+    profile.touch()
+    save_profile(profile)
+
+    return _json({
+        "message": (
+            f"已删除投递记录：{app.company}·{app.role or '岗位未填'}（{application_id}）。\n"
+            "删除不可恢复；若这条其实是「被拒/撤回」，建议以后用 record_application 更新"
+            "状态而不是删除，避免漏斗统计失真。"
+        ),
+        "deleted": deleted_summary,
+        "next_steps": ["get_progress"],
+        "context": {"phase": "application_deleted", "funnel": funnel_stats(profile)},
+    })

@@ -59,13 +59,14 @@ methodology:
         2. 项目深挖准备——每个项目列出可能被问的问题、回答要点、STAR 故事框架
         3. 系统设计专题——答题框架提示
         4. 行为面试准备——常见问题 + 故事模板（什么场景用什么故事）
-        5. 学习计划——按周拆分，每周有明确的学习内容
+        5. 学习计划——按学习单元拆分（不用 week/周——产品不规划时间，节奏由用户掌握），
+           每个学习单元有明确的学习内容
         方案要可执行，时间估算要现实。
       data_needs:
         - type: user_have
           query_hint: "从 profile 中获取"
           local_paths: []
-      quality_gate: "每个项目有 STAR 故事框架，学习计划按周拆分且内容具体"
+      quality_gate: "每个项目有 STAR 故事框架，学习计划按学习单元拆分且内容具体"
       depends_on: [analyze_interview]
 
   output_schema:
@@ -73,4 +74,4 @@ methodology:
     project_deep_dive: "项目深挖准备（项目名、可能问题、要点、STAR 故事）"
     system_design_topics: "系统设计专题（题目、答题框架）"
     behavioral_questions: "行为面试准备（问题、故事模板）"
-    study_plan: "学习计划（按周拆分，每周具体内容）"
+    study_plan: "学习计划（unit_1/unit_2 学习单元拆分，不按周排期）"

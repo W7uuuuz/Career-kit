@@ -3,7 +3,7 @@
 from . import resources  # noqa: F401  注册 MCP Resources
 from .mcp_app import mcp
 from .tools.analysis_tools import analyze_gaps, explore_goals, save_gap_analysis
-from .tools.application_tools import record_application
+from .tools.application_tools import delete_application, record_application
 from .tools.case_tools import search_cases
 from .tools.dashboard import (
     render_progress_html as _render_progress_html,
@@ -26,7 +26,7 @@ from .tools.profile_tools import (
     switch_profile,
 )
 from .tools.research_tools import gather_research_data, research_market
-from .tools.roadmap_tools import generate_roadmap, save_roadmap
+from .tools.roadmap_tools import generate_roadmap, save_roadmap, save_roadmap_audit
 from .tools.session_tools import (
     finalize_profile,
     import_jd,

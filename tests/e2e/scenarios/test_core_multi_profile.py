@@ -49,11 +49,17 @@ async def test_multi_profile_switch_delete_restore(sandbox):
         restored = await driver.restore_profile("bob")
         restored.assert_contains("已恢复档案「bob」")
 
-        # 删除当前活跃档案 -> 回退 default
-        await driver.delete_profile("alice")
-        fallback = await driver.status()
-        fallback.assert_contains("default")
-        await driver.restore_profile("alice")
+        # 删除当前活跃档案被拒绝（BUG-020 修复；须按驱动默认 confirm）
+        rejected = await mcp.call(
+            "delete_profile", {"profile_name": "alice", "confirm": "true"}
+        )
+        rejected.assert_error("PROFILE_IN_USE")
+        assert sandbox.active_profile_name() == "alice"
+        await driver.switch_profile("default")
+        deleted = await driver.delete_profile("alice")
+        deleted.assert_contains("已删除档案「alice」")
+        restored = await driver.restore_profile("alice")
+        restored.assert_contains("已恢复档案「alice」")
 
         # default 数据未被其他档案污染
         default = sandbox.profile_json("default")

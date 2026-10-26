@@ -77,15 +77,25 @@ class Scraper(CompanyScraper):
         if cached is not None:
             return cached[:limit]
 
-        # 抓取
+        # 抓取（搜索页首次加载偶尔超时/未拦截到 XHR——失败自动重试一次再报错）
         results = self._search_via_playwright(
             keyword=keyword, city=city, job_type=job_type,
             portal=portal, limit=limit,
         )
+        if results and len(results) == 1 and results[0].get("error"):
+            retry = self._search_via_playwright(
+                keyword=keyword, city=city, job_type=job_type,
+                portal=portal, limit=limit,
+            )
+            if retry and not (len(retry) == 1 and retry[0].get("error")):
+                results = retry
 
         # 缓存成功结果（知识库写入由 loader 自动处理）
         if results and "error" not in results[0]:
             search_cache.set(key, results)
+
+        # BUG-025：站点搜索的弱相关结果（搜 AI 混进财务/游戏音乐设计）二次过滤
+        results = self._keyword_post_filter(str(keyword or ""), results)
 
         return results
 
@@ -189,7 +199,7 @@ class Scraper(CompanyScraper):
         captured_data: dict[str, Any] = {"posts": [], "total": 0}
 
         def handle_response(response):
-            """拦截搜索 API 的 XHR 响应。"""
+            """拦截搜索 API 的 XHR 响应（同一响应可能由重定向触发两次，需去重）。"""
             url = response.url
             if "/api/v1/search/job/posts" not in url:
                 return
@@ -198,8 +208,11 @@ class Scraper(CompanyScraper):
                 if body.get("code") == 0 and "data" in body:
                     data = body["data"]
                     captured_data["total"] = data.get("count", 0)
-                    posts = data.get("job_post_list", [])
-                    captured_data["posts"].extend(posts)
+                    seen_ids = {p.get("id") for p in captured_data["posts"]}
+                    for post in data.get("job_post_list", []):
+                        if post.get("id") not in seen_ids:
+                            captured_data["posts"].append(post)
+                            seen_ids.add(post.get("id"))
             except Exception:
                 pass
 
@@ -248,8 +261,14 @@ class Scraper(CompanyScraper):
                 page.wait_for_timeout(random.randint(1000, 2000))
 
                 # 导航到搜索页
-                page.goto(target_url, wait_until="networkidle", timeout=30000)
-                page.wait_for_timeout(random.randint(1500, 3000))
+                # BUG-015：networkidle 在首次冷加载时会长时间不静默（埋点/预加载持续请求），
+                # 30 秒超时率高——改为 domcontentloaded + 主动等 XHR 数据落地
+                page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+                for _ in range(20):
+                    if captured_data["posts"]:
+                        break
+                    page.wait_for_timeout(500)
+                page.wait_for_timeout(random.randint(1000, 2000))
 
                 # 关闭可能的遮罩层
                 try:
@@ -261,7 +280,7 @@ class Scraper(CompanyScraper):
                     pass
 
                 # 仅在明确请求多页时翻页（默认不翻页，避免触发反爬）
-                if limit > 10:
+                if limit > 10 and captured_data["posts"]:
                     total = captured_data["total"]
                     pages_needed = min((total + 9) // 10, (limit + 9) // 10, 6)  # 最多翻 5 页
                     for _page_num in range(1, pages_needed):
@@ -321,6 +340,28 @@ class Scraper(CompanyScraper):
         if results:
             results[0]["_total"] = total
 
+        return results
+
+    def _keyword_post_filter(self, keyword: str, results: list) -> list:
+        """BUG-025 二次过滤：剔除标题/摘要与搜索词毫无交集的弱相关岗位。
+
+        站点侧 ES 按 ID/热门度混排，搜「AI」会混入财务专家、游戏音乐设计等岗位；
+        站点结果如果全部不过滤会污染分析，全部被滤掉时保守保留原结果（宁多勿漏）。
+        """
+        tokens = [t for t in keyword.split() if len(t) >= 2]
+        if not tokens or not results or results[0].get("error"):
+            return results
+        kept = [
+            r for r in results
+            if not isinstance(r, dict) or r.get("error")
+            or any(t.lower() in f"{r.get('title', '')}{r.get('summary', '')}".lower()
+                   for t in tokens)
+        ]
+        if len(kept) < len(results):
+            # total 信息随首条一起出现，迁移到过滤后的第一条
+            if kept and "_total" in results[0] and "_total" not in kept[0]:
+                kept[0]["_total"] = results[0]["_total"]
+            return kept
         return results
 
     def _format_detail(self, detail: dict, url: str) -> dict[str, Any]:

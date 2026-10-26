@@ -120,11 +120,21 @@ def find_self_assessment_issues(have: dict) -> list[str]:
 
 
 def ai_authored_skill_names(have: dict) -> list[str]:
-    """authorship 标记为 AI 生成/辅助的技能名（供差距分析质量门使用）。"""
+    """authorship 标记为 AI 生成/辅助的技能名（供差距分析质量门使用）。
+
+    取不到技能名时报「技能[索引] + 条目摘录」，让用户/LLM 能定位是哪一条。
+    """
     names: list[str] = []
     for idx, skill in enumerate(collect_skills(have or {})):
         if not isinstance(skill, dict):
             continue
         if skill.get("authorship") in AI_AUTHORED:
-            names.append(str(skill.get("skill") or f"技能[{idx}]"))
+            raw_name = str(skill.get("skill") or "").strip()
+            if raw_name:
+                names.append(raw_name)
+            else:
+                preview = str(
+                    skill.get("evidence") or skill.get("description") or skill
+                ).strip()[:40]
+                names.append(f"技能[{idx}]（{preview or '无内容'}）")
     return names

@@ -1,6 +1,6 @@
 # MCP 工具总览
 
-> 37 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
+> 39 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
 > 工作流与前置条件见 [工作流详解](workflow.md)。
 
 ## 工具总览
@@ -39,38 +39,40 @@
 | `research_market` | 返回市场调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析） |
 | `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新 |
 
-### 分析规划工具（6）
+### 分析规划工具（7）
 
 | 工具 | 作用 |
 |------|------|
 | `explore_goals` | 无目标时三轴定位（能力 × 兴趣 × 真实市场）并提出候选方向 |
 | `analyze_gaps` | 返回差距分析方法论上下文 |
 | `save_gap_analysis` | 保存分析结果（含内容质量门） |
-| `generate_roadmap` | 返回路线图方法论上下文 |
-| `save_roadmap` | 保存路线图（起点/层级/届别硬校验，自动生成职业地图） |
+| `generate_roadmap` | 返回路线图方法论上下文（6 步工作流，含审计落库） |
+| `save_roadmap` | 保存路线图（先校验后落盘：起点/层级/届别/伞形任务硬校验，FAIL 不落盘可用 `force=true` 显式带问题定稿；自动生成职业地图） |
+| `save_roadmap_audit` | roadap-auditor 审计结果落库（verdict/issues）；save_roadmap 以最新落库记录做定稿校验 |
 | `import_plan` | 导入既有规划文档，对比取舍在对话中完成 |
 
-### 任务执行与求职漏斗工具（6）
+### 任务执行与求职漏斗工具（7）
 
 | 工具 | 作用 |
 |------|------|
 | `generate_tasks` | 从路线图生成任务；重建时历史进度沉淀为能力证据 |
 | `detail_current_phase` | 只细化当前阶段，返回详细路线方法论 |
-| `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点） |
+| `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点；phase_id 必须存在于当前路线图） |
 | `get_next_tasks` | 返回当前阶段下一步任务（关卡式） |
 | `checkin_task` | 打卡；完成自动沉淀能力证据 |
 | `record_application` | 记录/更新投递进展（求职漏斗）；重复投递有去重保护 |
+| `delete_application` | 删除单条投递记录（录错/重复录入时用，不可恢复） |
 
 ### 洞察与产出工具（6）
 
 | 工具 | 作用 |
 |------|------|
 | `trigger_insight` | 触发洞察（仅 `stage_audit` / `event`）；prompt 内含漏斗归因事实 |
-| `apply_insight` | 应用洞察结果（add/remove/modify 任务） |
+| `apply_insight` | 应用洞察结果（add/remove/modify 任务；stage_audit 时点亮阶段审计标记 `audited_phases`） |
 | `get_progress` | 查看整体进度（含求职漏斗与投递清单） |
-| `get_weekly_review` | 周检视：周期事实复盘（打卡/阶段/漏斗），规则化建议，不设时限 |
-| `get_workflow_status` | 工作流状态 + 目标变更检测 + 久未打卡时的周检视提示 |
-| `export_dashboard` | 自包含 HTML：`progress` 仪表盘（含近 7 天与漏斗卡片）/ `roadmap` 职业地图 |
+| `get_weekly_review` | 周检视：周期事实复盘（打卡/阶段/漏斗），days 合法范围 1-90 |
+| `get_workflow_status` | 工作流状态 + 目标变更检测 + 换 JD 后差距分析过期提示 + 周检视提示 |
+| `export_dashboard` | 自包含 HTML：`progress` 仪表盘（含近 7 天与漏斗卡片）/ `roadmap` 职业地图（无路线图拒绝导出） |
 
 ## 工作流
 

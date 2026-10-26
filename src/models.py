@@ -179,6 +179,10 @@ class CareerProfile(BaseModel):
     section_updated_at: dict[str, str] = Field(default_factory=dict, description="各 section 最近一次写入时间")
     plan_saved_at: str = ""  # save_roadmap 每次覆盖
 
+    # 换 JD 后分析的时效性：import_jd / import_jd_file 成功即置时间戳，
+    # save_gap_analysis 清空；非空时 get_workflow_status 强制下一步重新分析
+    gap_stale_at: str = ""
+
     # 摸排门禁（BUG-001 + BUG-021 硬性要求）：have 有技能但无用户确认证据
     # （user_verified），或缺 authorship/control_level/self_assessment 自评时
     # finalize 不放行；唯一跳过方式是用户明确提出（finalize_profile(skip_probing=True)），

@@ -553,12 +553,12 @@ def test_step8_mcp_tools_registered():
         "research_market", "gather_research_data",
         "explore_goals", "analyze_gaps", "save_gap_analysis",
         # 规划
-        "generate_roadmap", "save_roadmap",
+        "generate_roadmap", "save_roadmap", "save_roadmap_audit",
         # 任务执行
         "generate_tasks", "detail_current_phase", "save_current_detail",
         "get_next_tasks", "checkin_task",
         # 求职漏斗
-        "record_application", "get_weekly_review",
+        "record_application", "delete_application", "get_weekly_review",
         # 洞察与产出
         "trigger_insight", "apply_insight", "get_progress",
         "get_workflow_status", "export_dashboard",

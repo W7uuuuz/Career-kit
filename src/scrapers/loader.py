@@ -226,6 +226,21 @@ def search_company_jobs(company: str, **kwargs: Any) -> dict[str, Any]:
             "available": available,
         }
 
+    # BUG-025：未知参数直接报错，不静默吞掉——
+    # LLM 引用错误参数名时，静默忽略会让用户以为搜索条件已生效
+    scraper_config = _load_config().get("scrapers", {}).get(company, {})
+    params_spec = getattr(scraper, "PARAMS", None) or scraper_config.get("params") or {}
+    unknown = sorted(k for k in kwargs if k not in params_spec)
+    if unknown:
+        return {
+            "error": (
+                f"未知参数：{', '.join(unknown)}——"
+                f"{company} 只支持：{sorted(params_spec)}"
+                "（完整说明见 get_scraper_guide(company)）"
+            ),
+            "results": [],
+        }
+
     try:
         results = scraper.search(**kwargs)
     except Exception as e:

@@ -2,9 +2,49 @@
 
 ## Unreleased
 
+- **33 项实测 BUG 清单修复轮（dev/test/BUG.md，2006 会话实测）**：
+  - P0 服务自检：新增 `server_fingerprint`——`start_session` 与 `fetch_company_jobs`
+    错误信息都带「版本/工具数/代码路径」自检行，连错旧实例一眼可辨；
+    doctor 与 BOSS 登录提示同步指引「重启会话切到当前代码」
+  - P1 路线图机制重做（原阻断用户的主线）：
+    - 层级模型升级：`intern` 目标 =「该阶段起点+1」直接合规（不再错误报警），
+      支持阶段级 `start_level_after`（复评升级后后续阶段按新起点算，
+      定稿时同步写回档案起点），「学习中厂 → 复评升级 → 冲大厂」路线可过审
+    - `save_roadmap` 改「先校验后落盘」：硬校验（起点/层级连续/届别/必填/可执行性 lint）
+      或上一轮审计 FAIL 时不落盘，返回问题清单；确认剩余风险后可显式 `force=true`
+      带问题定稿，风险在返回值中显式复述
+    - 新增 `save_roadmap_audit`（总 39 个工具）：auditor 审计结果落库
+      （PASS/FAIL + issues），`save_roadmap` 只认最新落库记录；两轮 FAIL 后明确
+      「结构性修正 / 带风险定稿」双出口，不再无限重审
+    - 可执行性 lint：禁伞形任务名（「按专题刷题」）、禁时间节奏词（每周/每天，产品不排期）、
+      量化 KPI 与任务计数不闭合时软提示
+    - 阶段字段补全：`target_level` / `graduation_year` / `condition`（分支/备用路径）
+      进入 `save_roadmap` 与 `sop/roadmap.yaml` 的 schema/审计清单，缺字段时给出软提示
+  - P3 会话与档案状态：
+    - `start_session` 按档案状态分流（已有任务直接续跑，不再对老用户复述欢迎手册）
+    - `import_jd` 后旧差距分析标记过期，`get_workflow_status` 强制先 `analyze_gaps`
+      重新分析，防止基于旧 JD 直接规划
+    - `delete_profile` 拒绝删除当前使用中的档案（`PROFILE_IN_USE`，先 switch 再删）
+    - 错误码细分：`PROFILE_NOT_FOUND` / `INVALID_PROFILE` / `PROFILE_IN_USE` /
+      `INVALID_MODE`（导出）/ `INVALID_PARAM`（周检视 days 1-90 越界直接报错）
+    - `apply_insight` 在 stage_audit 时点亮 `audited_phases`（仪表盘「已审计」标记可出现）
+  - P2 数据源：
+    - GitHub 经验帖：意图词减到 3 个避免 5 布尔运算符超限（422），
+      降级为单关键词重搜
+    - 牛客面经：snippet 超长判定为页面级文本直接丢弃；同片段整批置空；
+      标题/摘要与搜索词毫无交集的串味条目过滤
+    - 字节校招：搜索等待改 `domcontentloaded` + XHR 数据落地轮询，失败自动重试一次；
+      响应按岗位 ID 去重；与关键词无交集的弱相关岗位过滤；
+      未知参数在 loader 单点报错（不再静默吞掉）
+    - 阿里校招/实习：过滤组合无结果时自动降级（去城市本地筛选 / 关键词放宽首段）
+      并标注提示
+    - `search_knowledge` 加相关度阈值（低分弱相关不返回，如实提示被截条数）
+  - 分析质量门：AI 作者身份提示带真实技能名（取不到时带索引与条目摘录，不再是
+    「技能[0]」占位）；`analyze_gaps` 在 `search_cases` 不可用时要求显式标注数据缺口
+
 - **市场调研成为独立一步（批量抓取即落盘），产出入驻用户资产目录 CareerKit**：
   建档摸底后新增调研阶段，核心卖点「来源真实」——
-  - 新增 2 工具（总 37 个）：`research_market`（调研方法论 + 4 步模板：范围宣告 →
+  - 新增 2 工具（本段工具基数 37，后续第二轮增至 39）：`research_market`（调研方法论 + 4 步模板：范围宣告 →
     批量抓取 → 报告落地 → 衔接分析）与 `gather_research_data`（一次批量抓取：
     目标公司 1 家 + 对照 2-4 家真实 JD + 同学历经历案例，任一源失败不中断，
     失败原因原样进报告；全部失败时如实中止绝不编造）

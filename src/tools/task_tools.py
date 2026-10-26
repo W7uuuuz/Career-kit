@@ -164,6 +164,23 @@ def save_current_detail(detail_json: str) -> str:
         return error_response(exc.code, exc.message, exc.details)
 
     profile = load_profile()
+    roadmap = profile.plan.get("roadmap", profile.plan) if isinstance(profile.plan, dict) else {}
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+    phase_ids = [
+        p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases) if isinstance(p, dict)
+    ]
+    target_phase = str(detail.get("phase_id") or "").strip()
+    if target_phase and phase_ids and target_phase not in phase_ids:
+        return error_response(
+            "INVALID_PARAM",
+            f"phase_id「{target_phase}」不在当前路线图里——没有对应规划却保存详细路线"
+            "会产生孤儿 detail（随后 generate_tasks 会报「没有路线图」）。",
+            {
+                "existing_phase_ids": phase_ids,
+                "hint": "先 save_roadmap 建路线图，或改用列表中存在的 phase_id",
+            },
+        )
+
     profile.plan.setdefault("current_detail", {})
     profile.plan["current_detail"] = detail
     profile.touch()
@@ -434,25 +451,61 @@ def apply_insight(insight_json: str) -> str:
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
+    # stage_audit 落库：审过的 phase 写入 audited_phases，防止重复提示与「永远未审计」
+    audit_note = ""
+    trigger_type = str(insight_result.get("trigger_type") or "").strip()
+    if trigger_type == "stage_audit":
+        phase_id = _resolve_audited_phase(profile, insight_result)
+        if phase_id and phase_id not in profile.audited_phases:
+            profile.audited_phases.append(phase_id)
+            audit_note = f"（阶段 {phase_id} 已标记为完成审计）"
+
     # 应用调整
     if insight_result.get("adjustment_needed"):
         profile, adjustment = apply_adjustment(profile, insight_result)
         save_profile(profile)
 
         return _json({
-            "message": "已应用调整。下一步：调用 get_progress 查看整体进度，或 get_next_tasks 继续执行。",
+            "message": (
+                "已应用调整。下一步：调用 get_progress 查看整体进度，"
+                f"或 get_next_tasks 继续执行。{audit_note}"
+            ),
             "next_steps": ["get_progress", "get_next_tasks"],
             "report": format_insight_report(insight_result),
             "adjustment": adjustment.model_dump(),
-            "context": {"phase": "adjustment_applied"},
+            "context": {"phase": "adjustment_applied", "audited_phase": phase_id if trigger_type == "stage_audit" else None},
         })
     else:
+        save_profile(profile)
         return _json({
-            "message": "无需调整。下一步：调用 get_next_tasks 继续执行。",
+            "message": f"无需调整。下一步：调用 get_next_tasks 继续执行。{audit_note}",
             "next_steps": ["get_next_tasks"],
             "report": format_insight_report(insight_result),
-            "context": {"phase": "insight_complete"},
+            "context": {"phase": "insight_complete", "audited_phase": phase_id if trigger_type == "stage_audit" else None},
         })
+
+
+def _resolve_audited_phase(profile, insight_result: dict) -> str:
+    """从洞察结果/当前任务推断刚完成审计的阶段 id。"""
+    roadmap = profile.plan.get("roadmap", profile.plan) if isinstance(profile.plan, dict) else {}
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+    phase_ids = [p.get("id") for p in phases if isinstance(p, dict) and p.get("id")]
+
+    reported = insight_result.get("phase_id") or insight_result.get("phase")
+    if isinstance(reported, str) and reported in phase_ids:
+        return reported
+
+    # 未上报时取「已全部完成」的阶段里最新的一个（审计完成阶段是 stage_audit 的语义）
+    for phase in reversed(phases):
+        pid = phase.get("id") or ""
+        if not pid or pid in profile.audited_phases:
+            continue
+        phase_tasks = [t for t in profile.tasks if t.phase_id == pid]
+        if phase_tasks and all(
+            t.status in ("completed", "skipped") for t in phase_tasks
+        ):
+            return pid
+    return ""
 
 
 @mcp.tool()
@@ -510,6 +563,12 @@ def get_weekly_review(days: int = 7) -> str:
     Args:
         days: 回看天数（1-90，默认 7；月度复盘传 30）
     """
+    if isinstance(days, bool) or not isinstance(days, int) or not (1 <= days <= 90):
+        return error_response(
+            "INVALID_PARAM",
+            f"days 越界：必须是 1-90 的整数，收到 {days!r}（默认 7，月度复盘传 30）。",
+            {"min": 1, "max": 90, "received": days if isinstance(days, (int, float, str)) else None},
+        )
     from .review import format_weekly_review, summarize_period
 
     if not isinstance(days, int) or days < 1 or days > 90:
@@ -610,6 +669,12 @@ def get_workflow_status() -> str:
     completed_steps = []
     next_step = "start_session"
 
+    # 换 JD 后旧分析失效（gap_stale_at）：最高优先级，强制重新分析——
+    # 防止基于旧 JD 分析直接规划（用户以为已经按新 JD 分析过）
+    if profile.gap and profile.gap_stale_at:
+        phase = "analysis"
+        next_step = "analyze_gaps（目标 JD 已更新，旧差距分析已过期，必须重新分析后才可重新规划）"
+
     if profile.who or profile.have or profile.want:
         phase = "profile_building"
         completed_steps.append("start_session")
@@ -626,9 +691,18 @@ def get_workflow_status() -> str:
         else:
             completed_steps.append("finalize_profile")
 
+    # 换 JD 后旧分析失效（gap_stale_at）：最高优先级——常规阶段推进的
+    # next_step 一律改回重新分析，防止用户跳过分析直接规划/执行
+    stale_gap = bool(profile.gap and profile.gap_stale_at)
+    stale_step = (
+        "analyze_gaps（目标 JD 已更新，旧差距分析已过期，必须重新分析后才可重新规划）"
+    )
+
     if profile.summary:
         phase = "analysis"
-        if not profile.gap:
+        if stale_gap:
+            next_step = stale_step
+        elif not profile.gap:
             if _has_goal(profile):
                 if not (profile.research or {}).get("report_md"):
                     # 调研是独立一步（软引导，不硬挡）：报告是一切分析的地基
@@ -647,14 +721,18 @@ def get_workflow_status() -> str:
 
     if profile.gap:
         phase = "planning"
-        if not profile.plan.get("roadmap"):
+        if stale_gap:
+            next_step = stale_step
+        elif not profile.plan.get("roadmap"):
             next_step = "generate_roadmap"
         else:
             completed_steps.append("generate_roadmap")
 
     if profile.plan.get("roadmap"):
         phase = "execution_prep"
-        if not profile.tasks:
+        if stale_gap:
+            next_step = stale_step
+        elif not profile.tasks:
             next_step = "generate_tasks"
         else:
             completed_steps.append("generate_tasks")
@@ -667,6 +745,8 @@ def get_workflow_status() -> str:
         if all_finished:
             phase = "completed"
             next_step = "目标达成！可回顾目标，规划下一步。"
+        elif stale_gap:
+            next_step = stale_step
         else:
             next_step = "get_next_tasks"
 
@@ -739,6 +819,17 @@ def export_dashboard(mode: str = "progress") -> str:
     profile = load_profile()
 
     if mode == "roadmap":
+        roadmap = profile.plan.get("roadmap", profile.plan) if isinstance(profile.plan, dict) else {}
+        phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+        if not phases:
+            return error_response(
+                "MISSING_DATA",
+                "档案里还没有路线图——没有规划却导出「职业地图」只会生成 0 阶段 0 任务的空壳，已拒绝。",
+                {
+                    "hint": "先走 generate_roadmap → save_roadmap 生成路线图；"
+                            "查看进度可用 export_dashboard(mode=\"progress\")",
+                },
+            )
         html = _render_roadmap_map(profile)
         out_path = _write_html(html, kind="roadmap")
         index_hint = f"{get_assets_root() / INDEX_FILENAME}"
@@ -754,7 +845,7 @@ def export_dashboard(mode: str = "progress") -> str:
 
     if mode != "progress":
         return error_response(
-            "INVALID_SECTION",
+            "INVALID_MODE",
             f"mode 必须是 progress/roadmap，收到的是「{mode}」",
             {"received": mode, "valid": ["progress", "roadmap"]},
         )

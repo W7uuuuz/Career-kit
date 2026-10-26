@@ -137,30 +137,42 @@
 
 ```
 1. generate_roadmap()
-2. save_roadmap(roadmap_json)
+2. career-roadmap-auditor 审计 → save_roadmap_audit(audit_json)（每轮审计都落库）
+3. save_roadmap(roadmap_json)
 ```
 
 `generate_roadmap` 返回 6 步 step_template（起点判定 → 目标拆解 → 阶段序列 → 逐阶段细化 →
-审计 → 定稿交付），checkpoint 步必须把中间产物展示给用户确认；
+审计落库 → 定稿交付），checkpoint 步必须把中间产物展示给用户确认；
 每个表格/清单必须给出「为什么这么拆」的依据。
-`save_roadmap` 定稿后自动生成路线图 HTML 活地图——交付前先向用户解释它的用途与用法。
+`save_roadmap` 是「先校验后落盘」：硬校验（起点/层级连续/届别/必填/伞形任务与时间词 lint）
+或上一轮审计 FAIL 时拒绝保存并返回问题清单；确认剩余风险后可显式传
+`force=true` 带问题定稿（返回值会复述已接受的风险）。
+层级连续按「进入该阶段时的起点」滚动计算：阶段带 `start_level_after`（复评升级）时
+后续阶段按升级后的起点算，定稿时同步更新档案起点；「+1」的 intern 目标直接合规。
+两轮审计 FAIL 后不再无限重审——向用户明示剩余未通过项与风险，由用户决定
+结构性修正还是 `force=true` 带风险定稿。
+定稿后自动生成路线图 HTML 活地图——交付前先向用户解释它的用途与用法。
 
 已有规划文档时，先 `import_plan(file_path)` 导入，在对话中对比取舍后再保存为路线图。
 
 **输出**：
 
 - `profile.plan.roadmap`：阶段列表（id 规范化为 `phase_N`）
-- 每阶段含 `name`、`goal`、`kpi`、`resume_value`、`milestones`
+- 每阶段含 `name`、`goal`、`kpi`、`resume_value`、`target_level`、`milestones`
+  （可选 `start_level_after` / `graduation_year` / `condition`）
 - 任务 schema：`{name, description, priority}`，不含任何时长字段
 - `save_roadmap` 定稿时自动生成可交互职业地图
 
 **关键规则**：
 
-1. 禁止 `duration` / `estimated_days` 等时长字段
-2. 里程碑必须有 `done_criteria`
+1. 禁止 `duration` / `estimated_days` 等时长字段；任务名禁伞形描述与时间节奏词
+2. 里程碑必须有 `done_criteria`；量化 KPI 的任务要带对应计数（验收可追溯到任务）
 3. JD 细节必须有真实数据，否则留空并标 `jd_status=pending_user_import`；
    有调研报告时优先引用 `profile.research` 的真实样本
-4. 起点层级取 `gap.start_level`；目标超起点时插入过渡阶段
+4. 起点层级取 `gap.start_level`；目标超「该阶段起点」+1 时插入过渡阶段，
+   或用阶段 `start_level_after` 表达复评升级；分支/备用路径写进阶段 `condition`
+5. 换了目标 JD（`import_jd` / `import_jd_file`）后差距分析标记过期，
+   必须先重新 `analyze_gaps` 再生成路线图
 
 ---
 

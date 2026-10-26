@@ -548,9 +548,13 @@ def test_save_roadmap_soft_check_and_html(temp_profile):
 
     base = {
         "roadmap": {"strategy_summary": "测试", "phases": [
-            {"type": "intern", "name": "某公司实习", "company": "某公司"},
-            {"type": "project", "name": "做RAG项目", "jd": {"requirements": ["LangGraph"]}},
-            {"type": "intern", "name": "已确认实习", "company": "乙公司", "jd_status": "pending_user_import", "confirmed": True},
+            {"type": "intern", "name": "某公司实习", "company": "某公司", "target_level": "中厂",
+             "resume_value": "实习经历", "kpi": {"metric": "入职", "target": "1个"}},
+            {"type": "project", "name": "做RAG项目", "jd": {"requirements": ["LangGraph"]},
+             "resume_value": "项目经历", "kpi": {"metric": "完成", "target": "1个"}},
+            {"type": "intern", "name": "已确认实习", "company": "乙公司", "target_level": "小厂",
+             "jd_status": "pending_user_import", "confirmed": True,
+             "resume_value": "实习经历", "kpi": {"metric": "入职", "target": "1个"}},
         ]}
     }
 
@@ -565,10 +569,12 @@ def test_save_roadmap_soft_check_and_html(temp_profile):
     # 全部满足约束 → 无警告
     clean = {
         "roadmap": {"strategy_summary": "测试", "phases": [
-            {"type": "intern", "name": "某公司实习", "company": "某公司",
-             "jd_status": "pending_user_import", "confirmed": True},
+            {"type": "intern", "name": "某公司实习", "company": "某公司", "target_level": "中厂",
+             "jd_status": "pending_user_import", "confirmed": True,
+             "resume_value": "实习经历", "kpi": {"metric": "入职", "target": "1个"}},
             {"type": "project", "name": "做RAG项目", "jd": {"requirements": ["LangGraph"]},
-             "jd_status": "has_jd"},
+             "jd_status": "has_jd", "resume_value": "项目经历",
+             "kpi": {"metric": "完成", "target": "1个"}},
         ]}
     }
     result2 = json.loads(save_roadmap(json.dumps(clean, ensure_ascii=False)))
@@ -826,7 +832,7 @@ def test_apply_insight_end_to_end(temp_profile):
 
 
 def test_save_roadmap_hard_check_required_fields(temp_profile):
-    """硬校验：learn 外阶段缺 resume_value、KPI 缺量化指标 → 提示。"""
+    """硬校验：learn 外阶段缺 resume_value、KPI 缺量化指标 → 先校验后落盘直接拒绝。"""
     from src.server import intake, save_roadmap
 
     intake("who", '{"name": "张三", "graduation_year": "2028"}')
@@ -845,9 +851,15 @@ def test_save_roadmap_hard_check_required_fields(temp_profile):
     }
     result = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     msg = result["message"]
-    assert "硬校验" in msg
+    assert result.get("isError") is True, "硬校验失败必须拒绝保存（防假定稿）"
+    assert result["code"] == "VALIDATION_FAILED"
     assert "resume_value" in msg
-    assert result["context"]["hard_issues"], "应收集到必填缺失问题"
+    assert result["details"]["hard_issues"], "应收集到必填缺失问题"
+
+    # force=true 仍可带问题定稿（显式接受风险）
+    result2 = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False), force=True))
+    assert result2["context"]["phase"] == "roadmap_saved"
+    assert result2["context"]["accepted_risks"], "force 时问题必须作为已接受风险记录"
 
 
 def test_save_roadmap_hard_check_level_jump(temp_profile):
@@ -870,7 +882,12 @@ def test_save_roadmap_hard_check_level_jump(temp_profile):
         }
     }
     result = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert "超出起点" in result["message"] or "高于起点" in result["message"]
+    assert result.get("isError") is True
+    assert "超出" in result["message"]
+
+    # force 仍可保存，风险被记录
+    result2 = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False), force=True))
+    assert result2["context"]["phase"] == "roadmap_saved"
 
 
 def test_save_roadmap_hard_check_graduation(temp_profile):
@@ -914,7 +931,7 @@ def test_save_roadmap_no_start_level_passes(temp_profile):
     }
     result = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     assert result["context"]["phase"] == "roadmap_saved"
-    assert not result["context"]["hard_issues"]
+    assert result["context"]["accepted_risks"] == []
 
 
 def test_intake_who_guides_graduation_year(temp_profile):
@@ -965,7 +982,7 @@ def test_generate_roadmap_returns_step_template(temp_profile):
     assert len(out["step_template"]) == 6
     assert out["step_template"][0]["name"] == "起点判定"
     assert out["step_template"][0]["checkpoint"] is True
-    assert any(s["name"] == "审计" for s in out["step_template"])
+    assert any(s["name"] == "审计落库" for s in out["step_template"])
 
 
 # ============ BUG-001：简历验证防线 ============

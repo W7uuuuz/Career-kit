@@ -66,6 +66,39 @@ class Scraper(CompanyScraper):
         except RuntimeError as exc:
             return [{"error": str(exc)}]
 
+        # BUG-017：过滤组合过严直接空集时自动降级——
+        # ① 中文城市名可能匹配不上阿里的 regions 参数 → 去掉城市改本地 workLocations 筛选
+        # ② 多词关键词（如「AI Agent」）可能过度过滤 → 放宽为第一段
+        def _is_empty(rs: list[dict[str, Any]]) -> bool:
+            return bool(rs) and len(rs) == 1 and bool(rs[0].get("error"))
+
+        if _is_empty(results) and (city or keyword.strip()):
+            tokens = [t for t in keyword.split() if t.strip()]
+            combos: list[tuple[str, str, str]] = []
+            if city:
+                combos.append((keyword, "", city))
+            if len(tokens) > 1:
+                combos.append((tokens[0], city, ""))
+            if tokens and len(tokens) > 1 and city:
+                combos.append((tokens[0], "", city))
+
+            for kw, c_city, loc_filter in combos:
+                cand = self._search_with_client(kw, c_city, scope, category, limit)
+                if _is_empty(cand):
+                    continue
+                if loc_filter:
+                    cand = [r for r in cand if loc_filter in r.get("location", "")] or cand
+                first = cand[0] if cand else None
+                if not isinstance(first, dict) or first.get("error"):
+                    continue
+                first["_fallback_note"] = (
+                    f"原始组合（keyword={keyword!r}, city={city!r}）无结果，本批来自降级："
+                    f"keyword={kw!r}" + (f", city={c_city!r}" if c_city else "（未带城市参数）")
+                    + (f"；本地筛到 {loc_filter}" if loc_filter and c_city else "")
+                )
+                results = cand
+                break
+
         if results and not (len(results) == 1 and results[0].get("error")):
             cache.set(key, results)
         return results[:limit]

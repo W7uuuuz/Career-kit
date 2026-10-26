@@ -216,7 +216,10 @@ def test_get_weekly_review_renders_and_marks_last_review(temp_profile):
     assert saved.last_review_at  # 调用后记录检视时间
 
 
-def test_get_weekly_review_days_clamped(temp_profile):
+def test_get_weekly_review_days_rejected(temp_profile):
+    """越界 days 直接报错并说明合法范围（不静默收敛、不装作 normal）。"""
+    import json
+
     from src.server import get_weekly_review
 
     profile = profile_module.load_profile()
@@ -225,5 +228,8 @@ def test_get_weekly_review_days_clamped(temp_profile):
     profile.checkins = [CheckIn(task_id="task_001", timestamp=_ts(23))]
     profile_module.save_profile(profile)
 
-    assert "周检视" in get_weekly_review(days=0)     # 越界收敛到 1
-    assert "周检视" in get_weekly_review(days=999)   # 越界收敛到 90
+    for bad in (0, 999):
+        result = json.loads(get_weekly_review(days=bad))
+        assert result.get("isError") is True
+        assert result["code"] == "INVALID_PARAM"
+        assert "1-90" in result["message"]

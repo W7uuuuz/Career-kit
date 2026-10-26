@@ -1,4 +1,4 @@
-# Career Kit LLM 使用指南
+﻿# Career Kit LLM 使用指南
 
 > 面向 LLM 的运行时操作手册。工具参数与完整清单以 [tools.md](tools.md) 为准。
 
@@ -204,7 +204,7 @@ export_dashboard(mode="roadmap")     # 可交互职业地图（落到 ~/CareerKi
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：37 个工具的唯一事实源
+- [工具总览](tools.md)：39 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业数据源](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式
