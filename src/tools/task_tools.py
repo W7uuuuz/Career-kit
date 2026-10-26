@@ -170,14 +170,34 @@ def save_current_detail(detail_json: str) -> str:
         p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases) if isinstance(p, dict)
     ]
     target_phase = str(detail.get("phase_id") or "").strip()
-    if target_phase and phase_ids and target_phase not in phase_ids:
+    if not target_phase:
         return error_response(
             "INVALID_PARAM",
+            "detail_json 缺 phase_id——详细路线必须指明所属阶段（如 phase_1）。",
+            {
+                "existing_phase_ids": phase_ids,
+                "hint": "phase_id 取 detail_current_phase 返回的当前阶段 id",
+            },
+        )
+    if not phase_ids:
+        return error_response(
+            "MISSING_DATA",
+            "档案里还没有路线图——没有阶段可挂详细路线，先 generate_roadmap → save_roadmap。",
+            {
+                "hint": (
+                    "先生成并保存路线图，再对具体阶段调用 detail_current_phase / "
+                    "save_current_detail"
+                ),
+            },
+        )
+    if target_phase not in phase_ids:
+        return error_response(
+            "MISSING_DATA",
             f"phase_id「{target_phase}」不在当前路线图里——没有对应规划却保存详细路线"
             "会产生孤儿 detail（随后 generate_tasks 会报「没有路线图」）。",
             {
                 "existing_phase_ids": phase_ids,
-                "hint": "先 save_roadmap 建路线图，或改用列表中存在的 phase_id",
+                "hint": "改用列表中存在的 phase_id；如需新阶段先 save_roadmap 更新路线图",
             },
         )
 

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **复测第二轮 8 项 BUG 修复（ec77aa6 复测，dev/test/BUG.md）**：
+  - `save_current_detail` 孤儿阶段守卫补全：无路线图 / 缺 `phase_id` / 未知
+    `phase_id` 一律拒绝（`MISSING_DATA` / `INVALID_PARAM`），不再产出孤儿 detail
+  - GitHub 经验帖检索重做：岗位词与求职意图词（秋招/春招/面经/offer）改 **AND**
+    组合（括号块，遵守 API 布尔运算符上限），`filter_company` 作必中条件参与
+    检索；结果加标题门槛（标题必须带意图词或学历/公司条件），日文 issue、
+    CI 修复、纯技术讨论一律过滤；零结果时降级宽 OR 查询仍保留标题门槛
+  - 案例卡质量门：GitHub/牛客条目必须有求职意图词命中（标题或摘要），
+    否则不进「同背景成功经验」；每张案例卡带 `hit_terms`（命中原因），
+    `search_cases` 与调研报告逐条标注
+  - 牛客面经摘要：列表页 snippet 缺失时逐条用详情页（SSR）meta description
+    补水；仍取不到显式标 `snippet_status=unavailable`（位移展示「摘要未获取」），
+    不再静默空串；`fetch_company_jobs` 输出同步提示
+  - 调研报告：`direction` 显式传入时优先于档案 `want.target_role`（标题/上下文/
+    汇报口径一致）；来源统计区分「JD 源」与「案例源」（案例源并入来源状态
+    面板与数据缺口，汇报写清各自可用数）
+  - 摸排提示：技能名回退链 `skill → name/title/tech`，取不到时「技能[索引] +
+    条目摘录」并剥掉「用户确认：」前缀（不再只显示 `技能[0]` 无法定位）
+  - 知识库检索打分重做：长词 2-gram 召回降权（0.05）且不参与文件名加分，
+    整串仍正常计分——无意义查询总分低于阈值，不再混入 1 条弱相关结果
+
 - **33 项实测 BUG 清单修复轮（dev/test/BUG.md，2006 会话实测）**：
   - P0 服务自检：新增 `server_fingerprint`——`start_session` 与 `fetch_company_jobs`
     错误信息都带「版本/工具数/代码路径」自检行，连错旧实例一眼可辨；

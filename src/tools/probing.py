@@ -82,6 +82,28 @@ def _valid_control_level(value: Any) -> bool:
     )
 
 
+_SKILL_NAME_KEYS = ("skill", "name", "title", "tech", "keyword")
+
+
+def skill_display_name(skill: Any, idx: int) -> str:
+    """技能展示名：优先技能名（兼容 LLM 常用的 name/title 键），取不到时回退
+    「技能[索引] + 条目摘录」，让人能定位是哪一条（复测 BUG：只有技能[0] 无法定位）。
+    """
+    if not isinstance(skill, dict):
+        return f"技能[{idx}]（{str(skill).strip()[:40] or '无内容'}）"
+    for key in _SKILL_NAME_KEYS:
+        value = str(skill.get(key) or "").strip()
+        if value:
+            return value
+    preview = str(skill.get("evidence") or skill.get("description") or "").strip()
+    for prefix in ("用户确认：", "用户确认:"):
+        if preview.startswith(prefix):
+            preview = preview[len(prefix):].strip()
+    if not preview:
+        preview = str(skill).strip()
+    return f"技能[{idx}]（{preview[:40] or '无内容'}）"
+
+
 def find_self_assessment_issues(have: dict) -> list[str]:
     """返回摸排自评缺口清单（空 = 通过）。
 
@@ -103,17 +125,18 @@ def find_self_assessment_issues(have: dict) -> list[str]:
     for idx, skill in enumerate(skills):
         if not isinstance(skill, dict) or not is_verified_skill(skill):
             continue
-        name = str(skill.get("skill") or f"技能[{idx}]")
+        label = skill_display_name(skill, idx)
+        prefix = label if label.startswith("技能[") else f"技能「{label}」"
         authorship = skill.get("authorship")
         if authorship not in AUTHORSHIP_VALUES:
             issues.append(
-                f"技能「{name}」缺 authorship（四选一：self_written / ai_assisted / "
+                f"{prefix} 缺 authorship（四选一：self_written / ai_assisted / "
                 "ai_generated / referenced）"
             )
         level = skill.get("control_level")
         if not _valid_control_level(level):
             issues.append(
-                f"技能「{name}」缺 control_level（0-10 把控度自评："
+                f"{prefix} 缺 control_level（0-10 把控度自评："
                 "能讲架构=3，能逐行讲清=6，能手写重写=8+）"
             )
     return issues
@@ -129,12 +152,5 @@ def ai_authored_skill_names(have: dict) -> list[str]:
         if not isinstance(skill, dict):
             continue
         if skill.get("authorship") in AI_AUTHORED:
-            raw_name = str(skill.get("skill") or "").strip()
-            if raw_name:
-                names.append(raw_name)
-            else:
-                preview = str(
-                    skill.get("evidence") or skill.get("description") or skill
-                ).strip()[:40]
-                names.append(f"技能[{idx}]（{preview or '无内容'}）")
+            names.append(skill_display_name(skill, idx))
     return names

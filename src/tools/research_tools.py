@@ -305,29 +305,39 @@ def _render_report_message(report: dict[str, Any], paths: dict[str, str]) -> str
     counts = report.get("counts") or {}
     jd_n = counts.get("jd_samples") or 0
     case_n = counts.get("cases") or 0
-    ok_n = counts.get("source_ok") or 0
     fail_n = counts.get("source_fail") or 0
     empty_n = counts.get("source_empty") or 0
     gaps = report.get("gaps") or []
 
+    statuses = report.get("source_status") or []
+    # 复测 BUG #5：JD 源与案例源分开统计（口径写清，不混为「2 个来源可用」）
+    jd_ok_n = sum(1 for s in statuses if s.get("status") == "ok" and s.get("scope", "jd") == "jd")
+    case_ok_n = sum(1 for s in statuses if s.get("status") == "ok" and s.get("scope") == "cases")
+    scope_bits = []
+    if jd_ok_n:
+        scope_bits.append(f"JD 源 {jd_ok_n} 个可用")
+    if case_ok_n:
+        scope_bits.append(f"案例源 {case_ok_n} 个可用")
+    ok_text = "、".join(scope_bits) or "0 个来源可用"
+
     source_bits = [
         f"{s.get('source')}（{s.get('count', 0)} 条）"
-        for s in report.get("source_status") or []
+        for s in statuses
         if s.get("status") == "ok"
     ]
     fail_bits = [
         f"{s.get('source')}: {s.get('error') or '未获取到结果'}"
-        for s in report.get("source_status") or []
+        for s in statuses
         if s.get("status") == "failed"
     ]
 
     lines = [
-        f"市场调研完成（{ctx.get('goal') or report.get('direction') or '市场调研'}）"
+        f"市场调研完成（{report.get('direction') or ctx.get('goal') or '市场调研'}）"
         + (f" · 城市 {ctx.get('city')}" if ctx.get("city") else "")
         + (f" · 学历档 {ctx.get('education')}" if ctx.get("education") else ""),
         "",
         f"拿到：{jd_n} 条真实岗位样本、{case_n} 条同学历经历；"
-        f"{ok_n} 个来源可用，"
+        f"{ok_text}，"
         + (f"{fail_n} 个源失败（原因已在报告的来源状态面板如实标注）" if fail_n else "无失败源")
         + (f"，{empty_n} 个源无结果" if empty_n else ""),
     ]

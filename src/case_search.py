@@ -42,6 +42,14 @@ _COMPANY_ALIASES: dict[str, str] = {
 
 _RECENT_DAYS = 730  # 近两年新鲜度全额分，之后线性衰减
 
+# 掷意图词：「同背景成功经验/面试要求」必须是求职语境。
+# 技术讨论/CI bug fixes/日文 issue 混进案例会污染对标（复测 BUG 清单 #2/#3），
+# 因此 gh/nowcoder 源的卡片必须有至少一个意图词命中（标题或摘要），其余丢弃。
+_CASE_INTENT_WORDS = (
+    "秋招", "春招", "校招", "面经", "offer", "上岸",
+    "实习", "笔试", "面试", "一面", "二面", "三面", "HR面", "求职",
+)
+
 
 def resolve_company(company: str) -> str:
     """公司别名 → 源 slug（未知名字原样返回，交给调用方自行处理）。"""
@@ -253,6 +261,9 @@ def _row_to_card(row: dict) -> dict | None:
 
     if source in {"github", "nowcoder"} or "/interviews/" in row.get("_rel_path", ""):
         text = f"{title} {row.get('snippet', '')[:400]}"
+        hits = [w for w in _CASE_INTENT_WORDS if w in text]
+        if not hits:
+            return None  # 无求职意图词命中（技术讨论/杂项 issue）——不入案例卡污染对标
         tag = normalize_education_tag(text)
         kind = "interview_requirements" if any(
             w in text for w in ("面经", "复盘", "面试", "一面", "二面", "三面", "HR面")
@@ -266,6 +277,7 @@ def _row_to_card(row: dict) -> dict | None:
             "education_tag": row.get("education_tag") or tag["tag"],
             "year_tag": row.get("year_tag") or tag["year"],
             "highlights": _highlights(row, kind),
+            "hit_terms": hits[:4],
         })
 
     # 官方/BOSS 岗位 JD → 面试要求口径
@@ -312,6 +324,8 @@ def _card(base: dict) -> dict:
         card["location"] = base["location"]
     if base.get("local_path"):
         card["local_path"] = base["local_path"]
+    if base.get("hit_terms"):
+        card["hit_terms"] = base["hit_terms"]
     return card
 
 
@@ -447,10 +461,13 @@ def render_cases(result: dict[str, Any], role: str, education: str, company: str
 
 def _case_line(i: int, c: dict) -> list[str]:
     bg = c.get("background") or {}
+    hits = c.get("hit_terms") or []
     meta = [c.get("source", ""), bg.get("education_tag", ""), bg.get("year", ""),
             c.get("date", ""), c.get("salary", ""), c.get("location", "")]
     meta_str = " | ".join(m for m in meta if str(m).strip())
     lines = [f"{i}. **{c['title']}**（{meta_str or '无元数据'}）"]
+    if hits:
+        lines.append(f"   命中：{'、'.join(hits)}")
     if c.get("url"):
         lines.append(f"   来源：{c['url']}")
     elif c.get("local_path"):

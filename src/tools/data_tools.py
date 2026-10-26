@@ -243,6 +243,8 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         preview = job.get("summary") or job.get("snippet") or ""
         if preview:
             lines.append(f"   {preview[:100]}")
+        elif job.get("snippet_status") == "unavailable":
+            lines.append("   摘要未获取——点开链接或 fetch_jd_detail(url) 查看详情")
         lines.append("")
 
     if warnings_list:

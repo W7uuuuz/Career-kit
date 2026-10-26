@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from typing import Any
 
@@ -26,8 +27,14 @@ SEARCH_URL = "https://api.github.com/search/issues"
 # 意图词：将「经验帖」与闲聊 repo issue 区分开。
 # 注意：GitHub Search API 限制最多 5 个 AND/OR/NOT 运算符——
 # 全量拼接（6 个意图词 + keyword + education + company）必炸 422，
-# 因此只取前 3 个意图词，education/company 二选一补充时最多 6 段 = 5 个 OR。
-_INTENT_WORDS = ("秋招", "春招", "面经")
+# 因此 keyword 与意图块用空格（AND）组合后，块内最多 3 个 OR。
+_INTENT_WORDS = ("秋招", "春招", "面经", "offer")
+
+# 标题命中门槛使用的意图词（比 API 查询略宽：AND 查询可能仍漏细节命中，
+# 标题不带意图词但正文带也可能相关——但标题全不沾的 CI fix/日文 issue 必须滤掉）
+_TITLE_INTENT_WORDS = _INTENT_WORDS + (
+    "校招", "上岸", "实习", "笔试", "面试", "复盘", "求职", "应届",
+)
 
 
 class Scraper(CompanyScraper):
@@ -43,9 +50,9 @@ class Scraper(CompanyScraper):
     DATA_TYPE = "experiences"
 
     PARAMS: dict[str, dict[str, Any]] = {
-        "keyword": {"required": True, "description": "搜索关键词（如 \"AI Agent\"、\"后端\"）+ 自动拼秋招/面经/offer 意图词"},
+        "keyword": {"required": True, "description": "搜索关键词（如 \"AI Agent\"、\"后端\"），与秋招/春招/面经/offer 意图词 AND 组合"},
         "education": {"required": False, "description": "学历档位词（如 \"双非\"、\"985硕\"），拼进搜索与打标"},
-        "filter_company": {"required": False, "description": "公司名（如 \"字节\"），拼接到搜索词"},
+        "filter_company": {"required": False, "description": "公司名（如 \"字节\"），作为必中条件拼进查询——结果必须提及该公司"},
         "order": {"required": False, "description": "排序：created=最新(默认), best=综合相关"},
         "page": {"required": False, "description": "页码，默认 1"},
         "limit": {"required": False, "description": "返回数量上限，默认 20"},
@@ -79,13 +86,12 @@ class Scraper(CompanyScraper):
         if not keyword:
             return [{"error": "搜索关键词不能为空"}]
 
-        query_parts = [keyword]
-        query_parts.extend(_INTENT_WORDS)
+        query_parts = [keyword, "(" + " OR ".join(_INTENT_WORDS) + ")"]
         if education and (education not in keyword):
             query_parts.append(education)
         elif company and (company not in keyword):
             query_parts.append(f'"{company}"')
-        query = " OR ".join(query_parts)
+        query = " ".join(query_parts)
         q = f"{query} type:issue"
 
         search_cache = self._make_cache("search")
@@ -94,7 +100,8 @@ class Scraper(CompanyScraper):
         if cached is not None:
             return cached[:limit]
 
-        # 完整查询失败（尤其 422 布尔运算符超限）时，降级为单一关键词重搜
+        # 完整查询失败（尤其 422 布尔运算符超限）时，降级为单一关键词重搜；
+        # AND 查询严格但召回少——零结果时降级为宽 OR 查询（依靠标题门槛兜底质量）
         try:
             raw = self._search_api(q=q, order=order if order != "best" else "", page=page)
         except ScraperHttpError as e:
@@ -115,13 +122,29 @@ class Scraper(CompanyScraper):
 
         items = raw.get("items") or []
         if not items:
+            with contextlib.suppress(ScraperHttpError):
+                raw = self._search_api(
+                    q=f"{' OR '.join(query_parts)} type:issue",
+                    order=order if order != "best" else "",
+                    page=page,
+                )
+            items = raw.get("items") or []
+        if not items:
             return [{"error": "未找到相关经验帖", "query": q}]
 
+        keyword_lower = keyword.lower()
+        # 质量门：标题必须带求职意图词（或用户限定的 education/company 条件），
+        # 只命中岗位关键词的纯技术讨论/CI issue 一律丢弃——这是复测 BUG #2 的根因
+        gate_terms = [education.lower(), company.lower(), *_TITLE_INTENT_WORDS]
+        rank_terms = [keyword_lower, education.lower(), company.lower(), *_TITLE_INTENT_WORDS]
         formatted = []
-        for it in items[:limit]:
+        for it in items[: limit * 3]:
             title = (it.get("title") or "").strip()
             if not title:
                 continue
+            title_lower = title.lower()
+            if not any(t and t in title_lower for t in gate_terms):
+                continue  # 标题全不沾求职意图（日文 issue、CI 修复、随机讨论）→ 直接丢弃
             body = (it.get("body") or "").strip()
             edu = normalize_education_tag(f"{title} {body[:800]}")
             formatted.append({
@@ -129,14 +152,24 @@ class Scraper(CompanyScraper):
                 "url": it.get("html_url", ""),
                 "snippet": body[:300].replace("\n", " "),
                 "date": (it.get("created_at") or "")[:10],
-                "company": "",
-                "position": "",
+                "company": company,
+                "position": keyword if keyword_lower in title_lower else "",
                 "education_tag": edu["tag"],
                 "year_tag": edu["year"],
                 "reactions": (it.get("reactions") or {}).get("total_count", 0),
                 "repository": (it.get("repository_url") or "").rsplit("/", 1)[-1],
                 "source": "github",
             })
+
+        if not formatted:
+            return [{"error": "检索结果与求职意图毫无交集，已全部过滤", "query": q}]
+        formatted.sort(
+            key=lambda r: (
+                sum(1 for t in rank_terms if t and t in r["title"].lower()),
+                r["reactions"],
+            ),
+            reverse=True,
+        )
 
         results = formatted or [{"error": "GitHub 返回的数据为空", "query": q}]
         if not results[0].get("error"):

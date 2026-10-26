@@ -34,29 +34,51 @@ _COMPANY_ALIASES = {
 }
 
 
-def _split_chinese_text(text: str) -> list[str]:
-    """简易中文分词：按标点/空白切分，再对长中文串做 2-gram。"""
+def _query_token_specs(query: str) -> list[dict]:
+    """查询 → 加权 token 规格（text / weight / filename_ok）。
+
+    - 短词（2-3 字）是可靠整词：正常计分，命中文件名 +2.0；
+    - 长串（中文无空格，只能靠字面）：整串本身作为「整词」正常计分；
+      另产出 2-gram 兜底召回，但 2-gram 噪声大——降权 0.05 且不参与文件名加分。
+    复测 BUG：无意义长查询曾靠零散 2-gram 堆到 3.9 分混过阈值，降权后
+    废词查询总分 < 1.2，被 MIN_RELEVANCE 挡住。
+    """
     import re
-    tokens = re.split(r"[\s,，。.、;；:：!！?？()（）\[\]【】]+", text)
-    result = []
+
+    specs: dict[str, dict] = {}
+
+    def _add(text: str, weight: float, filename_ok: bool) -> None:
+        text = text.strip().lower()
+        if not text or text in _STOP_WORDS:
+            return
+        spec = specs.get(text)
+        if spec is None:
+            specs[text] = {"text": text, "weight": weight, "filename_ok": filename_ok}
+            return
+        spec["weight"] = max(spec["weight"], weight)
+        spec["filename_ok"] = spec["filename_ok"] or filename_ok
+
+    tokens = re.split(r"[\s,，。.、;；:：!！?？()（）\[\]【】]+", str(query).lower())
     for token in tokens:
-        token = token.strip().lower()
         if not token:
             continue
         if len(token) <= 3:
-            result.append(token)
-        else:
-            # 长串切 2-gram 提高召回
-            for i in range(len(token) - 1):
-                gram = token[i:i + 2]
-                if gram not in _STOP_WORDS:
-                    result.append(gram)
-    return list(dict.fromkeys(result))
+            _add(token, 1.0, True)
+            continue
+        _add(token, 1.0, True)  # 整串命中
+        for i in range(len(token) - 1):
+            _add(token[i:i + 2], 0.05, False)  # 2-gram 兜底召回（低权重）
+
+    if not specs:
+        lowered = str(query).strip().lower()
+        if len(lowered) >= 2:
+            specs[lowered] = {"text": lowered, "weight": 1.0, "filename_ok": True}
+    return list(specs.values())
 
 
-# BUG-026：相关度阈值——低于该分数的结果不返回（弱相关材料容易被 LLM 误当证据，
-# 用数量凑结果比空结果危害更大）。观测样本：无意义词最高 3.9/1.3/0.4，
-# 有意义的资料通常 ≥3；阈值取 2.0（文件名/整词命中 +1 明显强于零散 2-gram 计数）。
+# 相关度阈值——低于该分数的结果不返回（弱相关材料容易被 LLM 误当证据，
+# 用数量凑结果比空结果危害更大）。短词/整串命中可累计到 2.0+；
+# 2-gram 噪声降权后废词查询总分 < 1.2，不会越过阈值。
 MIN_RELEVANCE = 2.0
 
 
@@ -74,10 +96,7 @@ def search_knowledge(query: str, limit: int = 5) -> dict[str, Any]:
         return {"results": [], "count": 0, "knowledge_dir": str(KNOWLEDGE_DIR)}
 
     query_lower = query.lower()
-    all_tokens = list(dict.fromkeys(
-        [t for t in _split_chinese_text(query) if t not in _STOP_WORDS]
-        + [w for w in query_lower.split() if len(w) >= 2]
-    )) or ([query_lower] if len(query_lower) >= 2 else [])
+    token_specs = _query_token_specs(query)
 
     results = []
     for file_path in KNOWLEDGE_DIR.rglob("*"):
@@ -94,10 +113,11 @@ def search_knowledge(query: str, limit: int = 5) -> dict[str, Any]:
         filename_lower = file_path.name.lower()
 
         score = 0.0
-        for token in all_tokens:
-            count = content_lower.count(token)
-            score += min(count * 0.1, 1.0)
-            if token in filename_lower:
+        for spec in token_specs:
+            count = content_lower.count(spec["text"])
+            if count:
+                score += min(count * 0.1, 1.0) * spec["weight"]
+            if spec["filename_ok"] and spec["text"] in filename_lower:
                 score += 2.0
         if len(query_lower) >= 2 and query_lower in content_lower:
             score += 1.0

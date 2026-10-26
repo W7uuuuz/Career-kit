@@ -25,6 +25,9 @@ from ..base import CompanyScraper
 
 SEARCH_URL = "https://www.nowcoder.com/search/all?query={query}&type=all&subType=818"
 
+_SNIPPET_HYDRATE_MAX = 8  # snippet 缺失时逐条补水的条数上限（控制耗时）
+_SNIPPET_UNAVAILABLE = "摘要未获取（点开 url 或 fetch_jd_detail 查看详情）"
+
 
 class Scraper(CompanyScraper):
     """牛客网面经 Scraper。
@@ -250,6 +253,11 @@ class Scraper(CompanyScraper):
             for f in formatted:
                 f["snippet"] = ""
 
+        # BUG-004 修补：snippet 为空时用 discuss 详情页 SSR 渲染的 meta description
+        # 逐条补水（plain httpx，非 Playwright，控制在前 8 条）；仍失败则显式标注
+        # 「摘要未获取」，不再静默为空让 LLM 无从判断哪条值得点开
+        self._hydrate_snippets(formatted)
+
         # BUG-016 兜底：标题/摘要与搜索词毫无交集的条目（如搜「Agent 实习」
         # 返回「拼多多客户端」）滤掉；全部被滤掉则保留原结果（宁多勿漏）
         tokens = [t for t in re.split(r"\s+", query) if len(t) >= 2]
@@ -262,6 +270,47 @@ class Scraper(CompanyScraper):
                 formatted = kept
 
         return formatted
+
+    def _hydrate_snippets(self, rows: list[dict[str, Any]]) -> None:
+        """列表页抓不到 snippet 的条目：SSR 详情页 meta description 逐条补水。
+
+        失败不抛错——补水失败只把该条 snippet 标注为「摘要未获取」。
+        """
+        need = [r for r in rows if not r.get("snippet")]
+        for row in need[: _SNIPPET_HYDRATE_MAX]:
+            meta_desc = self._fetch_meta_snippet(row.get("url", ""))
+            if meta_desc:
+                row["snippet"] = meta_desc
+            else:
+                row["snippet_status"] = "unavailable"
+
+        # 未入选补水的其余条目也如实标注（不再静默空串）
+        for row in need[_SNIPPET_HYDRATE_MAX:]:
+            row["snippet_status"] = "unavailable"
+
+    def _fetch_meta_snippet(self, url: str) -> str:
+        """牛客 discuss 详情页是 SSR 渲染——plain httpx 提取 meta description。"""
+        from ..http_utils import make_client
+
+        try:
+            with make_client(timeout=8.0) as client:
+                resp = client.get(url)
+        except Exception:
+            return ""
+        if resp.status_code != 200:
+            return ""
+        patterns = (
+            r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']',
+            r'content=["\']([^"\']+)["\'][^>]+name=["\']description["\']',
+        )
+        for pattern in patterns:
+            match = re.search(pattern, resp.text, re.IGNORECASE | re.DOTALL)
+            if match:
+                desc = match.group(1).strip()
+                if len(desc) >= 8:
+                    return re.sub(r"\s+", " ", desc)[:300]
+        return ""
 
     def _fetch_detail_via_playwright(self, url: str) -> dict[str, Any]:
         """通过 Playwright 访问详情页，从 DOM 提取面经全文。"""

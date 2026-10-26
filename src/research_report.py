@@ -73,7 +73,8 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     who = profile.who or {}
     have = profile.have or {}
     context = {
-        "goal": _clip(want.get("target_role") or direction, 80),
+        # direction 显式传入时优先于档案 want（复测 BUG #7：多方向调研标题不能串档）
+        "goal": _clip(direction or want.get("target_role") or "", 80),
         "city": city or _clip(want.get("city") or who.get("city") or "", 40),
         "education": education_tag
         or _clip(who.get("education") or who.get("education_tag") or "", 40),
@@ -92,6 +93,7 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         source_status.append(
             {
                 "source": family.get("label") or family.get("slug") or "未知来源",
+                "scope": "jd",
                 "status": status,
                 "count": len(rows),
                 "elapsed": round(float(family.get("elapsed") or 0), 1),
@@ -116,6 +118,34 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
             )
 
     cases_result = gathered.get("cases_result") or {}
+    case_sources = cases_result.get("sources") or {}
+    case_warnings = cases_result.get("warnings") or []
+    # 复测 BUG #5：JD 源与案例源分开统计——案例源也进状态面板（失败如实入缺口）
+    for slug, raw_count in case_sources.items():
+        count = int(raw_count or 0)
+        error = ""
+        for warning in case_warnings:
+            text = str(warning)
+            if text.startswith(f"{slug}:"):
+                error = _clip(text.split(":", 1)[1].strip(), 120)
+                break
+        if count > 0:
+            status = "ok"
+        elif error:
+            status = "failed"
+        else:
+            status = "empty"
+        source_status.append(
+            {
+                "source": f"案例·{slug}",
+                "scope": "cases",
+                "status": status,
+                "count": count,
+                "elapsed": 0.0,
+                "error": error,
+            }
+        )
+
     raw_cases = cases_result.get("cases") or []
     cases: list[dict[str, Any]] = []
     for case in raw_cases:
@@ -131,6 +161,7 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
                 "company": _clip(bg.get("company"), 30),
                 "position": _clip(bg.get("position"), 30),
                 "highlights": [_clip(h, 80) for h in (case.get("highlights") or [])[:3]],
+                "hit_terms": [_clip(h, 12) for h in (case.get("hit_terms") or [])[:4]],
                 "salary": _clip(case.get("salary"), 30),
                 "location": _clip(case.get("location"), 30),
                 "source": _clip(case.get("source"), 20),
@@ -300,6 +331,8 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
             )
             if hl:
                 lines.append(f"  - 要点：{_md_escape_md(hl)}")
+            if c.get("hit_terms"):
+                lines.append(f"  - 命中：{'、'.join(c['hit_terms'])}")
         match = [c.get("match_score") for c in cases if isinstance(c.get("match_score"), (int, float))]
         if match:
             lines.append("")
@@ -416,9 +449,15 @@ def render_html(report: dict[str, Any]) -> str:
             else escape(str(c.get("source") or ""))
         )
         salary = f"｜{escape(str(c['salary']))}" if c.get("salary") else ""
+        hits = c.get("hit_terms") or []
+        hits_html = (
+            f'<span class="compact">｜命中：{escape("、".join(str(h) for h in hits))}</span>'
+            if hits
+            else ""
+        )
         parts.append(
             f"<p>- <strong>{escape(str(c.get('title','')))}</strong>{tag}"
-            f"｜{source_inner}{salary}"
+            f"｜{source_inner}{salary}{hits_html}"
             + (f'<span class="compact">｜{escape(str(c["date"]))}</span>' if c.get("date") else "")
             + (f'<br><span class="compact">要点：{escape(hl)}</span>' if hl else "")
             + "</p>"
