@@ -513,7 +513,8 @@ def render_cases(result: dict[str, Any], role: str, education: str, company: str
         "",
         "向用户展示案例卡时必须标明来源（平台/名称/时间）——不标注来源不诚实。",
         "案例卡为候选清单：建议选取 3-5 条最相关条目，以 fetch_jd_detail(url=...) 读取原帖全文；"
-        "也可将案例卡交由子 Agent 深读并返回结论与重点名单，父 Agent 不重复加载全文。",
+        "宿主 harness 支持子 Agent 时（opencode task/subagent、Claude Code Task 等），"
+        "可由父 Agent 发起子 Agent 深读并返回结论与重点名单，父 Agent 不重复加载全文。",
         "这些案例的共性要求将作为差距分析的核心输入，别漏出 match_score 校准与 red flags。",
     ])
     return "\n".join(lines)

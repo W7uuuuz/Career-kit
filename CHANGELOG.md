@@ -6,9 +6,13 @@
   - 岗位详情必抓：`gather_research_data` 逐条补抓 `description/requirements`，
     未取得详情的岗位不纳入报告，剔除数量进入来源面板与数据缺口（不再以标题充数）
   - 上下文控制：新增 `read_research_details`（总 40 个工具）——不带 `ids` 返回
-    「花名册（标识与摘要）+ 聚合摘要」，带 `ids` 按需读取选定条目全文
-    （`kind="jd"` 岗位 / `"case"` 面经与他人路径，单次上限 10 条）；岗位/案例全文
-    仅落盘到报告、`profile.research` 与 JSON，不一次性注入模型上下文
+    「花名册（标识与摘要）+ 聚合摘要 + 子 Agent 委派方案」，带 `ids` 按需读取选定
+    条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径，单次上限 10 条）；
+    岗位/案例全文仅落盘到报告、`profile.research` 与 JSON，不一次性注入模型上下文
+  - 子 Agent 委派：子 Agent 属宿主 harness 能力（opencode task/subagent、
+    Claude Code Task 等），由父 Agent 发起；工具返回可直接使用的委派指令、按 10 条
+    分组的 id 批次与输出契约（conclusions / shortlist / gaps），父 Agent 仅汇总
+    子 Agent 的结论与重点名单
   - 新增 `src/research_digest.py`：确定性聚合统计（城市/薪资区间/高频要求/
     学历与层级信号/案例结构），供父 Agent 直接获得结论要素
   - 报告展示：取消二次截断（报告结构与 JSON 保留原文）；md 增加「岗位详情（完整 JD）」

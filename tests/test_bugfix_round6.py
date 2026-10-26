@@ -304,6 +304,21 @@ def test_gather_returns_roster_not_full_text(temp_profile, monkeypatch):
     assert long_description not in message, "岗位全文不得进入上下文"
     assert "read_research_details" in message
     assert "子 Agent" in message
+    assert "harness" in message
+
+
+def test_delegate_plan_batches_and_output_schema():
+    from src.tools.research_tools import _delegate_plan
+
+    plan = _delegate_plan("jd", [f"JD{i:02d}" for i in range(1, 13)])
+    assert plan["id_batches"] == [
+        [f"JD{i:02d}" for i in range(1, 11)],
+        ["JD11", "JD12"],
+    ]
+    assert "read_research_details" in plan["prompt"]
+    assert "evidence_ids" in plan["prompt"]
+    assert set(plan["output_schema"]) == {"conclusions", "shortlist", "gaps"}
+    assert "harness" in plan["mechanism"]
 
 
 def test_read_research_details_roster_and_selection(temp_profile, monkeypatch):
@@ -316,6 +331,9 @@ def test_read_research_details_roster_and_selection(temp_profile, monkeypatch):
     assert [item["id"] for item in roster["items"]] == ["JD01", "JD02"]
     assert all(item["brief"] for item in roster["items"])
     assert roster["digest"]["jd_count"] == 2
+    delegate = roster["delegate"]
+    assert "read_research_details" in delegate["prompt"]
+    assert delegate["id_batches"] == [["JD01", "JD02"]]
 
     detail = json.loads(read_research_details(ids="JD01"))
     item = detail["items"][0]

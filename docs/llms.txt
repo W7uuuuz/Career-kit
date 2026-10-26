@@ -75,7 +75,8 @@ research_market()                                    # 调研方法论与 4 步�
 - 岗位详情必抓：未取得详情的岗位不纳入报告，并在数据缺口如实说明
 - 花名册机制：`gather_research_data` 返回「花名册（标识与摘要）+ 聚合摘要」，
   岗位全文仅写入报告与档案；读取全文用 `read_research_details(ids=..., kind="jd"/"case")`，
-  单次 3-5 条为宜，样本较多时交由子 Agent 深读并回传结论与重点名单
+  单次 3-5 条为宜。宿主 harness 支持子 Agent 时（opencode task/subagent、Claude Code Task 等），
+  由父 Agent 发起子 Agent 并按返回的 `delegate` 方案委派，父 Agent 只汇总结论与重点名单
 - 任一源失败不中断，失败原因原样进报告的来源状态面板；无数据报错不给空报告
 - 报告 md/html/json 自动落盘 `~/CareerKit/<档案>/调研报告/`，`profile.research`
   同步更新，后续分析/规划直接引用；资产总览：双击 `~/CareerKit/index.html`
