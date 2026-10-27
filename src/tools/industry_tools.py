@@ -9,6 +9,7 @@ from ..industries.loader import IndustryError, get_industry, list_industries
 from ..industry_snapshot import build_snapshot
 from ..mcp_app import mcp
 from .errors import error_response
+from .industry_state import industry_of, mark_industry_change
 from .profile import load_profile, save_profile
 from .tool_helpers import _json
 
@@ -71,12 +72,14 @@ async def get_industry_snapshot(
 
     profile = load_profile()
     now = datetime.now().isoformat()
+    old_industry = industry_of(profile.want)
     want = profile.want if isinstance(profile.want, dict) else {}
     want["industry_id"] = pack.get("id", "")
     want["scan_consent"] = True
     want["scan_completed_at"] = now
     want["scan_summary"] = snapshot.get("summary") or []
     profile.want = want
+    analysis_stale = mark_industry_change(profile, old_industry, pack.get("id", ""))
     if major:
         profile.who["major"] = (snapshot.get("major_match") or {}).get("canonical") or major
     if school:
@@ -94,12 +97,18 @@ async def get_industry_snapshot(
         {
             **snapshot,
             "saved_to_profile": True,
+            "analysis_stale": analysis_stale,
             "instructions": (
                 "用 3-5 分钟讲成一页认知卡：先行业地图，再 3-5 个岗位，再薪资/门槛，"
                 "最后问用户想深入哪个方向。"
                 "所有数字必须来自本快照并标注来源/样本数；没有数据的部分直接说未获取，"
                 "不要用通用知识补具体薪资或招聘要求。"
                 "用户看完后引导到目标选择/规划，不要停留在扫盲。"
+                + (
+                    " 注意：本次切换了行业，旧差距分析已过期；进入规划前需要重新分析。"
+                    if analysis_stale
+                    else ""
+                )
             ),
         }
     )

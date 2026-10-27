@@ -169,3 +169,20 @@ def test_energy_snapshot_uses_energy_pack(temp_profile, monkeypatch):
     assert any(r["id"] == "power_plant" for r in data["roles"])
     assert data["market"]["job_count"] == 1
     assert any(b["value"] == 7199 for b in data["benchmarks"])
+
+def test_scan_industry_change_marks_old_analysis_stale(temp_profile, monkeypatch):
+    from src.tools.profile import save_profile
+
+    profile = profile_module.load_profile()
+    profile.want = {"industry_id": "internet", "target_role": "后端开发"}
+    profile.gap = {"match_score": 60}
+    save_profile(profile)
+    monkeypatch.setattr(snapshot_module, "_collect_market", lambda *args, **kwargs: ([], []))
+
+    data = _call(industry="能源动力")
+
+    assert data["industry"]["id"] == "energy"
+    assert data["analysis_stale"] is True
+    updated = profile_module.load_profile()
+    assert updated.want["industry_id"] == "energy"
+    assert updated.gap_stale_at

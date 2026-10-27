@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **修复行业切换未标记旧分析过期（2026-10-27）**：
+  - 抽出共享 `mark_industry_change`；`get_industry_snapshot` 切换行业时与 `intake` 一致
+    设置 `gap_stale_at`，并在返回中暴露 `analysis_stale`
+  - 新增回归测试：先扫互联网再扫能源，旧差距分析必须过期
+
 - **BOSS 登录态 2 小时 TTL + 环境异常自动销毁（2026-10-27）**：
   - `state.json` 写入 `saved_at_ts`；登录态超过 2 小时自动失效并删除
   - 旧版无时间戳的登录态按过期处理，不再静默复用

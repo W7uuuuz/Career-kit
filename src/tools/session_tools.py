@@ -6,6 +6,7 @@ from datetime import datetime
 
 from ..mcp_app import mcp
 from .errors import InvalidJsonError, error_response
+from .industry_state import industry_of, mark_industry_change
 from .probing import (
     SELF_ASSESSMENT_INSTRUCTIONS,
     collect_skills as _collect_skills,  # noqa: F401  re-export 供 analysis_tools 兼容导入
@@ -160,11 +161,7 @@ def intake(section: str, data: str) -> str:
     before = load_profile()
     old_industry = ""
     if section == "want":
-        old_industry = str(
-            (before.want or {}).get("industry_id")
-            or (before.want or {}).get("industry")
-            or ""
-        )
+        old_industry = industry_of(before.want)
     profile = merge_section(section, data)
     result = (
         f"已记录到「{section}」。当前档案版本：v{profile.version}\n"
@@ -172,20 +169,15 @@ def intake(section: str, data: str) -> str:
     )
 
     # 行业变更：旧调研/差距/路线图不再代表新目标，标记过期由工作流提示重跑。
-    if section == "want":
-        new_industry = str(
-            (profile.want or {}).get("industry_id")
-            or (profile.want or {}).get("industry")
-            or ""
+    if section == "want" and mark_industry_change(
+        profile, old_industry, industry_of(profile.want)
+    ):
+        profile.touch()
+        save_profile(profile)
+        result += (
+            "\n\n行业已变更：旧的市场调研/差距分析/路线图可能不再适用，"
+            "已标记分析过期；请重新调研/分析后再规划。"
         )
-        if old_industry and new_industry and old_industry != new_industry:
-            profile.gap_stale_at = datetime.now().isoformat()
-            profile.touch()
-            save_profile(profile)
-            result += (
-                "\n\n行业已变更：旧的市场调研/差距分析/路线图可能不再适用，"
-                "已标记分析过期；请重新调研/分析后再规划。"
-            )
 
     # 毕业届引导（届别校验的数据基础）：who 未含 graduation_year 时提醒补充
     if section == "who":
