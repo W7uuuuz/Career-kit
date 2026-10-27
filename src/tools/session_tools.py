@@ -60,12 +60,30 @@ def start_session() -> str:
             "档案摘要：" + profile.summary
             + "（续档：补齐缺失信息；已分析过的内容不要重新问）\n"
         )
+
+    # 扫盲继续模式：用户已经看过行业快照，不再重复问“要不要扫盲”
+    if (profile.want or {}).get("scan_completed_at") and not _has_goal(profile):
+        scan_summary = (profile.want or {}).get("scan_summary") or []
+        summary_lines = "\n".join(f"- {item}" for item in scan_summary[:5])
+        return (
+            "—— 扫盲继续模式：已生成行业快照，不重复抓取 ——\n\n"
+            f"当前档案：{get_active_profile_name()}\n"
+            f"{summary_note}"
+            f"{summary_lines}\n\n"
+            "下一步：先问用户「看完这些，有没有哪个方向想进一步了解？」\n"
+            "有方向 → intake(section='want') 记录目标，再走 analyze_gaps；\n"
+            "没方向 → 换一个方向看，或先聊兴趣和约束；不要停在知识讲解。\n"
+            "扫盲不是规划门禁，用户不想继续时可直接结束。\n\n"
+            f"[服务自检] {server_fingerprint_line()}"
+        )
+
     return (
         f"{get_welcome_message()}\n\n"
         f"当前档案：{get_active_profile_name()}\n"
         f"{summary_note}"
         f"\n[服务自检] {server_fingerprint_line()}\n"
-        "\n下一步：请调用 intake 工具填充档案信息。\n"
+        "\n下一步：请先按第一轮规则判断用户认知，再决定是否调用 "
+        "get_industry_snapshot；不要直接索要简历或目标。\n"
         '示例：intake(section="who", data=\'{"name":"张三", "education":"计算机本科"}\')'
     )
 
@@ -120,6 +138,8 @@ def intake(section: str, data: str) -> str:
                 并标 authorship（作者身份）+ control_level（把控度自评 0-10），
                 整份简历自评写入 have.self_assessment
             - want: 你想要什么（目标岗位、行业、薪资）
+                - 扫盲阶段可写 industry_id / awareness_level / scan_consent
+                - 深度规划确认行业后写 industry / industry_id
         data: 用户提供的信息，必须是 JSON 对象字符串
             示例：'{"name":"张三", "education":"计算机本科", "skills":["Python", "React"]}'
             非法 JSON 会被拒绝且不写入档案
@@ -137,11 +157,35 @@ def intake(section: str, data: str) -> str:
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
+    before = load_profile()
+    old_industry = ""
+    if section == "want":
+        old_industry = str(
+            (before.want or {}).get("industry_id")
+            or (before.want or {}).get("industry")
+            or ""
+        )
     profile = merge_section(section, data)
     result = (
         f"已记录到「{section}」。当前档案版本：v{profile.version}\n"
         "下一步：继续补齐其他 section；who/have/want 都有内容后调用 finalize_profile。"
     )
+
+    # 行业变更：旧调研/差距/路线图不再代表新目标，标记过期由工作流提示重跑。
+    if section == "want":
+        new_industry = str(
+            (profile.want or {}).get("industry_id")
+            or (profile.want or {}).get("industry")
+            or ""
+        )
+        if old_industry and new_industry and old_industry != new_industry:
+            profile.gap_stale_at = datetime.now().isoformat()
+            profile.touch()
+            save_profile(profile)
+            result += (
+                "\n\n行业已变更：旧的市场调研/差距分析/路线图可能不再适用，"
+                "已标记分析过期；请重新调研/分析后再规划。"
+            )
 
     # 毕业届引导（届别校验的数据基础）：who 未含 graduation_year 时提醒补充
     if section == "who":

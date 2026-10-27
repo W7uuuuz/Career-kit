@@ -18,6 +18,7 @@ from .tools.data_tools import (
     list_data_sources,
     search_knowledge,
 )
+from .tools.industry_tools import get_industry_snapshot
 from .tools.profile_tools import (
     delete_profile,
     list_profiles,

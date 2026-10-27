@@ -1,6 +1,6 @@
 # MCP 工具总览
 
-> 40 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
+> 41 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
 > 工作流与前置条件见 [工作流详解](workflow.md)。
 
 ## 工具总览
@@ -26,7 +26,7 @@
 | `list_trash` | 列出回收站中的档案 |
 | `restore_profile` | 从回收站恢复档案 |
 
-### 数据获取工具（9）
+### 数据获取工具（10）
 
 | 工具 | 作用 |
 |------|------|
@@ -35,6 +35,7 @@
 | `fetch_company_jobs` | 抓取真实岗位/面经，自动写入知识库 |
 | `fetch_jd_detail` | 获取 JD 全文或面经正文 |
 | `search_knowledge` | 检索本地知识库 `~/.career-kit/knowledge/` |
+| `get_industry_snapshot` | 轻量行业快照（扫盲子流程）：行业地图 + 岗位卡 + 当前招聘样本/薪资 + 相关专业 + 来源/缺口；默认互联网/软件行业 |
 | `search_cases` | 聚合搜寻同背景成功经验与面试要求（本地 + 牛客 + GitHub + 目标企业 JD，学历五档四层归一打分） |
 | `research_market` | 返回市场调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析） |
 | `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源须先询问用户并传 `boss_confirmed=true`，未登录返回 `LOGIN_REQUIRED` 由用户决定是否登录 |

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **行业扫盲子流程 + 通用数据层（2026-10-27）**：
+  - 第一轮先判断行业认知，再决定是否扫盲；扫盲是可选子流程，拒绝不阻塞规划
+  - 行业为入口（MVP 互联网/软件行业），专业降为可选个性化字段
+  - 新增 MCP Prompt/Resource：`career-onboarding` / `career-quick-scan` /
+    `career-grounding`，统一扫盲流程与数据边界
+  - 新增 `get_industry_snapshot`：行业地图 + 岗位卡 + 当前招聘样本/薪资 +
+    相关专业 + 来源/样本数/数据缺口；BOSS 未登录只记缺口，不阻断
+  - 不新增行业定制 Scraper；招聘数据复用通用源，同行业去向支持
+    `~/.career-kit/industry_outcomes/<id>.json` 导入
+  - 行业变更自动标记旧差距分析过期；档案记录 `industry_id/scan_consent/scan_summary`
+  - 工具数 40 → 41；新增 `tests/test_industry_snapshot.py`
+
 - **权限下放：质量判断交还 LLM，代码只守结构与事实（2026-10-27 实测修复）**：
   - 路线图 `save_roadmap` 改为「结构校验 + 质量建议」：层级跨度、KPI、届别、任务措辞
     等以 `advisories` 返回并持久化，不再拒绝保存；`force` 参数废弃；移除
