@@ -408,6 +408,19 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             "路线图必须是 JSON 对象（包含 roadmap/phases 字段）。",
             {"received": type(roadmap_data).__name__},
         )
+    raw_phases = roadmap_data.get("roadmap", roadmap_data).get("phases")
+    if raw_phases is not None and not isinstance(raw_phases, list):
+        return error_response(
+            "INVALID_PARAM",
+            "phases 必须是数组。",
+            {"received": type(raw_phases).__name__},
+        )
+    if raw_phases and any(not isinstance(phase, dict) for phase in raw_phases):
+        return error_response(
+            "INVALID_PARAM",
+            "phases 的每一项必须是对象（阶段）。",
+            {"received": [type(phase).__name__ for phase in raw_phases[:5]]},
+        )
 
     profile = load_profile()
     parsed = parse_roadmap(json.dumps(roadmap_data, ensure_ascii=False))
