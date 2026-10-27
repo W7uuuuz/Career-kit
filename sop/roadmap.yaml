@@ -1,6 +1,6 @@
 name: 路线图生成
 version: "5.0"
-description: 从差距分析出发，生成可执行的分阶段职业路线图。产品不规划时间——只定义顺序、产出与完成标准，节奏由用户掌握。分步产出 + 审计门禁：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿
+description: 从差距分析出发，生成可执行的分阶段职业路线图。产品不规划时间——只定义顺序、产出与完成标准，节奏由用户掌握。分步产出 + 审计第二意见：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿
 
 methodology:
   principles:
@@ -12,14 +12,13 @@ methodology:
     - "知识光谱纪律：公司名与选人特点是公开常识，可直接写（如「某司卡学历」、「某司欢迎双非」）；
        但具体 JD 细节（岗位职责/技能要求/薪资）必须有真实数据支撑——企业数据源有的抓取，
        没有的引导用户导入，两者都没有就只写阶段目标与完成标准，绝不编造要求细节"
-    - "起点决定路径：intern/过渡阶段必须从「进入该阶段时可进入的企业层级」出发，
-       目标超起点时插入过渡阶段，而不是直接规划进不去的企业"
+    - "起点决定路径：intern/过渡阶段优先从「进入该阶段时可进入的企业层级」出发；
+       但层级是命中率参考，不是准入许可——跨级不禁止，请在阶段理由中说明证据（作品集/内推/前序交付）"
     - "分步产出，禁止一步到位：起点判定、目标拆解、阶段序列、逐阶段细化必须分步完成，
        每步产出中间产物并经用户/审计确认，避免把全部决策压缩进一次输出导致想当然"
-    - "层级连续铁律：任何 intern 阶段的目标层级不得超过「该阶段起点+1」——起点可随
-       复评升级：阶段带 start_level_after 时，后续阶段按升级后的起点计算（表达
-       「学习中厂 → 中厂实习 → 复评升级 → 冲大厂」这类分阶段爬升路线）；
-       跨越层级时必须插入过渡阶段；「+1」本身是合规路径，不得当问题报"
+    - "审计是第二意见，不是准入证：save_roadmap 只校验结构，质量项以 advisories 返回并持久化；
+       审计输出 PASS / PASS_WITH_NOTES / FAIL，FAIL 只用于硬矛盾（编造 JD、无依据跨级、
+       KPI 完全缺失、届别硬冲突、任务不可打卡），最多 3 条 must_fix，其余进 notes"
 
   phases:
     - id: gather_market_data
@@ -47,44 +46,40 @@ methodology:
         按 6 步工作流分步产出，禁止一步到位。每一步有明确中间产物，步骤 1/3/6 需用户确认。
 
         【步骤 1｜起点判定】（用户确认）
-        - 用下方 start_level 打分表，对用户逐维度打分，得出总分并映射档位（大厂/中厂/小厂/暂不可入）
-        - 输出：start_level（档位）+ 各维度得分 + 判定依据（为什么是这个档位）
-        - 与 gap.start_level 交叉核对：不一致时以打分表计算结果为准，说明原因
+        - 可用下方 start_level 打分表作为参考，但结果是「预估命中率」，不是投递许可
+        - 等价证据（生产级系统交付、开源作品、内推、竞赛）同样计入，不要求必须有「大厂实习」
+        - 输出：start_level（参考档位）+ 各维度依据 + 证据清单
 
         【步骤 2｜目标拆解】
-        - 从 want/target_jd 提取目标角色、目标公司层级
-        - 判断「目标层级 - 起点层级」的跨度，得出需要插入的过渡级数
-        - 输出：目标层级 + 跨度 + 过渡级数
+        - 从 want/target_jd 提取目标角色与目标公司
+        - 判断目标岗位需要哪些证据（项目/实习/开源/内推/技能），当前已经具备什么
+        - 输出：目标角色 + 证据缺口 + 投递通道（校招/实习转正/内推/社招/开源等）
 
         【步骤 3｜阶段序列】（用户确认）
-        - 按「起点→目标」设计阶段序列（learn → project → intern → ...）
-        - 层级连续铁律：intern 目标层级 ≤「进入该阶段时的起点」+1——含复评升级链
-          （阶段带 start_level_after 时后续从升级后的起点算起），跨越必须插过渡阶段；
-          「+1」本身是合规路径；复评未预期的备用路径用阶段 condition 字段表达
-        - 每个阶段标注：类型、目标、对齐的层级（target_level）、过渡理由
+        - 按「补齐证据 → 提高命中率」设计阶段序列（learn → project → intern → ...）
+        - 层级不是准入许可：跨级不禁止，但请在阶段理由中说明依据（作品集/内推/前序交付）
+        - 复评升级（start_level_after）只影响后续阶段的参考，不写回差距分析；
+          请写清复评标准（evidence_gate）
+        - 每个阶段标注：类型、目标、需要补齐的证据（evidence_gate）、投递通道（access_path）、理由
         - 输出：完整阶段序列 + 每阶段一句话定位
 
         【步骤 4｜逐阶段细化】
-        - 对每个阶段深入展开，不是列名式走过场：
-          - KPI：量化指标 + 目标值 + 验证证据（怎么证明达成）；量化 KPI 的任务要带计数，
-            否则 KPI 无法在任务层面累积（如「150 题」需拆成带题量的任务）
+        - 对每个阶段深入展开：
+          - KPI：尽量可验证（投递数/进面数/PR 数/题数/覆盖率等）；任务层计数是建议，不强制
           - 里程碑：2-3 个，每个有明确完成标准（done_criteria）
           - 任务：粒度「一次坐下来可完成」，含 name/description/priority；
-            禁伞形描述（「按五类专题刷题」打卡不了）、禁时间节奏词（产品不排时间）——
-            两类违反会被 save_roadmap 硬校验拒绝
+            时间节奏词与伞形描述只作建议提示，不再硬拒绝
           - jd 三件套：company/rationale（常识可写）+ jd/jd_status（真实数据才填）
 
-        【步骤 5｜审计落库】
-        - 调 career-roadmap-auditor 按审计清单逐项检查完整雏形
-        - 无论 PASS/FAIL 立即调用 save_roadmap_audit 落库（定稿校验只认落库记录）
-        - FAIL → 按修正项打回步骤 4 修正 → 重审（≤2 轮）
-        - 两轮仍 FAIL → 向用户明示剩余未通过项与风险，由用户决定：
-          继续结构性修正，或确认剩余风险后 save_roadmap(force=true) 带问题定稿
+        【步骤 5｜审计（第二意见）】
+        - 调 career-roadmap-auditor 按 audit_checklist 检查完整雏形
+        - 输出 PASS / PASS_WITH_NOTES / FAIL；FAIL 只用于硬矛盾，最多 3 条 must_fix
+        - 调用 save_roadmap_audit 落库（按 roadmap_hash 绑定）；审计不阻断定稿
+        - 需要修改时由 LLM 与用户决定，不做无界重审
 
         【步骤 6｜定稿】（用户确认）
         - 一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），用户确认
-        - 确认后调用 save_roadmap(roadmap_json)；硬校验/审计 FAIL 时未保存——
-          按问题清单修正后重新保存，需带问题定稿时显式传 force=true
+        - 确认后调用 save_roadmap(roadmap_json)；保存后如实复述质量建议与审计未解决项
 
         阶段类型规范：
         - learn（学习技能）：刷题、学框架、考认证、看文档、跟教程。resume_value 通常为空。
@@ -190,45 +185,51 @@ methodology:
         max: 2.0
         level: 暂不可入
     usage: |
-      逐维度打分后计算加权总分，按 mapping 映射档位。
-      档位是「当前可进入的企业层级」——不是个人价值判定，只决定路线图起点。
-      跨度规则：intern 目标层级 ≤「进入该阶段时的起点」+1（合规 +1 不报警）；
-      分阶段爬升用阶段 start_level_after 表达复评升级；暂不可入 → 先进学习+项目阶段，暂无实习。
-      负面信号（独立开发无协作/时长短/公司规模小）必须在维度分中如实体现，不得美化。
+      逐维度打分后计算加权总分，按 mapping 映射参考档位。
+      档位是「预估命中率」，不是投递许可——不要用「必须先有大厂经历才能投大厂」这类循环约束。
+      等价证据（生产级系统交付、开源作品、内推、竞赛）可以替代实习/公司层级维度。
+      层级跨度只作为建议：跨级时请说明依据（作品集/内推/前序交付），不禁止投递。
+      分阶段爬升可选用 start_level_after 表达复评升级（只影响后续阶段参考，不写回差距分析）。
+      负面信号（独立开发无协作/时长短/公司规模小）应在维度分中如实体现，但不因此剥夺投递机会。
 
   audit_checklist:
-    description: "路线图审计清单——career-roadmap-auditor 逐项检查；
-      审完必须调用 save_roadmap_audit 落库（verdict/issues/summary），落库记录被 save_roadmap 用于定稿校验"
+    description: "路线图审计清单（第二意见）——career-roadmap-auditor 逐项检查；
+      审完调用 save_roadmap_audit 落库（verdict/issues/notes，按 roadmap_hash 绑定版本）。
+      审计不阻断定稿；FAIL 只用于硬矛盾，最多 3 条 must_fix，其余进 notes"
     items:
       - id: start_alignment
         label: 起点对齐
-        check: "第一阶段的起点层级不超过 start_level；无 start_level 时评估是否有过度乐观"
+        severity: note
+        check: "起点档位与证据是否自洽；过度乐观时提示风险，不作为禁投依据"
       - id: level_continuity
-        label: 层级连续
-        check: "任何 intern 阶段目标层级 ≤「进入该阶段时的起点」+1（合规 +1 不算问题，只有 >+1 报）；
-              含 start_level_after 的复评升级链按升级后的起点计算；跨越时插入了过渡阶段"
+        label: 层级参考
+        severity: note
+        check: "层级只作命中率参考：跨级时提示说明依据（作品集/内推/前序交付），不判违规；
+              start_level_after 只影响后续阶段，不写回差距分析"
       - id: graduation_match
         label: 届别匹配
-        check: "阶段面向届（graduation_year）与用户毕业届匹配；不排用户投不进的届别岗位（如 2028 届不排仅面向 2027 届的岗位）"
+        severity: must
+        check: "阶段面向届（graduation_year）与用户毕业届硬冲突（用户无法投递）才允许 FAIL"
       - id: prerequisite
         label: 前置补全
-        check: "目标为大厂/高门槛岗位时，协作证据/技能深度未达标前有前置补强阶段，不直接排目标阶段"
+        severity: note
+        check: "目标门槛较高时提示补强证据；没有前置阶段不直接判 FAIL"
       - id: quantifiable
-        label: 量化充分
-        check: "每阶段 KPI 有数字指标与验证证据；量化 KPI 的任务带对应计数；里程碑有明确完成标准
-              （done_criteria），非「学会」模糊表述；任务无伞形描述、无时间节奏词（产品不排时间）"
+        label: 量化与可执行
+        severity: must
+        check: "KPI 完全缺失或任务不可打卡才允许 FAIL；任务计数、伞形措辞、时间词只作建议"
       - id: jd_discipline
         label: jd 三件套
-        check: "公司名/推荐理由是常识可写；JD 细节有真实数据（has_jd）或无据占位（pending_user_import），不编造"
+        severity: must
+        check: "编造 JD 细节（无真实数据却写具体要求）才允许 FAIL；占位未确认只作提示"
       - id: phase_fields
         label: 阶段字段完备
-        check: "每个阶段有 target_level 与（校招/实习阶段）graduation_year——缺失会导致层级/届别校验
-              静默跳过；分支路径用阶段 condition 字段表达并写明触发条件，不复述在 goal 里"
+        severity: note
+        check: "target_level/graduation_year 等字段缺失只作提示；不因此阻断定稿"
     verdict:
-      - pass: "全部通过"
-      - fail: "任一不通过 → 给出修正项（引用清单 id + 具体问题 + 修改建议），打回生成方修正，≤2 轮；
-              两轮仍 FAIL 不再无限重审——明示剩余未通过项与风险，由用户选择结构性修正或确认风险后
-              save_roadmap(force=true) 带问题定稿"
+      - pass: "全部通过 → PASS"
+      - pass_with_notes: "无硬矛盾但有建议 → PASS_WITH_NOTES（可定稿，建议清单供参考）"
+      - fail: "存在硬矛盾 → FAIL（最多 3 条 must_fix；其余进 notes）；仍可定稿，但须向用户明示风险"
 
   output_schema:
     strategy_summary: "整体策略说明（一段话）"
@@ -238,9 +239,13 @@ methodology:
       - type, name, goal（id 由系统自动生成，无需提供）
       - kpi: { metric, target, evidence }
       - resume_value: 如何写到简历上（learn 可空）
-      - target_level: 本阶段目标层级（大厂/中厂/小厂/暂不可入）——层级连续校验依据，必填
-      - start_level_after: 可选。本阶段复评达标后的升级起点（如「小厂」学习阶段复评
-        升中厂后，后续阶段起点=中厂）——save_roadmap 会同步更新档案起点
+      - target_level: 可选。本阶段目标层级（大厂/中厂/小厂/暂不可入）——仅作命中率参考，
+        不作为投递许可；跨级请在 rationale/condition 说明依据
+      - access_path: 可选。投递通道（校招/实习转正/内推/社招/开源/外包转正/其他）——
+        用于说明为什么该阶段可达，不参与硬校验
+      - evidence_gate: 可选。进入该阶段前应具备的证据（项目/实习/开源/技能）——
+        帮助 LLM 与审计员判断路径是否自洽，不要求逐项机器校验
+      - start_level_after: 可选。本阶段复评达标后的参考起点（只影响后续阶段，不写回差距分析）
       - graduation_year: 可选（校招/实习阶段建议填）。本阶段面向的毕业届（整数）
       - condition: 可选。分支/备用路径说明（如「复评不达标则延长本阶段改投中厂」）——
         回退路径的表达方式，受审计支持

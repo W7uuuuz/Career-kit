@@ -104,22 +104,26 @@ analyze_gaps() → save_gap_analysis(gap_json)
 把第一轮回复先做成「步骤预告」（报完 4 步菜单再动手），每步产出用户看得见的中间结果，
 工具调用前先播报，表格必须带「为什么」，案例卡必须标来源，用户确认预览后才 `save_gap_analysis`。
 
-`skill_gaps` 每项必须带 `source`；`resume_red_flags` 每项必须带 `signal/risk/evidence_fix`，
-否则内容质量门会拒绝保存。技能 authorship 为 ai_assisted/ai_generated 时，
-red_flags 必须包含「AI 生成/手写」风险条目——AI 作者身份不得静默吞掉。
+`skill_gaps` 建议标注 `source`；`resume_red_flags` 建议带 `signal/risk/evidence_fix`；
+缺少这些会给 advisory，不阻断保存。技能 authorship 为 ai_assisted/ai_generated 时，
+建议在 red_flags 说明 AI 生成/手写风险——由 LLM 判断是否确实需要，不做关键词硬门禁。
 
 ### 4. 规划
 
 ```
-generate_roadmap() → save_roadmap(roadmap_json)
+generate_roadmap() → save_roadmap(roadmap_json) → 审计（第二意见，可选）
 # 已有规划文档时：import_plan(file_path) → 对话中整理取舍 → save_roadmap
 ```
 
-- 禁止任何时长字段（duration / estimated_days 等）
-- 里程碑必须有 `done_criteria`
+- `save_roadmap` 只做结构校验，质量项以 `advisories` 返回（层级跨度、KPI、届别、
+  任务措辞等），不阻断保存；`force` 已废弃
+- 审计输出 `PASS / PASS_WITH_NOTES / FAIL`，FAIL 只用于硬矛盾，最多 3 条 must_fix；
+  审计记录在 `profile.audit`，按 `roadmap_hash` 绑定版本，不阻断定稿
+- 产品不排期：任务名尽量不带时间节奏词；里程碑建议有 `done_criteria`
 - 阶段与 JD 遵循「知识光谱」：公司/推荐理由可写常识；JD 细节必须有真实数据，
   否则留空并标 `jd_status=pending_user_import`
-- 起点层级取 `gap.start_level`；目标超起点时插入过渡阶段
+- 层级是命中率参考，不是投递许可：跨级不禁止，建议说明证据（作品集/内推/前序交付）；
+  `start_level_after` 只影响后续阶段，不写回差距分析
 
 ### 5. 执行
 

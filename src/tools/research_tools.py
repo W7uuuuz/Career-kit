@@ -306,9 +306,10 @@ async def gather_research_data(
             },
         )
 
-    # BOSS 登录是交互式关卡：抓取前必须先问用户是否抓取/是否现在登录——
-    # 直接开抓会在未登录时静默变成「源失败」，用户根本没机会选择（实测反馈）
+    # BOSS 登录确认：未登录不阻断其他源。抓取前必须询问用户（确认关卡）；
+    # 已确认但未登录时，BOSS 记为来源失败，其余源照常执行（任一源失败不中断）。
     uses_boss = _uses_boss(specs, query)
+    boss_unlogged = uses_boss and not boss_has_valid_cookies()
     if uses_boss and not boss_confirmed:
         return error_response(
             "CONFIRMATION_REQUIRED",
@@ -322,18 +323,6 @@ async def gather_research_data(
                 ],
                 "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
                 "rule": "把 question 原样转问用户并等待答复；不得静默跳过 BOSS 或直接宣布失败",
-            },
-        )
-    if uses_boss and not boss_has_valid_cookies():
-        return error_response(
-            "LOGIN_REQUIRED",
-            "BOSS 直聘尚未登录：调研需要先扫码登录一次（cookies 长期复用）。",
-            {
-                "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
-                "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
-                "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
-                "decline": "用户不想登录时，从 jd_specs / case_query 移除 boss 再重跑（其他源照常）",
-                "rule": "先问用户是否现在登录；不要把登录缺失直接当调研失败宣布",
             },
         )
 
@@ -352,6 +341,13 @@ async def gather_research_data(
                 )
                 continue
             slug = resolve_company(raw_name)
+            if boss_unlogged and slug == "boss":
+                families.append(
+                    {"slug": slug, "label": label or slug, "rows": [], "status": "failed",
+                     "error": "BOSS 直聘未登录（cookies 未就绪），未抓取该源；其他源继续",
+                     "elapsed": 0.0, "dropped_no_detail": 0, "dropped_titles": []}
+                )
+                continue
             t0 = time.perf_counter()
             try:
                 resp = search_company_jobs(slug, **raw_spec)
@@ -381,9 +377,12 @@ async def gather_research_data(
 
         cases_result: dict[str, Any] = {"cases": [], "warnings": [], "sources": {}}
         if role:
+            case_company = str(query.get("company") or "")
+            if boss_unlogged and resolve_company(case_company) == "boss":
+                case_company = ""  # 已记录 BOSS 未登录，不再重复请求
             cases_result = collect_cases(
                 role=role,
-                company=str(query.get("company") or ""),
+                company=case_company,
                 city=str(query.get("city") or ""),
                 education=str(query.get("education") or ""),
                 kind=str(query.get("kind") or "both"),
@@ -414,6 +413,19 @@ async def gather_research_data(
     report = build_report(profile, gathered)
     counts = report.get("counts") or {}
     if not (counts.get("jd_samples") or counts.get("cases")):
+        if boss_unlogged:
+            return error_response(
+                "LOGIN_REQUIRED",
+                "BOSS 直聘未登录，其他来源本次也没有可用数据。"
+                "可先扫码登录后重试，或改用其他数据源/导入 JD。",
+                {
+                    "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                    "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                    "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
+                    "source_status": report.get("source_status") or [],
+                    "rule": "先问用户是否现在登录；不要把登录缺失直接当调研失败宣布",
+                },
+            )
         return error_response(
             "MISSING_DATA",
             "调研未获取到任何数据——各源失败或无结果，已如实中止，未编造任何替代内容。",
@@ -428,7 +440,14 @@ async def gather_research_data(
         )
 
     paths = await asyncio.to_thread(save_report, profile, report)
-    return _render_report_message(report, paths)
+    message = _render_report_message(report, paths)
+    if boss_unlogged:
+        message += (
+            "\n\nBOSS 直聘：未登录，已跳过（其他来源已照常抓取）。"
+            "如需补全，登录后带 boss_confirmed=true 重跑："
+            f'"{sys.executable}" -m src.scrapers.boss.login'
+        )
+    return message
 
 
 def _brief(text: Any, limit: int = _BRIEF_LIMIT) -> str:

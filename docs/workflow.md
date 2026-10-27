@@ -138,9 +138,10 @@
 3. 过程透明（硬纪律）：`analyze_gaps` 返回 4 步 step_template（现状盘点 → 读取调研 →
    两维分析 → 结果预览），每步产出用户看得见的中间结果；
    调用工具前先播报该步在干什么，落盘前用户确认；所有表格必须带「为什么」
-4. 每个 `skill_gaps` 条目必须标注 `source`
-5. 每条 `resume_red_flags` 必须带 `signal` / `risk` / `evidence_fix`
-6. 薪资行情从岗位搜索结果的 `salary` 字段汇总
+4. `skill_gaps` 建议标注 `source`（缺少时给 advisory，不阻断保存）
+5. `resume_red_flags` 建议带 `signal` / `risk` / `evidence_fix`；AI 作者身份提示为
+   advisory，由 LLM 与用户判断是否需要补充
+6. 薪资行情从岗位搜索结果的 `salary` 字段汇总（同时保留区间上下界）
 
 ---
 
@@ -154,20 +155,21 @@
 
 ```
 1. generate_roadmap()
-2. career-roadmap-auditor 审计 → save_roadmap_audit(audit_json)（每轮审计都落库）
-3. save_roadmap(roadmap_json)
+2. save_roadmap(roadmap_json)                        # 先保存（结构校验通过即可）
+3. career-roadmap-auditor 审计 → save_roadmap_audit(audit_json)   # 第二意见，不阻断
+4. 按需修正后再次 save_roadmap；审计记录按内容哈希标记过期
 ```
 
 `generate_roadmap` 返回 6 步 step_template（起点判定 → 目标拆解 → 阶段序列 → 逐阶段细化 →
-审计落库 → 定稿交付），checkpoint 步必须把中间产物展示给用户确认；
+审计（第二意见） → 定稿交付），checkpoint 步必须把中间产物展示给用户确认；
 每个表格/清单必须给出「为什么这么拆」的依据。
-`save_roadmap` 是「先校验后落盘」：硬校验（起点/层级连续/届别/必填/伞形任务与时间词 lint）
-或上一轮审计 FAIL 时拒绝保存并返回问题清单；确认剩余风险后可显式传
-`force=true` 带问题定稿（返回值会复述已接受的风险）。
-层级连续按「进入该阶段时的起点」滚动计算：阶段带 `start_level_after`（复评升级）时
-后续阶段按升级后的起点算，定稿时同步更新档案起点；「+1」的 intern 目标直接合规。
-两轮审计 FAIL 后不再无限重审——向用户明示剩余未通过项与风险，由用户决定
-结构性修正还是 `force=true` 带风险定稿。
+`save_roadmap` 只做结构校验，始终允许保存：层级跨度、KPI、届别、可执行性等以
+`advisories` 返回并持久化，由 LLM、审计员与用户决定是否调整；`force` 参数已废弃。
+层级是命中率参考，不是准入许可：跨级不禁止，建议说明证据（作品集/内推/前序交付）；
+`start_level_after` 只影响后续阶段的参考，不再写回 `gap.start_level`。
+审计输出 `PASS / PASS_WITH_NOTES / FAIL`，FAIL 只用于硬矛盾（编造 JD、无依据跨级、
+KPI 完全缺失、届别硬冲突、任务不可打卡），最多 3 条 must_fix，其余进 notes。
+审计记录保存在 `profile.audit`，按 `roadmap_hash` 与路线图版本绑定；内容变化后标记过期。
 定稿后自动生成路线图 HTML 活地图——交付前先向用户解释它的用途与用法。
 
 已有规划文档时，先 `import_plan(file_path)` 导入，在对话中对比取舍后再保存为路线图。
@@ -175,20 +177,22 @@
 **输出**：
 
 - `profile.plan.roadmap`：阶段列表（id 规范化为 `phase_N`）
-- 每阶段含 `name`、`goal`、`kpi`、`resume_value`、`target_level`、`milestones`
-  （可选 `start_level_after` / `graduation_year` / `condition`）
+- 每阶段含 `name`、`goal`、`kpi`、`resume_value`、`milestones`；
+  `target_level` / `start_level_after` / `graduation_year` / `condition`、
+  `access_path` / `evidence_gate` 均为可选参考
 - 任务 schema：`{name, description, priority}`，不含任何时长字段
+- `profile.audit`：审计轮次、verdict、issues/notes、roadmap_hash
 - `save_roadmap` 定稿时自动生成可交互职业地图
 
 **关键规则**：
 
-1. 禁止 `duration` / `estimated_days` 等时长字段；任务名禁伞形描述与时间节奏词
-2. 里程碑必须有 `done_criteria`；量化 KPI 的任务要带对应计数（验收可追溯到任务）
+1. 产品不排期：任务名尽量不带时间节奏词；带时长描述只作建议
+2. 里程碑建议有 `done_criteria`；KPI 尽量可验证（投递/进面/PR/题数等）
 3. JD 细节必须有真实数据，否则留空并标 `jd_status=pending_user_import`；
    有调研报告时优先引用 `profile.research` 的真实样本
-4. 起点层级取 `gap.start_level`；目标超「该阶段起点」+1 时插入过渡阶段，
-   或用阶段 `start_level_after` 表达复评升级；分支/备用路径写进阶段 `condition`
-5. 换了目标 JD（`import_jd` / `import_jd_file`）后差距分析标记过期，
+4. 层级只作参考：跨级不禁止，建议说明依据；复评升级不写回差距分析
+5. 审计是第二意见：不阻断定稿；FAIL 只用于硬矛盾，最多 3 条 must_fix
+6. 换了目标 JD（`import_jd` / `import_jd_file`）后差距分析标记过期，
    必须先重新 `analyze_gaps` 再生成路线图
 
 ---

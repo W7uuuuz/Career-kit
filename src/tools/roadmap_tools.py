@@ -1,10 +1,11 @@
-"""路线图生成、硬校验与计划导入 MCP 工具。"""
+"""路线图生成、质量建议与计划导入 MCP 工具。"""
 
 from __future__ import annotations
 
 import json
 import re
 from datetime import datetime
+from typing import Any
 
 from ..mcp_app import mcp
 from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
@@ -34,7 +35,7 @@ def generate_roadmap() -> str:
             {"missing": "gap"},
         )
 
-    ctx = build_methodology_context("roadmap", profile)
+    ctx = build_methodology_context("roadmap", profile, compact=True)
 
     return _json({
         "next_steps": ["save_roadmap", "generate_tasks"],
@@ -53,23 +54,25 @@ def generate_roadmap() -> str:
             {
                 "step": 2,
                 "name": "目标拆解",
-                "action": "从 want/target_jd 提取目标角色与目标公司层级，计算与 start_level 的跨度，得出过渡级数",
-                "output": {"target_role": "", "target_level": "大厂/中厂/小厂", "level_gap": 0, "transition_stages_needed": 0},
+                "action": "从 want/target_jd 提取目标角色与目标公司；层级只作命中率参考，"
+                          "重点判断目标岗位需要哪些证据（项目/实习/开源/内推），当前缺什么",
+                "output": {"target_role": "", "target_level": "参考档位（可选）", "evidence_needed": [], "evidence_have": []},
                 "checkpoint": False,
             },
             {
                 "step": 3,
                 "name": "阶段序列设计",
-                "action": "按起点→目标设计阶段序列（learn/project/intern/...），遵守层级连续铁律："
-                          "intern 目标层级 ≤ start_level+1，跨越必须插过渡阶段。每阶段标注类型/目标/对齐层级/过渡理由",
-                "output": {"phases_sequence": [{"type": "", "name": "", "target_level": "", "transition_reason": ""}]},
+                "action": "按「补齐证据 → 提高命中率」设计阶段序列（learn/project/intern/...）；"
+                          "层级不是准入许可，跨级不禁止，但请在阶段理由中说明依据（作品集/内推/前序交付）；"
+                          "每阶段标注类型、目标、需要补齐的证据、投递通道",
+                "output": {"phases_sequence": [{"type": "", "name": "", "target_level": "", "evidence_gate": [], "access_path": "", "transition_reason": ""}]},
                 "checkpoint": True,
                 "checkpoint_note": "把阶段序列展示给用户确认后再逐阶段细化",
             },
             {
                 "step": 4,
                 "name": "逐阶段深入细化",
-                "action": "对每个阶段深入展开，不是列名式走过场：KPI（量化+验证证据）、里程碑（2-3 个带完成标准）、"
+                "action": "对每个阶段深入展开：KPI（尽量可验证）、里程碑（带完成标准）、"
                           "任务（一次坐下可完成粒度）、jd 三件套（company/rationale 常识可写，jd/jd_status 真实数据才填——"
                           "优先引用档案 research 里的调研 JD 样本与来源，不再重复抓取）",
                 "output": "完整 roadmap JSON（strategy_summary + phases，符合 roadmap.yaml output_schema）",
@@ -77,19 +80,19 @@ def generate_roadmap() -> str:
             },
             {
                 "step": 5,
-                "name": "审计落库",
-                "action": "调用 career-roadmap-auditor（独立审计角色）按 roadmap.yaml audit_checklist 逐项检查完整雏形，"
-                          "输出 PASS/FAIL + 修正项；无论结果如何立即调用 save_roadmap_audit(audit_json) 落库"
-                          "（落库记录被 save_roadmap 用于定稿校验：FAIL 未复审 = 保存被拒）；"
-                          "FAIL 打回步骤 4 修正，重审 ≤2 轮；仍 FAIL 则明示未通过项，"
-                          "用户确认剩余风险后可 save_roadmap(force=true) 带问题定稿",
-                "output": {"verdict": "PASS/FAIL", "issues": [{"checklist_id": "", "problem": "", "fix": ""}]},
+                "name": "审计（第二意见）",
+                "action": "调用 career-roadmap-auditor 按 roadmap.yaml audit_checklist 检查完整雏形；"
+                          "输出 PASS / PASS_WITH_NOTES / FAIL，FAIL 只用于硬矛盾，最多 3 条 must_fix。"
+                          "调用 save_roadmap_audit 落库；审计结果只作记录与提示，不阻断定稿。"
+                          "需要修改时由 LLM 与用户决定，避免为迎合清单反复重写",
+                "output": {"verdict": "PASS/PASS_WITH_NOTES/FAIL", "issues": [{"checklist_id": "", "problem": "", "fix": ""}], "notes": []},
                 "checkpoint": False,
             },
             {
                 "step": 6,
                 "name": "定稿交付",
-                "action": "一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），用户确认后调用 save_roadmap(roadmap_json)",
+                "action": "一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），用户确认后调用 save_roadmap(roadmap_json)；"
+                          "保存后如实复述质量建议与审计未解决项，由用户决定是否继续调整",
                 "output": "save_roadmap(roadmap_json)",
                 "checkpoint": True,
                 "checkpoint_note": "用户确认整份路线图后才定稿保存",
@@ -98,19 +101,20 @@ def generate_roadmap() -> str:
         "instructions": (
             "步骤预告（提高心理预期）：第一轮回复先向用户报完整菜单——"
             "「路线图分 6 步：① 起点判定 ② 目标拆解 ③ 阶段序列 ④ 逐阶段细化 "
-            "⑤ 审计 ⑥ 定稿交付」——报完再动手，禁止无预告直接执行。\n"
+            "⑤ 审计（第二意见） ⑥ 定稿交付」——报完再动手，禁止无预告直接执行。\n"
             "播报纪律：每个工具调用前用一句话告诉用户这步在干什么——全程禁止静默连调工具。\n"
             "请严格按照 step_template 的 6 步分步执行，禁止一步到位。\n"
             "1. 每步必须产出该步的 output 结构后再进入下一步；"
-            "表格/清单必须带「为什么」（拆分的依据：真实 JD 要求/差距结果/层级跨度），只给结论不给理由不完整\n"
+            "表格/清单必须带「为什么」（拆分的依据：真实 JD 要求/差距结果/证据缺口），只给结论不给理由不完整\n"
             "2. checkpoint=true 的步骤必须先把中间产物展示给用户确认，确认后再继续\n"
-            "3. 步骤 1 用 roadmap.yaml 的 start_level_rubric 打分表判定，不是直觉\n"
-            "4. 步骤 5 必须调用 career-roadmap-auditor 审计并调用 save_roadmap_audit 落库，"
-            "审计通过才算定稿候选（audit FAIL 未复审时 save_roadmap 会拒绝保存）\n"
+            "3. 起点判定可使用 start_level_rubric 作为参考，但不要把它当准入许可；"
+            "等价证据（生产交付/开源/内推）同样有效\n"
+            "4. 审计是第二意见：调用 career-roadmap-auditor 后用 save_roadmap_audit 落库，"
+            "审计不阻断定稿；FAIL 只用于硬矛盾，优先处理最多 3 条 must_fix，其余作为建议\n"
             "5. 过程中需要真实岗位数据时用 search_cases / fetch_company_jobs / fetch_jd_detail 获取，"
             "拿不到就 jd 占位（pending_user_import），绝不编造\n"
-            "6. 最终调用 save_roadmap(roadmap_json) 保存；定稿产物除结构化数据外还有一份"
-            "路线图 HTML 活地图，交付时要向用户说明它的用途与用法（结构总览+勾选打卡，浏览器本地存进度）"
+            "6. 最终调用 save_roadmap(roadmap_json) 保存；保存后向用户复述质量建议与未解决项；"
+            "定稿产物除结构化数据外还有一份路线图 HTML 活地图，交付时要向用户说明它的用途与用法"
         ),
     })
 
@@ -118,159 +122,189 @@ def generate_roadmap() -> str:
 _LEVEL_ORDER = {"暂不可入": 0, "小厂": 1, "中厂": 2, "大厂": 3}
 
 
-def _level_rank(level: str) -> int:
-    """企业层级档位转数值，用于层级连续校验。未知档位返回 -1（跳过校验）。"""
-    return _LEVEL_ORDER.get(level, -1)
+def _level_rank(level: Any) -> int:
+    """企业层级档位转数值（仅用于给出建议）。未知档位返回 -1。"""
+    return _LEVEL_ORDER.get(str(level or "").strip(), -1)
 
 
-def _check_roadmap_hard(parsed: dict, profile) -> list[str]:
-    """save_roadmap 硬校验：有数据才挡，无数据放行。
-
-    检查：起点对齐 / 层级连续（支持每阶段 start_level_after 升级起点）/
-    届别匹配 / 必填字段。合规的「起点+1」不再报警——只有 >+1 才算跳级。
-    返回问题列表（空 = 通过）。只收集问题，由 save_roadmap 决定是否拒绝。
-    """
-    issues: list[str] = []
-    roadmap = parsed.get("roadmap", parsed)
-    phases = roadmap.get("phases", [])
-
-    # 起点层级：优先从本次路线图自带的 start_level，否则从 gap 读
-    start_level = roadmap.get("start_level", "") or (profile.gap or {}).get("start_level", "")
-    running_rank = _level_rank(start_level)
-    running_name = start_level
-
-    # 必填字段检查（learn 外的阶段必须有 resume_value；每阶段 KPI 必须有 metric+target）
-    for phase in phases:
-        phase_type = phase.get("type", "learn")
-        name = phase.get("name", phase.get("id", "?"))
-        if phase_type != "learn" and not phase.get("resume_value"):
-            issues.append(f"阶段「{name}」类型为 {phase_type}，必须有 resume_value（如何写到简历上）")
-        kpi = phase.get("kpi") or {}
-        if isinstance(kpi, dict) and not (kpi.get("metric") and kpi.get("target")):
-            issues.append(f"阶段「{name}」的 KPI 缺少量化指标（metric）或目标值（target）——不能是「学会」这种模糊表述")
-
-    # 层级连续（按「进入该阶段时的起点」滚动计算）：
-    # 阶段可带 start_level_after（复评后升级），后续阶段按升级后的起点算，
-    # 可以表达「学习中厂 → 中厂实习 → 复评升级 → 冲大厂」这类分阶段爬升路线。
-    # 规则：intern 目标 ≤ 当前起点+1 直接放行；> +1 才判定跳级。
-    if running_rank >= 0:
-        for phase in phases:
-            phase_type = phase.get("type", "learn")
-            name = phase.get("name", phase.get("id", "?"))
-            after = str(phase.get("start_level_after", "")).strip()
-            if after and _level_rank(after) >= 0:
-                running_rank = _level_rank(after)
-                running_name = after
-            if phase_type != "intern":
-                continue
-            target_level = phase.get("target_level", "")
-            target_rank = _level_rank(target_level)
-            if target_rank < 0:
-                continue
-            if target_rank > running_rank + 1:
-                issues.append(
-                    f"阶段「{name}」目标层级「{target_level}」超出该阶段起点「{running_name}」+1 的连续范围——"
-                    "跨越层级必须插入过渡阶段（先进可进入的中小厂攒经历），"
-                    "或在该阶段前显式声明升级复评（阶段字段 start_level_after）"
-                )
-
-    # 届别匹配：阶段 graduation_year（面向届）与用户毕业届比对
-    graduation_year = (profile.who or {}).get("graduation_year", "")
-    for phase in phases:
-        target_year = phase.get("graduation_year", "")
-        if not graduation_year or not target_year:
-            continue
-        name = phase.get("name", phase.get("id", "?"))
-        try:
-            if int(target_year) < int(graduation_year):
-                issues.append(
-                    f"阶段「{name}」面向届 {target_year} 早于用户毕业届 {graduation_year}——"
-                    "用户投不进的届别岗位不应排在路线图里"
-                )
-        except (TypeError, ValueError):
-            continue
-
-    issues.extend(_roadmap_lint_issues(phases))
-
-    return issues
+def _advisory(code: str, message: str, checklist_id: str = "", severity: str = "note") -> dict:
+    return {
+        "code": code,
+        "severity": severity,
+        "checklist_id": checklist_id,
+        "message": message,
+    }
 
 
-# BUG-011 roadmap lint 词典
+# 建议用 lint 词典（只提示，不阻塞保存）
 _UMBRELLA_WORDS = ("专题", "批量", "全部", "汇总", "一批", "若干项")
 _TIME_WORDS = ("每周", "每天", "每日", "一周内", "一天内", "半月内", "24小时", "24 小时", "月内", "日内")
 _COUNT_RE = re.compile(r"\d+")
 
 
-def _roadmap_lint_issues(phases: list) -> list[str]:
-    """可执行性 lint（硬校验组成部分）：
+def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
+    """收集路线图质量建议（不阻断保存）。
 
-    1. 禁伞形任务名（「按五类专题刷题」这类打卡不了的描述）
-    2. 禁时间节奏词（产品不规划时间——节奏由用户自定义，不写进路线图）
+    代码只陈述可核对的事实与风险，是否修改由 LLM、审计员与用户决定。
+    层级是命中率参考，不是准入许可；跨级只提示，不禁止。
     """
-    issues: list[str] = []
+    advisories: list[dict] = []
+    roadmap = parsed.get("roadmap", parsed)
+    phases = [p for p in (roadmap.get("phases") or []) if isinstance(p, dict)]
+    if not phases:
+        return [_advisory("empty_phases", "路线图没有阶段，无法生成可执行任务。", "phase_fields")]
 
-    def _scan(phase_name: str, text: str, label: str) -> None:
-        text = str(text or "")
-        for w in _UMBRELLA_WORDS:
-            if w in text:
-                issues.append(
-                    f"阶段「{phase_name}」{label}「{text}」是伞形描述——无法打卡，"
-                    "请拆成一次坐下可完成的具体动作（例：「完成并发编程第 1 章 3 道题」）"
-                )
-                break
-        for w in _TIME_WORDS:
-            if w in text:
-                issues.append(
-                    f"阶段「{phase_name}」{label}「{text}」含时间词「{w}」——"
-                    "产品不规划时间（学习单元不排期），请去掉时间约束，改用完成标准描述"
-                )
-                break
+    start_level = str(
+        roadmap.get("start_level", "") or (profile.gap or {}).get("start_level", "")
+    ).strip()
+    start_rank = _level_rank(start_level)
+    if not start_level:
+        advisories.append(_advisory(
+            "missing_start_level",
+            "未声明 start_level，无法给出层级跨度参考——可按用户实际证据判断起点。",
+            "start_alignment",
+        ))
+    elif start_rank < 0:
+        advisories.append(_advisory(
+            "unknown_start_level",
+            f"起点层级「{start_level}」无法识别（参考值：大厂/中厂/小厂/暂不可入），层级跨度判断已跳过。",
+            "start_alignment",
+        ))
+
+    running_rank = start_rank
+    running_name = start_level
+    graduation_year = str((profile.who or {}).get("graduation_year", "") or "").strip()
 
     for phase in phases:
-        phase_name = phase.get("name", phase.get("id", "?"))
+        phase_type = phase.get("type", "learn")
+        name = phase.get("name", phase.get("id", "?"))
+        target_level = str(phase.get("target_level", "") or "").strip()
+        target_rank = _level_rank(target_level)
+        kpi = phase.get("kpi") or {}
 
+        if phase_type != "learn" and not str(phase.get("resume_value", "") or "").strip():
+            advisories.append(_advisory(
+                "missing_resume_value",
+                f"阶段「{name}」没有简历价值（resume_value）——执行完无法写进简历。",
+                "quantifiable",
+            ))
+        if isinstance(kpi, dict) and not (kpi.get("metric") and kpi.get("target")):
+            advisories.append(_advisory(
+                "missing_kpi",
+                f"阶段「{name}」的 KPI 缺量化指标或目标值——无法判断是否完成。",
+                "quantifiable",
+            ))
+
+        if target_level:
+            if target_rank < 0:
+                advisories.append(_advisory(
+                    "unknown_target_level",
+                    f"阶段「{name}」目标层级「{target_level}」无法识别，层级跨度判断已跳过。",
+                    "level_continuity",
+                ))
+            elif running_rank >= 0 and target_rank > running_rank + 1:
+                advisories.append(_advisory(
+                    "level_jump",
+                    f"阶段「{name}」目标层级「{target_level}」比当前起点「{running_name}」高 2 级以上——"
+                    "请说明跨级依据（作品集/内推/前序交付证据）；层级只是命中率参考，不禁止投递。",
+                    "level_continuity",
+                ))
+
+        # 届别：双向核对（不再只查「早于」）
+        target_year = str(phase.get("graduation_year", "") or "").strip()
+        if graduation_year and target_year:
+            try:
+                if int(target_year) != int(graduation_year):
+                    advisories.append(_advisory(
+                        "graduation_mismatch",
+                        f"阶段「{name}」面向届 {target_year} 与用户毕业届 {graduation_year} 不一致，"
+                        "请确认该岗位用户是否可投。",
+                        "graduation_match",
+                    ))
+            except (TypeError, ValueError):
+                advisories.append(_advisory(
+                    "graduation_invalid",
+                    f"阶段「{name}」的 graduation_year「{target_year}」不是有效年份。",
+                    "graduation_match",
+                ))
+
+        # 复评升级：只对后续阶段生效，不写回 gap；提示复评标准
+        after = str(phase.get("start_level_after", "") or "").strip()
+        if after:
+            if _level_rank(after) < 0:
+                advisories.append(_advisory(
+                    "unknown_start_level_after",
+                    f"阶段「{name}」的 start_level_after「{after}」无法识别。",
+                    "level_continuity",
+                ))
+            else:
+                advisories.append(_advisory(
+                    "start_level_after",
+                    f"阶段「{name}」声明复评升级到「{after}」：请写清复评标准（evidence_gate/条件），"
+                    "升级只影响后续阶段，不会自动改写差距分析起点。",
+                    "level_continuity",
+                ))
+                running_rank = _level_rank(after)
+                running_name = after
+
+        # jd 三件套：只提示证据是否自洽
+        jd_status = phase.get("jd_status", "not_required")
+        jd = phase.get("jd")
+        if phase_type != "learn":
+            if jd and jd_status != "has_jd":
+                advisories.append(_advisory(
+                    "jd_status_mismatch",
+                    f"阶段「{name}」填了 JD 细节但 jd_status={jd_status}——请确认是否来自真实数据。",
+                    "jd_discipline",
+                ))
+            elif not jd and jd_status == "has_jd":
+                advisories.append(_advisory(
+                    "jd_missing",
+                    f"阶段「{name}」标注 has_jd 但 jd 为空——请补真实 JD 或改为占位。",
+                    "jd_discipline",
+                ))
+            elif jd_status == "pending_user_import" and not phase.get("confirmed"):
+                advisories.append(_advisory(
+                    "jd_pending_confirm",
+                    f"阶段「{name}」的 JD 是占位，尚未得到用户确认。",
+                    "jd_discipline",
+                ))
+
+    # 可执行性 lint：只扫里程碑/任务名，不扫阶段条件与目标
+    for phase in phases:
+        phase_name = phase.get("name", phase.get("id", "?"))
         for milestone in phase.get("milestones", []) or []:
             if not isinstance(milestone, dict):
                 continue
-            _scan(phase_name, milestone.get("name", ""), f"里程碑「{milestone.get('name', '')}」")
-            for task in milestone.get("tasks", []) or []:
-                if isinstance(task, dict):
-                    _scan(phase_name, task.get("name", ""), "任务")
-    return issues
-
-
-def _collect_soft_reports(parsed: dict, profile) -> list[str]:
-    """软提示（不拒绝保存）：层级/届别字段缺失、复评升级依赖等审计清单覆盖面。"""
-    reports: list[str] = []
-    roadmap = parsed.get("roadmap", parsed)
-    phases = roadmap.get("phases", [])
-    if phases and not any(p.get("target_level") for p in phases if isinstance(p, dict)):
-        reports.append(
-            "整份路线图的阶段均未声明 target_level——层级连续校验被静默跳过，"
-            "请为每个阶段补 target_level（大厂/中厂/小厂/暂不可入）"
-        )
-    if phases and not any(p.get("graduation_year") for p in phases if isinstance(p, dict)):
-        grad = (profile.who or {}).get("graduation_year", "")
-        if grad:
-            reports.append(
-                f"各阶段均未声明 graduation_year（用户毕业届 {grad}）——"
-                "届别匹配校验被静默跳过，请为投递阶段补面向届"
+            texts = [(milestone.get("name", ""), f"里程碑「{milestone.get('name', '')}」")]
+            texts.extend(
+                (task.get("name", ""), "任务")
+                for task in (milestone.get("tasks") or [])
+                if isinstance(task, dict)
             )
-    if any(str(p.get("start_level_after") or "").strip() for p in phases if isinstance(p, dict)):
-        reports.append(
-            "检测到 start_level_after（复评升级）：保存后会同步更新档案起点层级，"
-            "后续校验与审计按升级后的起点计算"
-        )
-    if any(str(p.get("condition") or "").strip() for p in phases if isinstance(p, dict)):
-        reports.append(
-            "阶段带 condition（分支/备用路径）：这是受支持的表达方式——"
-            "复评不达标走备用阶段的场景用 condition 写明触发条件，不再是缺陷"
-        )
+            for text, label in texts:
+                text = str(text or "")
+                time_hit = next((w for w in _TIME_WORDS if w in text), "")
+                if time_hit:
+                    advisories.append(_advisory(
+                        "time_word",
+                        f"阶段「{phase_name}」{label}「{text}」含时间词「{time_hit}」——"
+                        "产品不排期，建议改为完成标准描述。",
+                        "quantifiable",
+                    ))
+                umbrella_hit = next(
+                    (w for w in _UMBRELLA_WORDS if w in text and not _COUNT_RE.search(text)),
+                    "",
+                )
+                if umbrella_hit:
+                    advisories.append(_advisory(
+                        "umbrella_task",
+                        f"阶段「{phase_name}」{label}「{text}」较笼统——建议拆成一次可完成的具体动作。",
+                        "quantifiable",
+                    ))
 
-    # BUG-011：数字型 KPI 与任务计数闭合（软提示——机械对账只做「有没有数字」）
+    # KPI 数字与任务计数不闭合（只提示）
     for phase in phases:
-        if not isinstance(phase, dict):
-            continue
         kpi = phase.get("kpi")
         target = str((kpi or {}).get("target", "")) if isinstance(kpi, dict) else ""
         if not _COUNT_RE.search(target):
@@ -282,23 +316,37 @@ def _collect_soft_reports(parsed: dict, profile) -> list[str]:
             for t in m.get("tasks", []) or [] if isinstance(t, dict)
         ]
         if task_names and not any(_COUNT_RE.search(n) for n in task_names):
-            reports.append(
-                f"阶段「{phase_name}」KPI 目标「{target}」是量化数字，但该阶段任务名都不带计数——"
-                "KPI 无法在任务层面累积（例：150 题需要拆成带题量的任务），验收会落空"
-            )
-    return reports
+            advisories.append(_advisory(
+                "kpi_task_count",
+                f"阶段「{phase_name}」KPI 目标「{target}」带数字，但任务名都没有计数——"
+                "验收时无法在任务层面累积。",
+                "quantifiable",
+            ))
+
+    return advisories
+
+
+def _roadmap_hash(parsed: dict) -> str:
+    """路线图内容哈希：用于把审计记录绑定到具体版本。"""
+    import hashlib
+
+    payload = json.dumps(
+        parsed.get("roadmap", parsed), ensure_ascii=False, sort_keys=True
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
 
 
 @mcp.tool()
 def save_roadmap(roadmap_json: str, force: bool = False) -> str:
-    """保存路线图到档案。
+    """保存路线图到档案（只校验结构；质量项以建议形式返回，不阻断保存）。
 
-    先校验后落盘：硬校验（起点/层级连续/届别/必填）或上一轮审计 FAIL 时
-    不保存，按问题清单修正后重试；确认剩余风险后可显式传 force=true 带问题定稿。
+    质量判断交给 LLM、审计员与用户：层级跨度、KPI、届别、可执行性等
+    以 advisories 返回并持久化，不再拒绝保存；force 参数仅为兼容保留。
 
     Args:
         roadmap_json: 路线图的 JSON 字符串
-        force: 显式带问题保存（硬校验问题或审计 FAIL 时仍定稿，返回值会列明已接受的风险）
+        force: 已废弃，保留兼容（不再影响保存）
 
     Schema（与 sop/roadmap.yaml 一致）:
         {
@@ -339,69 +387,46 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
         }
 
     注意：
-    - 不要输出任何时长类字段（duration/estimated_days 等），产品不规划时间。
+    - 产品不规划时间：建议任务名不带时间节奏词（每周/每天等）；带时长描述会进建议清单，不阻断保存。
     - 知识光谱纪律：公司名是常识可自由写；JD 细节必须有真实数据，拿不到就 jd 置空 +
       jd_status=pending_user_import，用户确认后 confirmed 置 true。
-    - 层级连续规则：intern 目标 ≤ 该阶段起点+1 直接合规（不再报警）；> +1 判跳级，
-      必须插过渡阶段，或用 start_level_after 表达复评升级后的爬升。
-    - 软校验：jd 有内容但无依据 / 占位未确认的阶段会在返回值中给出「依据待确认」清单，
-      不会拒绝保存——请向用户确认后再定稿。
+    - 层级是命中率参考，不是准入许可：跨级会给出建议，由 LLM 结合证据（作品集/内推/前序交付）
+      与用户判断，不禁止投递；start_level_after 只影响后续阶段的建议，不写回差距分析。
+    - 返回值的 advisories 会持久化到档案，请在向用户交付时如实复述未解决项。
     """
     try:
         roadmap_data = _parse_json_param(roadmap_json, "路线图")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
+    if not isinstance(roadmap_data, dict):
+        return error_response(
+            "INVALID_PARAM",
+            "路线图必须是 JSON 对象（包含 roadmap/phases 字段）。",
+            {"received": type(roadmap_data).__name__},
+        )
+
     profile = load_profile()
     parsed = parse_roadmap(json.dumps(roadmap_data, ensure_ascii=False))
 
-    # 先校验后落盘（BUG-007）：硬校验问题或审计 FAIL 时不写档案，防止假保存
-    hard_issues = _check_roadmap_hard(parsed, profile)
-    audit = (profile.plan or {}).get("audit") or {}
-    last_verdict = audit.get("latest_verdict") or ""
+    # 质量建议（不阻断保存）
+    advisories = _collect_roadmap_advisories(parsed, profile)
 
-    blocking: list[str] = list(hard_issues)
-    if last_verdict == "FAIL":
-        blocking.insert(0,
-            f"上一轮路线图审计 verdict=FAIL（{audit.get('updated_at', '')[:16]}），"
-            f"{len(audit.get('latest_issues') or [])} 项未通过尚未复审计"
-        )
-    if blocking and not force:
-        return error_response(
-            "VALIDATION_FAILED",
-            "路线图未通过校验，未保存（防「以为已定稿」的假保存）：\n"
-            + "\n".join(f"- {b}" for b in blocking)
-            + "\n\n下一动作：按问题清单修正后重新调用 save_roadmap；"
-            "剩余风险已明确告知用户但仍要求定稿时，可显式传 force=true 带问题保存。",
-            {
-                "hard_issues": hard_issues,
-                "audit": {
-                    "latest_verdict": last_verdict,
-                    "updated_at": audit.get("updated_at", ""),
-                    "fail_rounds": audit.get("fail_rounds", 0),
-                },
-            },
-        )
-
-    # 复评升级写回全局起点（BUG-004 配套）：最后一次 start_level_after 作为新起点
-    phases_loaded = parsed.get("roadmap", parsed).get("phases", [])
-    applied_strict_after = ""
-    for phase in phases_loaded:
-        after = str(phase.get("start_level_after", "") or "").strip()
-        if after and _level_rank(after) >= 0:
-            applied_strict_after = after
-    if applied_strict_after:
-        if profile.gap:
-            profile.gap["start_level"] = applied_strict_after
-        else:
-            profile.gap = {"start_level": applied_strict_after}
+    # 审计记录绑定路线图版本：内容变化只标记过期，不删除历史
+    new_hash = _roadmap_hash(parsed)
+    audit = dict(profile.audit or {})
+    legacy_audit = (profile.plan or {}).get("audit") if isinstance(profile.plan, dict) else None
+    if legacy_audit and not audit:
+        audit = dict(legacy_audit)
+    if audit and audit.get("roadmap_hash") and audit.get("roadmap_hash") != new_hash:
+        audit["stale"] = True
 
     # 保存旧版本快照
     if profile.plan:
         save_plan_snapshot(source="before_roadmap")
 
-    # 解析并写入 plan；新路线图 = 新阶段体系，历史审计记录作废
     profile.plan = parsed
+    profile.audit = audit
     profile.audited_phases = []
     profile.plan_saved_at = datetime.now().isoformat()
     profile.section_updated_at["plan"] = profile.plan_saved_at
@@ -414,34 +439,6 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     # 格式化报告
     report = format_roadmap(parsed)
 
-    # 软校验：jd 三件套约束（不拒绝保存，仅提示确认）
-    warnings_list = []
-    for phase in phases_loaded:
-        phase_type = phase.get("type", "learn")
-        if phase_type == "learn":
-            continue
-        jd_status = phase.get("jd_status", "not_required")
-        jd = phase.get("jd")
-        name = phase.get("name", phase.get("id", "?"))
-
-        if jd and jd_status != "has_jd":
-            warnings_list.append(
-                f"阶段「{name}」填了 JD 细节但 jd_status={jd_status}——请确认这些要求来自真实数据"
-                "（抓取/导入），属实则改为 has_jd"
-            )
-        elif not jd and jd_status == "has_jd":
-            warnings_list.append(
-                f"阶段「{name}」标注 has_jd 但 jd 为空——请补上真实 JD 细节或改为占位"
-            )
-        elif jd_status == "pending_user_import" and not phase.get("confirmed"):
-            warnings_list.append(
-                f"阶段「{name}」是占位（待导入真实 JD），尚未得到用户确认——"
-                "请向用户确认「先占位后补 JD」；确认后把 confirmed 置 true 再保存可消除本提示"
-            )
-
-    # 软提示：层级/届别字段缺失等（审计清单覆盖面，不拒绝）
-    soft_reports = _collect_soft_reports(parsed, profile)
-
     # 定稿即交付：自动生成路线图活地图 HTML（随时可重新生成）
     map_path = ""
     try:
@@ -450,25 +447,21 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     except Exception:
         map_path = ""
 
-    warnings_text = ""
-    if warnings_list:
-        warnings_text = "\n\n依据待确认：\n" + "\n".join(f"- {w}" for w in warnings_list)
-
-    soft_text = ""
-    if soft_reports:
-        soft_text = "\n\n校验提示（不阻塞，但请向用户确认）：\n" + "\n".join(f"- {s}" for s in soft_reports)
-
-    force_text = ""
-    if blocking and force:
-        force_text = (
-            "\n\n[force 带问题定稿] 本次保存显式接受了以下风险（已记录）：\n"
-            + "\n".join(f"- {b}" for b in blocking)
-            + "\n请向用户复述这些风险，避免「带病定稿」被静默当成合格版本。"
+    advisory_text = ""
+    if advisories:
+        advisory_text = "\n\n质量建议（不阻断保存，请向用户如实复述）：\n" + "\n".join(
+            f"- [{a.get('checklist_id') or a['code']}] {a['message']}" for a in advisories
         )
+
+    audit_note = ""
+    if audit:
+        verdict = audit.get("latest_verdict") or "未审计"
+        stale = "（已过期：路线图内容已变化）" if audit.get("stale") else ""
+        audit_note = f"\n\n审计记录：latest_verdict={verdict}{stale}（第二意见，不阻断定稿）。"
 
     return _json({
         "message": (
-            f"路线图已保存。\n\n{report}{force_text}{soft_text}{warnings_text}\n\n"
+            f"路线图已保存。\n\n{report}{advisory_text}{audit_note}\n\n"
             f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
             "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡，进度在浏览器本地保存），"
             "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
@@ -481,45 +474,50 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
         "context": {
             "phase": "roadmap_saved",
             "version": profile.version,
-            "jd_warnings": warnings_list,
-            "soft_reports": soft_reports,
-            "accepted_risks": blocking if (blocking and force) else [],
+            "advisories": advisories,
+            "audit": {
+                "latest_verdict": audit.get("latest_verdict", ""),
+                "stale": bool(audit.get("stale")),
+                "fail_rounds": audit.get("fail_rounds", 0),
+            },
+            "accepted_risks": [],
         },
     })
 
 
 @mcp.tool()
 def save_roadmap_audit(audit_json: str) -> str:
-    """保存路线图审计结果到档案（save_roadmap 会读取最新 verdict 决定是否放行定稿）。
+    """保存路线图审计结果（第二意见；绑定当前路线图版本，不阻断定稿）。
 
-    何时调用：career-roadmap-auditor 每完成一轮审计（PASS 或 FAIL）都要调用本工具落库。
+    何时调用：career-roadmap-auditor 每完成一轮审计都要调用本工具落库。
 
     Args:
         audit_json: 审计结果的 JSON 字符串
 
     Schema:
         {
-            "verdict": "PASS",            // PASS / FAIL（必填）
-            "issues": [                   // FAIL 时必填，PASS 时留空
+            "verdict": "PASS_WITH_NOTES",   // PASS / PASS_WITH_NOTES / FAIL（必填）
+            "issues": [                     // FAIL 必填；PASS_WITH_NOTES 可带建议
                 {"checklist_id": "start", "problem": "起点档位无打分依据", "fix": "补 rubric 评分"}
             ],
-            "summary": "一轮 FAIL：3 项待修"   // 可选：一句话结论
+            "notes": ["非阻断建议"],         // 可选
+            "summary": "一句话结论"          // 可选
         }
 
-    出口规则：同一版本累计 2 轮 FAIL 后，迭代之外还有两条出路——
-    ① 修正 issues 后重审；② 向用户明示剩余未通过项与风险，用户确认后
-    用 save_roadmap(force=true) 带问题定稿。禁止静默放弃或无限重审。
+    纪律：FAIL 只用于硬矛盾（编造 JD、无依据跨级、KPI 完全缺失、届别硬冲突、
+    任务不可打卡）；其余进 notes。审计记录按 roadmap_hash 绑定，路线图内容变化后
+    自动标记过期，但不会阻断保存。
     """
     try:
         data = _parse_json_param(audit_json, "审计结果")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
-    verdict = str(data.get("verdict", "")).strip().upper()
-    if verdict not in ("PASS", "FAIL"):
+    verdict = str(data.get("verdict", "")).strip().upper().replace("-", "_")
+    if verdict not in ("PASS", "PASS_WITH_NOTES", "FAIL"):
         return error_response(
             "INVALID_PARAM",
-            f"verdict 必须是 PASS 或 FAIL，当前值：{verdict!r}",
+            f"verdict 必须是 PASS / PASS_WITH_NOTES / FAIL，当前值：{verdict!r}",
             {"verdict": verdict},
         )
     issues = data.get("issues") or []
@@ -530,6 +528,9 @@ def save_roadmap_audit(audit_json: str) -> str:
         )
     if not isinstance(issues, list):
         return error_response("INVALID_PARAM", "issues 必须是数组", {})
+    notes = data.get("notes") or []
+    if not isinstance(notes, list):
+        notes = [str(notes)]
 
     profile = load_profile()
     if not (profile.plan or {}).get("roadmap"):
@@ -539,59 +540,69 @@ def save_roadmap_audit(audit_json: str) -> str:
             {"missing": "plan.roadmap"},
         )
 
-    plan = profile.plan
-    audit = plan.get("audit") or {"rounds": []}
+    audit = dict(profile.audit or {})
+    legacy = (profile.plan or {}).get("audit")
+    if legacy and not audit:
+        audit = dict(legacy)
     rounds = audit.get("rounds") or []
     if not isinstance(rounds, list):
         rounds = []
 
     now = datetime.now().isoformat()
+    roadmap_hash = _roadmap_hash(profile.plan)
     entry = {
         "round": len(rounds) + 1,
         "verdict": verdict,
-        "issues": issues if verdict == "FAIL" else [],
+        "issues": issues if verdict in ("FAIL", "PASS_WITH_NOTES") else [],
+        "notes": notes,
         "summary": str(data.get("summary", "") or "")[:200],
+        "roadmap_hash": roadmap_hash,
         "saved_at": now,
     }
     fail_rounds = (audit.get("fail_rounds") or 0) + (1 if verdict == "FAIL" else 0)
 
-    plan["audit"] = {
+    profile.audit = {
+        "roadmap_hash": roadmap_hash,
         "rounds": rounds + [entry],
         "latest_verdict": verdict,
-        "latest_issues": issues if verdict == "FAIL" else [],
+        "latest_issues": issues if verdict in ("FAIL", "PASS_WITH_NOTES") else [],
+        "notes": notes,
         "fail_rounds": fail_rounds,
         "updated_at": now,
+        "stale": False,
     }
     profile.touch()
     save_profile(profile)
 
     lines = [
         f"审计结果已落库（第 {entry['round']} 轮，verdict={verdict}）。",
-        "——save_roadmap 只认可最新这份记录：每次审计后都要重新落库，定稿校验用的就是它。",
+        "审计是第二意见，不再阻断定稿：请把未解决项如实转告用户，由用户决定是否调整。",
     ]
-    next_steps: list[str] = []
     if verdict == "PASS":
-        lines.append("审计通过：可以调用 save_roadmap 定稿。")
-        next_steps.append("save_roadmap")
+        lines.append("审计通过：可以定稿。")
+    elif verdict == "PASS_WITH_NOTES":
+        lines.append("有建议但无硬矛盾：可以定稿；建议项见下，按需采纳。")
     else:
-        lines.append(f"累计 FAIL {fail_rounds} 轮。两条出路：① 按修正项修复后重新审计；"
-                     "② 向用户明示剩余风险后用 save_roadmap(force=true) 带问题定稿（需用户确认）。")
-        if fail_rounds >= 2:
+        lines.append(
+            f"审计发现硬矛盾（累计 FAIL {fail_rounds} 轮）：建议先修正；"
+            "定稿不被阻断，但请向用户明示这些风险。"
+        )
+        lines.append("请优先处理最多 3 条 must_fix，其余作为建议，避免无限重审。")
+    for item in issues:
+        if isinstance(item, dict):
             lines.append(
-                "已到两轮 FAIL 口径上限：不建议第 3 轮对同一版本无限重审——"
-                "要么结构性修正（重做阶段序列），要么 force 定稿并让用户签字画押剩余风险。"
+                f"- [{item.get('checklist_id', '?')}] {item.get('problem', '')} → {item.get('fix', '')}"
             )
-        for i in issues:
-            if isinstance(i, dict):
-                lines.append(f"- [{i.get('checklist_id', '?')}] {i.get('problem', '')} → {i.get('fix', '')}")
-        next_steps.append("save_roadmap")
+    for note in notes[:10]:
+        lines.append(f"- 建议：{note}")
 
     return _json({
         "message": "\n".join(lines),
-        "next_steps": next_steps,
+        "next_steps": ["save_roadmap"],
         "context": {
             "round": entry["round"],
             "verdict": verdict,
             "fail_rounds": fail_rounds,
+            "roadmap_hash": roadmap_hash,
         },
     })

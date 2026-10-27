@@ -111,7 +111,7 @@ def detail_current_phase() -> str:
     phases = roadmap.get("phases", [])
     phase = next((p for p in phases if p.get("id") == view["phase_id"]), None) or {}
 
-    ctx = build_methodology_context("detailed_route", profile)
+    ctx = build_methodology_context("detailed_route", profile, compact=True)
 
     return _json({
         "methodology": ctx["methodology"],

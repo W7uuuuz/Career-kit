@@ -44,19 +44,21 @@ async def test_guards_and_recovery(sandbox):
         await driver.intake("have", HAVE)
         await driver.finalize()
 
-        # 差距分析内容质量门：缺 source 必须拒绝
+        # 差距分析：缺 source 为建议，不阻断保存
         unsourced = {
             "match_score": 60,
             "skill_gaps": [{"skill": "LangGraph", "priority": "high"}],
         }
-        rejected = await mcp.call(
+        advised = await mcp.call(
             "save_gap_analysis",
             {"gap_json": json.dumps(unsourced, ensure_ascii=False)},
         )
-        rejected.assert_error("INCOMPLETE_ANALYSIS")
-        rejected.assert_contains("source")
+        advised_data = advised.assert_ok().json()
+        assert any(
+            a["code"] == "gap_missing_source" for a in advised_data["context"]["advisories"]
+        )
 
-        # BUG-021 质量门：AI 作者身份（React=ai_assisted）要求 red flag 显式暴露
+        # AI 作者身份：提示为 advisory
         no_flag = json.loads(json.dumps(GAP, ensure_ascii=False))
         no_flag["resume_red_flags"] = [
             rf for rf in no_flag["resume_red_flags"]
@@ -69,12 +71,15 @@ async def test_guards_and_recovery(sandbox):
             "save_gap_analysis",
             {"gap_json": json.dumps(no_flag, ensure_ascii=False)},
         )
-        flagged.assert_error("INCOMPLETE_ANALYSIS")
-        flagged.assert_contains("AI")
+        flagged_data = flagged.assert_ok().json()
+        assert any(
+            a["code"] == "ai_authorship_unmentioned"
+            for a in flagged_data["context"]["advisories"]
+        )
 
         await driver.save_gap(GAP)
 
-        # 层级跳跃：小厂起点直接冲大厂实习 -> 先校验后落盘，直接拒绝（BUG-007）
+        # 层级跨越：保存成功，给出 level_jump 建议（不再硬拒绝）
         bad_roadmap = json.loads(json.dumps(ROADMAP, ensure_ascii=False))
         bad_roadmap["start_level"] = "小厂"
         bad_roadmap["phases"][-1]["target_level"] = "大厂"
@@ -82,20 +87,8 @@ async def test_guards_and_recovery(sandbox):
             "save_roadmap",
             {"roadmap_json": json.dumps(bad_roadmap, ensure_ascii=False)},
         )
-        data = result.assert_error("VALIDATION_FAILED").json()
-        assert data["details"]["hard_issues"], data
-        assert any("层级" in issue for issue in data["details"]["hard_issues"])
-
-        # force=true 显式带问题定稿（BUG-007 出口）
-        forced = await mcp.call(
-            "save_roadmap",
-            {
-                "roadmap_json": json.dumps(bad_roadmap, ensure_ascii=False),
-                "force": True,
-            },
-        )
-        forced_data = forced.assert_ok().json()
-        assert forced_data["context"]["accepted_risks"], forced_data
+        data = result.assert_ok().json()
+        assert any(a["code"] == "level_jump" for a in data["context"]["advisories"]), data
 
         # 未知企业源 -> 可诊断错误 + 可用列表
         unknown = await mcp.call(

@@ -156,6 +156,10 @@ class CareerProfile(BaseModel):
     )
     gap: dict[str, Any] = Field(default_factory=dict, description="差距是什么")
     plan: dict[str, Any] = Field(default_factory=dict, description="怎么走")
+    audit: dict[str, Any] = Field(
+        default_factory=dict,
+        description="路线图审计记录（第二意见，不阻断保存；按 roadmap_hash 与路线图绑定）",
+    )
 
     # TODO: 后续扩展 - 支持多个目标 JD 对比
     target_jd: dict[str, Any] = Field(default_factory=dict, description="目标岗位 JD 解析结果")

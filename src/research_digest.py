@@ -39,6 +39,27 @@ _SALARY_RANGE_K = re.compile(r"(\d+(?:\.\d+)?)\s*[-~–]\s*(\d+(?:\.\d+)?)\s*[kK
 _SALARY_SINGLE_K = re.compile(r"(\d+(?:\.\d+)?)\s*[kK]")
 _CITY_SPLIT = re.compile(r"[、,，/|·\s]+")
 
+# 城市归一：后缀与常见行政区（避免「上海/上海市」「徐汇区」被重复计数）
+_CITY_ALIASES = {
+    "上海市": "上海", "北京市": "北京", "深圳市": "深圳", "杭州市": "杭州",
+    "广州市": "广州", "成都市": "成都", "南京市": "南京", "武汉市": "武汉",
+}
+_DISTRICT_TO_CITY = {
+    "徐汇区": "上海", "浦东新区": "上海", "静安区": "上海", "黄浦区": "上海",
+    "长宁区": "上海", "杨浦区": "上海", "闵行区": "上海", "海淀区": "北京",
+    "朝阳区": "北京", "西城区": "北京", "东城区": "北京", "南山区": "深圳",
+    "福田区": "深圳", "宝安区": "深圳", "余杭区": "杭州", "西湖区": "杭州",
+}
+
+
+def _normalize_city(raw: str) -> str:
+    city = str(raw or "").strip()
+    if not city:
+        return ""
+    city = _CITY_ALIASES.get(city, city)
+    city = _DISTRICT_TO_CITY.get(city, city)
+    return _CITY_ALIASES.get(city, city)
+
 
 def _jd_text(sample: dict[str, Any]) -> str:
     return " ".join(
@@ -75,29 +96,46 @@ def build_digest(
     jd_samples: list[dict[str, Any]],
     cases: list[dict[str, Any]],
     dropped_no_detail: int = 0,
+    *,
+    raw_case_count: int | None = None,
 ) -> dict[str, Any]:
     """聚合洞察：城市/薪资/高频要求/学历与层级信号/案例结构。"""
     city_counts: dict[str, int] = {}
+    multi_city_jd_count = 0
     keyword_counts: dict[str, int] = {}
-    education_signals = {"本科": 0, "硕士": 0, "博士": 0, "985": 0, "211": 0, "双非": 0}
+    education_mentions = {"本科": 0, "硕士": 0, "博士": 0, "985": 0, "211": 0, "双非": 0}
     level_signals = {"实习": 0, "校招": 0, "社招": 0}
     salary_lows: list[float] = []
+    salary_highs: list[float] = []
+    salary_mids: list[float] = []
 
     for sample in jd_samples:
         text = _jd_text(sample)
         lowered = text.lower()
 
-        for city in _CITY_SPLIT.split(str(sample.get("location") or "")):
-            if city:
-                city_counts[city] = city_counts.get(city, 0) + 1
+        locations = [
+            _normalize_city(city)
+            for city in _CITY_SPLIT.split(str(sample.get("location") or ""))
+            if _normalize_city(city)
+        ]
+        if locations:
+            primary = locations[0]
+            city_counts[primary] = city_counts.get(primary, 0) + 1
+            if len(set(locations)) > 1:
+                multi_city_jd_count += 1
 
         for keyword in _KEYWORDS:
             if keyword.lower() in lowered:
                 keyword_counts[keyword] = keyword_counts.get(keyword, 0) + 1
 
-        for label in education_signals:
-            if label in text:
-                education_signals[label] += 1
+        # 学历信号：优先看要求段，避免把公司介绍/标题里的词当硬性要求
+        edu_text = str(
+            sample.get("requirements") or sample.get("description")
+            or sample.get("snippet") or ""
+        )
+        for label in education_mentions:
+            if label in edu_text:
+                education_mentions[label] += 1
 
         title = str(sample.get("title") or "")
         if "实习" in title:
@@ -109,15 +147,18 @@ def build_digest(
 
         salary = _salary_k(sample)
         if salary:
-            salary_lows.append(salary[0])
+            low, high = salary
+            salary_lows.append(low)
+            salary_highs.append(high)
+            salary_mids.append((low + high) / 2)
 
     salary_digest: dict[str, Any] = {"count": len(salary_lows)}
     if salary_lows:
         salary_digest.update(
             {
                 "min_k": round(min(salary_lows), 1),
-                "max_k": round(max(salary_lows), 1),
-                "median_k": _median(salary_lows),
+                "max_k": round(max(salary_highs), 1),
+                "median_k": _median(salary_mids),
             }
         )
 
@@ -129,17 +170,19 @@ def build_digest(
     return {
         "jd_count": len(jd_samples),
         "case_count": len(cases),
+        "case_count_raw": raw_case_count if raw_case_count is not None else len(cases),
         "dropped_no_detail": dropped_no_detail,
         "cities": [
             {"city": city, "count": count}
             for city, count in sorted(city_counts.items(), key=lambda kv: -kv[1])[:5]
         ],
+        "multi_city_jd_count": multi_city_jd_count,
         "salary": salary_digest,
         "top_requirements": [
             {"term": term, "count": count}
             for term, count in sorted(keyword_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
         ],
-        "education_signals": {k: v for k, v in education_signals.items() if v},
+        "education_mentions": {k: v for k, v in education_mentions.items() if v},
         "level_signals": {k: v for k, v in level_signals.items() if v},
         "case_kinds": case_kinds,
     }
@@ -167,13 +210,20 @@ def render_digest_lines(digest: dict[str, Any]) -> list[str]:
 
     cities = digest.get("cities") or []
     if cities:
-        lines.append("- 城市：" + "、".join(f"{c['city']} {c['count']}" for c in cities))
+        line = "- 城市（主城市）：" + "、".join(
+            f"{c['city']} {c['count']}" for c in cities
+        )
+        multi = digest.get("multi_city_jd_count") or 0
+        if multi:
+            line += f"；多城市岗位 {multi} 条"
+        lines.append(line)
 
     salary = digest.get("salary") or {}
     if salary.get("count"):
         lines.append(
-            f"- 薪资：{salary['count']} 条有数据，"
-            f"{salary.get('min_k')}-{salary.get('max_k')}K/月，中位 {salary.get('median_k')}K"
+            f"- 薪资：{salary['count']} 条有数据；"
+            f"区间 {salary.get('min_k')}-{salary.get('max_k')}K/月，"
+            f"中位 {salary.get('median_k')}K（按下界/上界/中点统计）"
         )
     else:
         lines.append("- 薪资：本次岗位均未公开薪资（数据缺口，不推断）")
@@ -185,9 +235,12 @@ def render_digest_lines(digest: dict[str, Any]) -> list[str]:
             + " · ".join(f"{t['term']} {t['count']}" for t in terms)
         )
 
-    edu = digest.get("education_signals") or {}
+    edu = digest.get("education_mentions") or {}
     if edu:
-        lines.append("- 学历信号：" + "、".join(f"{k} {v}" for k, v in edu.items()))
+        lines.append(
+            "- 学历提及次数（要求段关键词，非硬性门槛）："
+            + "、".join(f"{k} {v}" for k, v in edu.items())
+        )
 
     levels = digest.get("level_signals") or {}
     if levels:

@@ -39,11 +39,36 @@ def load_methodology(name: str) -> dict[str, Any]:
     return data
 
 
+def compact_methodology(methodology: dict[str, Any]) -> dict[str, Any]:
+    """瘦身上下文：去掉检索提示（data_needs）与重复清单，保留可执行指引。
+
+    data_needs 是给早期检索器用的，现在由 LLM 自主决定取数；audit_checklist 由
+    审计子 Agent 从 YAML 读取，不必在每个生成调用里重复下发。
+    """
+    compact = {
+        key: value for key, value in methodology.items()
+        if key not in ("audit_checklist", "data_needs")
+    }
+    phases = compact.get("phases")
+    if isinstance(phases, list):
+        compact["phases"] = [
+            {key: value for key, value in phase.items() if key != "data_needs"}
+            if isinstance(phase, dict) else phase
+            for phase in phases
+        ]
+    return compact
+
+
 def build_methodology_context(
     methodology_name: str,
     profile: CareerProfile,
+    *,
+    compact: bool = False,
 ) -> dict[str, Any]:
     """构建返回给 LLM 的结构化上下文。
+
+    Args:
+        compact: 为 True 时去掉检索提示与审计清单，控制响应体积。
 
     Returns:
         {
@@ -56,6 +81,8 @@ def build_methodology_context(
     methodology["name"] = data.get("name", methodology_name)
     methodology["version"] = data.get("version", "1.0")
     methodology["description"] = data.get("description", "")
+    if compact:
+        methodology = compact_methodology(methodology)
 
     return {
         "methodology": methodology,

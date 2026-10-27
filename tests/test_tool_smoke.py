@@ -471,8 +471,8 @@ def test_search_cases_tool_renders_cases(temp_profile, monkeypatch):
     assert "未命中" in out2 or "失败" in out2
 
 
-def test_save_gap_ai_authorship_requires_red_flag(temp_profile):
-    """BUG-021 质量门：AI 作者身份技能保存差距分析时必须有「AI 生成/手写」red flag。"""
+def test_save_gap_ai_authorship_is_advisory(temp_profile):
+    """BUG-021：AI 作者身份提示为 advisory（保存成功并提示，不拒绝）。"""
     from src.server import intake, save_gap_analysis
 
     intake(
@@ -482,23 +482,14 @@ def test_save_gap_ai_authorship_requires_red_flag(temp_profile):
         '"self_assessment": {"resume_trust": "medium", "notes": "AI 生成"}}',
     )
 
-    bad = {
+    gap = {
         "match_score": 70,
         "skill_gaps": [{"skill": "手写实现", "priority": "high", "source": "用户自评"}],
     }
-    out = json.loads(save_gap_analysis(gap_json=json.dumps(bad, ensure_ascii=False)))
-    assert out.get("isError") is True and out["code"] == "INCOMPLETE_ANALYSIS"
-    assert "AI" in out["message"], "质量门应指出 AI 作者身份风险未显式暴露"
-
-    good = dict(bad)
-    good["resume_red_flags"] = [{
-        "signal": "代码主要由 AI 生成，人工只做验证迭代",
-        "risk": "面试被要求手写/逐行讲解时暴露",
-        "evidence_fix": "补手写小项目与 PR 记录",
-    }]
-    out2 = json.loads(save_gap_analysis(gap_json=json.dumps(good, ensure_ascii=False)))
-    assert out2.get("isError") is not True, out2
-    assert "差距分析已保存" in out2.get("message", "")
+    out = json.loads(save_gap_analysis(gap_json=json.dumps(gap, ensure_ascii=False)))
+    assert out.get("isError") is not True
+    assert any(a["code"] == "ai_authorship_unmentioned" for a in out["context"]["advisories"])
+    assert out["context"]["advisories"]
 
 
 def test_get_next_tasks_shows_full_overview(temp_profile):
@@ -563,7 +554,7 @@ def test_save_roadmap_soft_check_and_html(temp_profile):
     assert result["context"]["phase"] == "roadmap_saved"
     msg = result["message"]
     assert "某公司实习" in msg and "占位" in msg          # 未确认占位被提示
-    assert "做RAG项目" in msg and "has_jd" in msg         # jd 有内容但未标注依据被提示
+    assert "做RAG项目" in msg and ("真实数据" in msg or "jd_status" in msg)
     assert "已确认实习" not in msg or "已确认" in msg      # confirmed 的占位不再提示（其名不含警告词）
 
     # 全部满足约束 → 无警告
@@ -851,15 +842,10 @@ def test_save_roadmap_hard_check_required_fields(temp_profile):
     }
     result = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     msg = result["message"]
-    assert result.get("isError") is True, "硬校验失败必须拒绝保存（防假定稿）"
-    assert result["code"] == "VALIDATION_FAILED"
+    assert result.get("isError") is not True, "质量建议不阻断保存"
+    assert any(a["code"] == "missing_resume_value" for a in result["context"]["advisories"])
     assert "resume_value" in msg
-    assert result["details"]["hard_issues"], "应收集到必填缺失问题"
-
-    # force=true 仍可带问题定稿（显式接受风险）
-    result2 = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False), force=True))
-    assert result2["context"]["phase"] == "roadmap_saved"
-    assert result2["context"]["accepted_risks"], "force 时问题必须作为已接受风险记录"
+    assert result["context"]["advisories"], "应收集到质量建议"
 
 
 def test_save_roadmap_hard_check_level_jump(temp_profile):
@@ -882,12 +868,9 @@ def test_save_roadmap_hard_check_level_jump(temp_profile):
         }
     }
     result = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert result.get("isError") is True
-    assert "超出" in result["message"]
-
-    # force 仍可保存，风险被记录
-    result2 = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False), force=True))
-    assert result2["context"]["phase"] == "roadmap_saved"
+    assert result.get("isError") is not True
+    assert any(a["code"] == "level_jump" for a in result["context"]["advisories"])
+    assert "跨级" in result["message"] or "高 2 级" in result["message"]
 
 
 def test_save_roadmap_hard_check_graduation(temp_profile):
@@ -982,7 +965,7 @@ def test_generate_roadmap_returns_step_template(temp_profile):
     assert len(out["step_template"]) == 6
     assert out["step_template"][0]["name"] == "起点判定"
     assert out["step_template"][0]["checkpoint"] is True
-    assert any(s["name"] == "审计落库" for s in out["step_template"])
+    assert any("审计" in s["name"] for s in out["step_template"])
 
 
 # ============ BUG-001：简历验证防线 ============
@@ -1124,8 +1107,8 @@ def test_save_roadmap_guides_execution_start(temp_profile):
 
 # ============ 差距分析内容质量门（BUG-002/003 收尾：不编造落成代码） ============
 
-def test_gap_gate_rejects_missing_source(temp_profile):
-    """skill_gaps 缺 source（无真实数据来源）→ 拒绝落盘。"""
+def test_gap_missing_source_is_advisory(temp_profile):
+    """skill_gaps 缺 source → 保存成功并给出建议。"""
     from src.server import save_gap_analysis
 
     bad = json.dumps({
@@ -1133,20 +1116,19 @@ def test_gap_gate_rejects_missing_source(temp_profile):
         "skill_gaps": [{"skill": "RAG", "priority": "high"}],
     }, ensure_ascii=False)
     result = json.loads(save_gap_analysis(gap_json=bad))
-    assert result.get("isError") is True
-    assert result["code"] == "INCOMPLETE_ANALYSIS"
-    assert any("source" in i for i in result["details"]["issues"])
-    assert not profile_module.load_profile().gap
+    assert result.get("isError") is not True
+    assert any(a["code"] == "gap_missing_source" for a in result["context"]["advisories"])
+    assert profile_module.load_profile().gap
 
 
-def test_gap_gate_rejects_empty_gaps(temp_profile):
-    """空 skill_gaps → 拒绝（差距分析必须至少产出一条差距）。"""
+def test_gap_empty_gaps_is_advisory(temp_profile):
+    """空 skill_gaps → 保存成功并提示（不强制凑差距）。"""
     from src.server import save_gap_analysis
 
     bad = json.dumps({"match_score": 60, "skill_gaps": []}, ensure_ascii=False)
     result = json.loads(save_gap_analysis(gap_json=bad))
-    assert result.get("isError") is True
-    assert result["code"] == "INCOMPLETE_ANALYSIS"
+    assert result.get("isError") is not True
+    assert any(a["code"] == "empty_skill_gaps" for a in result["context"]["advisories"])
 
 
 def test_gap_gate_rejects_out_of_range_score(temp_profile):
@@ -1162,8 +1144,8 @@ def test_gap_gate_rejects_out_of_range_score(temp_profile):
     assert result["code"] == "INCOMPLETE_ANALYSIS"
 
 
-def test_gap_gate_rejects_incomplete_red_flags(temp_profile):
-    """resume_red_flags 缺 risk/evidence_fix → 拒绝（负面信号必须给对策）。"""
+def test_gap_incomplete_red_flags_is_advisory(temp_profile):
+    """resume_red_flags 缺 risk/evidence_fix → 保存成功并提示。"""
     from src.server import save_gap_analysis
 
     bad = json.dumps({
@@ -1172,9 +1154,8 @@ def test_gap_gate_rejects_incomplete_red_flags(temp_profile):
         "resume_red_flags": [{"signal": "独立开发"}],
     }, ensure_ascii=False)
     result = json.loads(save_gap_analysis(gap_json=bad))
-    assert result.get("isError") is True
-    assert result["code"] == "INCOMPLETE_ANALYSIS"
-    assert any("resume_red_flags" in i for i in result["details"]["issues"])
+    assert result.get("isError") is not True
+    assert any(a["code"] == "red_flags_incomplete" for a in result["context"]["advisories"])
 
 
 def test_gap_gate_accepts_anchored_analysis(temp_profile):

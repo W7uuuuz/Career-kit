@@ -179,15 +179,22 @@ def test_record_application_create_and_funnel(temp_profile):
     assert profile.applications[0].company == "字节跳动"
 
 
-def test_record_application_rejects_active_duplicate(temp_profile):
+def test_record_application_duplicate_returns_existing(temp_profile):
     from src.server import record_application
 
     record_application(company="字节跳动", role="Agent 实习")
     result = json.loads(record_application(company="字节跳动", role="Agent 实习"))
-    assert result.get("isError") is True
-    assert result["code"] == "DUPLICATE_APPLICATION"
-    assert result["details"]["application_id"] == "app_001"
+    assert result.get("isError") is not True
+    assert result["duplicate"] is True
+    assert result["existing_application_id"] == "app_001"
     assert len(profile_module.load_profile().applications) == 1
+
+    # 用户确认是独立投递后可显式放行
+    again = json.loads(record_application(
+        company="字节跳动", role="Agent 实习", allow_duplicate=True,
+    ))
+    assert again.get("isError") is not True
+    assert len(profile_module.load_profile().applications) == 2
 
 
 def test_record_application_rejects_after_rejected(temp_profile):

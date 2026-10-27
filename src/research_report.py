@@ -238,7 +238,9 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     for idx, case in enumerate(cases, 1):
         case["id"] = f"CS{idx:02d}"
 
-    digest = build_digest(jd_samples, cases, dropped_no_detail)
+    digest = build_digest(
+        jd_samples, cases, dropped_no_detail, raw_case_count=len(raw_cases)
+    )
 
     gaps = _derive_gaps(jd_samples, cases, source_status)
     gaps = dropped_gaps + gaps
@@ -246,6 +248,8 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     counts = {
         "jd_samples": len(jd_samples),
         "cases": len(cases),
+        "cases_raw": len(raw_cases),
+        "cases_filtered": max(0, len(raw_cases) - len(cases)),
         "dropped_no_detail": dropped_no_detail,
         "source_ok": sum(1 for s in source_status if s["status"] == "ok"),
         "source_fail": sum(1 for s in source_status if s["status"] == "failed"),

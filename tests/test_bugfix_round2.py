@@ -70,14 +70,14 @@ def test_save_roadmap_audit_roundtrip(temp_profile):
         "无路线图时审计应拒绝"
     )
 
-    out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False), force=True))
+    out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     assert out["context"]["phase"] == "roadmap_saved"
 
     # FAIL 无 issues 明细 → 拒绝
     fail_no_issues = json.loads(save_roadmap_audit(json.dumps({"verdict": "FAIL"})))
     assert fail_no_issues["code"] == "INVALID_PARAM"
 
-    # 正常 FAIL 落库 → 尚未复审计时 save_roadmap 被审计状态卡住
+    # 正常 FAIL 落库 → 定稿不再被阻断，审计记录可查
     audit = json.loads(save_roadmap_audit(json.dumps({
         "verdict": "FAIL",
         "issues": [{"checklist_id": "quantifiable", "problem": "KPI 模糊", "fix": "补数字"}],
@@ -85,27 +85,29 @@ def test_save_roadmap_audit_roundtrip(temp_profile):
     })))
     assert audit["context"]["verdict"] == "FAIL" and audit["context"]["fail_rounds"] == 1
 
-    blocked = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert blocked.get("isError") is True
-    assert blocked["code"] == "VALIDATION_FAILED"
-    assert "verdict=FAIL" in blocked["message"]
+    saved = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+    assert saved.get("isError") is not True, "质量建议不阻断保存"
+    assert saved["context"]["audit"]["latest_verdict"] in ("FAIL", "PASS_WITH_NOTES", "PASS")
+    assert saved["context"]["advisories"]
 
-    # PASS 落库后放行
+    # PASS_WITH_NOTES 与 PASS 均可落库
+    notes = json.loads(save_roadmap_audit(json.dumps({
+        "verdict": "PASS_WITH_NOTES", "notes": ["建议补一条投递数 KPI"],
+    })))
+    assert notes["context"]["verdict"] == "PASS_WITH_NOTES"
     audit2 = json.loads(save_roadmap_audit(json.dumps({"verdict": "PASS", "summary": "通过"})))
     assert audit2["context"]["verdict"] == "PASS"
-    ok = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert ok["context"]["phase"] == "roadmap_saved"
 
     # 非法 verdict → 拒绝
     bad = json.loads(save_roadmap_audit(json.dumps({"verdict": "MAYBE"})))
     assert bad["code"] == "INVALID_PARAM"
 
 
-def test_audit_two_fail_rounds_offers_force_exit(temp_profile):
-    """#9：两轮 FAIL 后给出「修正 / force 定稿」双出口，不再无限重审。"""
+def test_audit_fail_rounds_are_recorded_without_blocking(temp_profile):
+    """审计 FAIL 累计记录，但不再要求 force 才能定稿。"""
     from src.server import save_roadmap, save_roadmap_audit
 
-    save_roadmap(json.dumps(_valid_roadmap(), ensure_ascii=False), force=True)
+    save_roadmap(json.dumps(_valid_roadmap(), ensure_ascii=False))
     save_roadmap_audit(json.dumps({"verdict": "FAIL", "issues": [
         {"checklist_id": "quantifiable", "problem": "p1", "fix": "f1"},
     ]}))
@@ -113,13 +115,14 @@ def test_audit_two_fail_rounds_offers_force_exit(temp_profile):
         {"checklist_id": "start_alignment", "problem": "p2", "fix": "f2"},
     ]})))
     assert out["context"]["fail_rounds"] == 2
-    assert "force=true" in out["message"] or "force" in out["message"]
-    assert "带问题定稿" in out["message"]
+    assert "force" not in out["message"]
+    assert "不阻断" in out["message"] or "第二意见" in out["message"]
 
-    # force=true 定稿时审计风险在 message 中被复述
-    saved = json.loads(save_roadmap(json.dumps(_valid_roadmap(), ensure_ascii=False), force=True))
-    assert "verdict=FAIL" in saved["message"], "带问题定稿必须显式复述风险"
-    assert saved["context"]["accepted_risks"], "风险应有结构化记录"
+    # 审计 FAIL 后仍可保存；风险在返回值中告知
+    saved = json.loads(save_roadmap(json.dumps(_valid_roadmap(), ensure_ascii=False)))
+    assert saved["context"]["phase"] == "roadmap_saved"
+    assert saved["context"]["audit"]["fail_rounds"] == 2
+    assert saved["context"]["advisories"] is not None
 
 
 # ============ #4/#5 层级模型 ============
@@ -146,7 +149,7 @@ def test_compliant_plusone_allowed(temp_profile):
 
 
 def test_start_level_after_enables_staged_climb(temp_profile):
-    """#4：复评升级合法（learn 复评升中厂 → 中厂 intern），并同步更新档案起点。"""
+    """#4：复评升级作为参考链，不写回档案起点；跨级只给建议。"""
     from src.server import save_roadmap
     from src.tools import profile as profile_module
 
@@ -170,25 +173,26 @@ def test_start_level_after_enables_staged_climb(temp_profile):
     out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     assert out["context"]["phase"] == "roadmap_saved"
     assert out["context"]["accepted_risks"] == []
-    assert any("start_level_after" in s for s in out["context"]["soft_reports"])
+    assert any(a["code"] == "start_level_after" for a in out["context"]["advisories"])
 
     p = profile_module.load_profile()
-    assert (p.gap or {}).get("start_level") == "中厂", "复评升级应写回档案起点"
+    assert (p.gap or {}).get("start_level") != "中厂", "计划中的复评升级不得写回档案起点"
 
-    # 同一路线但删掉 start_level_after：小厂 → 中厂是 +1 合规；再放大厂应被拦
+    # 小厂 → 大厂跨 2 级：保存成功，但给出跨级建议
     climb_check = {"roadmap": dict(roadmap["roadmap"])}
     climb_check["roadmap"]["phases"] = [
         {"type": "intern", "name": "大厂实习", "target_level": "大厂",
          "resume_value": "实习经历", "kpi": {"metric": "入职", "target": "1个"}},
     ]
-    blocked = json.loads(save_roadmap(json.dumps(climb_check, ensure_ascii=False)))
-    assert blocked.get("isError") is True
+    saved = json.loads(save_roadmap(json.dumps(climb_check, ensure_ascii=False)))
+    assert saved["context"]["phase"] == "roadmap_saved"
+    assert any(a["code"] == "level_jump" for a in saved["context"]["advisories"])
 
 
 # ============ #11 roadmap lint ============
 
 
-def test_roadmap_lint_rejects_umbrella_and_time_words(temp_profile):
+def test_roadmap_lint_is_advisory(temp_profile):
     from src.server import save_roadmap
 
     _mk()
@@ -211,13 +215,13 @@ def test_roadmap_lint_rejects_umbrella_and_time_words(temp_profile):
         }
     }
     out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert out.get("isError") is True
-    assert out["code"] == "VALIDATION_FAILED"
-    assert "伞形" in out["message"] and "时间词" in out["message"]
+    assert out["context"]["phase"] == "roadmap_saved"
+    codes = {a["code"] for a in out["context"]["advisories"]}
+    assert "umbrella_task" in codes and "time_word" in codes
 
 
-def test_kpi_without_counted_tasks_via_soft_report(temp_profile):
-    """量化 KPI 与任务计数不闭合 → 软提示（不拒绝保存）。"""
+def test_kpi_without_counted_tasks_via_advisory(temp_profile):
+    """量化 KPI 与任务计数不闭合 → 建议（不拒绝保存）。"""
     from src.server import save_roadmap
 
     _mk()
@@ -238,7 +242,7 @@ def test_kpi_without_counted_tasks_via_soft_report(temp_profile):
     }
     out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     assert out["context"]["phase"] == "roadmap_saved"
-    assert any("计数" in s for s in out["context"]["soft_reports"])
+    assert any(a["code"] == "kpi_task_count" for a in out["context"]["advisories"])
 
 
 # ============ #29 换 JD 后 gap 过期 ============

@@ -47,9 +47,9 @@
 | `explore_goals` | 无目标时三轴定位（能力 × 兴趣 × 真实市场）并提出候选方向 |
 | `analyze_gaps` | 返回差距分析方法论上下文 |
 | `save_gap_analysis` | 保存分析结果（含内容质量门） |
-| `generate_roadmap` | 返回路线图方法论上下文（6 步工作流，含审计落库） |
-| `save_roadmap` | 保存路线图（先校验后落盘：起点/层级/届别/伞形任务硬校验，FAIL 不落盘可用 `force=true` 显式带问题定稿；自动生成职业地图） |
-| `save_roadmap_audit` | roadap-auditor 审计结果落库（verdict/issues）；save_roadmap 以最新落库记录做定稿校验 |
+| `generate_roadmap` | 返回路线图方法论上下文（6 步工作流；审计为第二意见） |
+| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图） |
+| `save_roadmap_audit` | 审计结果落库（PASS / PASS_WITH_NOTES / FAIL + issues/notes；按 `roadmap_hash` 绑定版本，不阻断定稿） |
 | `import_plan` | 导入既有规划文档，对比取舍在对话中完成 |
 
 ### 任务执行与求职漏斗工具（7）

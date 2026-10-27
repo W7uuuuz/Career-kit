@@ -69,7 +69,8 @@ async def test_new_user_full_flow_quality(sandbox, quality):
             "record_application",
             {"company": "字节跳动", "role": "Agent 工程师"},
         )
-        assert dup.ok is False and "DUPLICATE_APPLICATION" in dup.text, dup.text
+        dup_data = dup.assert_ok().json()
+        assert dup_data.get("duplicate") is True, dup.text
         weekly = await driver.weekly_review()
         weekly.assert_contains("周检视")
         assert sandbox.profile_json()["applications"], "投递记录未落盘"

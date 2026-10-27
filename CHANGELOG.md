@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **权限下放：质量判断交还 LLM，代码只守结构与事实（2026-10-27 实测修复）**：
+  - 路线图 `save_roadmap` 改为「结构校验 + 质量建议」：层级跨度、KPI、届别、任务措辞
+    等以 `advisories` 返回并持久化，不再拒绝保存；`force` 参数废弃；移除
+    `start_level_after` 写回 `gap.start_level`（计划假设不污染现状）
+  - 审计改为第二意见：新增 `PASS_WITH_NOTES`，FAIL 只用于硬矛盾，最多 3 条 must_fix，
+    其余进 notes；审计记录移入 `profile.audit` 并按 `roadmap_hash` 绑定（修复
+    `save_roadmap` 清空审计记录、force 一次永久绕过的问题）；审计不阻断定稿
+  - 审计子 Agent（两份 harness 定义）改为读取 `sop/roadmap.yaml` 清单、先列通过项、
+    不自行扩大规则；`sop/roadmap.yaml` 的清单增加 must/note 分级
+  - 层级模型降级为命中率参考：跨级只提示依据，不禁止投递；修复
+    `start_level_after` 同阶段自举绕过；未知层级、届别双向不一致均给建议
+  - 差距分析：`skill_gaps` 非空、`source`、red_flags 字段、AI 作者身份提示
+    全部改为 advisory；未知字段显式提示（不再静默丢弃）；`match_score` 仍做结构校验
+  - 投递重复改为交互式：返回既有记录 + `duplicate`，用户确认后可
+    `allow_duplicate=True` 新建；不再直接拒绝
+  - BOSS 未登录不再阻断整轮调研：其他源照常执行，BOSS 记为来源失败并在结果中说明；
+    仅当没有任何可用数据时才返回 `LOGIN_REQUIRED`
+  - 数据口径修复：薪资区间同时统计下界/上界/中点（不再只取下界）；城市归一
+    （上海/上海市/徐汇区）并输出主城市分布与多城市数量；学历改为「要求段提及次数」；
+    案例统计暴露 raw/deduped/filtered；未知字段提示
+  - `generate_roadmap` / `analyze_gaps` / `detail_current_phase` 的方法论上下文瘦身
+    （去掉 data_needs 与重复审计清单），降低长会话截断风险
+  - 摸排门禁（`PROBING_REQUIRED`）保持硬拒绝：这是防简历虚高的必备步骤
+  - 新增 `tests/test_quality_advisories.py`；同步更新路线图/差距/投递/e2e 断言与文档
+
 - **调研详情分层读取（花名册 + 按需全文）+ 2026-10-27 复测 5 项修复**：
   - 岗位详情必抓：`gather_research_data` 逐条补抓 `description/requirements`，
     未取得详情的岗位不纳入报告，剔除数量进入来源面板与数据缺口（不再以标题充数）

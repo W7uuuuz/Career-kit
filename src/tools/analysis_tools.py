@@ -194,8 +194,8 @@ def analyze_gaps() -> str:
         )
 
     # 加载两个方法论
-    ctx1 = build_methodology_context("resume_screening", profile)
-    ctx2 = build_methodology_context("interview_prep", profile)
+    ctx1 = build_methodology_context("resume_screening", profile, compact=True)
+    ctx2 = build_methodology_context("interview_prep", profile, compact=True)
 
     # 记录到 journey
     profile.append_journey(JourneyEntry(
@@ -333,58 +333,85 @@ def analyze_gaps() -> str:
 
 
 def _validate_gap_content(gap_data: dict, have: dict) -> list[str]:
-    """差距分析内容质量门（BUG-002/003 收尾）：把「不编造真实数据」落成代码。
+    """差距分析的结构校验（只保留会影响渲染/状态的硬错误）。
 
-    结构校验由 _parse_json_param / format_gap_report 负责（能否解析、能否渲染）；
-    此处只挡内容性缺陷，是 MCP 层对 LLM 输出的硬约束：
-    - match_score 必须是 0-100 的数字（不能缺、不能是乱值）
-    - skill_gaps 非空，且每条必须有 skill 与 source（真实数据来源）
-    - resume_red_flags（若提供）每条必须有 signal / risk / evidence_fix
-    - 技能 authorship 为 ai_assisted/ai_generated 时（BUG-021），resume_red_flags
-      必须含「AI 生成/手写」相关风险条目——AI 作者身份风险不得静默吞掉
-    返回问题列表（空 = 通过）。
+    质量项（技能差距数量、来源、red_flags 字段、AI 作者身份提示）全部改为
+    `_collect_gap_advisories` 的建议，不再拒绝保存。
     """
     issues: list[str] = []
-
     score = gap_data.get("match_score")
     if isinstance(score, bool) or not isinstance(score, (int, float)) or not (0 <= score <= 100):
         issues.append(f"match_score 必须是 0-100 的数字，收到「{score}」——不能缺或写非数值")
+    return issues
+
+
+_GAP_KNOWN_FIELDS = {
+    "match_score", "match_level", "start_level", "strengths", "skill_gaps",
+    "resume_red_flags", "resume_optimization", "interview_preparation",
+    "priority_actions", "market_context", "summary",
+}
+
+
+def _collect_gap_advisories(gap_data: dict, have: dict) -> list[dict]:
+    """质量建议（不阻断保存）：来源、字段完整度、AI 作者身份提示与未知字段。"""
+    advisories: list[dict] = []
+
+    def _add(code: str, message: str, checklist_id: str = "") -> None:
+        advisories.append(
+            {"code": code, "severity": "note", "checklist_id": checklist_id, "message": message}
+        )
 
     gaps = gap_data.get("skill_gaps")
     if not isinstance(gaps, list) or not gaps:
-        issues.append("skill_gaps 不能为空——差距分析必须产出至少一条技能差距")
+        _add("empty_skill_gaps", "skill_gaps 为空——若判断无差距，请在 summary 说明依据，避免读成漏项。", "quantifiable")
     else:
-        for i, g in enumerate(gaps):
-            if not isinstance(g, dict) or not str(g.get("skill", "")).strip():
-                issues.append(f"skill_gaps[{i}] 缺 skill 字段")
+        for i, gap in enumerate(gaps):
+            if not isinstance(gap, dict):
                 continue
-            if not str(g.get("source", "")).strip():
-                issues.append(
-                    f"skill_gaps[{i}]「{g['skill']}」缺 source（数据来源）——"
-                    "差距必须锚定真实数据（抓取/导入的 JD、用户材料），不可凭 LLM 知识编造"
-                )
+            if not str(gap.get("skill", "")).strip():
+                _add("gap_missing_skill", f"skill_gaps[{i}] 缺 skill 字段。", "quantifiable")
+            if not str(gap.get("source", "")).strip():
+                _add("gap_missing_source", f"skill_gaps[{i}]「{gap.get('skill', '?')}」未标来源——请标注真实来源（JD/导入/用户自评）。", "jd_discipline")
 
     red_flags = gap_data.get("resume_red_flags")
     if red_flags:
         if not isinstance(red_flags, list):
-            issues.append("resume_red_flags 必须是数组")
+            _add("red_flags_type", "resume_red_flags 不是数组，渲染会忽略该字段。")
         else:
             for i, rf in enumerate(red_flags):
                 if not isinstance(rf, dict):
-                    issues.append(f"resume_red_flags[{i}] 必须是对象")
                     continue
-                missing = [k for k in ("signal", "risk", "evidence_fix")
-                           if not str(rf.get(k, "")).strip()]
+                missing = [
+                    k for k in ("signal", "risk", "evidence_fix")
+                    if not str(rf.get(k, "")).strip()
+                ]
                 if missing:
-                    issues.append(
-                        f"resume_red_flags[{i}] 缺字段 {missing}——"
-                        "每条负面信号必须给出风险说明与补证据动作"
-                    )
+                    _add("red_flags_incomplete", f"resume_red_flags[{i}] 缺字段 {missing}——建议补齐风险说明与补证据动作。")
 
-    # BUG-021 轻量门：AI 作者身份风险必须显式进 red_flags，不得静默吞掉
-    issues.extend(_ai_authorship_flag_issues(gap_data, ai_authored_skill_names(have)))
+    # AI 作者身份：只提示，不要求特定措辞
+    ai_names = ai_authored_skill_names(have or {})
+    if ai_names:
+        combined = "".join(
+            str(rf.get(k, ""))
+            for rf in (red_flags or []) if isinstance(rf, dict)
+            for k in ("signal", "risk", "evidence_fix", "narrative_fix")
+        )
+        if not any(word in combined for word in ("AI", "手写", "生成")):
+            _add(
+                "ai_authorship_unmentioned",
+                "技能 " + "、".join(ai_names) + " 的作者身份为 AI 生成/辅助，但 red_flags 未提及——"
+                "建议显式说明面试应对（是否采纳由你判断）。",
+                "jd_discipline",
+            )
 
-    return issues
+    unknown = sorted(set(gap_data) - _GAP_KNOWN_FIELDS)
+    if unknown:
+        _add(
+            "unknown_fields",
+            f"未识别字段：{', '.join(unknown)}——已原样保存但不会被渲染；"
+            "如果是想补充的经历/建议，请放入 schema 对应字段。",
+        )
+    return advisories
 
 
 def _ai_authorship_flag_issues(gap_data: dict, ai_names: list[str]) -> list[str]:
@@ -482,12 +509,9 @@ def save_gap_analysis(gap_json: str) -> str:
             "market_context": "..."       // 市场背景（来自真实抓取数据汇总）
         }
 
-    内容质量门（硬约束，BAD 数据会被拒绝落盘）：
-    - match_score 必须是 0-100 的数字
-    - skill_gaps 非空，且每条必须带 source（真实数据来源，抓取/导入）
-    - resume_red_flags 若提供，每条必须有 signal / risk / evidence_fix
-    - 技能 authorship 为 ai_assisted/ai_generated 时，resume_red_flags 必须有
-      「AI 生成/手写」相关风险条目——AI 作者身份风险不得静默吞掉
+    内容建议（不阻断保存）：skill_gaps 为空或缺来源、red_flags 字段不完整、
+    AI 作者身份未在 red_flags 提及、未知字段——都会作为 advisories 返回并持久化，
+    由 LLM 与用户决定是否补充。
     """
     try:
         gap_data = _parse_json_param(gap_json, "差距分析")
@@ -496,17 +520,18 @@ def save_gap_analysis(gap_json: str) -> str:
 
     profile = load_profile()
 
-    # 内容质量门（BUG-002/003 收尾）：结构合法还不够——无依据/编造的内容一律拒绝落盘
-    content_issues = _validate_gap_content(gap_data, profile.have or {})
-    if content_issues:
+    # 结构校验：只挡会破坏渲染/状态的硬错误（match_score 类型与范围）
+    structural_issues = _validate_gap_content(gap_data, profile.have or {})
+    if structural_issues:
         return error_response(
             "INCOMPLETE_ANALYSIS",
-            "差距分析未通过内容质量门（防止无依据/编造）：\n"
-            + "\n".join(f"- {i}" for i in content_issues)
-            + "\n\n差距必须锚定真实数据来源（抓取/导入的 JD、用户材料）；"
-            "补齐后重新调用 save_gap_analysis。",
-            {"issues": content_issues},
+            "差距分析缺少可渲染的必要字段：\n"
+            + "\n".join(f"- {i}" for i in structural_issues)
+            + "\n\n补齐后重新调用 save_gap_analysis。",
+            {"issues": structural_issues},
         )
+
+    advisories = _collect_gap_advisories(gap_data, profile.have or {})
 
     # 先生成报告——格式非法时在此暴露，避免把半成品写进档案
     report = format_gap_report(gap_data)
@@ -524,9 +549,15 @@ def save_gap_analysis(gap_json: str) -> str:
     ))
     save_profile(profile)
 
+    advisory_text = ""
+    if advisories:
+        advisory_text = "\n\n质量建议（不阻断保存，请按需向用户确认）：\n" + "\n".join(
+            f"- {a['message']}" for a in advisories
+        )
+
     return _json({
         "message": (
-            f"差距分析已保存。\n\n{report}\n\n"
+            f"差距分析已保存。\n\n{report}{advisory_text}\n\n"
             "下一步：调用 generate_roadmap 生成路线图。"
         ),
         "next_steps": ["generate_roadmap"],
@@ -534,5 +565,6 @@ def save_gap_analysis(gap_json: str) -> str:
             "phase": "gap_saved",
             "match_score": gap_data.get("match_score"),
             "gaps_count": len(gap_data.get("skill_gaps", [])),
+            "advisories": advisories,
         },
     })

@@ -27,6 +27,7 @@ def record_application(
     source: str = "",
     notes: str = "",
     application_id: str = "",
+    allow_duplicate: bool = False,
 ) -> str:
     """记录或更新求职投递进展（求职漏斗）。
 
@@ -86,19 +87,25 @@ def record_application(
                 {"field": "company"},
             )
         dup = find_active_duplicate(profile, company, role)
-        if dup:
-            return error_response(
-                "DUPLICATE_APPLICATION",
-                (
-                    f"已存在 {dup.company}·{dup.role or '同岗位'} 的活跃投递记录（{dup.id}，"
-                    f"状态 {_STATUS_LABELS.get(dup.status, dup.status)}），未重复新建。\n"
-                    f"要更新状态请传 application_id=\"{dup.id}\"；"
-                    "若确属另一次独立投递，请向用户确认后说明情况。"
+        if dup and not allow_duplicate:
+            # 重复投递可能是真实事实（不同渠道/批次），不直接拒绝：
+            # 把既有记录交回，由 LLM 询问用户是更新还是新建。
+            return _json({
+                "duplicate": True,
+                "message": (
+                    f"已存在 {dup.company}·{dup.role or '同岗位'} 的活跃投递记录"
+                    f"（{dup.id}，状态 {_STATUS_LABELS.get(dup.status, dup.status)}）。\n"
+                    f"先问用户：更新这条记录，还是确实是一次独立投递？\n"
+                    f"- 更新：record_application(application_id=\"{dup.id}\", ...)\n"
+                    f"- 独立投递：record_application(..., allow_duplicate=True)"
                 ),
-                {"application_id": dup.id},
-            )
+                "existing_application_id": dup.id,
+                "next_steps": ["record_application"],
+            })
         app = add_application(profile, company, role, status, channel, source, notes)
         msg = f"已记录投递：{app.company}（{app.role or '岗位未填'}）· {_STATUS_LABELS[app.status]}"
+        if dup and allow_duplicate:
+            msg += f"（用户确认独立投递，另有既有记录 {dup.id}）"
 
     save_profile(profile)
 
