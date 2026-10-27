@@ -138,3 +138,34 @@ def test_onboarding_prompts_registered():
 
     names = {p.name for p in mcp._prompt_manager.list_prompts()}
     assert {"career-onboarding", "career-quick-scan", "career-grounding"} <= names
+
+def test_energy_industry_loader_and_major_alias():
+    from src.industries.loader import get_industry, match_major
+
+    pack = get_industry("能动")
+    assert pack["id"] == "energy"
+    assert "能源与动力工程" in pack["related_majors"]["core"]
+    info = match_major(pack, "能动")
+    assert info["match"] == "core"
+    assert info["canonical"] == "能源与动力工程"
+
+
+def test_energy_snapshot_uses_energy_pack(temp_profile, monkeypatch):
+    jobs = [
+        {
+            "title": "电厂集控运行",
+            "company": "某发电集团",
+            "location": "宁波",
+            "salary": "10-15K",
+            "url": "https://example.com/energy/1",
+            "_role_id": "power_plant",
+            "_role_name": "电厂运行/运维",
+        }
+    ]
+    monkeypatch.setattr(snapshot_module, "_collect_market", lambda *args, **kwargs: (jobs, []))
+
+    data = _call(industry="能源动力", major="能源与动力工程", city="宁波")
+    assert data["industry"]["id"] == "energy"
+    assert any(r["id"] == "power_plant" for r in data["roles"])
+    assert data["market"]["job_count"] == 1
+    assert any(b["value"] == 7199 for b in data["benchmarks"])

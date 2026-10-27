@@ -6,7 +6,7 @@
 
 必填：
 
-- 行业：默认互联网/软件行业（`industry="internet"`）
+- 行业：默认互联网/软件行业（`industry="internet"`）；也可选能源动力行业（`industry="energy"`）
 
 可选：
 

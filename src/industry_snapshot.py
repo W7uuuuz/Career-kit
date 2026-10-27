@@ -185,7 +185,7 @@ def build_snapshot(
         gaps.append("实时招聘样本未获取：需要 BOSS 登录或稍后重试；当前展示行业地图与岗位卡。")
     if not salary.get("count"):
         gaps.append("薪资样本为空：不推断具体数字。")
-    if len(roles) > 5:
+    if jobs and len(roles) > 5:
         gaps.append("本次只抓取前 5 个岗位族的招聘样本；其余岗位仅展示职责与门槛。")
     if school or degree or graduation_year:
         gaps.append("本次快照未按学校/学历/届别过滤：通用招聘样本不等于同校同届去向。")

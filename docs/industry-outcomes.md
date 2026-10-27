@@ -8,7 +8,7 @@
 ~/.career-kit/industry_outcomes/<industry_id>.json
 ```
 
-MVP 的 `industry_id` 为 `internet`。
+MVP 的 `industry_id` 为 `internet`（互联网/软件）、`energy`（能源动力）。
 
 ## 最小结构
 
