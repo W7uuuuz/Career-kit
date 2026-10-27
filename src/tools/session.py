@@ -136,8 +136,9 @@ WELCOME_PROMPT = """\
       层级不是准入许可，跨级不禁止，但需说明依据（作品集/内推/前序交付）
     - **步骤 4 逐阶段深入细化**：每阶段 KPI（尽量可验证）、里程碑（带完成标准）、
       任务（一次坐下可完成粒度）、jd 三件套；有调研时 jd 细节优先引用 `profile.research`
-    - **步骤 5 审计（第二意见）**：调用 career-roadmap-auditor，输出
-      PASS / PASS_WITH_NOTES / FAIL，最多 3 条 must_fix；save_roadmap_audit 落库，不阻断定稿
+    - **步骤 5 保存雏形 + 审计（第二意见）**：先 save_roadmap 保存当前雏形，
+      再调用 career-roadmap-auditor，输出 PASS / PASS_WITH_NOTES / FAIL，
+      最多 3 条 must_fix；save_roadmap_audit 落库，不阻断定稿
     - **步骤 6 定稿**（用户确认）：一次性展示全流程雏形，用户确认后 save_roadmap；
       保存后如实复述质量建议与审计未解决项
 14. **jd 三件套纪律**（知识光谱）：公司名与选人特点是公开常识，可直接写（如「某司欢迎双非」）；

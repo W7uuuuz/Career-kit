@@ -80,18 +80,20 @@ def generate_roadmap() -> str:
             },
             {
                 "step": 5,
-                "name": "审计（第二意见）",
-                "action": "调用 career-roadmap-auditor 按 roadmap.yaml audit_checklist 检查完整雏形；"
-                          "输出 PASS / PASS_WITH_NOTES / FAIL，FAIL 只用于硬矛盾，最多 3 条 must_fix。"
-                          "调用 save_roadmap_audit 落库；审计结果只作记录与提示，不阻断定稿。"
-                          "需要修改时由 LLM 与用户决定，避免为迎合清单反复重写",
+                "name": "保存雏形 + 审计（第二意见）",
+                "action": "先调用 save_roadmap(roadmap_json) 保存当前雏形（结构校验通过即可，"
+                          "质量项只作建议）；再调用 career-roadmap-auditor 按 roadmap.yaml "
+                          "audit_checklist 检查，输出 PASS / PASS_WITH_NOTES / FAIL，"
+                          "FAIL 只用于硬矛盾、最多 3 条 must_fix；随后调用 save_roadmap_audit 落库。"
+                          "审计不阻断定稿，是否修改由 LLM 与用户决定，不做无界重审",
                 "output": {"verdict": "PASS/PASS_WITH_NOTES/FAIL", "issues": [{"checklist_id": "", "problem": "", "fix": ""}], "notes": []},
                 "checkpoint": False,
             },
             {
                 "step": 6,
                 "name": "定稿交付",
-                "action": "一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），用户确认后调用 save_roadmap(roadmap_json)；"
+                "action": "按需采纳审计建议与质量提示后，再次调用 save_roadmap(roadmap_json) 完成定稿；"
+                          "一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），"
                           "保存后如实复述质量建议与审计未解决项，由用户决定是否继续调整",
                 "output": "save_roadmap(roadmap_json)",
                 "checkpoint": True,
@@ -109,8 +111,9 @@ def generate_roadmap() -> str:
             "2. checkpoint=true 的步骤必须先把中间产物展示给用户确认，确认后再继续\n"
             "3. 起点判定可使用 start_level_rubric 作为参考，但不要把它当准入许可；"
             "等价证据（生产交付/开源/内推）同样有效\n"
-            "4. 审计是第二意见：调用 career-roadmap-auditor 后用 save_roadmap_audit 落库，"
-            "审计不阻断定稿；FAIL 只用于硬矛盾，优先处理最多 3 条 must_fix，其余作为建议\n"
+            "4. 审计是第二意见：先 save_roadmap 保存雏形（结构校验通过即可），"
+            "再调用 career-roadmap-auditor 并用 save_roadmap_audit 落库；审计不阻断定稿，"
+            "FAIL 只用于硬矛盾，优先处理最多 3 条 must_fix，其余作为建议\n"
             "5. 过程中需要真实岗位数据时用 search_cases / fetch_company_jobs / fetch_jd_detail 获取，"
             "拿不到就 jd 占位（pending_user_import），绝不编造\n"
             "6. 最终调用 save_roadmap(roadmap_json) 保存；保存后向用户复述质量建议与未解决项；"

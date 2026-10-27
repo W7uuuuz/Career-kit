@@ -71,15 +71,17 @@ methodology:
             时间节奏词与伞形描述只作建议提示，不再硬拒绝
           - jd 三件套：company/rationale（常识可写）+ jd/jd_status（真实数据才填）
 
-        【步骤 5｜审计（第二意见）】
-        - 调 career-roadmap-auditor 按 audit_checklist 检查完整雏形
+        【步骤 5｜保存雏形 + 审计（第二意见）】
+        - 先调用 save_roadmap(roadmap_json) 保存当前雏形（结构校验通过即可）
+        - 再调 career-roadmap-auditor 按 audit_checklist 检查
         - 输出 PASS / PASS_WITH_NOTES / FAIL；FAIL 只用于硬矛盾，最多 3 条 must_fix
         - 调用 save_roadmap_audit 落库（按 roadmap_hash 绑定）；审计不阻断定稿
         - 需要修改时由 LLM 与用户决定，不做无界重审
 
         【步骤 6｜定稿】（用户确认）
+        - 按需采纳审计建议与质量提示后，再次 save_roadmap(roadmap_json) 定稿
         - 一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），用户确认
-        - 确认后调用 save_roadmap(roadmap_json)；保存后如实复述质量建议与审计未解决项
+        - 保存后如实复述质量建议与审计未解决项
 
         阶段类型规范：
         - learn（学习技能）：刷题、学框架、考认证、看文档、跟教程。resume_value 通常为空。
