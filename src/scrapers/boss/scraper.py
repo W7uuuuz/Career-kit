@@ -275,6 +275,12 @@ class Scraper(CompanyScraper):
         except Exception as e:
             return [{"error": f"请求失败: {e}"}]
 
+        # 环境异常优先于 code=37：登录态已不可用，先销毁再谈 stoken
+        message = str(data.get("message") or "")
+        if is_env_anomaly_message(message):
+            invalidate_auth("api_env_anomaly")
+            return [{"error": _env_anomaly_error(message)}]
+
         # 处理 code=37（需要计算 stoken）
         if data.get("code") == 37:
             new_stoken = handle_code37(data)
