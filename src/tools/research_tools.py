@@ -258,7 +258,7 @@ async def gather_research_data(
         direction: 报告标题与档案归档使用的方向名（默认取 case_query.role）
         city: 报告上下文城市（默认取 case_query.city / want / who）
         boss_confirmed: 范围含 BOSS 直聘时必须先问用户，用户同意后传 true。
-            BOSS 需要扫码登录（cookies 长期复用）；未确认会返回 CONFIRMATION_REQUIRED
+            BOSS 需要扫码登录（登录态 2 小时有效）；未确认会返回 CONFIRMATION_REQUIRED
             让你先去问用户，未登录会返回 LOGIN_REQUIRED 让你问用户是否现在登录。
 
     Returns:
@@ -313,10 +313,10 @@ async def gather_research_data(
     if uses_boss and not boss_confirmed:
         return error_response(
             "CONFIRMATION_REQUIRED",
-            "调研范围含 BOSS 直聘：该源需要扫码登录（cookies 长期复用），"
+            "调研范围含 BOSS 直聘：该源需要扫码登录（登录态 2 小时有效），"
             "抓取前必须先问用户是否进行 BOSS 抓取。",
             {
-                "question": "是否抓取 BOSS 直聘？需要你扫码登录一次（登录态长期有效）。",
+                "question": "是否抓取 BOSS 直聘？需要你扫码登录一次（登录态 2 小时有效，过期需重登）。",
                 "options": [
                     "同意：带 boss_confirmed=true 重新调用 gather_research_data",
                     "不同意：从 jd_specs / case_query 移除 boss 后重跑，其他源照常抓取",
@@ -344,7 +344,7 @@ async def gather_research_data(
             if boss_unlogged and slug == "boss":
                 families.append(
                     {"slug": slug, "label": label or slug, "rows": [], "status": "failed",
-                     "error": "BOSS 直聘未登录（cookies 未就绪），未抓取该源；其他源继续",
+                     "error": "BOSS 直聘登录态不可用（未登录或超过 2 小时），未抓取该源；其他源继续",
                      "elapsed": 0.0, "dropped_no_detail": 0, "dropped_titles": []}
                 )
                 continue
@@ -412,14 +412,25 @@ async def gather_research_data(
     gathered = await asyncio.to_thread(_run)
     report = build_report(profile, gathered)
     counts = report.get("counts") or {}
+    # 运行中可能被 API 环境异常主动销毁；重新读一次，不能只看抓取前状态
+    boss_auth_lost = (
+        uses_boss
+        and not boss_unlogged
+        and not boss_has_valid_cookies()
+    )
     if not (counts.get("jd_samples") or counts.get("cases")):
-        if boss_unlogged:
+        if boss_unlogged or boss_auth_lost:
+            reason = (
+                "BOSS 直聘登录态已过期或触发环境异常，已被销毁，"
+                if boss_auth_lost
+                else "BOSS 直聘未登录，"
+            )
             return error_response(
                 "LOGIN_REQUIRED",
-                "BOSS 直聘未登录，其他来源本次也没有可用数据。"
+                f"{reason}其他来源本次也没有可用数据。"
                 "可先扫码登录后重试，或改用其他数据源/导入 JD。",
                 {
-                    "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                    "question": "BOSS 直聘登录态不可用，是否现在扫码登录后再抓取？",
                     "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
                     "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
                     "source_status": report.get("source_status") or [],
@@ -441,7 +452,13 @@ async def gather_research_data(
 
     paths = await asyncio.to_thread(save_report, profile, report)
     message = _render_report_message(report, paths)
-    if boss_unlogged:
+    if boss_auth_lost:
+        message += (
+            "\n\nBOSS 直聘：登录态已过期或触发环境异常，已被销毁。"
+            "如需补全，重新扫码登录后带 boss_confirmed=true 重跑："
+            f'"{sys.executable}" -m src.scrapers.boss.login'
+        )
+    elif boss_unlogged:
         message += (
             "\n\nBOSS 直聘：未登录，已跳过（其他来源已照常抓取）。"
             "如需补全，登录后带 boss_confirmed=true 重跑："

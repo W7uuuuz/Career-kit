@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from ..base import CompanyScraper
-from .auth import has_valid_cookies, load_cookies
+from .auth import has_valid_cookies, invalidate_auth, is_env_anomaly_message, load_cookies
 from .stoken import get_stoken, handle_code37
 
 # 常量
@@ -64,6 +64,31 @@ def _build_headers(cookies: dict[str, str], stoken: str | None = None) -> dict:
         "Origin": "https://www.zhipin.com",
         "Cookie": cookie_str,
     }
+
+
+def _login_required_message() -> str:
+    return (
+        "需要登录 BOSS 直聘（登录态不存在、已超过 2 小时或已被风控销毁）。"
+        "请在 career-kit 项目目录运行：\n"
+        f'    "{sys.executable}" -m src.scrapers.boss.login\n'
+        "使用当前 MCP 服务的解释器（绝对路径），避免裸 python 指向错误环境。\n"
+        "注意：如果这个路径不是你开发 Career Kit 的仓库，说明 MCP 服务连了旧实例"
+        "——重启 Agent 会话（opencode）即可切到当前代码。\n"
+        "扫码成功后登录态按 2 小时有效期管理，过期需重新登录。"
+    )
+
+
+def _env_anomaly_error(message: str) -> str:
+    return (
+        f"API 错误: {message}\n"
+        "BOSS 登录态已被判定异常并销毁。请重新扫码登录后再试：\n"
+        f'    "{sys.executable}" -m src.scrapers.boss.login'
+    )
+
+
+def _response_has_env_anomaly(resp: Any) -> bool:
+    """HTTP 层（如 403/风控页）也可能返回环境异常文案。"""
+    return is_env_anomaly_message(str(getattr(resp, "text", "") or ""))
 
 
 def _map_job(raw: dict) -> dict:
@@ -175,6 +200,10 @@ class Scraper(CompanyScraper):
         if not keyword:
             return [{"error": "搜索关键词不能为空"}]
 
+        # 登录态必须先于缓存校验：过期登录态不允许继续吃旧缓存
+        if not has_valid_cookies():
+            return [{"error": _login_required_message()}]
+
         # 查缓存
         search_cache = self._make_cache("search")
         city_code = _resolve_city(city)
@@ -197,6 +226,10 @@ class Scraper(CompanyScraper):
         if "zhipin.com" not in url:
             return {"error": f"非 BOSS 直聘 URL: {url}"}
 
+        # 登录态必须先于缓存校验
+        if not has_valid_cookies():
+            return {"error": _login_required_message()}
+
         # 查缓存
         detail_cache = self._make_cache("detail")
         key = self._cache_key(url=url)
@@ -216,14 +249,7 @@ class Scraper(CompanyScraper):
     def _search_api(self, keyword: str, city: str, limit: int) -> list[dict[str, Any]]:
         """通过 API 搜索岗位。"""
         if not has_valid_cookies():
-            return [{"error": (
-                "需要登录 BOSS 直聘。请在 career-kit 项目目录运行：\n"
-                f'    "{sys.executable}" -m src.scrapers.boss.login\n'
-                "使用当前 MCP 服务的解释器（绝对路径），避免裸 python 指向错误环境。\n"
-                "注意：如果这个路径不是你开发 Career Kit 的仓库，说明 MCP 服务连了旧实例"
-                "——重启 Agent 会话（opencode）即可切到当前代码。\n"
-                "按提示在浏览器完成扫码即可；cookies 保存后长期有效（过期时重跑一次）。"
-            )}]
+            return [{"error": _login_required_message()}]
 
         cookies = load_cookies()
         stoken = get_stoken()
@@ -239,6 +265,12 @@ class Scraper(CompanyScraper):
 
         try:
             resp = httpx.get(SEARCH_URL, params=params, headers=headers, timeout=15)
+        except Exception as e:
+            return [{"error": f"请求失败: {e}"}]
+        if _response_has_env_anomaly(resp):
+            invalidate_auth("http_env_anomaly")
+            return [{"error": _env_anomaly_error("您的环境存在异常")}]
+        try:
             data = resp.json()
         except Exception as e:
             return [{"error": f"请求失败: {e}"}]
@@ -250,11 +282,23 @@ class Scraper(CompanyScraper):
                 headers = _build_headers(cookies, new_stoken)
                 try:
                     resp = httpx.get(SEARCH_URL, params=params, headers=headers, timeout=15)
+                except Exception as e:
+                    return [{"error": f"重试失败: {e}"}]
+                if _response_has_env_anomaly(resp):
+                    invalidate_auth("http_env_anomaly")
+                    return [{"error": _env_anomaly_error("您的环境存在异常")}]
+                try:
                     data = resp.json()
                 except Exception as e:
                     return [{"error": f"重试失败: {e}"}]
             else:
                 return [{"error": "stoken 计算失败，请安装 iv8: pip install iv8"}]
+
+        # 环境异常是登录态失效的真实信号：立即销毁，不继续用旧 cookies 试
+        message = str(data.get("message") or "")
+        if is_env_anomaly_message(message):
+            invalidate_auth("api_env_anomaly")
+            return [{"error": _env_anomaly_error(message)}]
 
         # 处理其他错误码
         code = data.get("code")
@@ -273,10 +317,7 @@ class Scraper(CompanyScraper):
     def _fetch_detail(self, url: str) -> dict[str, Any]:
         """获取岗位详情。"""
         if not has_valid_cookies():
-            return {"error": (
-                "需要登录 BOSS 直聘。请在本项目目录运行：\n"
-                f'    "{sys.executable}" -m src.scrapers.boss.login'
-            )}
+            return {"error": _login_required_message()}
 
         cookies = load_cookies()
         stoken = get_stoken()
@@ -287,6 +328,10 @@ class Scraper(CompanyScraper):
             html = resp.text
         except Exception as e:
             return {"error": f"请求失败: {e}"}
+
+        if is_env_anomaly_message(html):
+            invalidate_auth("detail_env_anomaly")
+            return {"error": _env_anomaly_error("您的环境存在异常")}
 
         result = _parse_detail_html(html)
         result["url"] = url

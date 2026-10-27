@@ -206,10 +206,10 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         if not has_valid_cookies():
             return error_response(
                 "LOGIN_REQUIRED",
-                "BOSS 直聘尚未登录（cookies 未就绪）——该源需要扫码登录一次，"
-                "登录态长期复用。",
+                "BOSS 直聘尚未登录（cookies 不存在或已超过 2 小时有效期）——"
+                "该源需要扫码登录一次，登录态按 2 小时有效期管理。",
                 {
-                    "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                    "question": "BOSS 直聘登录态不可用，是否现在扫码登录后再抓取？",
                     "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
                     "after_login": "登录成功后重试 fetch_company_jobs(company=\"boss\", ...)",
                     "recovery": (
@@ -239,11 +239,12 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
             return error_response(
                 "LOGIN_REQUIRED",
                 f"{message}\n\n{server_fingerprint_line()}\n"
-                "BOSS 直聘需要先登录——先问用户：是否现在扫码登录？"
+                "BOSS 直聘登录态不可用（未登录、超过 2 小时或已被风控销毁）——"
+                "先问用户：是否现在扫码登录？"
                 "同意（登录成功后重试 / 走 gather_research_data 时带 boss_confirmed=true）；"
                 "不同意（改用其他数据源或导入手头 JD）。",
                 {
-                    "question": "BOSS 直聘还未登录，是否现在扫码登录后再抓取？",
+                    "question": "BOSS 直聘登录态不可用，是否现在扫码登录后再抓取？",
                     "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
                     "recovery": recovery,
                     "rule": "把 question 转问用户并等待答复；不要把登录缺失直接当抓取失败宣布",

@@ -217,10 +217,11 @@ def _attempt_login(p, channel: str, force_direct: bool) -> bool | None:
                     continue
                 if has_stoken:
                     print(f"[login] OK 登录态已保存（{len(accumulated)} 条 cookies，"
-                          "stoken 已捕获）。fetch_company_jobs(company=\"boss\") 现在可用。")
+                          "stoken 已捕获，2 小时内有效）。"
+                          "fetch_company_jobs(company=\"boss\") 现在可用。")
                 else:
                     print(f"[login] △ 登录态已保存（{len(accumulated)} 条 cookies），"
-                          "但 stoken 迟迟未生成——首次搜索可能被风控拦截，"
+                          "2 小时内有效，但 stoken 迟迟未生成——首次搜索可能被风控拦截，"
                           "届时重跑本命令即可补采。")
                 return True
 

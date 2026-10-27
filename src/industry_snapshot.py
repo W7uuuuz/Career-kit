@@ -36,7 +36,7 @@ def _collect_market(
     """用通用招聘源抓当前在招样本；未登录/失败只记缺口，不阻断快照。"""
     warnings: list[str] = []
     if not _boss_logged_in():
-        return [], ["BOSS 直聘未登录：本次未获取实时招聘薪资；登录后可重试。"]
+        return [], ["BOSS 直聘未登录或登录态已过期：本次未获取实时招聘薪资；重新登录后可重试。"]
 
     from .scrapers import search_company_jobs
 
