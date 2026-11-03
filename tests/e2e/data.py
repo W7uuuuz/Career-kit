@@ -47,6 +47,7 @@ WANT = {
     "salary": "20k-30k",
     "target_companies": ["腾讯", "字节跳动"],
     "experience_level": "小厂",
+    "user_confirmed": True,
 }
 
 AGENT_JD = """# AI Agent 开发工程师（校招）

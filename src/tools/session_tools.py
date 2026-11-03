@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ..guidance import (
+    guide_for,
+    mark_brief_shown,
+    mark_goal_confirmed,
+    opening_blocks,
+    reset_goal_confirmation,
+)
 from ..mcp_app import mcp
 from .errors import InvalidJsonError, error_response
 from .industry_state import industry_of, mark_industry_change
@@ -52,6 +59,7 @@ def start_session() -> str:
             "3. 用户说目标变了 / 想换方向 → 按 get_workflow_status 提示重新分析规划\n"
             "4. 用户明确要重新建档 → switch_profile 或 delete_profile 后走全量手册\n"
             "5. 用户只想要市场调研概览 → research_market → gather_research_data\n\n"
+            f"{guide_for(profile)}\n\n"
             f"[服务自检] {server_fingerprint_line()}"
         )
 
@@ -75,17 +83,25 @@ def start_session() -> str:
             "有方向 → intake(section='want') 记录目标，再走 analyze_gaps；\n"
             "没方向 → 换一个方向看，或先聊兴趣和约束；不要停在知识讲解。\n"
             "扫盲不是规划门禁，用户不想继续时可直接结束。\n\n"
+            f"{guide_for(profile)}\n\n"
             f"[服务自检] {server_fingerprint_line()}"
         )
 
+    # 首屏：先渲染含 [USER_BRIEF] 的引导，再落「已展示」状态；
+    # 这样即使模型忘了发，下一次 get_workflow_status 也不会误以为用户看过简介。
+    blocks = opening_blocks(profile)
+    mark_brief_shown(profile)
+    save_profile(profile)
     return (
+        f"{blocks}\n\n"
+        "---\n"
+        "[执行手册 · 仅模型可见，不要复述给用户]\n"
         f"{get_welcome_message()}\n\n"
         f"当前档案：{get_active_profile_name()}\n"
         f"{summary_note}"
         f"\n[服务自检] {server_fingerprint_line()}\n"
-        "\n下一步：请先按第一轮规则判断用户认知，再决定是否调用 "
-        "get_industry_snapshot；不要直接索要简历或目标。\n"
-        '示例：intake(section="who", data=\'{"name":"张三", "education":"计算机本科"}\')'
+        "\n下一步：先把 [USER_BRIEF] 原样发给用户（若存在），再只问 [GUIDE] 里的问题；"
+        "不要直接索要简历或目标。"
     )
 
 
@@ -121,7 +137,8 @@ def parse_resume(file_path: str) -> str:
         "并写入 have.self_assessment 整份简历自评\n\n"
         '示例：intake(section="who", data=\'{"name":"张三", "education":"..."}\')\n'
         "下一步：自评与求证完成后调用 intake(section=\"have\")；"
-        "目标明确后调用 intake(section=\"want\")。"
+        "目标明确后调用 intake(section=\"want\")。\n\n"
+        + guide_for(load_profile())
     )
 
 
@@ -154,7 +171,7 @@ def intake(section: str, data: str) -> str:
 
     # 先校验再写入：坏 JSON 静默入库会污染工作流状态判定（BUG-007）
     try:
-        _parse_json_param(data, f"{section} 数据")
+        payload = _parse_json_param(data, f"{section} 数据")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
@@ -163,6 +180,13 @@ def intake(section: str, data: str) -> str:
     if section == "want":
         old_industry = industry_of(before.want)
     profile = merge_section(section, data)
+    if section == "want":
+        # 只有用户本人确认过才点亮「目标已确认」；模型推断写入的 want 不算。
+        if payload.get("user_confirmed") is True:
+            mark_goal_confirmed(profile)
+        else:
+            reset_goal_confirmation(profile)
+        save_profile(profile)
     result = (
         f"已记录到「{section}」。当前档案版本：v{profile.version}\n"
         "下一步：继续补齐其他 section；who/have/want 都有内容后调用 finalize_profile。"
@@ -189,7 +213,7 @@ def intake(section: str, data: str) -> str:
                 "不补充也不影响流程，届别校验会自动跳过。"
             )
 
-    return result
+    return result + "\n\n" + guide_for(load_profile())
 
 
 @mcp.tool()

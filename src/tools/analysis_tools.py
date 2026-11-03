@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..guidance import goal_confirmed, guide_for
 from ..mcp_app import mcp
 from ..models import JourneyEntry
 from .errors import InvalidJsonError, error_response
@@ -154,6 +155,18 @@ def analyze_gaps() -> str:
             },
         )
 
+    # 目标确认门禁：只在引导流程内生效（brief_shown_at 存在）。
+    # 简历推断的方向不能被直接当成用户目标，否则整份分析建立在模型假设上。
+    if (profile.guidance or {}).get("brief_shown_at") and not goal_confirmed(profile):
+        guide = guide_for(profile)
+        return error_response(
+            "GOAL_CONFIRMATION_REQUIRED",
+            "目标还没有由用户确认。先按下面的问句确认，"
+            "确认后在 intake(section='want', data=...) 里带 user_confirmed=true 再分析。\n\n"
+            f"{guide}",
+            {"missing": "goal_confirmed", "guide": guide},
+        )
+
     # 摸排硬门禁（BUG-001 双保险）：finalize 已被跳过摸排（用户主动跳过除外）时拒绝分析。
     # confidence 自标不算证据，evidence 必须用户确认。
     have = profile.have or {}
@@ -206,6 +219,7 @@ def analyze_gaps() -> str:
 
     research = profile.research or {}
     return _json({
+        "guide": guide_for(profile),
         "next_steps": ["read_research_details", "search_cases", "save_gap_analysis"],
         "methodologies": [ctx1["methodology"], ctx2["methodology"]],
         "profile": ctx1["profile"],
@@ -558,7 +572,8 @@ def save_gap_analysis(gap_json: str) -> str:
     return _json({
         "message": (
             f"差距分析已保存。\n\n{report}{advisory_text}\n\n"
-            "下一步：调用 generate_roadmap 生成路线图。"
+            "下一步：调用 generate_roadmap 生成路线图。\n\n"
+            f"{guide_for(profile)}"
         ),
         "next_steps": ["generate_roadmap"],
         "context": {

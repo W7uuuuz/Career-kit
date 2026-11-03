@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **重构引导词系统（2026-11-03）**：
+  - 新增 `src/guidance.py`：6 步旅程、位置推导、本轮唯一决策、警告与文案渲染的唯一事实源；
+    引导状态由档案推导（`profile.guidance`），不再依赖模型记忆
+  - 用户文案与执行指令分离：`start_session` / `get_workflow_status` / `intake` / `parse_resume`
+    / `save_gap_analysis` / `save_roadmap` / `generate_tasks` 直接下发 `[USER_BRIEF]` / `[GUIDE]`，
+    模型只负责转述，不再自行拼流程概览
+  - 目标确认纪律：简历推断的目标只能作为候选；`intake(want)` 带 `user_confirmed=true`
+    才点亮「目标已确认」，否则 GUIDE 停在确认问句
+  - 内部术语人话化：审计结论返回 `verdict_label`（通过 / 通过但有建议 / 发现硬矛盾），
+    不再把 `PASS_WITH_NOTES`、`must_fix` 暴露给用户
+  - 收敛重复文案：命令剧本与 `docs/prompts/onboarding.md` 改为只引用引导块；
+    防漂移测试改为校验「单一事实源 + 命令剧本不复制模板」
+  - 新增 `tests/test_guidance.py`；文档一致性测试同步重构
+
 - **修复行业切换未标记旧分析过期（2026-10-27）**：
   - 抽出共享 `mark_industry_change`；`get_industry_snapshot` 切换行业时与 `intake` 一致
     设置 `gap_stale_at`，并在返回中暴露 `analysis_stale`

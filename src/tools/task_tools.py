@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import INDEX_FILENAME, get_assets_root
+from ..guidance import guide_for
 from ..mcp_app import mcp
 from .dashboard import (
     render_progress_html as _render_progress_html,
@@ -66,7 +67,8 @@ def generate_tasks() -> str:
         "message": (
             f"{migrated_note}已从路线图生成 {len(tasks)} 个任务。\n"
             "下一步：调用 get_next_tasks 查看当前阶段的执行任务，开始第一阶段；"
-            "或调用 detail_current_phase 生成当前阶段的详细路线（含按天/按比例打卡点）。"
+            "或调用 detail_current_phase 生成当前阶段的详细路线（含按天/按比例打卡点）。\n\n"
+            f"{guide_for(profile)}"
         ),
         "tasks": format_task_list(tasks, "生成的任务"),
         "next_steps": ["get_next_tasks", "detail_current_phase"],
@@ -774,8 +776,8 @@ def get_workflow_status() -> str:
     total_tasks = len(profile.tasks)
     completed_tasks = sum(1 for t in profile.tasks if t.status == "completed")
 
-    lines = []
-    lines.append(f"## 当前状态：{phase}")
+    lines = [guide_for(profile), ""]
+    lines.append(f"## 当前状态：{phase}（内部状态，不给用户复述）")
     lines.append(f"**当前档案**：{get_active_profile_name()}")
     lines.append("")
     if goal_change_alert:

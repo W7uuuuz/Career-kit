@@ -19,12 +19,14 @@
 **流程**：
 
 ```
-1. 先问：完全不了解 / 有一些想法 / 已有明确目标
-2. 完全不了解或没有规划：
+1. start_session() → 返回 [USER_BRIEF]（6 步简介）与 [GUIDE]（本轮唯一问题）
+2. 先发 [USER_BRIEF]，再只问 [GUIDE].ask（完全不了解 / 有一些想法 / 已有明确目标）
+3. 完全不了解或没有规划：
    - 显式询问是否扫盲；拒绝则直接 explore_goals，不阻塞
    - 同意：确认行业（MVP 互联网/软件、能源动力），专业可选
    - get_industry_snapshot(industry, major?, city?)
-3. 已有明确目标：跳过扫盲，确认行业后进入阶段 1
+4. 已有明确目标：跳过扫盲，确认行业后进入阶段 1
+5. 业务引导状态由 src/guidance.py 推导，后续每轮以最新 [GUIDE] 为准
 ```
 
 **输出**：
@@ -58,9 +60,10 @@
                     # + control_level（0-10：3=讲架构，6=逐行讲清，8+=手写），
                     # 整份自评写 have.self_assessment（resume_trust + notes）
 5. 确定目标：
-   - 有明确目标 → intake(want)
-   - 方向模糊 → explore_goals() → 对话选定 → intake(want)
+   - 有明确目标 → 先复述方向/城市/届别 → intake(want, user_confirmed=true)
+   - 方向模糊 → explore_goals() → 对话选定 → intake(want, user_confirmed=true)
    - 有 JD 文件 → import_jd_file() / import_jd()
+   - 模型从简历推断的目标只能作为候选，未确认时 GUIDE 停在 goal 状态
 6. finalize_profile()
 ```
 

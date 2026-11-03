@@ -1,7 +1,9 @@
-"""文档一致性回归：工具数量与工具名在 docs 与注册表之间不得漂移。
+"""文档一致性回归：工具数量、工具名与引导文案不得漂移。
 
 背景：record_application/get_weekly_review 上线后，README 与 docs/README
 仍写「32 个工具」（实际 34）——用本测试锁定，防止下次再漂。
+
+引导文案已收敛到 src/guidance.py：命令剧本只负责路由，不再复制 6 步模板。
 """
 
 from __future__ import annotations
@@ -80,7 +82,13 @@ def test_scraper_config_matches_public_docs():
     assert not missing, f"docs/scrapers.md 缺少企业：{missing}"
 
 
+# ---------------------------------------------------------------------------
+# 引导系统一致性
+# ---------------------------------------------------------------------------
+
 BUG021_ANCHORS = ("authorship", "control_level", "self_assessment")
+
+GUIDANCE_ANCHORS = ("[USER_BRIEF]", "[GUIDE]", "start_session")
 
 
 def _probe_text() -> str:
@@ -89,17 +97,8 @@ def _probe_text() -> str:
     return SELF_ASSESSMENT_INSTRUCTIONS
 
 
-def test_bug021_instructions_reach_all_delivery_channels():
-    """BUG-021 防漂移：自评三问话术必须同步到全部交付面，缺一处即失败。
-
-    覆盖面：
-    - 话术常量本身带三个锚点词（authorship/control_level/self_assessment）
-    - parse_resume 指令正文
-    - session.py 手册（WELCOME_PROMPT Phase 1）
-    - 两份命令剧本（.opencode/commands 与 .claude/commands，探针②文本一致）
-    - 两份 sop 方法论（resume_screening / goal_selection）
-    - 三份公开文档（docs/llms.txt / docs/workflow.md / docs/tools.md）
-    """
+def test_bug021_instructions_reach_execution_surfaces():
+    """自评三问的详细话术只留在执行侧，命令剧本不再复制。"""
     probe = _probe_text()
     for anchor in BUG021_ANCHORS:
         assert anchor in probe, f"话术常量缺锚点 {anchor}"
@@ -107,8 +106,6 @@ def test_bug021_instructions_reach_all_delivery_channels():
     surfaces = [
         ("src", "tools", "session_tools.py"),
         ("src", "tools", "session.py"),
-        (".opencode", "commands", "career-kit.md"),
-        (".claude", "commands", "career-kit.md"),
         ("sop", "resume_screening.yaml"),
         ("sop", "goal_selection.yaml"),
         ("docs", "llms.txt"),
@@ -121,75 +118,40 @@ def test_bug021_instructions_reach_all_delivery_channels():
         assert not missing, f"{rel} 未同步 BUG-021 自评话术，缺：{missing}"
 
 
-def test_bug021_command_scripts_have_identical_probe_text():
-    """BUG-021：两份命令剧本的「自评三问」块必须逐字一致（历史漂移过）。"""
-    oc = _read(".opencode", "commands", "career-kit.md")
-    cc = _read(".claude", "commands", "career-kit.md")
-
-    start_oc = oc.find("并同轮完成自评三问")
-    start_cc = cc.find("并同轮完成自评三问")
-    assert start_oc != -1 and start_cc != -1, "剧本缺少自评三问探针"
-    end_oc = oc.find("skip_probing=True)", start_oc) + len("skip_probing=True)")
-    end_cc = cc.find("skip_probing=True)", start_cc) + len("skip_probing=True)")
-    assert oc[start_oc:end_oc] == cc[start_cc:end_cc], "两份剧本的探针文本漂移了"
-
-
-WELCOME_OVERVIEW_ANCHORS = [
-    "Career Kit 是你的 AI 职业陪练",
-    "从起步到上岸全流程 6 步",
-    "建档摸底",
-    "市场调研",
-    "差距分析",
-    "路线图规划",
-    "阶段顺序定、节奏自己掌握",
-    "执行打卡",
-    "持续陪跑",
-    "拿到了什么、下一步做什么",
-    "双击 index.html",
-    "回复信息密度",
-]
-
-
-def test_first_reply_overview_reaches_all_surfaces():
-    """第一轮流程概览模板必须下发到全部四份入口文本（用户实测反馈的修复）。
-
-    用户实测：/career-kit 发起后直接问个人情况，用户仍不知道全流程——
-    概览模板漂移到只剩部分载体时该体验会回归，用锚点锁定四处载体。
-    """
-    surfaces = [
-        ("src", "tools", "session.py"),
+def test_command_scripts_are_thin_and_guidance_driven():
+    """命令剧本只负责路由：引用 [USER_BRIEF]/[GUIDE]，禁止复制阶段模板。"""
+    for rel in [
         (".opencode", "commands", "career-kit.md"),
         (".claude", "commands", "career-kit.md"),
-        ("docs", "llms.txt"),
-    ]
-    for rel in surfaces:
+    ]:
         text = _read(*rel)
-        missing = [a for a in WELCOME_OVERVIEW_ANCHORS if a not in text]
-        # llms.txt 是给 LLM 的概览型描述，不逐字含模板句子，只查阶段名链
-        if rel == ("docs", "llms.txt"):
-            missing = [a for a in missing if a not in (
-                "Career Kit 是你的 AI 职业陪练",
-                "从起步到上岸全流程 6 步",
-                "路线图规划",
-                "阶段顺序定、节奏自己掌握",
-                "拿到了什么、下一步做什么",
-                "双击 index.html",
-                "回复信息密度",
-            )]
-        assert not missing, f"{rel} 未同步第一轮流程概览模板，缺：{missing}"
+        missing = [a for a in GUIDANCE_ANCHORS if a not in text]
+        assert not missing, f"{rel} 缺少引导锚点：{missing}"
+        assert "从起步到上岸全流程 6 步" not in text, f"{rel} 不应复制首屏模板"
+        assert "1. 建档摸底" not in text, f"{rel} 不应复制阶段清单"
 
 
-def test_welcome_overview_scripts_identical():
-    """两份命令剧本的「第一轮流程概览」块必须逐字一致（不让模板漂移）。"""
-    oc = _read(".opencode", "commands", "career-kit.md")
-    cc = _read(".claude", "commands", "career-kit.md")
+def test_user_brief_is_single_source_of_truth():
+    """6 步简介只由 guidance 定义；session.py 与命令剧本只引用。"""
+    from src.guidance import JOURNEY_STEPS, user_brief
 
-    probe = "Career Kit 是你的 AI 职业陪练"
-    start_oc = oc.find(probe)
-    start_cc = cc.find(probe)
-    assert start_oc != -1 and start_cc != -1, "剧本缺少流程概览探针"
-    tail = "不复述手册其余部分。"
-    end_oc = oc.find(tail, start_oc) + len(tail)
-    end_cc = cc.find(tail, start_cc) + len(tail)
-    assert end_oc != len(tail) - 1 and end_cc != len(tail) - 1, "概览块结尾对不上"
-    assert oc[start_oc:end_oc] == cc[start_cc:end_cc], "两份剧本的概览模板漂移了"
+    brief = user_brief()
+    assert "Career Kit 是你的 AI 职业陪练" in brief
+    assert "从起步到上岸全流程 6 步" in brief
+    assert "现在从第 1 步开始" in brief
+    for step in JOURNEY_STEPS:
+        assert step.name in brief, f"首屏简介缺阶段 {step.name}"
+
+    session_text = _read("src", "tools", "session.py")
+    assert "[USER_BRIEF]" in session_text
+    assert "从起步到上岸全流程 6 步" not in session_text, "session.py 不应复制首屏模板"
+
+
+def test_entry_tools_emit_guidance_blocks():
+    """入口工具必须直接返回引导块，而不是让模型自己拼。"""
+    session_tools = _read("src", "tools", "session_tools.py")
+    assert "opening_blocks(profile)" in session_tools
+    assert "guide_for(load_profile())" in session_tools
+
+    task_tools = _read("src", "tools", "task_tools.py")
+    assert "guide_for(profile)" in task_tools

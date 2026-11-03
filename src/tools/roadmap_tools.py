@@ -7,6 +7,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from ..guidance import guide_for, verdict_label
 from ..mcp_app import mcp
 from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
 from .errors import InvalidJsonError, error_response
@@ -471,9 +472,11 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
 
     audit_note = ""
     if audit:
-        verdict = audit.get("latest_verdict") or "未审计"
+        verdict = audit.get("latest_verdict") or ""
         stale = "（已过期：路线图内容已变化）" if audit.get("stale") else ""
-        audit_note = f"\n\n审计记录：latest_verdict={verdict}{stale}（第二意见，不阻断定稿）。"
+        audit_note = (
+            f"\n\n审计记录：{verdict_label(verdict)}{stale}（第二意见，不阻断定稿）。"
+        )
 
     return _json({
         "message": (
@@ -484,7 +487,8 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
             "接下来调用 generate_tasks 生成任务列表；生成后引导用户按路线图开始第一阶段执行"
-            "（或先 detail_current_phase 细化当前阶段的打卡路线）。"
+            "（或先 detail_current_phase 细化当前阶段的打卡路线）。\n\n"
+            f"{guide_for(profile)}"
         ),
         "next_steps": ["generate_tasks"],
         "context": {
@@ -591,19 +595,19 @@ def save_roadmap_audit(audit_json: str) -> str:
     save_profile(profile)
 
     lines = [
-        f"审计结果已落库（第 {entry['round']} 轮，verdict={verdict}）。",
-        "审计是第二意见，不再阻断定稿：请把未解决项如实转告用户，由用户决定是否调整。",
+        f"审计完成（第 {entry['round']} 轮，结论：{verdict_label(verdict)}）。",
+        "审计是第二意见，不阻断定稿：请把未解决项如实转告用户，由用户决定是否调整。",
     ]
     if verdict == "PASS":
-        lines.append("审计通过：可以定稿。")
+        lines.append("可以定稿。")
     elif verdict == "PASS_WITH_NOTES":
-        lines.append("有建议但无硬矛盾：可以定稿；建议项见下，按需采纳。")
+        lines.append("没有硬矛盾：可以定稿；下面的建议按需采纳。")
     else:
         lines.append(
-            f"审计发现硬矛盾（累计 FAIL {fail_rounds} 轮）：建议先修正；"
-            "定稿不被阻断，但请向用户明示这些风险。"
+            f"发现硬矛盾（累计 {fail_rounds} 轮）：建议先修正；"
+            "定稿不被阻断，但请向用户明示风险。"
         )
-        lines.append("请优先处理最多 3 条 must_fix，其余作为建议，避免无限重审。")
+        lines.append("优先处理最多 3 条必须修正项，其余作为建议，避免无限重审。")
     for item in issues:
         if isinstance(item, dict):
             lines.append(
@@ -618,6 +622,7 @@ def save_roadmap_audit(audit_json: str) -> str:
         "context": {
             "round": entry["round"],
             "verdict": verdict,
+            "verdict_label": verdict_label(verdict),
             "fail_rounds": fail_rounds,
             "roadmap_hash": roadmap_hash,
         },

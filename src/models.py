@@ -187,6 +187,11 @@ class CareerProfile(BaseModel):
     # save_gap_analysis 清空；非空时 get_workflow_status 强制下一步重新分析
     gap_stale_at: str = ""
 
+    # 引导状态（src/guidance.py 的唯一事实源）：
+    # brief_shown_at / goal_confirmed_at 由工具在合适时机写入，
+    # 用于推导「当前位置 + 本轮唯一决策」，不依赖模型记忆
+    guidance: dict[str, Any] = Field(default_factory=dict, description="引导状态")
+
     # 摸排门禁（BUG-001 + BUG-021 硬性要求）：have 有技能但无用户确认证据
     # （user_verified），或缺 authorship/control_level/self_assessment 自评时
     # finalize 不放行；唯一跳过方式是用户明确提出（finalize_profile(skip_probing=True)），
