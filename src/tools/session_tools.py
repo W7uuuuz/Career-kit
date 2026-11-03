@@ -158,6 +158,8 @@ def intake(section: str, data: str) -> str:
             - want: 你想要什么（目标岗位、行业、薪资）
                 - 扫盲阶段可写 industry_id / awareness_level / scan_consent
                 - 深度规划确认行业后写 industry / industry_id
+                - 必须由用户本人确认方向/城市/届别后，带 `user_confirmed=true` 写入；
+                  模型从简历推断的目标只能作为候选，不能直接进入分析
         data: 用户提供的信息，必须是 JSON 对象字符串
             示例：'{"name":"张三", "education":"计算机本科", "skills":["Python", "React"]}'
             非法 JSON 会被拒绝且不写入档案
