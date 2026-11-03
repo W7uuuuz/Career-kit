@@ -51,6 +51,12 @@ def get_knowledge_doc() -> str:
     return (DOCS_ROOT / "knowledge.md").read_text(encoding="utf-8")
 
 
+@mcp.resource("career-kit://docs/rules")
+def get_rules_doc() -> str:
+    """规则卡：档位含义、评分口径、打卡方式、数据边界。"""
+    return (DOCS_ROOT / "rules.md").read_text(encoding="utf-8")
+
+
 @mcp.resource("career-kit://docs/examples")
 def get_examples_doc() -> str:
     """示例目录：完整工作流示例、场景示例"""

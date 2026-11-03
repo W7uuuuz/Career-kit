@@ -372,6 +372,9 @@ def render_roadmap_map(profile) -> str:
                 "checkin_mode": t.checkin_mode or "once",
                 "checkin_goal": t.checkin_goal,
                 "checkin_progress": t.checkin_progress,
+                "how_to": list(t.how_to or []),
+                "resources": list(t.resources or []),
+                "done_criteria": t.done_criteria or "",
             })
         # 里程碑里的任务定义（未生成 task 时前端也能展示）
         milestone_tasks = []
@@ -381,6 +384,7 @@ def render_roadmap_map(profile) -> str:
                     "name": t.get("name", ""),
                     "desc": t.get("description", ""),
                     "priority": t.get("priority", "medium"),
+                    "done_criteria": t.get("done_criteria", ""),
                 })
 
         ms_names = {ms.get("id"): ms.get("name", "") for ms in phase.get("milestones", [])}
@@ -498,6 +502,14 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 .task-name {{ flex: 1; font-size: 13.5px; }}
 .task-name.done {{ text-decoration: line-through; color: var(--muted); }}
 .task-meta {{ color: var(--muted); font-size: 12px; }}
+.task-detail {{ margin: 0 4px 10px 34px; font-size: 12.5px; color: #5a6270; }}
+.task-detail summary {{ cursor: pointer; color: var(--brand); }}
+.task-detail ol {{ margin: 6px 0 4px 18px; padding: 0; }}
+.task-detail li {{ margin: 2px 0; }}
+.task-done, .task-res {{ margin-top: 4px; }}
+.task-res a {{ color: var(--brand); }}
+.ms-preview {{ margin: 8px 0 0 18px; padding: 0; color: #5a6270; font-size: 12.5px; }}
+.ms-preview li {{ margin: 4px 0; }}
 .ck-ctl {{ color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }}
 .ck-btn {{ padding: 3px 10px; border: 1px solid var(--brand); background: var(--brand-soft);
            color: var(--brand); border-radius: 8px; font-size: 12px; cursor: pointer; }}
@@ -590,7 +602,9 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       return {{ id: t.id, name: t.name, desc: t.desc, priority: t.priority,
                  milestone_id: t.milestone_id, state: st, __server_done: serverDone,
                  mode: mode, goal: t.checkin_goal || 0,
-                 progress: (t.checkin_progress || 0) }};
+                 progress: (t.checkin_progress || 0),
+                 how_to: t.how_to || [], resources: t.resources || [],
+                 done_criteria: t.done_criteria || '' }};
     }});
     return {{
       id: ph.id, name: ph.name, type: ph.type, goal: ph.goal,
@@ -665,16 +679,50 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
           }} else {{
             ctl = '<input type="checkbox" data-action="once" data-id="' + tid + '">';
           }}
+          var playbook = '';
+          if (t.done_criteria) {{
+            playbook += '<div class="task-done">完成标准：' + esc(t.done_criteria) + '</div>';
+          }}
+          if (t.how_to && t.how_to.length) {{
+            playbook += '<ol class="task-how">' + t.how_to.map(function (h) {{
+              return '<li>' + esc(h) + '</li>';
+            }}).join('') + '</ol>';
+          }}
+          if (t.resources && t.resources.length) {{
+            var resLinks = t.resources.map(function (r) {{
+              var label = esc(r.label || '资源');
+              if (r.url) {{
+                return '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + label + '</a>';
+              }}
+              if (r.search) {{
+                return '<span>' + label + '（搜索：' + esc(r.search) + '）</span>';
+              }}
+              return '';
+            }}).filter(Boolean).join(' · ');
+            if (resLinks) playbook += '<div class="task-res">资源：' + resLinks + '</div>';
+          }}
+          var detail = playbook
+            ? '<details class="task-detail"><summary>怎么做 / 完成标准</summary>' + playbook + '</details>'
+            : '';
           tasksHtml += msLabel
+            + '<div class="task-row">'
             + '<label class="task">'
             + ctl
             + '<span class="' + nameCls + '">'
             + '<span class="pr ' + pr + '"></span>' + esc(t.name) + '</span>'
             + '<span class="task-meta">' + tid + '</span>'
-            + '</label>';
+            + '</label>'
+            + detail
+            + '</div>';
         }});
       }} else if (ph.milestone_tasks.length) {{
-        tasksHtml = '<div class="empty">里程碑已规划（任务列表生成后即可打卡）</div>';
+        var preview = ph.milestone_tasks.map(function (m) {{
+          var pr = {{ high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }}[m.priority] || 'pr-medium';
+          var done = m.done_criteria ? '：' + esc(m.done_criteria) : '';
+          return '<li><span class="pr ' + pr + '"></span>' + esc(m.name) + done + '</li>';
+        }}).join('');
+        tasksHtml = '<div class="empty">里程碑已规划；细化当前阶段后会变成可打卡任务。</div>'
+          + '<ul class="ms-preview">' + preview + '</ul>';
       }} else {{
         tasksHtml = '<div class="empty">暂无任务</div>';
       }}

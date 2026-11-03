@@ -15,7 +15,8 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 引导文案的唯一事实源是 `src/guidance.py`；工具返回两块用户可见内容：
 
 - `[USER_BRIEF]`：6 步简介（新用户首次进入时出现）
-- `[GUIDE]`：位置 / 为什么做这一步 / 会拿到什么 / 本轮唯一问题 / 选项 / 下一步动作
+- `[GUIDE]`：位置 / 为什么做这一步 / 会拿到什么 / 本轮要做什么 / 怎么做 /
+  结果怎么读 / 本轮唯一问题 / 选项 / 下一步动作
 
 执行纪律：
 
@@ -25,6 +26,8 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 - 目标必须由用户确认：`intake(section="want", ...)` 带 `user_confirmed=true` 才算确认；
   从简历推断的方向只能作为候选。
 - 用户说「不知道做什么」时，按 `[GUIDE]` 的下一步走 `explore_goals`，不要直接分析。
+- 展示分数/档位前必须先说明口径（维度、权重、结果怎么读）；规则见
+  `career-kit://docs/rules`。
 
 ## 回复信息密度（每一轮都要遵守）
 
@@ -135,14 +138,16 @@ generate_roadmap() → save_roadmap(roadmap_json) → 审计（第二意见，�
 ### 5. 执行
 
 ```
-generate_tasks()
-→ detail_current_phase()             # 只细化当前阶段
-→ save_current_detail(detail_json)   # once / daily / percent 打卡点
-→ generate_tasks()                   # 合并打卡点
-→ get_next_tasks()
+detail_current_phase()               # 先细化当前阶段（先细化，后生成任务）
+→ save_current_detail(detail_json)   # 每个任务带 how_to / resources / done_criteria
+                                     # + once / daily / percent 打卡点
+→ generate_tasks()                   # 合并 playbook 与打卡点
+→ get_next_tasks()                   # 展示下一步任务、怎么做、资源链接、完成标准
 → checkin_task(task_id, status, notes, amount)
 → record_application(company, role, status, ...)   # 用户口述投递/面试/offer 事实时
 ```
+
+用户拒绝细化时，才直接 `generate_tasks()` 按里程碑生成粗任务。
 
 完成任务会自动沉淀能力证据到 `have.capability_evidence`。
 

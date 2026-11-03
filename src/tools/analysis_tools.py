@@ -283,6 +283,9 @@ def analyze_gaps() -> str:
             {
                 "step": 3,
                 "name": "两维分析",
+                "pre_brief": "在给出 match_score 之前先说明口径：匹配度由简历过筛、面试通过、"
+                             "经历匹配三部分组成，分数用于排序「先补什么」，不是录取概率；"
+                             "每项差距都要带来源。规则见 career-kit://docs/rules。",
                 "action": "先用两句话告诉用户方法论：为什么从「简历过筛」和「面试通过」两个维度看差距"
                           "（一个决定能不能被看见，一个决定能不能被选中）；然后基于真实数据逐维输出分析，"
                           "每个表格/清单必须带「为什么」和依据（来源的 JD/案例/用户自评），"
@@ -326,7 +329,9 @@ def analyze_gaps() -> str:
             "   用户不愿意再当场 search_cases 兜底——并如实说明「正式调研报告还没有，这是临时搜的」；\n"
             "   注意：若会话中没有 search_cases 工具（可能连了错误实例），岗位/案例样本不足时\n"
             "   必须明确降级——在分析结果里标注「案例对标数据缺口」，禁止静默跳过或编造案例；\n"
-            "3. step 3 分析前先核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
+            "3. step 3 给 match_score 前必须先按 pre_brief 说明口径"
+            "（分数是参考、由哪些维度构成、每项差距带来源），再给分数；\n"
+            "   随后核对 have 技能的作者身份与把控度（authorship / control_level）：\n"
             "   - authorship=ai_assisted/ai_generated 或 control_level<6 的技能是\n"
             "     「能讲清架构、能驱动验证」而非「能手写」——不得在 strengths 里赋予\n"
             "     「可手撕源码级」的面试深度，match_score 按自评校准后的真实水平评估；\n"

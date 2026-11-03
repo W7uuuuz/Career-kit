@@ -45,12 +45,14 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
     roadmap = profile.plan.get("roadmap", profile.plan)
     phases = roadmap.get("phases", [])
 
-    # 详细路线打卡点索引：task name -> {checkin_mode, checkin_goal, description}
-    detail_tasks: dict[str, dict] = {}
-    current_detail = (profile.plan.get("current_detail") or {})
-    for d in current_detail.get("tasks", []):
-        if isinstance(d, dict) and d.get("name"):
-            detail_tasks[d["name"]] = d
+    # 当前阶段的详细路线是权威任务清单：细化后直接替换该阶段任务，
+    # 不再按任务名和里程碑做弱匹配（否则改名后的细化任务会被丢弃）。
+    current_detail = profile.plan.get("current_detail") or {}
+    detail_phase_id = str(current_detail.get("phase_id") or "")
+    detail_tasks = [
+        d for d in (current_detail.get("tasks") or [])
+        if isinstance(d, dict) and d.get("name")
+    ]
 
     tasks = []
 
@@ -58,38 +60,52 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
         phase_id = phase.get("id") or f"phase_{phase_idx + 1}"
         phase_name = phase.get("name", f"阶段 {phase_idx + 1}")
 
+        if detail_phase_id and phase_id == detail_phase_id and detail_tasks:
+            for d in detail_tasks:
+                tasks.append(Task(
+                    id=next_task_id_for(tasks),
+                    name=str(d.get("name", "")),
+                    description=str(d.get("description", "")),
+                    phase_id=phase_id,
+                    milestone_id=str(d.get("milestone_id", "")),
+                    priority=str(d.get("priority", "medium")),
+                    checkin_mode=str(d.get("checkin_mode", "")),
+                    checkin_goal=float(d.get("checkin_goal", 0) or 0),
+                    how_to=list(d.get("how_to") or []),
+                    resources=list(d.get("resources") or []),
+                    done_criteria=str(d.get("done_criteria") or ""),
+                ))
+            continue
+
         for ms_idx, milestone in enumerate(phase.get("milestones", [])):
             ms_name = milestone.get("name", f"里程碑 {ms_idx + 1}")
             ms_id = milestone.get("id") or f"{phase_id}_ms_{ms_idx + 1}"
 
             # 从里程碑的 tasks 字段生成任务
             for task_def in milestone.get("tasks", []):
-                name = task_def.get("name", "")
-                detail = detail_tasks.get(name, {})
-                task = Task(
+                tasks.append(Task(
                     id=next_task_id_for(tasks),
-                    name=name,
-                    description=detail.get("description", task_def.get("description", "")),
+                    name=str(task_def.get("name", "")),
+                    description=str(task_def.get("description", "")),
                     phase_id=phase_id,
                     milestone_id=ms_id,
-                    priority=detail.get("priority", task_def.get("priority", "medium")),
-                    checkin_mode=detail.get("checkin_mode", task_def.get("checkin_mode", "")),
-                    checkin_goal=float(detail.get("checkin_goal", task_def.get("checkin_goal", 0)) or 0),
-                )
-                tasks.append(task)
+                    priority=str(task_def.get("priority", "medium")),
+                    checkin_mode=str(task_def.get("checkin_mode", "")),
+                    checkin_goal=float(task_def.get("checkin_goal", 0) or 0),
+                    how_to=list(task_def.get("how_to") or []),
+                    resources=list(task_def.get("resources") or []),
+                    done_criteria=str(task_def.get("done_criteria") or ""),
+                ))
 
             # 如果里程碑没有 tasks 字段，用里程碑本身作为任务
             if not milestone.get("tasks"):
-                ms_det = detail_tasks.get(ms_name, {})
                 tasks.append(Task(
                     id=next_task_id_for(tasks),
                     name=ms_name,
-                    description=ms_det.get("description", milestone.get("description", "")),
+                    description=str(milestone.get("description", "")),
                     phase_id=phase_id,
                     milestone_id=ms_id,
-                    priority=ms_det.get("priority", "medium"),
-                    checkin_mode=ms_det.get("checkin_mode", ""),
-                    checkin_goal=float(ms_det.get("checkin_goal", 0) or 0),
+                    priority="medium",
                 ))
 
         # 阶段没有任何可执行内容时，用阶段名兜底，保证阶段可追踪
@@ -270,6 +286,26 @@ def current_phase_view(profile: CareerProfile) -> dict[str, Any] | None:
     }
 
 
+def format_task_playbook(task: Task, indent: str = "  ") -> list[str]:
+    """把任务的执行 playbook 渲染成可读行（怎么做/资源/完成标准）。"""
+    lines: list[str] = []
+    if task.how_to:
+        lines.append(f"{indent}怎么做：" + "；".join(str(s) for s in task.how_to))
+    for item in task.resources or []:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "资源")
+        url = str(item.get("url") or "")
+        search = str(item.get("search") or "")
+        if url:
+            lines.append(f"{indent}资源：{label} {url}")
+        elif search:
+            lines.append(f"{indent}资源：{label}（搜索：{search}）")
+    if task.done_criteria:
+        lines.append(f"{indent}完成标准：{task.done_criteria}")
+    return lines
+
+
 def format_task_list(tasks: list[Task], title: str = "任务列表") -> str:
     """格式化任务列表。"""
     lines = [f"## {title}", ""]
@@ -288,6 +324,7 @@ def format_task_list(tasks: list[Task], title: str = "任务列表") -> str:
         lines.append("### 进行中")
         for t in in_progress:
             lines.append(f"-  **{t.name}** (ID: {t.id})")
+            lines += format_task_playbook(t)
         lines.append("")
 
     if pending:
@@ -295,6 +332,7 @@ def format_task_list(tasks: list[Task], title: str = "任务列表") -> str:
         for t in pending:
             icon = {"high": "[高]", "medium": "[中]", "low": "[低]"}.get(t.priority, "[中]")
             lines.append(f"- {icon} **{t.name}** (ID: {t.id})")
+            lines += format_task_playbook(t)
         lines.append("")
 
     if completed:

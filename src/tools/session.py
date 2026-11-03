@@ -144,12 +144,13 @@ WELCOME_PROMPT = """\
     只做结构校验，层级/届别/KPI 等质量项以建议返回，不阻断保存）
 
 ### Phase 5: 执行与打卡
-17. `generate_tasks` → 从路线图生成任务列表（重建时已完成进度自动沉淀为能力证据）；
-    生成后**主动引导用户开始第一阶段执行**，不要停在「下一步是什么」等用户问
-18. **详细路线（按需）**：用户要进入执行、需要更细颗粒度时 →
-    `detail_current_phase` 只细化当前阶段（含按天/按比例打卡点），
-    细化 intern 阶段时用 `fetch_company_jobs` / `fetch_jd_detail` 抓真实岗位数据填充要求细节，
-    然后 `save_current_detail` + 重新 `generate_tasks` 合并打卡点
+17. **先细化当前阶段**：`detail_current_phase` → `save_current_detail`，把里程碑拆成
+    可执行任务；每个任务必须带 `how_to`（怎么做）、`resources`（资源链接）、
+    `done_criteria`（怎么算完成）与打卡方式。资源只能从 `resource_catalog` 选，
+    没有收录时用 `search` 兜底，禁止编造 URL。
+18. `generate_tasks` → 合并 playbook 与打卡点，生成任务列表（重建时已完成进度自动
+    沉淀为能力证据）；生成后**主动引导用户开始第一阶段执行**，不要停在
+    「下一步是什么」等用户问。用户拒绝细化时，可按里程碑生成粗任务。
 19. `get_next_tasks` → 查看当前阶段的下一步任务（关卡式：顺序即答案）
 20. 用户完成/推进 → `checkin_task(task_id=..., status="completed", amount=...)`
     - 一次性任务：status="completed" 即完成

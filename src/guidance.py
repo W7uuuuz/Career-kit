@@ -213,10 +213,69 @@ class Guide:
     next_action: str = ""
     warnings: list[str] = field(default_factory=list)
     brief_needed: bool = False
+    what: str = ""
+    method: str = ""
+    how_to_read: str = ""
+    rules_hint: str = ""
 
     @property
     def position(self) -> str:
         return f"第 {self.index} / {self.total} 步 · {self.step.name}"
+
+
+# 每个状态的「在做什么 / 怎么做 / 结果怎么读」——先解释，再判定
+_STATUS_META: dict[str, tuple[str, str, str]] = {
+    "brief": (
+        "介绍 Career Kit，并确认你对毕业方向的了解程度",
+        "先带你看完整 6 步，再只问一个问题；不需要准备材料",
+        "按真实想法回答即可，没有标准答案",
+    ),
+    "familiarity": (
+        "确认你对毕业方向的了解程度",
+        "听完你的回答再决定是否先做行业扫盲",
+        "不了解也没关系，扫盲是可选的",
+    ),
+    "goal": (
+        "确认你的目标（方向 / 城市 / 届别）",
+        "我复述推断值，你确认或直接改",
+        "目标是计划的起点；确认后才会进入分析",
+    ),
+    "profile": (
+        "建档摸底：把简历素材变成你确认过的真实水平",
+        "简历 + 逐项求证；技能要由你说明作者身份和把控度",
+        "这里记录的是你确认过的事实，不是简历原文",
+    ),
+    "research": (
+        "市场调研：用真实岗位和同背景经历替代猜测",
+        "抓真实 JD，逐条补详情；来源会标在报告里",
+        "每条数据带来源链接；失败源会如实标注",
+    ),
+    "gap": (
+        "差距分析：看简历过筛和面试通过两维差距",
+        "结合调研数据与你的自评，给出差距清单和优先顺序",
+        "匹配度是参考，不是审判；每项差距都有依据",
+    ),
+    "roadmap": (
+        "路线图规划：先判定起点档位，再设计阶段序列",
+        "起点按 5 个维度加权打分；档位是命中率参考，不是准入许可",
+        "结果怎么读：档位不是能力上限，你可以改任何一维的依据",
+    ),
+    "tasks": (
+        "把当前阶段拆成可执行任务",
+        "每个任务会给出怎么做、用什么资源、怎么算完成",
+        "任务按「一次坐下可完成」设计；打卡方式随任务给出",
+    ),
+    "execute": (
+        "执行打卡：按当前阶段任务逐项推进",
+        "完成一项就打卡；daily 记天数，percent 记比例",
+        "进度是事实记录，不设时限；快了可以加深，慢了可以调顺序",
+    ),
+    "review": (
+        "周期复盘：用事实看这一段发生了什么",
+        "汇总打卡、阶段和求职漏斗，给规则化建议",
+        "复盘不催促；下一步由你决定",
+    ),
+}
 
 
 def _guide(
@@ -230,6 +289,10 @@ def _guide(
     brief_needed: bool = False,
 ) -> Guide:
     step = JOURNEY_STEPS[_STEP_INDEX[step_id] - 1]
+    what, method, how_to_read = _STATUS_META.get(status, ("", "", ""))
+    rules_hint = ""
+    if status in ("gap", "roadmap"):
+        rules_hint = "规则或口径不清楚时，读 career-kit://docs/rules 或直接问我"
     return Guide(
         step=step,
         index=_STEP_INDEX[step_id],
@@ -240,6 +303,10 @@ def _guide(
         next_action=next_action,
         warnings=warnings(profile) if profile is not None else [],
         brief_needed=brief_needed,
+        what=what,
+        method=method,
+        how_to_read=how_to_read,
+        rules_hint=rules_hint,
     )
 
 
@@ -332,9 +399,11 @@ def build_guide(profile: Any) -> Guide:
         return _guide(
             "execute",
             "tasks",
-            "路线图已就绪。下一步生成任务清单，然后从第一阶段开始。",
-            options=["生成任务", "先看职业地图"],
-            next_action="generate_tasks 后直接引导用户开始第一项",
+            "路线图已就绪。下一步把当前阶段拆成可执行任务：每个任务会给出怎么做、"
+            "用什么资源、怎么算完成。要现在细化吗？",
+            options=["开始细化", "先按里程碑生成粗任务", "先看职业地图"],
+            next_action="detail_current_phase → save_current_detail → generate_tasks；"
+                        "用户拒绝细化时可直接 generate_tasks",
             profile=profile,
         )
 
@@ -367,16 +436,30 @@ def build_guide(profile: Any) -> Guide:
 def user_brief() -> str:
     """首屏简介：固定文案，模型原样发给用户。"""
     lines = [
-        "Career Kit 是你的 AI 职业陪练。从起步到上岸全流程 6 步，每步你都能拿到实际的东西：",
+        "Career Kit 是你的 AI 职业陪练。先用一分钟说清楚它是什么、能帮你做什么：",
+        "",
+        "**这是什么**",
+        "Career Kit 是运行在你电脑上的职业规划服务。我通过 MCP（让 AI 能调用本地工具的协议）",
+        "调用它：抓真实招聘数据、保存你的档案和进度、把目标拆成可执行任务。",
+        "档案在 ~/.career-kit，报告和路线图在 ~/CareerKit，都在本机，不上传。",
+        "",
+        "**能帮你做什么**",
+        "1. 用真实岗位和面经，告诉你市场要什么；",
+        "2. 对照你的真实水平，告诉你差在哪、先补什么；",
+        "3. 把目标拆成有顺序的阶段和任务，并记录执行进度。",
+        "",
+        "**怎么用**",
+        "像聊天一样回答即可。每轮我只问一个问题；随时可以说「跳过」「改方向」「看进度」。",
+        "你不用懂工具名或流程，我会在每一步告诉你拿到了什么、下一步做什么。",
+        "",
+        "从起步到上岸全流程 6 步，每步你都能拿到实际的东西：",
         "",
     ]
     for i, step in enumerate(JOURNEY_STEPS, 1):
         lines.append(f"{i}. {step.name}——{step.why}；你会拿到：{step.deliverable}")
     lines += [
         "",
-        "你不需要懂工具或流程。每轮我只问你一个问题，你回答即可；"
-        "顺序定、节奏自己掌握，随时可以跳过或改方向。",
-        "现在从第 1 步开始——",
+        "顺序定、节奏自己掌握。规则不清楚随时问我；现在从第 1 步开始——",
     ]
     return "\n".join(lines)
 
@@ -388,12 +471,20 @@ def render_guide(guide: Guide) -> str:
         f"位置：{guide.position}",
         f"为什么做这一步：{guide.step.why}",
         f"完成后你会拿到：{guide.step.deliverable}",
-        f"本轮只问一个问题：{guide.ask}",
     ]
+    if guide.what:
+        lines.append(f"本轮要做什么：{guide.what}")
+    if guide.method:
+        lines.append(f"怎么做：{guide.method}")
+    if guide.how_to_read:
+        lines.append(f"结果怎么读：{guide.how_to_read}")
+    lines.append(f"本轮只问一个问题：{guide.ask}")
     if guide.options:
         lines.append("可选回答：" + " / ".join(guide.options))
     if guide.next_action:
         lines.append(f"用户回答后的动作：{guide.next_action}")
+    if guide.rules_hint:
+        lines.append(f"规则入口：{guide.rules_hint}")
     for note in guide.warnings:
         lines.append(f"事实提醒：{note}")
     if guide.brief_needed:

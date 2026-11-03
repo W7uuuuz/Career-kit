@@ -1,0 +1,125 @@
+# 学习与求职资源目录（可信链接唯一来源）
+#
+# detail_current_phase 会把相关条目交给 LLM；任务里的 resources 只能从这里选。
+# 没有收录的主题用 {"label": "...", "search": "关键词"} 兜底，不伪造 URL。
+
+resources:
+  - id: leetcode-hot-100
+    label: LeetCode 热题 100
+    url: https://leetcode.cn/problem-list/2cktkvj/
+    tags: [algorithm, 八股, 手写]
+    note: 面试高频题单，按题号顺序刷
+
+  - id: leetcode
+    label: LeetCode 中国站
+    url: https://leetcode.cn/
+    tags: [algorithm, 手写]
+    note: 题库与周赛入口
+
+  - id: code-thoughts
+    label: 代码随想录
+    url: https://programmercarl.com/
+    tags: [algorithm, 八股]
+    note: 刷题路线与题解
+
+  - id: xiaolincoding
+    label: 小林 coding
+    url: https://xiaolincoding.com/
+    tags: [八股, network, os, database]
+    note: 计算机网络、操作系统、MySQL、Redis 图解
+
+  - id: cs-notes
+    label: CS-Notes
+    url: https://github.com/CyC2018/CS-Notes
+    tags: [八股, network, os, database]
+    note: 计算机基础笔记合集
+
+  - id: system-design-primer
+    label: System Design Primer
+    url: https://github.com/donnemartin/system-design-primer
+    tags: [system-design, backend, 八股]
+    note: 系统设计入门
+
+  - id: python-docs
+    label: Python 官方文档（中文）
+    url: https://docs.python.org/zh-cn/3/
+    tags: [python, 八股, docs]
+    note: 语言参考与标准库
+
+  - id: fastapi
+    label: FastAPI 官方文档（中文）
+    url: https://fastapi.tiangolo.com/zh/
+    tags: [python, backend, docs]
+    note: Python Web 框架
+
+  - id: react
+    label: React 官方文档（中文）
+    url: https://zh-hans.react.dev/learn
+    tags: [frontend, docs]
+    note: React 学习路径
+
+  - id: typescript
+    label: TypeScript Handbook
+    url: https://www.typescriptlang.org/docs/handbook/intro.html
+    tags: [frontend, docs]
+    note: TypeScript 类型系统
+
+  - id: mdn
+    label: MDN Web Docs（中文）
+    url: https://developer.mozilla.org/zh-CN/
+    tags: [frontend, docs]
+    note: Web 标准与 API
+
+  - id: mysql-docs
+    label: MySQL 8.0 Reference Manual
+    url: https://dev.mysql.com/doc/refman/8.0/en/
+    tags: [database, 八股, docs]
+    note: 索引、事务、锁
+
+  - id: redis-docs
+    label: Redis Documentation
+    url: https://redis.io/docs/latest/
+    tags: [database, 八股, docs]
+    note: 数据结构、持久化、缓存
+
+  - id: git-book
+    label: Pro Git（中文）
+    url: https://git-scm.com/book/zh/v2
+    tags: [git, collaboration, docs]
+    note: Git 分支与协作
+
+  - id: github
+    label: GitHub
+    url: https://github.com/
+    tags: [open-source, collaboration]
+    note: 开源项目与 PR
+
+  - id: good-first-issue
+    label: good first issue
+    url: https://github.com/topics/good-first-issue
+    tags: [open-source, collaboration]
+    note: 适合第一次贡献的 issue
+
+  - id: nowcoder
+    label: 牛客网
+    url: https://www.nowcoder.com/
+    tags: [interview, 面经]
+    note: 面经与题库
+
+  - id: boss
+    label: BOSS 直聘
+    url: https://www.zhipin.com/
+    tags: [application, 投递]
+    note: 实习/社招岗位
+
+  - id: langchain
+    label: LangChain Docs
+    url: https://python.langchain.com/docs/
+    tags: [agent, rag, python, docs]
+    note: Agent 与 RAG 框架
+
+  - id: docker
+    label: Docker Get Started
+    url: https://docs.docker.com/get-started/
+    tags: [docker, backend, docs]
+    note: 容器化基础

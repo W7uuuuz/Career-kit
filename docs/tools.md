@@ -58,7 +58,7 @@
 | 工具 | 作用 |
 |------|------|
 | `generate_tasks` | 从路线图生成任务；重建时历史进度沉淀为能力证据 |
-| `detail_current_phase` | 只细化当前阶段，返回详细路线方法论 |
+| `detail_current_phase` | 只细化当前阶段：返回方法论 + 资源目录；任务需带 how_to / resources / done_criteria 与打卡点 |
 | `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点；phase_id 必须存在于当前路线图） |
 | `get_next_tasks` | 返回当前阶段下一步任务（关卡式） |
 | `checkin_task` | 打卡；完成自动沉淀能力证据 |
@@ -101,6 +101,7 @@
 | `career-kit://docs/scrapers` | 企业数据源总览 |
 | `career-kit://docs/scrapers/{id}` | 指定企业使用教程 |
 | `career-kit://docs/knowledge` | 知识库结构 |
+| `career-kit://docs/rules` | 档位含义、评分口径、打卡方式、数据边界 |
 | `career-kit://docs/examples` | 示例目录 |
 
 ## 源码位置

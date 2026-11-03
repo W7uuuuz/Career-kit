@@ -46,8 +46,12 @@ def generate_roadmap() -> str:
             {
                 "step": 1,
                 "name": "起点判定",
+                "pre_brief": "先告诉用户：接下来按 5 个维度打分（学历 0.25 / 实习 0.30 / 协作 0.15 / "
+                             "技能 0.20 / 项目 0.10），结果只是当前命中率参考，不是准入许可，"
+                             "也不代表能力上限；用户可以改任何一维。说明完再给分数。",
                 "action": "用 roadmap.yaml 的 start_level_rubric 打分表逐维度评分（学历/实习/协作/技能/项目），"
-                          "加权求总分映射档位（大厂/中厂/小厂/暂不可入），输出各维度得分 + 判定依据",
+                          "加权求总分映射档位（大厂/中厂/小厂/暂不可入），输出各维度得分 + 判定依据；"
+                          "档位定义与规则见 career-kit://docs/rules",
                 "output": {"start_level": "档位", "dimension_scores": {"education": 0, "internship": 0, "collaboration": 0, "skill_depth": 0, "project_complexity": 0}, "rationale": "为什么是这个档位"},
                 "checkpoint": True,
                 "checkpoint_note": "把起点层级展示给用户确认后再进下一步",
@@ -110,8 +114,9 @@ def generate_roadmap() -> str:
             "1. 每步必须产出该步的 output 结构后再进入下一步；"
             "表格/清单必须带「为什么」（拆分的依据：真实 JD 要求/差距结果/证据缺口），只给结论不给理由不完整\n"
             "2. checkpoint=true 的步骤必须先把中间产物展示给用户确认，确认后再继续\n"
-            "3. 起点判定可使用 start_level_rubric 作为参考，但不要把它当准入许可；"
-            "等价证据（生产交付/开源/内推）同样有效\n"
+            "3. 起点判定前必须先用 pre_brief 说明口径（维度、权重、档位含义），再给分数；"
+            "start_level_rubric 只作参考，不要当准入许可；等价证据（生产交付/开源/内推）同样有效；"
+            "规则细节见 career-kit://docs/rules\n"
             "4. 审计是第二意见：先 save_roadmap 保存雏形（结构校验通过即可），"
             "再调用 career-roadmap-auditor 并用 save_roadmap_audit 落库；审计不阻断定稿，"
             "FAIL 只用于硬矛盾，优先处理最多 3 条 must_fix，其余作为建议\n"

@@ -15,6 +15,7 @@ from .dashboard import (
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import get_active_profile_name, load_profile, save_profile
+from .resource_catalog import select_resources, validate_resources
 from .session_tools import _has_goal, _summarize_dict
 from .tool_helpers import _json, _parse_json_param
 
@@ -87,37 +88,61 @@ def detail_current_phase() -> str:
     （fetch_company_jobs / fetch_jd_detail）设计当前阶段的打卡任务，
     然后调用 save_current_detail(detail_json) 保存。
 
-    前置条件：路线图与任务已生成（generate_tasks 已调用）。
-    后续步骤：LLM 设计后调用 save_current_detail，然后重新 generate_tasks 合并打卡点。
+    前置条件：路线图已保存（save_roadmap）。任务尚未生成时以第一段为当前阶段。
+    后续步骤：LLM 设计后调用 save_current_detail，再 generate_tasks 生成/合并任务。
     """
     from .task_manager import current_phase_view
 
     profile = load_profile()
 
-    if not profile.tasks:
+    roadmap = profile.plan.get("roadmap", profile.plan)
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+    if not phases:
         return error_response(
             "MISSING_DATA",
-            "请先调用 generate_tasks 生成任务，再细化当前阶段。",
-            {"missing": "tasks"},
+            "档案里还没有路线图——先 generate_roadmap → save_roadmap，再细化当前阶段。",
+            {"missing": "plan.roadmap"},
         )
 
-    view = current_phase_view(profile)
-    if view is None:
-        return (
-            "所有阶段的任务都已完成——没有需要细化的当前阶段。\n"
-            "建议回顾目标，规划下一步方向。"
-        )
+    if not profile.tasks:
+        # 先细化、后生成任务：没有任务时以路线图第一段作为当前阶段
+        first = phases[0]
+        view = {
+            "phase_id": first.get("id") or "phase_1",
+            "phase_name": first.get("name", "阶段 1"),
+            "next_tasks": [],
+            "done": 0,
+            "total": 0,
+        }
+    else:
+        view = current_phase_view(profile)
+        if view is None:
+            return (
+                "所有阶段的任务都已完成——没有需要细化的当前阶段。\n"
+                "建议回顾目标，规划下一步方向。"
+            )
 
     # 当前阶段的路线图信息
-    roadmap = profile.plan.get("roadmap", profile.plan)
-    phases = roadmap.get("phases", [])
     phase = next((p for p in phases if p.get("id") == view["phase_id"]), None) or {}
 
     ctx = build_methodology_context("detailed_route", profile, compact=True)
 
+    phase_text = f"{view['phase_name']} {phase.get('goal', '')}"
+    resource_tags = ["algorithm", "八股"]
+    phase_type = str(phase.get("type") or "")
+    if phase_type in ("project", "intern"):
+        resource_tags += ["open-source", "collaboration"]
+    if phase_type == "intern":
+        resource_tags += ["application", "interview"]
+    if "前端" in phase_text or "react" in phase_text.lower():
+        resource_tags += ["frontend"]
+    if "后端" in phase_text or "agent" in phase_text.lower():
+        resource_tags += ["backend", "python"]
+
     return _json({
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
+        "resource_catalog": select_resources(resource_tags, limit=14),
         "current_phase": {
             "phase_id": view["phase_id"],
             "phase_name": view["phase_name"],
@@ -131,10 +156,15 @@ def detail_current_phase() -> str:
             "请按照 detailed_route 方法论，只细化当前阶段「{phase_name}」：\n"
             "1. 若该阶段是 intern（实习）且有目标公司，先用 fetch_company_jobs / fetch_jd_detail "
             "抓真实岗位数据，把要求细节细化到任务描述，不停留在占位\n"
-            "2. 把里程碑任务拆成可打卡的详细任务：每个任务带 checkin_mode "
-            "（once/daily/percent）与 checkin_goal（daily=天数，percent=比例）\n"
-            "3. 任务 5-15 个，粒度「一次坐下来可完成」\n"
-            "4. 调用 save_current_detail(detail_json) 保存，然后重新 generate_tasks 合并打卡点"
+            "2. 每个任务必须带执行 playbook：\n"
+            "   - how_to：3-5 条具体做法（先想什么、怎么写、错了怎么办）\n"
+            "   - resources：从下面 resource_catalog 选，字段为 label + url；"
+            "没有收录时用 label + search 兜底，禁止编造 URL\n"
+            "   - done_criteria：怎么算完成（可验证，不是「刷了题」）\n"
+            "   - checkin_mode（once/daily/percent）与 checkin_goal（daily=天数，percent=比例）\n"
+            "3. 任务 5-15 个，粒度「一次坐下来可完成」；不要把一个里程碑原样当任务\n"
+            "4. 调用 save_current_detail(detail_json) 保存，然后重新 generate_tasks 合并打卡点；"
+            "向用户展示时直接给资源链接和做法，不要只说「去刷题」"
         ).format(phase_name=view["phase_name"]),
     })
 
@@ -151,11 +181,17 @@ def save_current_detail(detail_json: str) -> str:
             "phase_id": "phase_1",
             "tasks": [
                 {
-                    "name": "每天刷 5 题 LeetCode",
+                    "name": "LeetCode 热题 100：数组与字符串 5 题",
                     "description": "...",
+                    "how_to": ["先想 10 分钟", "再写代码", "错题隔天重做"],
+                    "resources": [
+                        {"label": "LeetCode 热题 100",
+                         "url": "https://leetcode.cn/problem-list/2cktkvj/"}
+                    ],
+                    "done_criteria": "独立写出 5 题并通过，错题已记录",
                     "priority": "high",
                     "checkin_mode": "daily",
-                    "checkin_goal": 30
+                    "checkin_goal": 5
                 }
             ]
         }
@@ -164,6 +200,20 @@ def save_current_detail(detail_json: str) -> str:
         detail = _parse_json_param(detail_json, "当前阶段详细路线")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
+
+    # 执行 playbook 质量建议（不阻断保存）：任务要能独立执行，而不是只有标题
+    advisories: list[str] = []
+    for i, task in enumerate(detail.get("tasks") or [], 1):
+        if not isinstance(task, dict):
+            advisories.append(f"tasks[{i}] 不是对象，已按原样保存")
+            continue
+        name = str(task.get("name") or f"任务 {i}")
+        if not task.get("how_to"):
+            advisories.append(f"「{name}」缺 how_to（怎么做）")
+        if not task.get("done_criteria"):
+            advisories.append(f"「{name}」缺 done_criteria（怎么算完成）")
+        for warning in validate_resources(task.get("resources") or []):
+            advisories.append(f"「{name}」{warning}")
 
     profile = load_profile()
     roadmap = profile.plan.get("roadmap", profile.plan) if isinstance(profile.plan, dict) else {}
@@ -209,14 +259,24 @@ def save_current_detail(detail_json: str) -> str:
     save_profile(profile)
 
     tasks_n = len(detail.get("tasks", []))
+    advisory_text = ""
+    if advisories:
+        advisory_text = "\n\n执行 playbook 建议（不阻断保存，请按需补齐）：\n" + "\n".join(
+            f"- {a}" for a in advisories
+        )
     return _json({
         "message": (
-            f"当前阶段详细路线已保存（{tasks_n} 个任务）。\n"
-            "请重新调用 generate_tasks，将打卡点（checkin_mode/checkin_goal）合并进任务列表，"
+            f"当前阶段详细路线已保存（{tasks_n} 个任务）。{advisory_text}\n\n"
+            "请重新调用 generate_tasks，将 playbook（how_to/resources/done_criteria）"
+            "与打卡点（checkin_mode/checkin_goal）合并进任务列表，"
             "然后用 get_next_tasks 开始执行。"
         ),
         "next_steps": ["generate_tasks"],
-        "context": {"phase": "detail_saved", "task_count": tasks_n},
+        "context": {
+            "phase": "detail_saved",
+            "task_count": tasks_n,
+            "advisories": advisories,
+        },
     })
 
 
@@ -228,7 +288,11 @@ def get_next_tasks() -> str:
     返回当前阶段（第一个有未完成任务的阶段）的接下来几个任务和阶段进度。
     产品不规划时间——顺序归产品，时间归用户。
     """
-    from .task_manager import current_phase_view, format_progress_overview
+    from .task_manager import (
+        current_phase_view,
+        format_progress_overview,
+        format_task_playbook,
+    )
 
     profile = load_profile()
 
@@ -275,6 +339,7 @@ def get_next_tasks() -> str:
             status_mark = "[进行中]" if t.status == "in_progress" else icon
             desc = f"—{t.description}" if t.description else ""
             lines.append(f"- {status_mark} **{t.name}** (ID: {t.id}){desc}")
+            lines += format_task_playbook(t)
         lines.append("")
 
     lines.append(format_progress_overview(profile))

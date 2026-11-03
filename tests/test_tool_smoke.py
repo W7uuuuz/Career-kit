@@ -992,13 +992,24 @@ def test_parse_resume_requires_verification(tmp_path, temp_profile):
 # ============ BUG-004：详细路线与打卡点 ============
 
 
-def test_detail_current_phase_requires_tasks(temp_profile):
-    """detail_current_phase：无任务时拒绝。"""
+def test_detail_current_phase_requires_roadmap_not_tasks(temp_profile):
+    """detail_current_phase：无路线图时拒绝；有路线图但未生成任务时以第一段细化。"""
     from src.server import detail_current_phase
 
     data = json.loads(detail_current_phase())
     assert data.get("isError") is True
     assert data["code"] == "MISSING_DATA"
+
+    profile = profile_module.load_profile()
+    profile.plan = {"roadmap": {"phases": [
+        {"id": "phase_1", "name": "基础学习", "milestones": []},
+        {"id": "phase_2", "name": "项目实战", "milestones": []},
+    ]}}
+    profile_module.save_profile(profile)
+
+    detail = json.loads(detail_current_phase())
+    assert detail["current_phase"]["phase_id"] == "phase_1"
+    assert detail["resource_catalog"]
 
 
 def test_detail_current_phase_and_save(temp_profile):

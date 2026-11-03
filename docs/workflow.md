@@ -241,13 +241,15 @@ KPI 完全缺失、届别硬冲突、任务不可打卡），最多 3 条 must_f
 **流程**：
 
 ```
-1. generate_tasks()
-2. detail_current_phase()              # 只细化当前阶段
-3. save_current_detail(detail_json)    # once / daily / percent
-4. generate_tasks()                    # 合并打卡点
-5. get_next_tasks()
-6. checkin_task(task_id, status, notes, amount)
+1. detail_current_phase()              # 先细化当前阶段
+2. save_current_detail(detail_json)    # how_to / resources / done_criteria
+                                       # + once / daily / percent
+3. generate_tasks()                    # 合并 playbook 与打卡点
+4. get_next_tasks()
+5. checkin_task(task_id, status, notes, amount)
 ```
+
+用户拒绝细化时，才直接 `generate_tasks()` 按里程碑生成粗任务。
 
 **输出**：
 

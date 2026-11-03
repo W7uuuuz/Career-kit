@@ -48,6 +48,14 @@ class Task(BaseModel):
     checkin_goal: float = 0  # daily: 目标天数；percent: 目标比例（如 80 表示 80%）
     checkin_progress: float = 0  # 当前累计（daily: 已打卡天数；percent: 已完成比例）
 
+    # 执行 playbook（详细路线产出）：让任务能独立执行，而不只是一个标题
+    how_to: list[str] = Field(default_factory=list, description="怎么做（3-5 条）")
+    resources: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="资源链接 [{label, url}] 或搜索兜底 [{label, search}]",
+    )
+    done_criteria: str = Field(default="", description="怎么算完成")
+
     def start(self) -> None:
         """开始任务。"""
         self.status = TaskStatus.IN_PROGRESS

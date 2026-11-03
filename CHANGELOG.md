@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **引导与执行 playbook（2026-11-03，P0+P1）**：
+  - `[USER_BRIEF]` 增加「这是什么 / 能帮你做什么 / 怎么用 / 数据在本机」四段，
+    新用户第一轮就知道产品边界与预期
+  - `[GUIDE]` 增加「本轮要做什么 / 怎么做 / 结果怎么读」；差距分析与起点判定
+    在给分数前先播报口径（维度、权重、档位含义），规则入口指向
+    `career-kit://docs/rules`
+  - 新增 `docs/rules.md` 与 MCP Resource：小/中/大厂定义、match_score 口径、
+    起点/目标/实际投递区别、打卡方式、数据边界
+  - 任务模型新增 `how_to` / `resources` / `done_criteria`；`detail_current_phase`
+    要求任务带执行 playbook，并返回 `resource_catalog`
+  - 新增 `sop/resources.yaml` 与 `src/tools/resource_catalog.py`：资源链接唯一来源，
+    未收录时用搜索词兜底，`save_current_detail` 校验并给建议（不阻断）
+  - `generate_tasks` 改为「当前阶段详细路线直接替换该阶段任务」，不再按名称弱匹配；
+    修复细化任务改名后被丢弃的问题
+  - 职业地图渲染任务的做法、资源链接、完成标准；任务未生成时展示里程碑预览，
+    不再只剩 4 个空阶段
+  - 文档与测试同步；新增 `tests/test_task_playbook.py`
+
 - **BOSS 登录改为 Agent 直接执行（2026-11-03）**：
   - 新增 `guidance.login_action()`：统一登录交互契约，明确 `harness_can_run=true`、
     `agent_action`（用终端/Bash 直接运行登录脚本）、`user_instruction`（用户只需扫码）

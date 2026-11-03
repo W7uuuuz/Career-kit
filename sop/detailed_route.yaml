@@ -8,8 +8,10 @@ methodology:
     - "打卡点设计交给 LLM：任务要给出打卡方式——每天学多少（按天打卡）/ 学到多少比例（按比例打卡）/ 一次性完成"
     - "真实数据延续：细化当前阶段时优先调 fetch_company_jobs / fetch_jd_detail 抓真实岗位数据填充要求细节（intern 阶段尤其），不停留在占位/通用描述"
     - "粒度可打卡：每个任务是一次坐得下来可执行的颗粒度，且配打卡点（checkin_mode/checkin_goal）"
+    - "可独立执行：每个任务必须有 how_to（3-5 条做法）、resources（资源链接或搜索词）、done_criteria（怎么算完成）"
+    - "资源可信：resources 只能从 resource_catalog 选；没有收录时用 {label, search} 兜底，禁止编造 URL"
     - "与路线图对齐：详细任务归属当前阶段（phase_id），不改变路线图阶段结构与顺序"
-    - "任务 schema 与 roadmap.yaml 一致：{name, description, priority}，额外支持 checkin_mode/checkin_goal"
+    - "任务 schema 与 roadmap.yaml 一致：{name, description, priority}，额外支持 how_to/resources/done_criteria/checkin_mode/checkin_goal"
 
   phases:
     - id: locate_current_phase
@@ -38,17 +40,20 @@ methodology:
       name: 设计打卡任务
       guidance: |
         把当前阶段的里程碑任务拆成可打卡的详细任务列表。每个任务：
-        1. name + description（含怎么做、依据哪个真实岗位要求）
-        2. priority: high/medium/low
-        3. checkin_mode 打卡方式：
+        1. name + description（含依据哪个真实岗位要求）
+        2. how_to：3-5 条具体做法（先做什么、怎么写、卡住了怎么办）
+        3. resources：从 resource_catalog 选 {label, url}；没有收录时 {label, search}
+        4. done_criteria：可验证的完成标准（不是「刷了题」，而是「独立写出 N 题并通过」）
+        5. priority: high/medium/low
+        6. checkin_mode 打卡方式：
            - once: 一次性完成（如「写一篇技术博客」）
-           - daily: 按天打卡，checkin_goal = 目标天数（如「每天刷 5 题 LeetCode」→ daily, goal=30）
-           - percent: 按比例打卡，checkin_goal = 目标比例（如「学完 LangChain 官方文档 80%」→ percent, goal=80）
-        任务不要过多：当前阶段 5-15 个即可，粒度「一次坐下来可完成」。
-      quality_gate: "每个任务有打卡方式；daily/percent 有明确目标；总数合理不臃肿"
+           - daily: 按天打卡，checkin_goal = 目标天数（如「每天刷 5 道 LeetCode」→ daily, goal=30）
+           - percent: 按比例打卡，checkin_goal = 目标比例（如「学习 LangChain 官方文档 80%」→ percent, goal=80）
+        任务不要过多：当前阶段 5-15 个即可，粒度「一次坐下来可完成」
+      quality_gate: "每个任务有 how_to/resources/done_criteria 与打卡方式；daily/percent 有明确目标；资源不编造；总数合理不臃肿"
 
   output_schema:
     phase_id: "当前阶段 id（不做修改，仅供核对）"
-    tasks: "详细任务列表（调用 save_current_detail 写入档案），每项含 name / description / priority / checkin_mode / checkin_goal"
+    tasks: "详细任务列表（调用 save_current_detail 写入档案），每项含 name / description / how_to / resources / done_criteria / priority / checkin_mode / checkin_goal"
     checkin_mode: "once | daily | percent"
     checkin_goal: "daily 为目标天数；percent 为目标比例（0-100）"
