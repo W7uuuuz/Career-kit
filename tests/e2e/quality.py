@@ -22,6 +22,9 @@ TOOL_NAMES = {
     "generate_tasks", "detail_current_phase", "save_current_detail",
     "get_next_tasks", "checkin_task", "trigger_insight", "apply_insight",
     "get_progress", "get_workflow_status", "export_dashboard",
+    "gather_research_data", "research_market", "read_research_details",
+    "search_cases", "get_industry_snapshot", "record_application",
+    "delete_application", "get_weekly_review", "save_roadmap_audit",
 }
 
 

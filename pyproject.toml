@@ -50,6 +50,11 @@ markers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+exclude = ["docs/internal/**"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"sop" = "sop"
+"docs" = "docs"
 
 [tool.ruff]
 target-version = "py311"

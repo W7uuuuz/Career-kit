@@ -37,7 +37,8 @@ def start_session() -> str:
     工作流程：start_session → intake(who) → intake(have) → intake(want) → finalize_profile
     """
     profile = load_profile()
-    pending = [t for t in profile.tasks if t.status != "completed"]
+    # 与其它入口一致：completed / skipped 都算已结束
+    pending = [t for t in profile.tasks if t.status not in ("completed", "skipped")]
 
     if pending:
         # 续跑指引：不投放全量手册，与 get_workflow_status 方向一致（不把已有档案当空档案）

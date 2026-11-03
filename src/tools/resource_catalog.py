@@ -31,14 +31,28 @@ def _matches(item: dict[str, Any], tags: set[str]) -> bool:
     return bool(item_tags & tags)
 
 
-def select_resources(tags: list[str] | None = None, limit: int = 12) -> list[dict[str, Any]]:
-    """按标签筛选资源；无标签时返回全部（受 limit 限制）。"""
+def select_resources(
+    tags: list[str] | None = None,
+    limit: int = 12,
+    priority_tags: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """按标签筛选资源；阶段专属标签（priority_tags）优先保留。
+
+    不能直接按 YAML 顺序截断：实习阶段的 boss/nowcoder 很容易被前面的
+    算法资源挤出 limit。
+    """
     catalog = load_catalog()
-    if tags:
-        wanted = {t.lower() for t in tags}
-        chosen = [item for item in catalog if _matches(item, wanted)]
-    else:
-        chosen = list(catalog)
+    if not tags:
+        return [dict(item) for item in catalog[:limit]]
+    wanted = {t.lower() for t in tags}
+    priority = {t.lower() for t in (priority_tags or [])}
+
+    def score(item: dict[str, Any]) -> tuple[int, int]:
+        item_tags = {str(t).lower() for t in (item.get("tags") or [])}
+        return (len(item_tags & priority), len(item_tags & wanted))
+
+    chosen = [item for item in catalog if _matches(item, wanted)]
+    chosen.sort(key=score, reverse=True)
     return [dict(item) for item in chosen[:limit]]
 
 

@@ -16,7 +16,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 import src.tools.profile as profile_module  # noqa: E402
 from src.models import Application, CareerProfile, Task  # noqa: E402
-from src.web import build_state, create_server  # noqa: E402
+from src.web import build_parser, build_state, create_server  # noqa: E402
 
 
 @pytest.fixture()
@@ -49,6 +49,46 @@ def _profile() -> CareerProfile:
     }
     profile.applications = [Application(id="app_001", company="某公司", role="Agent 实习")]
     return profile
+
+
+def test_cli_accepts_open_flag():
+    """安装脚本/README 使用 --open，CLI 必须接受。"""
+    args = build_parser().parse_args(["--open"])
+    assert args.open is True and args.no_open is False
+
+
+def test_asset_route_is_token_protected_and_scoped(temp_profile):
+    from urllib.parse import quote
+
+    from src.assets import get_assets_root
+
+    root = get_assets_root()
+    root.mkdir(parents=True, exist_ok=True)
+    asset = root / "hello.txt"
+    asset.write_text("hello", encoding="utf-8")
+
+    server, token = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(f"{base}/api/asset?path={quote(str(asset))}")
+        assert exc.value.code == 403
+        with urllib.request.urlopen(
+            f"{base}/api/asset?path={quote(str(asset))}&token={token}"
+        ) as res:
+            assert res.read() == b"hello"
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(
+                f"{base}/api/asset?path={quote(str(temp_profile / 'x.txt'))}&token={token}"
+            )
+        assert exc.value.code == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_build_state_exposes_roadmap_and_playbook(temp_profile):

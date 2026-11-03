@@ -599,12 +599,14 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     var tasks = ph.tasks.map(function (t) {{
       var serverDone = (t.status === 'completed' || t.status === 'skipped');
       var base = serverDone ? 'done' : 'open';
-      var st = checkins[t.id] || base;
+      // 服务端已完成优先；本地状态只覆盖未完成任务
+      var st = serverDone ? 'done' : (checkins[t.id] || base);
       var mode = t.checkin_mode || 'once';
       return {{ id: t.id, name: t.name, desc: t.desc, priority: t.priority,
                  milestone_id: t.milestone_id, state: st, __server_done: serverDone,
                  mode: mode, goal: t.checkin_goal || 0,
-                 progress: (t.checkin_progress || 0),
+                 progress: (checkins[t.id + ':progress'] != null
+                   ? checkins[t.id + ':progress'] : (t.checkin_progress || 0)),
                  how_to: t.how_to || [], resources: t.resources || [],
                  done_criteria: t.done_criteria || '' }};
     }});
@@ -786,7 +788,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       ph.tasks.forEach(function (t) {{
         if (t.id === id) {{
           t.state = done ? 'done' : 'open';
-          if (mode === 'daily') t.progress = done ? (t.goal || 1) : 0;
+          if (mode === 'daily' && done) t.progress = t.goal || 1;
           if (mode === 'percent') t.progress = amount;
           updated = true;
         }}
@@ -833,6 +835,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
         ph.tasks.forEach(function (x) {{ if (x.id === id) task = x; }});
       }});
       if (!task) return;
+      if ((task.mode || 'once') === 'daily') task.progress = 0;
       applyCheckin(id, task.mode || 'once', false, 0);
     }}
   }});

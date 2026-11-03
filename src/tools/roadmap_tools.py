@@ -39,7 +39,7 @@ def generate_roadmap() -> str:
     ctx = build_methodology_context("roadmap", profile, compact=True)
 
     return _json({
-        "next_steps": ["save_roadmap", "generate_tasks"],
+        "next_steps": ["save_roadmap", "detail_current_phase", "generate_tasks"],
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
         "step_template": [
@@ -339,9 +339,12 @@ def _roadmap_hash(parsed: dict) -> str:
     """路线图内容哈希：用于把审计记录绑定到具体版本。"""
     import hashlib
 
-    payload = json.dumps(
-        parsed.get("roadmap", parsed), ensure_ascii=False, sort_keys=True
-    )
+    roadmap = parsed.get("roadmap", parsed)
+    core = {
+        "strategy_summary": roadmap.get("strategy_summary", ""),
+        "phases": roadmap.get("phases", []),
+    }
+    payload = json.dumps(core, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -443,13 +446,38 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     if audit and audit.get("roadmap_hash") and audit.get("roadmap_hash") != new_hash:
         audit["stale"] = True
 
+    old_plan = profile.plan if isinstance(profile.plan, dict) else {}
+    old_hash = _roadmap_hash(old_plan) if old_plan else ""
+    old_detail = old_plan.get("current_detail") if isinstance(old_plan, dict) else None
+
     # 保存旧版本快照
     if profile.plan:
         save_plan_snapshot(source="before_roadmap")
 
     profile.plan = parsed
+    # 只有阶段内容没变时才保留详细路线；阶段改名/改目标后旧详情不再适用
+    if isinstance(old_detail, dict):
+        detail_phase = str(old_detail.get("phase_id") or "")
+        new_phases = {
+            p.get("id"): p for p in (parsed.get("roadmap") or parsed).get("phases", [])
+            if isinstance(p, dict)
+        }
+        phase = new_phases.get(detail_phase)
+        old_phases = {
+            p.get("id"): p for p in old_plan.get("roadmap", old_plan).get("phases", [])
+            if isinstance(p, dict)
+        } if isinstance(old_plan, dict) else {}
+        old_phase = old_phases.get(detail_phase)
+        if phase and old_phase:
+            same = all(
+                str(phase.get(k, "")) == str(old_phase.get(k, ""))
+                for k in ("name", "type", "goal")
+            )
+            if same:
+                profile.plan["current_detail"] = old_detail
     profile.audit = audit
-    profile.audited_phases = []
+    if old_hash != new_hash:
+        profile.audited_phases = []
     profile.plan_saved_at = datetime.now().isoformat()
     profile.section_updated_at["plan"] = profile.plan_saved_at
     profile.touch()
@@ -463,11 +491,12 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
 
     # 定稿即交付：自动生成路线图活地图 HTML（随时可重新生成）
     map_path = ""
+    map_error = ""
     try:
         map_html = _render_roadmap_map(profile)
         map_path = _write_html(map_html, kind="roadmap")
-    except Exception:
-        map_path = ""
+    except Exception as exc:  # noqa: BLE001 - 交付失败要如实告知用户
+        map_error = str(exc)
 
     advisory_text = ""
     if advisories:
@@ -486,16 +515,20 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     return _json({
         "message": (
             f"路线图已保存。\n\n{report}{advisory_text}{audit_note}\n\n"
-            f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
-            "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡，进度在浏览器本地保存），"
-            "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
-            "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
+            + (
+                f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
+                "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡），"
+                "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
+                if map_path
+                else f"路线图 HTML 生成失败：{map_error}——可用 export_dashboard(mode=\"roadmap\") 重试。\n"
+            )
+            + "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
-            "接下来调用 generate_tasks 生成任务列表；生成后引导用户按路线图开始第一阶段执行"
-            "（或先 detail_current_phase 细化当前阶段的打卡路线）。\n\n"
+            "接下来建议先 detail_current_phase 细化当前阶段，再 generate_tasks；"
+            "用户不想细化时也可直接 generate_tasks 生成粗任务。\n\n"
             f"{guide_for(profile)}"
         ),
-        "next_steps": ["generate_tasks"],
+        "next_steps": ["detail_current_phase", "generate_tasks"],
         "context": {
             "phase": "roadmap_saved",
             "version": profile.version,

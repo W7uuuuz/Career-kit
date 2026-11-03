@@ -75,7 +75,7 @@ def get_assets_root() -> Path:
     """用户资产根目录：环境变量优先，否则 ~/CareerKit。"""
     env = os.environ.get("CAREER_KIT_ASSETS_DIR", "").strip()
     if env:
-        return Path(env)
+        return Path(env).expanduser()
     return Path.home() / "CareerKit"
 
 

@@ -28,13 +28,10 @@ def generate_tasks() -> str:
     前置条件：档案中已有路线图（plan.roadmap）。
     后续步骤：调用 get_next_tasks 查看当前阶段的下一步任务。
 
-    注意：重建会清空旧任务列表；已完成的进度会自动沉淀为能力证据写入档案，不会丢失。
+    注意：重建按「阶段 + 里程碑 + 任务名」复用旧任务 ID 与打卡进度；
+    不再每次从 task_001 重排，避免历史打卡串到新任务。
     """
-    from .task_manager import (
-        collect_completed_evidence,
-        create_tasks_from_roadmap,
-        format_task_list,
-    )
+    from .task_manager import create_tasks_from_roadmap, format_task_list
 
     profile = load_profile()
 
@@ -45,24 +42,24 @@ def generate_tasks() -> str:
             {"section": "plan"},
         )
 
-    # 重建前：把已完成/已跳过的进度沉淀为能力证据（目标变了，努力不白费）
-    evidence = collect_completed_evidence(profile)
-    if evidence:
-        have_evidence = profile.have.setdefault("capability_evidence", [])
-        if isinstance(have_evidence, list):
-            have_evidence.extend(evidence)
-
-    # 清空旧任务并从路线图生成
-    profile.tasks = []
+    # 重建：同一任务（phase + milestone + name）复用旧 ID 与打卡进度，
+    # 不再每次从 task_001 重排，也不重复追加能力证据。
+    old_tasks = list(profile.tasks)
     tasks = create_tasks_from_roadmap(profile)
+    new_ids = {t.id for t in tasks}
+    preserved = sum(
+        1 for t in old_tasks
+        if t.id in new_ids and t.status in ("completed", "skipped", "in_progress")
+    )
 
+    profile.tasks = []
     for task in tasks:
         profile.add_task(task)
 
     save_profile(profile)
 
     migrated_note = (
-        f"已将 {len(evidence)} 条历史完成记录沉淀为能力证据。\n" if evidence else ""
+        f"已保留 {preserved} 个任务的打卡状态。\n" if preserved else ""
     )
     return _json({
         "message": (
@@ -128,21 +125,24 @@ def detail_current_phase() -> str:
     ctx = build_methodology_context("detailed_route", profile, compact=True)
 
     phase_text = f"{view['phase_name']} {phase.get('goal', '')}"
-    resource_tags = ["algorithm", "八股"]
+    priority_tags: list[str] = []
     phase_type = str(phase.get("type") or "")
     if phase_type in ("project", "intern"):
-        resource_tags += ["open-source", "collaboration"]
+        priority_tags += ["open-source", "collaboration"]
     if phase_type == "intern":
-        resource_tags += ["application", "interview"]
+        priority_tags += ["application", "interview"]
     if "前端" in phase_text or "react" in phase_text.lower():
-        resource_tags += ["frontend"]
+        priority_tags += ["frontend"]
     if "后端" in phase_text or "agent" in phase_text.lower():
-        resource_tags += ["backend", "python"]
+        priority_tags += ["backend", "python"]
+    resource_tags = ["algorithm", "八股"] + priority_tags
 
     return _json({
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
-        "resource_catalog": select_resources(resource_tags, limit=14),
+        "resource_catalog": select_resources(
+            resource_tags, limit=14, priority_tags=priority_tags
+        ),
         "current_phase": {
             "phase_id": view["phase_id"],
             "phase_name": view["phase_name"],
@@ -208,10 +208,20 @@ def save_current_detail(detail_json: str) -> str:
             advisories.append(f"tasks[{i}] 不是对象，已按原样保存")
             continue
         name = str(task.get("name") or f"任务 {i}")
+        if not task.get("name"):
+            advisories.append(f"tasks[{i}] 缺 name，生成任务时会被丢弃")
         if not task.get("how_to"):
             advisories.append(f"「{name}」缺 how_to（怎么做）")
         if not task.get("done_criteria"):
             advisories.append(f"「{name}」缺 done_criteria（怎么算完成）")
+        mode = str(task.get("checkin_mode") or "once")
+        goal = float(task.get("checkin_goal") or 0)
+        if mode not in ("once", "daily", "percent"):
+            advisories.append(f"「{name}」checkin_mode「{mode}」无效，应为 once/daily/percent")
+        elif mode == "daily" and goal < 1:
+            advisories.append(f"「{name}」daily 需要 checkin_goal >= 1（目标天数）")
+        elif mode == "percent" and not (0 < goal <= 100):
+            advisories.append(f"「{name}」percent 需要 0 < checkin_goal <= 100")
         for warning in validate_resources(task.get("resources") or []):
             advisories.append(f"「{name}」{warning}")
 
@@ -298,8 +308,9 @@ def get_next_tasks() -> str:
 
     if not profile.tasks:
         return _json({
-            "message": "暂无任务。请先调用 generate_tasks 从路线图生成任务。",
-            "next_steps": ["generate_tasks"],
+            "message": "暂无任务。建议先 detail_current_phase 细化当前阶段，再 generate_tasks；"
+                       "不想细化也可直接生成粗任务。",
+            "next_steps": ["detail_current_phase", "generate_tasks"],
             "context": {"phase": "no_tasks"},
         })
 
@@ -362,8 +373,8 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
         task_id: 任务 ID（从 get_next_tasks 获取）
         status: 打卡状态（completed 或 skipped）
         notes: 备注（可选）
-        amount: 本次打卡量（可选）——daily 打卡传 1（当天完成），
-            percent 打卡传本次完成比例（如完成 20% 传 20）
+        amount: 打卡进度（可选）——daily 传 1 表示今天打卡（同日幂等），
+            传 >1 表示目标天数；percent 传目标百分比（绝对值，如 60 表示 60%）
     """
     from .insight import completed_phase_ids
     from .task_manager import (
@@ -381,8 +392,8 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
 
     task = profile.get_task(task_id)
 
-    # 能力证据沉淀
-    if status == "completed" and task:
+    # 能力证据沉淀：只有任务真正完成才写，部分打卡不污染证据
+    if task and task.status == "completed":
         record_capability_evidence(profile, task, notes)
 
     # 阶段完成检测（排除已审计过的阶段）
@@ -465,8 +476,8 @@ def trigger_insight(trigger_type: str = "stage_audit", event_description: str = 
 
     if not profile.tasks and trigger_type == "stage_audit":
         return _json({
-            "message": "暂无任务，请先调用 generate_tasks。",
-            "next_steps": ["generate_tasks"],
+            "message": "暂无任务。建议先 detail_current_phase 细化当前阶段，再 generate_tasks。",
+            "next_steps": ["detail_current_phase", "generate_tasks"],
             "context": {"phase": "no_tasks"},
         })
     # event 型不需要任务存在：面试/offer 等事件可能发生在建任务之前，
@@ -612,8 +623,8 @@ def get_progress() -> str:
 
     if not profile.tasks and not profile.applications:
         return _json({
-            "message": "暂无任务与投递记录。请先调用 generate_tasks 从路线图生成任务。",
-            "next_steps": ["generate_tasks"],
+            "message": "暂无任务与投递记录。建议先 detail_current_phase 细化当前阶段，再 generate_tasks。",
+            "next_steps": ["detail_current_phase", "generate_tasks"],
             "context": {"phase": "no_tasks"},
         })
 
@@ -820,7 +831,10 @@ def get_workflow_status() -> str:
         if stale_gap:
             next_step = stale_step
         elif not profile.tasks:
-            next_step = "generate_tasks"
+            next_step = (
+                "detail_current_phase（建议先细化当前阶段，再 generate_tasks）；"
+                "不想细化也可直接 generate_tasks"
+            )
         else:
             completed_steps.append("generate_tasks")
 
@@ -878,8 +892,8 @@ def get_workflow_status() -> str:
     lines.append("- 建档：start_session → intake(who/have/want) → finalize_profile；无目标用 explore_goals 选方向")
     lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
     lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
-    lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap → generate_tasks")
-    lines.append("- 执行：generate_tasks → detail_current_phase（可选，按当前阶段细化打卡点）→ get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
+    lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap")
+    lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
     lines.append("- 复盘：get_weekly_review 做周检视；投递/面试/offer 进展用 record_application 登记")
     lines.append("")

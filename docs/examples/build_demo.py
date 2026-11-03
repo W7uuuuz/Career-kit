@@ -2,7 +2,7 @@
 """重建 docs/examples/demo/ 的零等待演示产物。
 
 用真实 MCP 管线（intake → finalize → save_gap_analysis → save_roadmap →
-generate_tasks → save_current_detail → checkin_task）把样例简历+JD 跑成：
+detail_current_phase → save_current_detail → generate_tasks → checkin_task）把样例简历+JD 跑成：
 - career-map.html / dashboard.html / demo_profile.json
 
 运行：
@@ -29,6 +29,7 @@ if DATA.exists():
     shutil.rmtree(DATA)
 DATA.mkdir(parents=True)
 os.environ["CAREER_KIT_DATA_DIR"] = str(DATA)
+os.environ["CAREER_KIT_ASSETS_DIR"] = str(DATA / "CareerKit")
 
 from src.server import (  # noqa: E402
     _render_progress_html,

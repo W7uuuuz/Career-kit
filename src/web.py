@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import secrets
 import sys
 import threading
@@ -22,7 +23,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .assets import INDEX_FILENAME, get_assets_root
 from .guidance import warnings
@@ -66,6 +67,13 @@ def _task_payload(task: Any) -> dict[str, Any]:
     }
 
 
+def _asset_url(path: str | Path) -> str:
+    """把资产绝对路径转成受 token 保护的本地 URL。"""
+    if not path:
+        return ""
+    return "/api/asset?path=" + quote(str(path), safe="")
+
+
 def undo_task(task_id: str) -> None:
     """把任务恢复为待办（本地控制台的「撤销」）。"""
     with profile_lock():
@@ -73,6 +81,18 @@ def undo_task(task_id: str) -> None:
         task = profile.get_task(task_id)
         if not task:
             raise ValueError(f"任务 {task_id} 不存在")
+        # 删除最近一条打卡与对应能力证据，避免周检视/能力证据继续计入
+        for idx in range(len(profile.checkins) - 1, -1, -1):
+            if profile.checkins[idx].task_id == task_id:
+                del profile.checkins[idx]
+                break
+        evidence = (profile.have or {}).get("capability_evidence")
+        if isinstance(evidence, list):
+            for idx in range(len(evidence) - 1, -1, -1):
+                item = evidence[idx]
+                if isinstance(item, dict) and item.get("task") == task.name:
+                    del evidence[idx]
+                    break
         task.status = TaskStatus.PENDING
         task.started_at = None
         task.completed_at = None
@@ -148,9 +168,9 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         research_out = {
             "generated_at": research.get("generated_at", ""),
             "counts": research.get("counts") or {},
-            "report_html": research.get("report_html", ""),
-            "report_md": research.get("report_md", ""),
-            "report_json": research.get("report_json", ""),
+            "report_html": _asset_url(research.get("report_html", "")),
+            "report_md": _asset_url(research.get("report_md", "")),
+            "report_json": _asset_url(research.get("report_json", "")),
             "failed_sources": [str(s.get("source") or "未知源") for s in failed],
         }
 
@@ -173,7 +193,7 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         "total_done": total_done,
         "total_tasks": total_tasks,
         "warnings": warnings(profile),
-        "assets_index": (get_assets_root() / INDEX_FILENAME).as_uri(),
+        "assets_index": _asset_url(get_assets_root() / INDEX_FILENAME),
         "research": research_out,
         "applications": applications,
     }
@@ -211,7 +231,10 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
                 sys.stderr.write("[career-kit] %s\n" % (fmt % args))
 
         def _authorized(self) -> bool:
-            return self.headers.get("X-CK-Token", "") == token
+            if self.headers.get("X-CK-Token", "") == token:
+                return True
+            query = parse_qs(urlparse(self.path).query)
+            return query.get("token", [""])[0] == token
 
         def _json_body(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0") or 0)
@@ -240,6 +263,24 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
                     _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
                     return
                 _json_response(self, 200, build_state())
+                return
+            if path == "/api/asset":
+                if not self._authorized():
+                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
+                    return
+                raw = parse_qs(urlparse(self.path).query).get("path", [""])[0]
+                target = Path(unquote(raw)).resolve()
+                root = get_assets_root().resolve()
+                try:
+                    target.relative_to(root)
+                except ValueError:
+                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "asset outside root"})
+                    return
+                if not target.is_file():
+                    _json_response(self, 404, {"error": "asset not found"})
+                    return
+                ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+                _text_response(self, 200, target.read_bytes(), ctype)
                 return
             _json_response(self, 404, {"error": "not found"})
 
@@ -302,12 +343,18 @@ def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[ThreadingH
     raise OSError(f"无法绑定 {host}:{port}-{port + 9}：{last_error}")
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Career Kit 本地控制台")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认仅本机）")
     parser.add_argument("--port", type=int, default=8765, help="起始端口（占用时自动顺延）")
-    parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
-    args = parser.parse_args(argv)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--open", action="store_true", help="自动打开浏览器（默认行为）")
+    group.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     try:
         server, token = create_server(args.host, args.port)

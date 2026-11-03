@@ -164,7 +164,15 @@ def _want_text(profile: Any) -> tuple[str, str, str]:
     want = getattr(profile, "want", None) or {}
     if not isinstance(want, dict):
         return "", "", ""
-    role = str(want.get("target_role") or want.get("role") or want.get("target") or "")
+    role = str(
+        want.get("target_role")
+        or want.get("role")
+        or want.get("target")
+        or want.get("direction")
+        or want.get("position")
+        or want.get("industry")
+        or ""
+    )
     city = str(want.get("city") or "")
     year = str(want.get("graduation_year") or "")
     return role, city, year
@@ -251,7 +259,7 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
         "每条数据带来源链接；失败源会如实标注",
     ),
     "gap": (
-        "差距分析：看简历过筛和面试通过两维差距",
+        "差距分析：看简历过筛、面试通过、经历匹配三维差距",
         "结合调研数据与你的自评，给出差距清单和优先顺序",
         "匹配度是参考，不是审判；每项差距都有依据",
     ),

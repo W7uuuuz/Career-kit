@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from ..models import (
@@ -54,6 +55,67 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
         if isinstance(d, dict) and d.get("name")
     ]
 
+    # 稳定身份：同 phase + milestone + name 的任务在重建时复用旧 ID 与进度，
+    # 避免 checkin / localStorage / 能力证据串到新任务上。
+    existing = {
+        (t.phase_id, t.milestone_id, t.name): t for t in profile.tasks
+    }
+    max_num = 0
+    for task in profile.tasks:
+        if task.id.startswith("task_"):
+            try:
+                max_num = max(max_num, int(task.id[5:]))
+            except ValueError:
+                continue
+    counter = {"next": max_num}
+
+    def _build(
+        *,
+        name: str,
+        description: str,
+        phase_id: str,
+        milestone_id: str,
+        priority: str,
+        checkin_mode: str = "",
+        checkin_goal: float = 0,
+        how_to: list | None = None,
+        resources: list | None = None,
+        done_criteria: str = "",
+    ) -> Task:
+        old = existing.get((phase_id, milestone_id, name))
+        if old is not None:
+            return Task(
+                id=old.id,
+                name=name,
+                description=description,
+                phase_id=phase_id,
+                milestone_id=milestone_id,
+                status=old.status,
+                priority=priority,
+                started_at=old.started_at,
+                completed_at=old.completed_at,
+                checkin_mode=checkin_mode,
+                checkin_goal=checkin_goal,
+                checkin_progress=old.checkin_progress,
+                how_to=list(how_to or []),
+                resources=list(resources or []),
+                done_criteria=done_criteria,
+            )
+        counter["next"] += 1
+        return Task(
+            id=f"task_{counter['next']:03d}",
+            name=name,
+            description=description,
+            phase_id=phase_id,
+            milestone_id=milestone_id,
+            priority=priority,
+            checkin_mode=checkin_mode,
+            checkin_goal=checkin_goal,
+            how_to=list(how_to or []),
+            resources=list(resources or []),
+            done_criteria=done_criteria,
+        )
+
     tasks = []
 
     for phase_idx, phase in enumerate(phases):
@@ -62,8 +124,7 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
 
         if detail_phase_id and phase_id == detail_phase_id and detail_tasks:
             for d in detail_tasks:
-                tasks.append(Task(
-                    id=next_task_id_for(tasks),
+                tasks.append(_build(
                     name=str(d.get("name", "")),
                     description=str(d.get("description", "")),
                     phase_id=phase_id,
@@ -83,8 +144,7 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
 
             # 从里程碑的 tasks 字段生成任务
             for task_def in milestone.get("tasks", []):
-                tasks.append(Task(
-                    id=next_task_id_for(tasks),
+                tasks.append(_build(
                     name=str(task_def.get("name", "")),
                     description=str(task_def.get("description", "")),
                     phase_id=phase_id,
@@ -99,8 +159,7 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
 
             # 如果里程碑没有 tasks 字段，用里程碑本身作为任务
             if not milestone.get("tasks"):
-                tasks.append(Task(
-                    id=next_task_id_for(tasks),
+                tasks.append(_build(
                     name=ms_name,
                     description=str(milestone.get("description", "")),
                     phase_id=phase_id,
@@ -111,27 +170,23 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
         # 阶段没有任何可执行内容时，用阶段名兜底，保证阶段可追踪
         phase_task_count = sum(1 for t in tasks if t.phase_id == phase_id)
         if phase_task_count == 0:
-            tasks.append(Task(
-                id=next_task_id_for(tasks),
+            tasks.append(_build(
                 name=f"推进阶段：{phase_name}",
                 description=phase.get("goal", ""),
                 phase_id=phase_id,
+                milestone_id="",
                 priority="medium",
             ))
 
     return tasks
 
 
-def next_task_id_for(existing: list[Task]) -> str:
-    """在构建中的列表里生成下一个任务 ID。"""
-    max_num = 0
-    for task in existing:
-        if task.id.startswith("task_"):
-            try:
-                max_num = max(max_num, int(task.id[5:]))
-            except ValueError:
-                continue
-    return f"task_{max_num + 1:03d}"
+def _already_checked_in_today(profile: CareerProfile, task_id: str) -> bool:
+    today = datetime.now().date().isoformat()
+    return any(
+        c.task_id == task_id and str(c.timestamp)[:10] == today
+        for c in profile.checkins
+    )
 
 
 def checkin_task(
@@ -143,17 +198,17 @@ def checkin_task(
 ) -> tuple[CareerProfile, CheckIn]:
     """打卡任务。
 
-    支持打卡方式（BUG-004）：
+    支持打卡方式（BUG-004，2026-11 统一协议）：
     - once（默认/空）：一次打卡即完成
-    - daily：按天打卡，amount=1 表示当天完成，累计到 checkin_goal 天数才 completed
-    - percent：按比例打卡，amount=本次完成比例，累计到 checkin_goal 比例才 completed
+    - daily：amount<=1 表示「今天打卡」，同一天只记一次；amount>1 表示目标天数
+    - percent：amount 是目标百分比（绝对值），后端取 max(当前, amount)
 
     Args:
         profile: 用户职业档案
         task_id: 任务 ID
         status: 打卡状态（completed, skipped）
         notes: 备注
-        amount: 本次打卡量（daily: 1 天；percent: 本次比例 0-100）
+        amount: daily=1 或目标天数；percent=目标百分比（0-100）
 
     Returns:
         (更新后的档案, 打卡记录)
@@ -161,6 +216,8 @@ def checkin_task(
     task = profile.get_task(task_id)
     if not task:
         raise ValueError(f"任务 {task_id} 不存在")
+
+    skip_record = False
 
     # 更新任务状态
     if status == TaskStatus.SKIPPED:
@@ -170,13 +227,21 @@ def checkin_task(
         if mode == "once":
             task.complete()
         elif mode == "daily":
-            task.checkin_progress += 1
+            if amount > 1:
+                # 绝对值：导入/同步历史进度时直接设目标天数
+                task.checkin_progress = max(task.checkin_progress, float(amount))
+            elif _already_checked_in_today(profile, task_id):
+                # 同一天重复点击不累加
+                skip_record = True
+            else:
+                task.checkin_progress += 1
             if task.checkin_goal > 0 and task.checkin_progress >= task.checkin_goal:
                 task.complete()
             else:
                 task.status = TaskStatus.IN_PROGRESS
         elif mode == "percent":
-            task.checkin_progress = min(100.0, task.checkin_progress + amount)
+            target = amount if amount > 0 else task.checkin_progress
+            task.checkin_progress = min(100.0, max(task.checkin_progress, float(target)))
             if task.checkin_goal > 0 and task.checkin_progress >= task.checkin_goal:
                 task.complete()
             else:
@@ -186,15 +251,16 @@ def checkin_task(
     else:
         raise ValueError(f"无效的打卡状态: {status}")
 
-    # 创建打卡记录
+    # 创建打卡记录；同日重复打卡不落第二条
     checkin = CheckIn(
         task_id=task_id,
         status=status,
         notes=notes,
-        amount=amount,
+        amount=0 if skip_record else amount,
     )
 
-    profile.add_checkin(checkin)
+    if not skip_record:
+        profile.add_checkin(checkin)
     profile.touch()
 
     return profile, checkin
@@ -223,18 +289,29 @@ def record_capability_evidence(
     have = profile.have
     evidence_list = have.setdefault("capability_evidence", [])
     if isinstance(evidence_list, list):
-        evidence_list.append(entry)
+        exists = any(
+            isinstance(item, dict)
+            and item.get("task") == entry["task"]
+            and item.get("completed_at") == entry["completed_at"]
+            for item in evidence_list
+        )
+        if not exists:
+            evidence_list.append(entry)
 
     profile.section_updated_at["have"] = profile.updated_at
     return entry
 
 
 def collect_completed_evidence(profile: CareerProfile) -> list[dict[str, Any]]:
-    """重建任务前调用：把已完成/已跳过任务的进度沉淀为能力证据。"""
+    """把已完成/已跳过任务整理为能力证据条目（供调用方决定是否写入）。"""
     entries: list[dict[str, Any]] = []
-    finished = [t for t in profile.tasks if t.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)]
-    checkin_notes = {c.task_id: c.notes for c in profile.checkins}
-
+    finished = [
+        t for t in profile.tasks
+        if t.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
+    ]
+    checkin_notes: dict[str, str] = {}
+    for checkin in profile.checkins:
+        checkin_notes.setdefault(checkin.task_id, checkin.notes)
     for task in finished:
         entry = {
             "task": task.name,
@@ -246,7 +323,6 @@ def collect_completed_evidence(profile: CareerProfile) -> list[dict[str, Any]]:
         if notes:
             entry["notes"] = notes
         entries.append(entry)
-
     return entries
 
 

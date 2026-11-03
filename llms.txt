@@ -24,7 +24,7 @@
 6. fetch_company_jobs(company=..., params=...)  # 抓取真实岗位（含薪资）
 7. analyze_gaps() → save_gap_analysis()       # 基于真实数据分析
 8. generate_roadmap() → save_roadmap()        # 只定顺序与完成标准，无时长
-9. generate_tasks() → detail_current_phase() → save_current_detail() → generate_tasks()
+9. detail_current_phase() → save_current_detail() → generate_tasks()  # 先细化当前阶段，再生成/合并任务
 10. get_next_tasks()
 11. checkin_task(...)                         # 完成即沉淀能力证据
 12. record_application(company, role)          # 投递/过筛/面试/offer 全程登记（求职漏斗）

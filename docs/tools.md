@@ -103,6 +103,11 @@
 | `career-kit://docs/knowledge` | 知识库结构 |
 | `career-kit://docs/rules` | 档位含义、评分口径、打卡方式、数据边界 |
 | `career-kit://docs/examples` | 示例目录 |
+| `career-kit://docs/prompts/onboarding` | 开场路由 |
+| `career-kit://docs/prompts/quick-scan` | 行业扫盲子流程 |
+| `career-kit://docs/prompts/grounding` | 数据边界 |
+
+同时注册 3 个 MCP Prompt：`career-onboarding`、`career-quick-scan`、`career-grounding`。
 
 ## 源码位置
 
@@ -110,7 +115,7 @@
 |------|------|
 | 建档 | `src/tools/session_tools.py`（简历解析在 `resume_parser.py`） |
 | 档案管理 | `src/tools/profile_tools.py`（领域层 `profile.py`） |
-| 数据获取 | `src/tools/data_tools.py`、`src/tools/knowledge_search.py`、`src/scrapers/` |
-| 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`（`import_plan` 在 `data_tools.py`） |
+| 数据获取 | `src/tools/data_tools.py`、`src/tools/knowledge_search.py`、`src/tools/research_tools.py`、`src/tools/case_tools.py`、`src/scrapers/` |
+| 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`、`src/tools/resource_catalog.py`（`import_plan` 在 `data_tools.py`） |
 | 任务与漏斗 | `src/tools/task_tools.py`、`src/tools/application_tools.py`（领域层 `task_manager.py`、`application_tracker.py`） |
-| 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py`（周检视领域层 `review.py`） |
+| 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py`、`src/tools/industry_tools.py`（周检视领域层 `review.py`） |

@@ -106,7 +106,7 @@ search_knowledge(query)                              # 本地资料
 analyze_gaps() → save_gap_analysis(gap_json)
 ```
 
-`analyze_gaps` 会返回 4 步 step_template（现状盘点 → 读取调研 → 两维分析 → 结果预览）：
+`analyze_gaps` 会返回 4 步 step_template（现状盘点 → 读取调研 → 三维分析 → 结果预览）：
 **step 2 读取调研：有 `profile.research` 时先 `read_research_details()` 取花名册与聚合摘要，
 选取 3-5 条读取全文（标注来源），不一次性注入全量正文**；
 没有调研先给一句软提示（建议先 `research_market` → `gather_research_data`），

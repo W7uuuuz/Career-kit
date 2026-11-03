@@ -80,6 +80,16 @@ def test_resource_catalog_has_known_links():
     assert any(item["id"] == "leetcode-hot-100" for item in algorithm)
 
 
+def test_priority_tags_keep_application_resources():
+    chosen = select_resources(
+        ["algorithm", "八股", "application", "interview"],
+        limit=14,
+        priority_tags=["application", "interview"],
+    )
+    ids = {item["id"] for item in chosen}
+    assert "boss" in ids and "nowcoder" in ids
+
+
 def test_validate_resources_flags_unknown_and_allows_search():
     known = validate_resources([{
         "label": "LeetCode 热题 100",
@@ -110,6 +120,55 @@ def test_save_detail_and_generate_tasks_keep_playbook(temp_profile):
     assert task.resources[0]["url"] == "https://leetcode.cn/problem-list/2cktkvj/"
     assert task.done_criteria == "独立写出 5 题并通过，错题已记录"
     assert task.checkin_mode == "daily" and task.checkin_goal == 5
+
+
+def test_generate_tasks_preserves_ids_and_progress(temp_profile):
+    from src.server import generate_tasks
+
+    profile_module.save_profile(_profile_with_roadmap())
+    generate_tasks()
+    before = profile_module.load_profile().tasks[0]
+    before_id, before_name = before.id, before.name
+    before.complete()
+    profile = profile_module.load_profile()
+    task = profile.get_task(before_id)
+    task.status = "completed"
+    task.checkin_progress = 2
+    profile_module.save_profile(profile)
+
+    generate_tasks()
+    after = profile_module.load_profile()
+    matched = next(t for t in after.tasks if t.name == before_name)
+    assert matched.id == before_id
+    assert matched.status == "completed"
+    assert matched.checkin_progress == 2
+
+
+def test_save_roadmap_preserves_detail_and_audited_phases(temp_profile):
+    from src.server import save_roadmap
+
+    profile_module.save_profile(_profile_with_roadmap())
+    # 先保存一次，让 roadmap 经过 parse_roadmap 规范化
+    save_roadmap(json.dumps(
+        {"roadmap": _profile_with_roadmap().plan["roadmap"]}, ensure_ascii=False
+    ))
+    profile = profile_module.load_profile()
+    profile.plan["current_detail"] = {
+        "phase_id": "phase_1",
+        "tasks": [{"name": "子任务", "how_to": ["做"], "done_criteria": "完成"}],
+    }
+    profile.audited_phases = ["phase_1"]
+    profile_module.save_profile(profile)
+
+    roadmap = profile_module.load_profile().plan["roadmap"]
+    saved = json.loads(save_roadmap(json.dumps(
+        {"roadmap": roadmap}, ensure_ascii=False
+    )))
+    assert "路线图已保存" in saved["message"]
+
+    after = profile_module.load_profile()
+    assert after.plan.get("current_detail", {}).get("phase_id") == "phase_1"
+    assert after.audited_phases == ["phase_1"]
 
 
 def test_save_detail_reports_missing_playbook(temp_profile):

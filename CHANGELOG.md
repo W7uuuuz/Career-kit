@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **全仓审计后的数据一致性修复（2026-11-03）**：
+  - 打卡协议统一：percent 的 amount 为绝对目标值；daily 同日幂等，amount>1 为目标天数；
+    静态地图 daily 进度不再归零，percent 不再把绝对值当增量累加
+  - 任务身份稳定：`generate_tasks` 按「阶段 + 里程碑 + 任务名」复用旧 ID 与打卡进度，
+    不再每次从 `task_001` 重排；能力证据只在任务真正完成时写入并按完成时间去重
+  - `save_roadmap` 保留未变更阶段的 `current_detail`，路线图 hash 只算 roadmap 内容；
+    重复保存不再清空 `audited_phases`
+  - 控制台撤销删除最近一条打卡与能力证据；`/api/asset` 受 token 保护且限制在资产根内
+  - 修复 `--open` 参数缺失（桌面快捷方式可直接启动）；资源筛选按阶段专属标签优先，
+    实习阶段的 BOSS/牛客不再被截断
+  - 文档：根 `llms.txt` 执行顺序改为先细化；工具数副本、MCP Resources、
+    README BOSS 登录与隐私路径同步；wheel 纳入 `sop/` 与 `docs/`（排除 internal）
+  - 新增/更新测试：稳定 ID、同日幂等、detail 保留、资源优先级、asset 路由、CLI `--open`
+
 - **档案写入安全打磨（2026-11-03）**：
   - 新增 `profile_lock`：Windows msvcrt / POSIX fcntl 跨进程写锁，同线程可重入
   - `save_profile` 改为临时文件 + `os.replace` 原子替换，避免 MCP 与 Web

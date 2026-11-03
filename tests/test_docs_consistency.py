@@ -63,6 +63,17 @@ def test_tool_count_copies_are_fresh():
         assert stale not in text, f"{rel} 仍写着旧工具数 {stale}"
 
 
+def test_secondary_tool_count_copies_are_fresh():
+    """次级文档也不能保留旧的 30/32/34 工具数。"""
+    from src.doctor import EXPECTED_TOOL_COUNT
+
+    for rel in [("src", "tools", "README.md"), ("tests", "e2e", "README.md")]:
+        text = _read(*rel)
+        assert str(EXPECTED_TOOL_COUNT) in text, f"{rel} 未写最新工具数"
+        for stale in ("32 个", "34 个", "30/32"):
+            assert stale not in text, f"{rel} 仍写着旧工具数 {stale}"
+
+
 def test_root_llms_txt_includes_funnel_tools():
     """根目录 llms.txt 快速开始必须包含漏斗与周检视两步。"""
     text = _read("llms.txt")

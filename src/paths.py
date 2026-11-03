@@ -13,7 +13,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-DATA_ROOT = Path(os.environ.get("CAREER_KIT_DATA_DIR", str(Path.home() / ".career-kit")))
+DATA_ROOT = Path(
+    os.environ.get("CAREER_KIT_DATA_DIR", str(Path.home() / ".career-kit"))
+).expanduser()
 PROFILE_DIR = DATA_ROOT
 KNOWLEDGE_DIR = DATA_ROOT / "knowledge"
 CACHE_DIR = DATA_ROOT / "cache"

@@ -99,7 +99,7 @@ career-kit-doctor
 | 工具列表里没有 career-kit 的工具 | 先运行 `career-kit-doctor`；确认注册命令在 Career-kit 目录下执行；Claude Code 会话内用 `/mcp` 查看连接状态 |
 | 服务器启动即崩 / `No module named 'mcp'` | 注册用了错误解释器——改用 venv 绝对路径（见上方警告） |
 | 抓取工具报 Playwright 相关错误 | 先执行 `playwright install chromium` 安装浏览器内核 |
-| BOSS 直聘提示需要登录 | 按报错信息里的绝对解释器命令运行 `-m src.scrapers.boss.login`，扫码后自动保存 |
+| BOSS 直聘提示需要登录 | 同意登录后由 Agent 运行登录脚本并打开浏览器，你只需扫码；不要把命令丢给用户手动执行 |
 | uv 装依赖报 `iv8 was not found` | iv8 只在官方 PyPI，不在镜像上：`uv pip install -e . --index-url https://pypi.org/simple` |
 | `career-kit-serve` 命令找不到 | 重新执行 `pip install -e .`；或直接用 `<venv-python> -m src.web --open` |
 | 桌面没有 Career Kit 快捷方式 | 重新运行 `install.ps1` / `install.sh`；快捷方式只在安装时创建 |
@@ -160,7 +160,7 @@ LLM 运行时还会通过 MCP Resources 自动读取工作流和企业库。
 
 ## 隐私
 
-所有数据存储在本地 `~/.career-kit/`，不会发送到任何外部服务器。
+程序数据存储在本地 `~/.career-kit/`，报告与路线图存储在 `~/CareerKit/`，不会发送到任何外部服务器。
 知识库是用户自有资产，不随包升级丢失。
 
 ## 开源协议

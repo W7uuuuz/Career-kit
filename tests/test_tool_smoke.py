@@ -1083,25 +1083,43 @@ def test_checkin_daily_and_percent(temp_profile):
     ]
     profile_module.save_profile(p)
 
-    # daily：3 天才完成
+    # daily：amount 为绝对值（1 表示今天打卡，>1 表示目标天数）
     out1 = checkin_task(task_id="task_d", status="completed", amount=1)
     assert "累计 1/3 天" in out1
-    out2 = checkin_task(task_id="task_d", status="completed", amount=1)
+    out2 = checkin_task(task_id="task_d", status="completed", amount=2)
     assert "累计 2/3 天" in out2
-    out3 = checkin_task(task_id="task_d", status="completed", amount=1)
+    out3 = checkin_task(task_id="task_d", status="completed", amount=3)
     assert "已打卡" in out3
     assert profile_module.load_profile().get_task("task_d").status == "completed"
 
-    # percent：累计到 80% 才完成
+    # percent：amount 是绝对目标百分比
     out4 = checkin_task(task_id="task_p", status="completed", amount=40)
     assert "40%" in out4 and "目标 80%" in out4
-    out5 = checkin_task(task_id="task_p", status="completed", amount=40)
+    out5 = checkin_task(task_id="task_p", status="completed", amount=80)
     assert "已打卡" in out5
     assert profile_module.load_profile().get_task("task_p").status == "completed"
 
 
+def test_daily_same_day_is_idempotent(temp_profile):
+    """daily 同一天重复点击不累加。"""
+    from src.models import Task
+    from src.server import checkin_task
+
+    p = profile_module.load_profile()
+    p.plan = {"roadmap": {"phases": []}}
+    p.tasks = [Task(id="task_d", name="刷题", phase_id="phase_1",
+                    checkin_mode="daily", checkin_goal=3)]
+    profile_module.save_profile(p)
+
+    checkin_task(task_id="task_d", status="completed", amount=1)
+    checkin_task(task_id="task_d", status="completed", amount=1)
+
+    task = profile_module.load_profile().get_task("task_d")
+    assert task.checkin_progress == 1
+
+
 def test_save_roadmap_guides_execution_start(temp_profile):
-    """BUG-004：save_roadmap 文案引导开始第一阶段执行。"""
+    """save_roadmap 文案引导先细化当前阶段，再生成任务。"""
     from src.server import intake, save_roadmap
 
     intake("who", '{"name": "张三"}')
@@ -1113,7 +1131,7 @@ def test_save_roadmap_guides_execution_start(temp_profile):
          "kpi": {"metric": "完成", "target": "1个"}},
     ]}}
     out = _parse(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert "开始第一阶段" in out["message"] or "引导用户" in out["message"]
+    assert "detail_current_phase" in out["message"] and "细化当前阶段" in out["message"]
 
 
 # ============ 差距分析内容质量门（BUG-002/003 收尾：不编造落成代码） ============

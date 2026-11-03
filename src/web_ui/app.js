@@ -5,6 +5,11 @@
   var state = null;
   var busy = false;
 
+  function withToken(url) {
+    if (!url) return '';
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -136,9 +141,9 @@
     if (!r || !r.counts) { el.innerHTML = ''; return; }
     var counts = r.counts || {};
     var links = '';
-    if (r.report_html) links += '<a href="' + esc(r.report_html) + '" target="_blank" rel="noopener">阅读版</a>';
-    if (r.report_md) links += ' · <a href="' + esc(r.report_md) + '" target="_blank" rel="noopener">可读全文</a>';
-    if (r.report_json) links += ' · <a href="' + esc(r.report_json) + '" target="_blank" rel="noopener">原始数据</a>';
+    if (r.report_html) links += '<a href="' + esc(withToken(r.report_html)) + '" target="_blank" rel="noopener">阅读版</a>';
+    if (r.report_md) links += ' · <a href="' + esc(withToken(r.report_md)) + '" target="_blank" rel="noopener">可读全文</a>';
+    if (r.report_json) links += ' · <a href="' + esc(withToken(r.report_json)) + '" target="_blank" rel="noopener">原始数据</a>';
     var failed = (r.failed_sources || []).length
       ? '<div class="muted">失败源：' + esc(r.failed_sources.join('、')) + '</div>' : '';
     el.innerHTML = '<div class="card"><div class="card-head"><span class="card-title">市场调研'
@@ -177,7 +182,7 @@
     document.getElementById('total-pct').textContent = totalPct + '%';
     document.getElementById('total-done').textContent = state.total_done + ' / ' + state.total_tasks + ' 个任务';
     var link = document.getElementById('assets-link');
-    if (state.assets_index) link.href = state.assets_index;
+    if (state.assets_index) link.href = withToken(state.assets_index);
 
     var warn = document.getElementById('warnings');
     if (state.warnings && state.warnings.length) {
