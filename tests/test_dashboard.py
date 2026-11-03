@@ -191,3 +191,40 @@ def test_funnel_card_escapes_application_fields(tmp_path, monkeypatch):
     html = _funnel_card_html(profile)
     assert "Evil&lt;" in html and " Evil<" not in html
 
+
+def test_roadmap_jd_structured_and_current_phase_fallback(tmp_path, monkeypatch):
+    """职业地图：JD 列表按条目可读渲染（不出现 Python repr）；无任务时默认激活第一段。"""
+    import json as jsonlib
+
+    import src.tools.profile as profile_module
+    from src.models import CareerProfile
+    from src.server import _render_roadmap_map
+    from src.tools.roadmap import parse_roadmap
+
+    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
+
+    profile = CareerProfile()
+    profile.plan = parse_roadmap(jsonlib.dumps({
+        "phases": [{
+            "type": "intern", "name": "实习冲刺", "goal": "拿 offer",
+            "jd_status": "has_jd",
+            "jd": {"samples": [{
+                "company": "某公司", "title": "Agent 实习", "salary": "500 元/天",
+                "requirements": ["Python", "RAG"],
+            }]},
+            "milestones": [],
+        }],
+    }, ensure_ascii=False))
+    profile.touch()
+
+    html = _render_roadmap_map(profile)
+
+    assert "某公司 · Agent 实习（500 元/天）：Python；RAG" in html
+    assert "samples：[" not in html                 # 不再渲染 Python 列表 repr
+    assert 'name="career-kit-summary"' in html      # 资产中心可读摘要
+    assert "../../index.html" in html               # 子页面可返回资产中心
+
+    block = html.split('id="career-data">')[1].split("</script>")[0]
+    data = jsonlib.loads(block)
+    assert data["phases"][0]["is_current"] is True  # 无任务时兜底第一段
+

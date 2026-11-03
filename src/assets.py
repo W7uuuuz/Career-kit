@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime
-from html import escape
+from html import escape, unescape
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,17 @@ _KIND_LABELS: dict[str, str] = {
     "roadmap": "路线图",
     "progress": "进度",
 }
+
+# 固定名资产没有文件名主题，用可读标题替代主干
+_KIND_FIXED_TITLES: dict[str, str] = {
+    "roadmap": "职业地图",
+    "progress": "进度仪表盘",
+}
+
+# 子页面自带的摘要（<meta name="career-kit-summary" content="...">）
+_SUMMARY_RE = re.compile(
+    r'<meta\s+name="career-kit-summary"\s+content="([^"]*)"', re.IGNORECASE
+)
 
 
 def get_assets_root() -> Path:
@@ -168,25 +180,40 @@ class AssetItem:
     kind: str
     title: str  # 卡片标题（方向或默认名）
     when: str  # 展示时间
-    sort_key: str  # 排序键（文件名内日期或 mtime）
+    sort_key: float  # 排序时间戳（文件名内日期或 mtime）
     rel_href: str
     counts_text: str = ""
     extras: dict[str, str] = field(default_factory=dict)  # 附属文件 {标签: 相对链接}
 
 
-def _parse_when(stem: str) -> tuple[str, str]:
-    """从文件名主干解析 (展示时间, 排序键)；解析不了回退低优先。"""
+def _parse_when(stem: str) -> tuple[str, float | None]:
+    """从文件名主干解析 (展示时间, 排序时间戳)；解析不了返回空值与 None。"""
     parts = stem.split("_")
     if len(parts) >= 2 and len(parts[0]) == 10 and parts[0][:4].isdigit():
         date = parts[0]
+        hhmm = "0000"
         time_part = ""
         if len(parts) >= 3 and len(parts[1]) == 4 and parts[1].isdigit():
-            time_part = f" {parts[1][:2]}:{parts[1][2:4]}"
-            sort_key = f"{date}_{parts[1]}"
-        else:
-            sort_key = f"{date}_0000"
-        return f"{date}{time_part}", sort_key
-    return "", f"~{stem}"
+            hhmm = parts[1]
+            time_part = f" {hhmm[:2]}:{hhmm[2:4]}"
+        try:
+            ts = datetime.strptime(date + hhmm, "%Y-%m-%d%H%M").timestamp()
+        except ValueError:
+            ts = None
+        return f"{date}{time_part}", ts
+    return "", None
+
+
+def _read_html_summary(path: Path | None) -> str:
+    """读取生成页内嵌的摘要 meta（无则返回空串）。"""
+    if path is None:
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    match = _SUMMARY_RE.search(text[:4096])
+    return unescape(match.group(1)).strip() if match else ""
 
 
 def _counts_text(meta: dict[str, Any]) -> str:
@@ -215,47 +242,59 @@ def _rel_href(target: Path, root: Path) -> str:
 
 
 def collect_profile_assets(profile_dir: Path, root: Path) -> list[AssetItem]:
-    """扫描一个档案的资产目录，产出卡片列表（含伴生 json 的 meta 数字）。"""
+    """扫描一个档案的资产目录，按文件主干聚合为卡片。
+
+    同一份产出通常有 html / md / json 三个文件：只出一张卡（html 优先，
+    md 兜底），其余作为附件链接，避免重复卡片。
+    """
     items: list[AssetItem] = []
     for kind, dirname in ASSETS_KIND_DIRS.items():
         sub_dir = profile_dir / dirname
         if not sub_dir.is_dir():
             continue
-        for path in sorted(sub_dir.iterdir()):
-            if path.suffix.lower() not in (".html", ".md"):
+        grouped: dict[str, dict[str, Path]] = {}
+        for path in sub_dir.iterdir():
+            suffix = path.suffix.lower()
+            if suffix not in (".html", ".md", ".json"):
+                continue
+            grouped.setdefault(path.stem, {})[suffix] = path
+        for stem, files in grouped.items():
+            primary = files.get(".html") or files.get(".md")
+            if primary is None:
                 continue
             meta: dict[str, Any] = {}
-            json_path = path.with_suffix(".json")
-            if json_path.exists():
+            json_path = files.get(".json")
+            if json_path is not None:
                 try:
                     data = json.loads(json_path.read_text(encoding="utf-8"))
                     if isinstance(data, dict):
                         meta = data
                 except (OSError, ValueError):
                     meta = {}
-            display_time, sort_key = _parse_when(path.stem)
-            if not display_time:
-                stat = path.stat()
+            display_time, sort_ts = _parse_when(stem)
+            if not display_time or sort_ts is None:
+                stat = primary.stat()
                 display_time = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
-                sort_key = "~" + str(int(stat.st_mtime))
+                sort_ts = stat.st_mtime
             extras: dict[str, str] = {}
-            title = meta.get("direction") or path.stem
+            title = meta.get("direction") or _KIND_FIXED_TITLES.get(kind) or stem
             for suffix, label in ((".md", "md"), (".json", "json")):
-                sibling = path.with_suffix(suffix)
-                if sibling.exists() and sibling != path:
+                sibling = files.get(suffix)
+                if sibling is not None and sibling != primary:
                     extras[label] = _rel_href(sibling, root)
+            counts_text = _counts_text(meta) or _read_html_summary(files.get(".html"))
             items.append(
                 AssetItem(
                     kind=kind,
                     title=str(title),
                     when=display_time,
-                    sort_key=sort_key,
-                    rel_href=_rel_href(path, root),
-                    counts_text=_counts_text(meta),
+                    sort_key=sort_ts,
+                    rel_href=_rel_href(primary, root),
+                    counts_text=counts_text,
                     extras=extras,
                 )
             )
-    items.sort(key=lambda it: it.sort_key, reverse=True)
+    items.sort(key=lambda it: float(it.sort_key), reverse=True)
     return items
 
 
@@ -271,22 +310,36 @@ header .sub { margin:0; color:var(--muted); font-size:13px; }
 main { max-width:960px; margin:12px auto 40px; padding:0 20px; }
 section.profile { margin:22px 0; }
 section.profile > h2 { font-size:16px; margin:18px 0 10px; color:var(--muted); }
-.cards { display:grid; gap:12px; }
-a.card { display:block; background:var(--card); border:1px solid var(--line);
-         border-radius:10px; padding:14px 16px; text-decoration:none; color:inherit;
-         transition:border-color .15s, transform .15s; }
-a.card:hover { border-color:var(--accent); transform:translateY(-1px); }
+.cards { display:grid; gap:12px;
+         grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); }
+.card { display:flex; flex-direction:column; background:var(--card);
+        border:1px solid var(--line); border-radius:10px; overflow:hidden;
+        transition:border-color .15s, transform .15s; }
+.card:hover { border-color:var(--accent); transform:translateY(-1px); }
 .card .badge { display:inline-block; font-size:12px; color:#fff; background:var(--accent);
                border-radius:6px; padding:2px 8px; margin-right:8px; }
+.card.kind-research .badge { background:#0d9488; }
 .card.kind-analysis .badge { background:#7c3aed; }
 .card.kind-roadmap .badge { background:#0891b2; }
 .card.kind-progress .badge { background:#65a30d; }
-.card .title { font-weight:600; font-size:15px; }
+a.card-main { display:block; flex:1; padding:14px 16px 8px; text-decoration:none;
+              color:inherit; border-radius:10px; }
+a.card-main:focus-visible, .card .extras a:focus-visible {
+  outline:2px solid var(--accent); outline-offset:2px; }
+.card .title { display:block; font-weight:600; font-size:15px; }
 .card .meta { display:block; margin-top:6px; font-size:12.5px; color:var(--muted); }
-.card .extras { display:block; margin-top:4px; font-size:12px; color:var(--accent); }
+.card .extras { display:flex; align-items:center; flex-wrap:wrap; gap:10px;
+                padding:0 16px 12px; font-size:12px; color:var(--muted); }
+.card .extras a { color:var(--accent); text-decoration:none; }
+.card .extras a:hover { text-decoration:underline; }
 .empty { padding:40px 0; color:var(--muted); font-size:14px; text-align:center; }
 footer { max-width:960px; margin:0 auto 30px; padding:0 20px; color:var(--muted);
          font-size:12px; }
+@media (max-width:640px) {
+  header { padding:20px 14px 6px; }
+  main { padding:0 14px; }
+  .cards { grid-template-columns:1fr; }
+}
 """
 
 _INDEX_EMPTY = (
@@ -307,19 +360,21 @@ def render_index(groups: list[tuple[str, list[AssetItem]]], generated_at: str) -
             for it in items:
                 extras = ""
                 if it.extras:
-                    links = " · ".join(
+                    links = "".join(
                         f'<a href="{escape(href)}">{escape(label)}</a>'
                         for label, href in it.extras.items()
                     )
-                    extras = f'<span class="extras">就地查看：{links}</span>'
-                meta_line = f" {escape(it.when)}" + (f" · {escape(it.counts_text)}" if it.counts_text else "")
+                    extras = f'<div class="extras"><span>附件</span>{links}</div>'
+                meta_line = escape(it.when) + (
+                    f" · {escape(it.counts_text)}" if it.counts_text else ""
+                )
                 cards.append(
-                    f'<a class="card kind-{escape(it.kind)}" href="{escape(it.rel_href)}">'
+                    f'<div class="card kind-{escape(it.kind)}">'
+                    f'<a class="card-main" href="{escape(it.rel_href)}">'
                     f'<span class="badge">{escape(_KIND_LABELS.get(it.kind, it.kind))}</span>'
                     f'<span class="title">{escape(it.title)}</span>'
                     f'<span class="meta">{meta_line}</span>'
-                    f"{extras}"
-                    f"</a>"
+                    f"</a>{extras}</div>"
                 )
             sections.append(
                 f'<section class="profile"><h2>{escape(profile_label)}</h2>'
@@ -329,6 +384,7 @@ def render_index(groups: list[tuple[str, list[AssetItem]]], generated_at: str) -
     return (
         "<!DOCTYPE html>\n"
         '<html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Career Kit 资产中心</title>"
         f"<style>{_INDEX_CSS}</style></head><body>"
         "<header><h1>Career Kit 资产中心</h1>"

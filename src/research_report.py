@@ -667,10 +667,11 @@ def render_html(report: dict[str, Any]) -> str:
 
     parts.append(
         "<footer>本报告由抓取数据代码渲染生成，未使用 AI 记忆编造；"
-        '原始数据在同名 .json。｜ <a href="index.html">← 返回资产中心</a></footer>'
+        '原始数据在同名 .json。｜ <a href="../../index.html">← 返回资产中心</a></footer>'
     )
     return (
         '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Career Kit 市场调研报告</title>"
         f"<style>{_REPORT_CSS}</style></head><body><main>"
         + "".join(parts)

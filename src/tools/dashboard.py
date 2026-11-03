@@ -18,6 +18,42 @@ from .profile import get_active_profile_name
 _FINISHED_STATUS = ("completed", "skipped")
 
 
+def _format_jd_text(jd) -> str:
+    """把阶段 JD 数据转成可读文本，避免把 Python 列表 repr 直接渲染到页面。"""
+    if isinstance(jd, dict):
+        samples = jd.get("samples")
+        if isinstance(samples, list) and samples:
+            lines: list[str] = []
+            for sample in samples[:5]:
+                if not isinstance(sample, dict):
+                    lines.append(str(sample))
+                    continue
+                head = " · ".join(
+                    str(sample.get(k)) for k in ("company", "title") if sample.get(k)
+                )
+                salary = sample.get("salary")
+                if salary:
+                    head = f"{head}（{salary}）" if head else str(salary)
+                reqs = sample.get("requirements") or []
+                req_text = (
+                    "；".join(str(r) for r in list(reqs)[:8])
+                    if isinstance(reqs, (list, tuple))
+                    else str(reqs)
+                )
+                note = sample.get("note")
+                line = head
+                if req_text:
+                    line += f"：{req_text}"
+                if note:
+                    line += f"（{note}）"
+                lines.append(line.strip())
+            return "\n".join(x for x in lines if x)
+        return "；".join(
+            f"{k}：{v}" for k, v in jd.items() if v and not isinstance(v, (list, dict))
+        )
+    return str(jd)
+
+
 def _research_card_html(profile) -> str:
     """「市场调研」卡片：样本数、来源状态与报告入口（无调研时给引导）。"""
     research = getattr(profile, "research", None) or {}
@@ -197,15 +233,32 @@ def render_progress_html(profile) -> str:
 
     overall_pct = int(completed / total_tasks * 100) if total_tasks else 0
 
+    current_phase_name = ""
+    for idx, phase in enumerate(phases):
+        phase_id = phase.get("id") or f"phase_{idx + 1}"
+        if any(
+            t.phase_id == phase_id and t.status not in _FINISHED_STATUS
+            for t in profile.tasks
+        ):
+            current_phase_name = str(phase.get("name", phase_id))
+            break
+    summary = f"{len(phases)} 个阶段 · {completed}/{total_tasks} 个任务"
+    if current_phase_name:
+        summary += f" · 当前：{current_phase_name}"
+
     html = f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="career-kit-summary" content="{escape(summary)}">
 <title>Career Kit 进度仪表盘</title>
 <style>
 body {{ font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
        max-width: 760px; margin: 0 auto; padding: 24px; color: #222; background: #fafafa; }}
 h1 {{ font-size: 22px; }} h2 {{ font-size: 17px; border-bottom: 2px solid #4a90d9; padding-bottom: 4px; }}
+.home {{ color: #4a90d9; text-decoration: none; font-size: 13px; }}
+.home:hover {{ text-decoration: underline; }}
 .card {{ background: #fff; border: 1px solid #e3e3e3; border-radius: 10px; padding: 16px; margin-bottom: 16px; }}
 .bar {{ background: #eee; border-radius: 6px; height: 12px; overflow: hidden; }}
 .fill {{ background: linear-gradient(90deg,#4a90d9,#67b26f); height: 100%; }}
@@ -219,6 +272,7 @@ ul {{ padding-left: 20px; }} li {{ margin: 4px 0; font-size: 14px; }}
 </style>
 </head>
 <body>
+<p><a class="home" href="../../index.html">← 返回资产中心</a></p>
 <h1>Career Kit 进度仪表盘 <span class="meta">生成于 {datetime.now().strftime("%Y-%m-%d %H:%M")} · 快照 v{profile.version}</span></h1>
 
 <div class="card overall"><span class="num">{overall_pct}%</span>
@@ -270,12 +324,23 @@ def render_roadmap_map(profile) -> str:
         "strategy": strategy,
         "phases": [],
     }
+    phase_ids = [p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases)]
+    open_phase_ids = {
+        t.phase_id for t in profile.tasks if t.status not in _FINISHED_STATUS
+    }
+    current_phase_id = next(
+        (pid for pid in phase_ids if pid in open_phase_ids), None
+    )
+    if current_phase_id is None and phase_ids:
+        # 未生成任务时默认第一段；全部完成时展示最后一段
+        current_phase_id = phase_ids[0] if not profile.tasks else phase_ids[-1]
+
     for idx, phase in enumerate(phases):
-        phase_id = phase.get("id") or f"phase_{idx + 1}"
+        phase_id = phase_ids[idx]
         phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
         done = sum(1 for t in phase_tasks if t.status in _FINISHED_STATUS)
         total = len(phase_tasks)
-        is_current = bool(profile.tasks) and phase_id == profile.tasks[0].phase_id
+        is_current = phase_id == current_phase_id
 
         jd_status = phase.get("jd_status", "not_required")
         confirmed = phase.get("confirmed", False)
@@ -292,10 +357,7 @@ def render_roadmap_map(profile) -> str:
         jd = phase.get("jd")
         jd_text = ""
         if jd_status == "has_jd" and jd:
-            if isinstance(jd, dict):
-                jd_text = "；".join(f"{k}：{v}" for k, v in jd.items() if v)
-            else:
-                jd_text = str(jd)
+            jd_text = _format_jd_text(jd)
 
         kpi = phase.get("kpi", {}) or {}
         tasks = []
@@ -345,6 +407,15 @@ def render_roadmap_map(profile) -> str:
             "milestone_names": ms_names,
         })
 
+    total_tasks = sum(int(p.get("total") or 0) for p in data["phases"])
+    done_tasks = sum(int(p.get("done") or 0) for p in data["phases"])
+    current_name = next(
+        (p["name"] for p in data["phases"] if p.get("is_current")), ""
+    )
+    summary = f"{len(data['phases'])} 个阶段 · {done_tasks}/{total_tasks} 个任务"
+    if current_name:
+        summary += f" · 当前：{current_name}"
+
     # 防御 `</script>` 提前闭合：JSON 中 `<\/` 与 `</` 等价，解析不受影响
     data_json = _json_lib.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
@@ -353,6 +424,7 @@ def render_roadmap_map(profile) -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="career-kit-summary" content="{escape(summary)}">
 <title>Career Kit 职业地图</title>
 <style>
 :root {{
@@ -368,6 +440,8 @@ body {{ font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
 header {{ display: flex; align-items: flex-end; justify-content: space-between;
           gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }}
 h1 {{ font-size: 24px; letter-spacing: .3px; }}
+.home {{ color: var(--brand); text-decoration: none; font-size: 13px; }}
+.home:hover {{ text-decoration: underline; }}
 .meta {{ color: var(--muted); font-size: 12.5px; }}
 .start {{ margin: 6px 0 18px; color: var(--muted); font-size: 13.5px; }}
 .start b {{ color: var(--brand); }}
@@ -413,7 +487,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 .kpi {{ color: #5a6270; font-size: 13px; margin: 2px 0; }}
 .resume {{ color: var(--ok); font-size: 13px; margin: 2px 0; }}
 .jd {{ color: #455a64; background: #f4f7f8; padding: 8px 12px; border-radius: 8px;
-      font-size: 12.5px; margin: 8px 0; }}
+      font-size: 12.5px; margin: 8px 0; white-space: pre-wrap; word-break: break-word; }}
 .company {{ margin: 6px 0 2px; font-size: 13px; font-weight: 600; }}
 /* 任务列表 */
 .tasks {{ margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 6px; }}
@@ -452,7 +526,10 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 <body>
 <div class="wrap">
   <header>
-    <h1>Career Kit 职业地图</h1>
+    <div>
+      <a class="home" href="../../index.html">← 返回资产中心</a>
+      <h1>Career Kit 职业地图</h1>
+    </div>
     <span class="meta">生成于 {datetime.now().strftime("%Y-%m-%d %H:%M")} · 路线图 v{profile.version}</span>
   </header>
 
@@ -556,7 +633,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
         ? '<div class="kpi">KPI：' + esc(ph.kpi_metric) + ' → ' + esc(ph.kpi_target)
           + (ph.kpi_evidence ? '（验证：' + esc(ph.kpi_evidence) + '）' : '') + '</div>' : '';
       var resume = ph.resume_value ? '<div class="resume">简历价值：' + esc(ph.resume_value) + '</div>' : '';
-      var jd = ph.jd_text ? '<div class="jd">' + esc(ph.jd_text.slice(0, 400)) + '</div>' : '';
+      var jd = ph.jd_text ? '<div class="jd">' + esc(ph.jd_text) + '</div>' : '';
 
       var tasksHtml = '';
       if (ph.tasks.length) {{

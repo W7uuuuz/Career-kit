@@ -102,6 +102,9 @@ def test_write_and_collect_index(tmp_path, monkeypatch):
     assert "8 条岗位" in text       # counts 数字进卡片
     assert "1 个源失败" in text      # 失败源数量如实展示
     assert stem in text             # 无 direction 时回退文件名主干
+    # 同一份产出（html+md+json）只出一张卡片，且卡片内不再嵌套 <a>
+    assert text.count('class="card-main"') == 1
+    assert '<a class="card kind-' not in text
 
     # 按档案分组：新建另一个档案目录后仍能全部收录
     assets.write_asset_text("roadmap", "大厂冲刺", assets.ROADMAP_FILENAME, "<p>别的档案</p>")
