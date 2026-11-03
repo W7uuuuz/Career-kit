@@ -34,6 +34,9 @@
       state = data;
       render();
     }).catch(function (err) {
+      document.getElementById('sub').textContent = '无法读取档案：' + err.message;
+      document.getElementById('warnings').innerHTML =
+        '<div class="warn-box">本地服务不可用或 token 已失效。请从桌面快捷方式重新打开控制台。</div>';
       toast(err.message);
     });
   }

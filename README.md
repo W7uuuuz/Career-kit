@@ -101,6 +101,8 @@ career-kit-doctor
 | 抓取工具报 Playwright 相关错误 | 先执行 `playwright install chromium` 安装浏览器内核 |
 | BOSS 直聘提示需要登录 | 按报错信息里的绝对解释器命令运行 `-m src.scrapers.boss.login`，扫码后自动保存 |
 | uv 装依赖报 `iv8 was not found` | iv8 只在官方 PyPI，不在镜像上：`uv pip install -e . --index-url https://pypi.org/simple` |
+| `career-kit-serve` 命令找不到 | 重新执行 `pip install -e .`；或直接用 `<venv-python> -m src.web --open` |
+| 桌面没有 Career Kit 快捷方式 | 重新运行 `install.ps1` / `install.sh`；快捷方式只在安装时创建 |
 
 ### 斜杠命令（可选）
 

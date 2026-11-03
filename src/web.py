@@ -27,7 +27,12 @@ from urllib.parse import urlparse
 from .assets import INDEX_FILENAME, get_assets_root
 from .guidance import warnings
 from .models import TaskStatus
-from .tools.profile import get_active_profile_name, load_profile, save_profile
+from .tools.profile import (
+    get_active_profile_name,
+    load_profile,
+    profile_lock,
+    save_profile,
+)
 from .tools.task_manager import (
     checkin_task as do_checkin,
     record_capability_evidence,
@@ -63,16 +68,17 @@ def _task_payload(task: Any) -> dict[str, Any]:
 
 def undo_task(task_id: str) -> None:
     """把任务恢复为待办（本地控制台的「撤销」）。"""
-    profile = load_profile()
-    task = profile.get_task(task_id)
-    if not task:
-        raise ValueError(f"任务 {task_id} 不存在")
-    task.status = TaskStatus.PENDING
-    task.started_at = None
-    task.completed_at = None
-    task.checkin_progress = 0
-    profile.touch()
-    save_profile(profile)
+    with profile_lock():
+        profile = load_profile()
+        task = profile.get_task(task_id)
+        if not task:
+            raise ValueError(f"任务 {task_id} 不存在")
+        task.status = TaskStatus.PENDING
+        task.started_at = None
+        task.completed_at = None
+        task.checkin_progress = 0
+        profile.touch()
+        save_profile(profile)
 
 
 def build_state(profile: Any | None = None) -> dict[str, Any]:
@@ -182,6 +188,7 @@ def _json_response(handler: BaseHTTPRequestHandler, status: int, data: Any) -> N
     body = json.dumps(data, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -264,16 +271,17 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
                 _json_response(self, 200, {"ok": True, "state": build_state()})
                 return
             try:
-                profile, _ = do_checkin(
-                    load_profile(), task_id, status=status, amount=amount
-                )
+                with profile_lock():
+                    profile, _ = do_checkin(
+                        load_profile(), task_id, status=status, amount=amount
+                    )
+                    task = profile.get_task(task_id)
+                    if task and task.status == "completed":
+                        record_capability_evidence(profile, task)
+                    save_profile(profile)
             except ValueError as exc:
                 _json_response(self, 400, {"error": str(exc)})
                 return
-            task = profile.get_task(task_id)
-            if task and task.status == "completed":
-                record_capability_evidence(profile, task)
-            save_profile(profile)
             _json_response(self, 200, {"ok": True, "state": build_state(profile)})
 
     return Handler
@@ -286,6 +294,7 @@ def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[ThreadingH
     for candidate in range(port, port + 10):
         try:
             server = ThreadingHTTPServer((host, candidate), create_handler(token))
+            server.daemon_threads = True
             return server, token
         except OSError as exc:
             last_error = exc

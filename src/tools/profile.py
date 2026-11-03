@@ -13,7 +13,11 @@ restore_profile 可从回收站恢复——用户数据是长期资产，删除�
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +29,69 @@ ACTIVE_PROFILE_FILE = ".active_profile"
 
 # 档案名白名单：防止路径穿越（"../x"、子目录、非法字符一律拒绝）
 PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+# 同一进程内可重入：MCP 工具和 Web 服务都可能在已持锁时调用 save_profile
+_LOCK_STATE = threading.local()
+# 初始化锁文件时避免多线程同时写首字节（Windows 上写入已锁区域会 PermissionError）
+_LOCK_INIT = threading.Lock()
+
+
+@contextmanager
+def profile_lock(name: str | None = None) -> Iterator[None]:
+    """跨进程档案写锁（Windows msvcrt / POSIX fcntl）。
+
+    - 只保护「读-改-写」临界区，读操作依赖原子替换，不额外加锁。
+    - 同一线程可重入，避免 save_profile 内部再次加锁死锁。
+    """
+    if name is None:
+        name = get_active_profile_name()
+    else:
+        validate_profile_name(name)
+    held: set[str] = getattr(_LOCK_STATE, "held", set())
+    if name in held:
+        yield
+        return
+
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    lock_path = PROFILE_DIR / f".{name}.lock"
+    with _LOCK_INIT:
+        if not lock_path.exists() or lock_path.stat().st_size == 0:
+            with open(lock_path, "ab") as init:
+                init.write(b"\0")
+    with open(lock_path, "a+b") as handle:
+        _acquire_lock(handle)
+        held.add(name)
+        _LOCK_STATE.held = held
+        try:
+            yield
+        finally:
+            held.discard(name)
+            _release_lock(handle)
+
+
+def _acquire_lock(handle: Any) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        # 首字节由 _LOCK_INIT 预先写入；这里只锁，不读不写，避免已锁区域 PermissionError
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+
+
+def _release_lock(handle: Any) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def validate_profile_name(name: str) -> str:
@@ -112,10 +179,10 @@ def delete_profile(name: str) -> Path | None:
     # 同名档案多次删除：加时间戳区分，保留所有历史
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     target = trash_dir / f"{name}.json"
-    if target.exists():
-        target = trash_dir / f"{name}_{ts}.json"
-
-    path.rename(target)
+    with profile_lock(name):
+        if target.exists():
+            target = trash_dir / f"{name}_{ts}.json"
+        path.rename(target)
     return target
 
 
@@ -158,7 +225,8 @@ def restore_profile(name: str) -> Path | None:
         return None
     # 取最新一份（mtime 最大）
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
-    latest.rename(target)
+    with profile_lock(name):
+        latest.rename(target)
     return target
 
 
@@ -178,14 +246,21 @@ def load_profile(name: str | None = None) -> CareerProfile:
 
 
 def save_profile(profile: CareerProfile, name: str | None = None) -> None:
-    """保存档案到本地。name 为 None 时保存到当前活跃档案。"""
+    """保存档案到本地（原子替换）。
+
+    先写临时文件再 os.replace，避免 MCP 与 Web 同时读写时读到半截 JSON；
+    写锁保证同一时刻只有一个写入方。
+    """
     if name is None:
         name = get_active_profile_name()
     else:
         validate_profile_name(name)
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     path = PROFILE_DIR / f"{name}.json"
-    path.write_text(profile.model_dump_json(indent=2), encoding="utf-8")
+    with profile_lock(name):
+        temp = path.with_name(f".{path.name}.tmp")
+        temp.write_text(profile.model_dump_json(indent=2), encoding="utf-8")
+        os.replace(temp, path)
 
 
 def merge_section(
@@ -203,18 +278,19 @@ def merge_section(
     Returns:
         更新后的档案。
     """
-    profile = load_profile(name)
+    with profile_lock(name):
+        profile = load_profile(name)
 
-    try:
-        parsed: dict[str, Any] = json.loads(data)
-        if not isinstance(parsed, dict):
+        try:
+            parsed: dict[str, Any] = json.loads(data)
+            if not isinstance(parsed, dict):
+                parsed = {"raw": data}
+        except (json.JSONDecodeError, TypeError):
             parsed = {"raw": data}
-    except (json.JSONDecodeError, TypeError):
-        parsed = {"raw": data}
 
-    profile.merge(section, parsed)
-    save_profile(profile, name)
-    return profile
+        profile.merge(section, parsed)
+        save_profile(profile, name)
+        return profile
 
 
 def save_plan_snapshot(
@@ -230,7 +306,8 @@ def save_plan_snapshot(
     Returns:
         更新后的档案。
     """
-    profile = load_profile(name)
-    profile.save_plan_snapshot(source, import_file)
-    save_profile(profile, name)
-    return profile
+    with profile_lock(name):
+        profile = load_profile(name)
+        profile.save_plan_snapshot(source, import_file)
+        save_profile(profile, name)
+        return profile

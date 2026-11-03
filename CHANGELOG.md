@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **档案写入安全打磨（2026-11-03）**：
+  - 新增 `profile_lock`：Windows msvcrt / POSIX fcntl 跨进程写锁，同线程可重入
+  - `save_profile` 改为临时文件 + `os.replace` 原子替换，避免 MCP 与 Web
+    同时读写时读到半截 JSON
+  - 写入临界区（`merge_section` / `save_plan_snapshot` / 删除/恢复 / Web 打卡）
+    统一加锁；新增 `tests/test_profile_lock.py`（并发写后文件仍合法）
+
 - **本地控制台 + 桌面快捷方式（2026-11-03，P2+P3 MVP）**：
   - 新增 `src/web.py`：`career-kit-serve` 启动本地 HTTP 控制台，只绑定 `127.0.0.1`，
     启动 token 鉴权；前端不使用 localStorage，打卡直接写回档案
