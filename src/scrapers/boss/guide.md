@@ -56,8 +56,8 @@ fetch_company_jobs(company="boss", params='{"keyword":"AI Agent", "city":"上海
 
 ## 注意事项
 
-1. **需要登录态**：首次使用前在本项目目录运行登录命令。
-   MCP 报错信息会打印**当前服务解释器的绝对路径**，直接复制执行即可：
+1. **需要登录态**：首次使用前运行登录命令（**优先由 Agent 的 harness 直接执行**，
+   用户只需在浏览器里扫码；不要只把命令丢给用户）：
    `"<venv-python>" -m src.scrapers.boss.login`
    （不要用裸 `python`，多解释器环境可能装不到依赖）
    一条命令到底：patchright（Playwright 反检测 fork，驱动层消除 CDP 检测向量）
@@ -65,8 +65,9 @@ fetch_company_jobs(company="boss", params='{"keyword":"AI Agent", "city":"上海
    登录态落盘并退出，全程无需任何手动确认；登录态按 **2 小时有效期**管理，
    超过 2 小时或 BOSS 返回「API 错误: 您的环境存在异常」时会自动销毁，需重新扫码。
    **交互纪律**：工具在抓取前会要求先问用户是否抓取 BOSS；未登录/登录态过期时返回
-   `LOGIN_REQUIRED` / `CONFIRMATION_REQUIRED`，Agent 应把「是否现在扫码登录」
-   转问用户并等待答复，不得静默跳过该源或直接宣布抓取失败
+   `LOGIN_REQUIRED` / `CONFIRMATION_REQUIRED`。询问时直接说明「我可以帮你打开登录窗口，
+   你只需扫码」；用户同意后 Agent 用 harness 的终端/Bash 运行 `login_command`，
+   不要把命令丢给用户手动执行，也不得静默跳过该源或直接宣布抓取失败
 2. **浏览器原则**：登录只使用 Chrome / Edge，**绝不回退 Chromium**——
    开源内核的自动化指纹太明显，BOSS 一测一个准；未装 Chrome/Edge 时工具会
    明确报错而不是静默降级。窗口尺寸**由浏览器自适应**（仅 --start-maximized，

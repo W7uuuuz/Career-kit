@@ -75,8 +75,10 @@ research_market()                                    # 调研方法论与 4 步�
 
 - case_query：role=目标方向；education=学历档（五档四层写法如「双非本」）
 - BOSS 直聘需扫码登录：抓取前必须询问用户是否抓取，同意后传 `boss_confirmed=true`；
-  工具返回 `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时把问题转问用户并等待答复，
-  不得静默跳过或直接将登录缺失视为调研失败
+  询问时直接说明「我可以帮你打开登录窗口，你只需扫码」。工具返回
+  `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时把问题转问用户；用户同意登录后，
+  用 harness 的终端/Bash 运行 `login_command`，不要把命令丢给用户手动执行，
+  也不得静默跳过或直接将登录缺失视为调研失败
 - 岗位详情必抓：未取得详情的岗位不纳入报告，并在数据缺口如实说明
 - 花名册机制：`gather_research_data` 返回「花名册（标识与摘要）+ 聚合摘要」，
   岗位全文仅写入报告与档案；读取全文用 `read_research_details(ids=..., kind="jd"/"case")`，

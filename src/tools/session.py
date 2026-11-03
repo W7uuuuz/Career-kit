@@ -84,8 +84,9 @@ WELCOME_PROMPT = """\
     - `search_knowledge(query=...)` → 查本地已积累的资料（JD/面经）
     - 抓取不可用（无网/需登录/无数据源）→ 让用户提供 JD 文本或用 `import_jd` /
       `import_jd_file` 导入；数据来源如实标注，绝不编造，也不要因此停摆
-    - BOSS 直聘需扫码登录：抓取前先问用户「是否抓取 BOSS」；未登录时工具会返回
-      `LOGIN_REQUIRED`——先问用户「是否现在扫码登录」再重试，不要直接判失败
+   - BOSS 直聘需扫码登录：抓取前先问用户「是否抓取 BOSS（我可以直接帮你打开登录窗口扫码）」；
+     未登录时工具会返回 `LOGIN_REQUIRED`——先问用户是否现在登录；用户同意后用
+     harness 的终端/Bash 直接运行 login_command（用户只需扫码），再重试，不要直接判失败
 5. `finalize_profile` → 确认档案完整
 
 ### Phase 2: 市场调研（分析的地基，核心卖点「来源真实」）
@@ -93,9 +94,10 @@ WELCOME_PROMPT = """\
 7. `gather_research_data(jd_specs, case_query, boss_confirmed)` 一次批量抓取：
    - jd_specs：目标公司 1 家 + 同方向对照 2-4 家（优先同城、优先含薪来源如 BOSS）
    - case_query：role=目标方向；education=学历档（五档四层写法如「双非本」）；可选 company/city
-   - 含 BOSS 源：抓取前必须先问用户是否抓取 BOSS（需扫码登录），同意后传
-     `boss_confirmed=true`；工具返回 `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时
-     把问题转问用户并等待答复，不得静默跳过或直接宣布调研失败
+   - 含 BOSS 源：抓取前必须先问用户是否抓取 BOSS（我可以直接帮你打开登录窗口扫码），
+     同意后传 `boss_confirmed=true`；工具返回 `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED`
+     时把问题转问用户；用户同意登录后用 harness 的终端/Bash 直接运行 login_command
+     （用户只需扫码），不得静默跳过或直接宣布调研失败
    - 每条岗位会补抓详情；无详情岗位剔除并计入数据缺口（如实汇报）
    - 任一源失败不中断；失败原因原样进报告的来源状态面板
 8. 报告三件套（md/html/json）自动落盘到用户资产目录：

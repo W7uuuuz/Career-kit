@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ..case_search import collect_cases, resolve_company
+from ..guidance import login_action
 from ..mcp_app import mcp
 from ..research_digest import render_digest_lines
 from ..research_report import build_report, save_report
@@ -74,8 +75,8 @@ def research_market() -> str:
                       "向用户播报调研菜单：抓哪家（目标 1 + 对照 2-4 家）、约半分钟、"
                       "报告会存到用户资产目录——给用户随时喊停/增减的机会，不必等确认。"
                       "名单里若要放 BOSS 直聘，必须先单独问一句「是否抓取 BOSS 直聘"
-                      "（需要扫码登录一次）」，用户点头才加入并带 boss_confirmed=true；"
-                      "用户拒绝就换成其他源，不得静默跳过",
+                      "（我可以直接帮你打开登录窗口扫码）」，用户点头才加入并带 "
+                      "boss_confirmed=true；用户拒绝就换成其他源，不得静默跳过",
             "output": {"menu": "目标方向 + 抓取名单 + 预计耗时 + 产出位置"},
             "checkpoint": False,
             "checkpoint_note": "宣告即执行；用户喊停才停；BOSS 源例外——必须先问用户",
@@ -88,7 +89,9 @@ def research_market() -> str:
                       "case_query 带 role/education（五档四层写法如「双非本」）/company/city。"
                       "含 BOSS 源时必须先问过用户并传 boss_confirmed=true——否则工具会"
                       "返回 CONFIRMATION_REQUIRED 让你去问；未登录会返回 LOGIN_REQUIRED，"
-                      "此时先问用户「是否现在扫码登录」，不要直接宣布调研失败。"
+                      "此时先问用户「我可以直接帮你打开登录窗口扫码，要现在登录吗」；"
+                      "同意后用 harness 的终端/Bash 运行登录脚本（用户只需扫码），"
+                      "不要把命令丢给用户手动执行，也不要直接宣布调研失败。"
                       "抓取阶段会逐条补抓岗位详情；未取得正文的岗位将被剔除，"
                       "因此耗时略高于纯列表抓取。"
                       "调用前播报「正在抓取 N 家岗位与案例，并补抓详情，约半分钟至一分钟」",
@@ -131,9 +134,11 @@ def research_market() -> str:
         "步骤预告：先向用户报 4 步菜单（①范围宣告 ②批量抓取 ③报告落地 ④衔接分析），"
         "报完再执行。\n"
         "BOSS 源纪律：名单含 BOSS 直聘时，抓取前必须询问用户「是否抓取 BOSS 直聘"
-        "（需扫码登录一次）」——用户同意后传 boss_confirmed=true；不同意则更换来源，"
-        "不得静默跳过。若工具返回 LOGIN_REQUIRED / CONFIRMATION_REQUIRED，"
-        "将问题转问用户并等待答复，不得自行判定调研失败。\n"
+        "（我可以直接帮你打开登录窗口扫码）」——用户同意后传 boss_confirmed=true；"
+        "不同意则更换来源，不得静默跳过。若工具返回 LOGIN_REQUIRED / "
+        "CONFIRMATION_REQUIRED，将问题转问用户；用户同意登录后，"
+        "用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），"
+        "不要把命令丢给用户手动执行，也不得自行判定调研失败。\n"
         "详情纪律：工具为每条岗位补抓正文；未取得详情的岗位将被剔除并计入数据缺口。"
         "汇报时须说明「已剔除 N 条未取得详情的岗位」，不得以标题代替完整 JD。\n"
         "花名册机制：gather 返回的花名册仅含标识与摘要，岗位/案例全文已写入报告与档案。"
@@ -260,6 +265,8 @@ async def gather_research_data(
         boss_confirmed: 范围含 BOSS 直聘时必须先问用户，用户同意后传 true。
             BOSS 需要扫码登录（登录态 2 小时有效）；未确认会返回 CONFIRMATION_REQUIRED
             让你先去问用户，未登录会返回 LOGIN_REQUIRED 让你问用户是否现在登录。
+            用户同意后用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），
+            不要把命令丢给用户手动执行。
 
     Returns:
         汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（index.html 资产总览入口） +
@@ -316,13 +323,14 @@ async def gather_research_data(
             "调研范围含 BOSS 直聘：该源需要扫码登录（登录态 2 小时有效），"
             "抓取前必须先问用户是否进行 BOSS 抓取。",
             {
-                "question": "是否抓取 BOSS 直聘？需要你扫码登录一次（登录态 2 小时有效，过期需重登）。",
+                **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                "question": "是否抓取 BOSS 直聘？我可以直接帮你打开登录窗口，你只需扫码（登录态 2 小时有效）。",
                 "options": [
-                    "同意：带 boss_confirmed=true 重新调用 gather_research_data",
+                    "同意：用 harness 运行登录脚本，扫码后带 boss_confirmed=true 重新调用 gather_research_data",
                     "不同意：从 jd_specs / case_query 移除 boss 后重跑，其他源照常抓取",
                 ],
-                "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
-                "rule": "把 question 原样转问用户并等待答复；不得静默跳过 BOSS 或直接宣布失败",
+                "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
+                        "不要把命令丢给用户手动执行；不得静默跳过 BOSS 或直接宣布失败",
             },
         )
 
@@ -430,11 +438,12 @@ async def gather_research_data(
                 f"{reason}其他来源本次也没有可用数据。"
                 "可先扫码登录后重试，或改用其他数据源/导入 JD。",
                 {
-                    "question": "BOSS 直聘登录态不可用，是否现在扫码登录后再抓取？",
-                    "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                    **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                    "question": "BOSS 直聘登录态不可用，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
                     "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
                     "source_status": report.get("source_status") or [],
-                    "rule": "先问用户是否现在登录；不要把登录缺失直接当调研失败宣布",
+                    "rule": "先问用户是否现在登录；同意后用 harness 直接运行 login_command，"
+                            "不要把命令丢给用户手动执行",
                 },
             )
         return error_response(
@@ -452,17 +461,18 @@ async def gather_research_data(
 
     paths = await asyncio.to_thread(save_report, profile, report)
     message = _render_report_message(report, paths)
+    login_command = f'"{sys.executable}" -m src.scrapers.boss.login'
     if boss_auth_lost:
         message += (
             "\n\nBOSS 直聘：登录态已过期或触发环境异常，已被销毁。"
-            "如需补全，重新扫码登录后带 boss_confirmed=true 重跑："
-            f'"{sys.executable}" -m src.scrapers.boss.login'
+            "需要补全时，先问用户是否现在登录；同意后直接用 harness 运行 "
+            f"{login_command}（用户只需扫码），再带 boss_confirmed=true 重跑。"
         )
     elif boss_unlogged:
         message += (
             "\n\nBOSS 直聘：未登录，已跳过（其他来源已照常抓取）。"
-            "如需补全，登录后带 boss_confirmed=true 重跑："
-            f'"{sys.executable}" -m src.scrapers.boss.login'
+            "需要补全时，先问用户是否现在登录；同意后直接用 harness 运行 "
+            f"{login_command}（用户只需扫码），再带 boss_confirmed=true 重跑。"
         )
     return message
 

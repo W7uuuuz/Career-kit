@@ -82,6 +82,24 @@ FAMILIARITY_OPTIONS: tuple[str, ...] = (
     "已经有明确目标",
 )
 
+def login_action(login_command: str) -> dict[str, Any]:
+    """BOSS 扫码登录的交互契约：优先由 Agent 用 harness 直接执行脚本。
+
+    用户只需要在浏览器里扫码，不需要自己复制命令、开终端。
+    仅当 harness 不能执行命令时，才退化为把命令交给用户。
+    """
+    return {
+        "harness_can_run": True,
+        "user_instruction": "我可以直接帮你打开登录窗口，你只需要在浏览器里扫码；完成后告诉我继续。",
+        "agent_action": (
+            "先问用户是否现在登录；同意后直接用终端/Bash 工具运行 login_command。"
+            "脚本会打开系统浏览器并等待扫码——请用户扫码，扫码成功后重试原操作。"
+            "不要把命令丢给用户手动执行；只有当前 harness 无法运行命令时才让用户自己执行。"
+        ),
+        "login_command": login_command,
+    }
+
+
 VERDICT_LABELS: dict[str, str] = {
     "PASS": "通过",
     "PASS_WITH_NOTES": "通过，但有建议",
@@ -415,6 +433,7 @@ __all__ = [
     "goal_question",
     "guide_for",
     "is_legacy",
+    "login_action",
     "mark_brief_shown",
     "mark_goal_confirmed",
     "opening_blocks",

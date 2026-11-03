@@ -125,6 +125,18 @@ def test_user_brief_has_all_six_steps():
     assert "顺序定、节奏自己掌握" in brief
 
 
+def test_login_action_points_to_harness():
+    """BOSS 登录询问必须说明 Agent 会直接运行脚本，用户只需扫码。"""
+    from src.guidance import login_action
+
+    data = login_action("python -m src.scrapers.boss.login")
+
+    assert data["harness_can_run"] is True
+    assert "harness" in data["agent_action"]
+    assert "不要把命令丢给用户" in data["agent_action"]
+    assert "扫码" in data["user_instruction"]
+
+
 def test_render_guide_has_one_question_and_no_internal_ids():
     guide = build_guide(CareerProfile())
     text = render_guide(guide)

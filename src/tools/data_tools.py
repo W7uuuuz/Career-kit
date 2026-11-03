@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 
+from ..guidance import login_action
 from ..mcp_app import mcp
 from ..scrapers import get_job_detail, list_scrapers, search_company_jobs
 from ..scrapers.loader import read_scraper_guide
@@ -188,7 +189,9 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         nowcoder 返回面经，github 返回经验帖。
         失败时返回错误原因和恢复建议——此时如实告知用户，不要编造数据。
         BOSS 直聘需要登录：未登录会返回 LOGIN_REQUIRED（附问题与登录命令）——
-        先问用户「是否现在扫码登录」，不要把登录缺失直接当抓取失败宣布。
+        先问用户「我可以直接帮你打开登录窗口扫码，要现在登录吗」；
+        用户同意后用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），
+        不要把命令丢给用户手动执行，也不要把登录缺失直接当抓取失败宣布。
     """
     try:
         params_dict = json.loads(params) if params else {}
@@ -209,14 +212,15 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
                 "BOSS 直聘尚未登录（cookies 不存在或已超过 2 小时有效期）——"
                 "该源需要扫码登录一次，登录态按 2 小时有效期管理。",
                 {
-                    "question": "BOSS 直聘登录态不可用，是否现在扫码登录后再抓取？",
-                    "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                    **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                    "question": "BOSS 直聘登录态不可用，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
                     "after_login": "登录成功后重试 fetch_company_jobs(company=\"boss\", ...)",
                     "recovery": (
                         "用户不想登录时改用其他数据源（bytedance/nowcoder 等），"
                         "或用 import_jd / import_jd_file 导入用户手头的真实 JD"
                     ),
-                    "rule": "把 question 转问用户并等待答复；不要把登录缺失直接当抓取失败宣布",
+                    "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
+                            "不要把命令丢给用户手动执行",
                 },
             )
 
@@ -240,14 +244,15 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
                 "LOGIN_REQUIRED",
                 f"{message}\n\n{server_fingerprint_line()}\n"
                 "BOSS 直聘登录态不可用（未登录、超过 2 小时或已被风控销毁）——"
-                "先问用户：是否现在扫码登录？"
-                "同意（登录成功后重试 / 走 gather_research_data 时带 boss_confirmed=true）；"
-                "不同意（改用其他数据源或导入手头 JD）。",
+                "先问用户：我可以直接帮你打开登录窗口扫码，要现在登录吗？"
+                "同意则用 harness 运行登录脚本，登录成功后重试 / 走 gather_research_data "
+                "时带 boss_confirmed=true；不同意（改用其他数据源或导入手头 JD）。",
                 {
-                    "question": "BOSS 直聘登录态不可用，是否现在扫码登录后再抓取？",
-                    "login_command": f'"{sys.executable}" -m src.scrapers.boss.login',
+                    **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                    "question": "BOSS 直聘登录态不可用，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
                     "recovery": recovery,
-                    "rule": "把 question 转问用户并等待答复；不要把登录缺失直接当抓取失败宣布",
+                    "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
+                            "不要把命令丢给用户手动执行",
                 },
             )
         # BUG-014：错误信息附带 [服务自检] 行——报错里的解释器路径属于旧实例时，

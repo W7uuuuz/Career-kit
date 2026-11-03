@@ -92,8 +92,10 @@ def test_gather_login_required_when_boss_not_logged_in(temp_profile, monkeypatch
     )))
     assert result["isError"] is True
     assert result["code"] == "LOGIN_REQUIRED"
-    assert "是否现在扫码登录" in result["details"]["question"]
+    assert "打开登录窗口" in result["details"]["question"]
     assert "src.scrapers.boss.login" in result["details"]["login_command"]
+    assert result["details"]["harness_can_run"] is True
+    assert "harness" in result["details"]["agent_action"]
     assert "boss_confirmed=true" in result["details"]["after_login"]
     assert not (temp_profile / "CareerKit").exists()
 
@@ -198,10 +200,12 @@ def test_fetch_company_jobs_boss_login_surfaces_question(temp_profile, monkeypat
     result = json.loads(asyncio.run(data_tools.fetch_company_jobs(company="boss")))
     assert result["isError"] is True
     assert result["code"] == "LOGIN_REQUIRED"
-    assert "是否现在扫码登录" in result["details"]["question"]
+    assert "打开登录窗口" in result["details"]["question"]
     assert "src.scrapers.boss.login" in result["details"]["login_command"]
+    assert result["details"]["harness_can_run"] is True
+    assert "harness" in result["details"]["agent_action"]
     assert "import_jd" in result["details"]["recovery"]
-    assert "失败宣布" in result["details"]["rule"]
+    assert "harness" in result["details"]["rule"]
 
 
 def test_fetch_company_jobs_non_boss_unaffected(temp_profile, monkeypatch):

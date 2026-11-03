@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **BOSS 登录改为 Agent 直接执行（2026-11-03）**：
+  - 新增 `guidance.login_action()`：统一登录交互契约，明确 `harness_can_run=true`、
+    `agent_action`（用终端/Bash 直接运行登录脚本）、`user_instruction`（用户只需扫码）
+  - `fetch_company_jobs` / `gather_research_data` 的 `LOGIN_REQUIRED` /
+    `CONFIRMATION_REQUIRED` 询问改为「我可以直接帮你打开登录窗口扫码」；
+    用户同意后由 Agent 运行 `login_command`，不再把命令丢给用户手动执行
+  - BOSS guide、session 手册、workflow、llms 与命令剧本同步该纪律
+
 - **重构引导词系统（2026-11-03）**：
   - 新增 `src/guidance.py`：6 步旅程、位置推导、本轮唯一决策、警告与文案渲染的唯一事实源；
     引导状态由档案推导（`profile.guidance`），不再依赖模型记忆
