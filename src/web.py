@@ -105,6 +105,18 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
             for ms in phase.get("milestones", [])
             if isinstance(ms, dict)
         }
+        milestone_tasks = []
+        for ms in phase.get("milestones", []):
+            if not isinstance(ms, dict):
+                continue
+            for t in ms.get("tasks") or []:
+                if isinstance(t, dict):
+                    milestone_tasks.append({
+                        "name": t.get("name", ""),
+                        "desc": t.get("description", ""),
+                        "priority": t.get("priority", "medium"),
+                        "done_criteria": t.get("done_criteria", ""),
+                    })
         phases_out.append({
             "id": phase_id,
             "name": phase.get("name", phase_id),
@@ -116,7 +128,35 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
             "done": done,
             "total": len(phase_tasks),
             "milestone_names": ms_names,
+            "milestone_tasks": milestone_tasks,
             "tasks": [_task_payload(t) for t in phase_tasks],
+        })
+
+    research = profile.research if isinstance(profile.research, dict) else {}
+    research_out = {}
+    if research.get("report_md"):
+        failed = [
+            s for s in (research.get("source_status") or [])
+            if isinstance(s, dict) and s.get("status") == "failed"
+        ]
+        research_out = {
+            "generated_at": research.get("generated_at", ""),
+            "counts": research.get("counts") or {},
+            "report_html": research.get("report_html", ""),
+            "report_md": research.get("report_md", ""),
+            "report_json": research.get("report_json", ""),
+            "failed_sources": [str(s.get("source") or "未知源") for s in failed],
+        }
+
+    applications = []
+    for app in (profile.applications or [])[-10:]:
+        applications.append({
+            "id": app.id,
+            "company": app.company,
+            "role": app.role,
+            "status": app.status,
+            "channel": app.channel,
+            "applied_at": app.applied_at,
         })
 
     return {
@@ -128,6 +168,8 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         "total_tasks": total_tasks,
         "warnings": warnings(profile),
         "assets_index": (get_assets_root() / INDEX_FILENAME).as_uri(),
+        "research": research_out,
+        "applications": applications,
     }
 
 

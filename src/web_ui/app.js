@@ -108,8 +108,15 @@
           + '<span class="task-meta">' + esc(t.id) + '</span>'
           + '</label>' + taskDetail(t) + '</div>');
       });
+    } else if (ph.milestone_tasks && ph.milestone_tasks.length) {
+      lines.push('<div class="empty">里程碑已规划；回到对话里细化当前阶段后会变成可打卡任务。</div>');
+      lines.push('<ul class="ms-preview">' + ph.milestone_tasks.map(function (m) {
+        var pr = { high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }[m.priority] || 'pr-medium';
+        var done = m.done_criteria ? '：' + esc(m.done_criteria) : '';
+        return '<li><span class="pr ' + pr + '"></span>' + esc(m.name) + done + '</li>';
+      }).join('') + '</ul>');
     } else {
-      lines.push('<div class="empty">还没有细化任务。回到对话里让 AI 细化当前阶段，或先按里程碑查看规划。</div>');
+      lines.push('<div class="empty">还没有细化任务。回到对话里让 AI 细化当前阶段。</div>');
     }
     return '<div class="card"><div class="card-head"><span class="card-title">'
       + esc(ph.name) + '<span class="type-pill">' + esc(ph.type) + '</span>' + badge + '</span>'
@@ -118,6 +125,42 @@
       + (ph.company ? '<div class="company">' + esc(ph.company) + '</div>' : '')
       + (ph.goal ? '<div class="goal">' + esc(ph.goal) + '</div>' : '')
       + '<div class="tasks">' + lines.join('') + '</div></div>';
+  }
+
+  function renderResearch() {
+    var el = document.getElementById('research');
+    var r = state.research;
+    if (!r || !r.counts) { el.innerHTML = ''; return; }
+    var counts = r.counts || {};
+    var links = '';
+    if (r.report_html) links += '<a href="' + esc(r.report_html) + '" target="_blank" rel="noopener">阅读版</a>';
+    if (r.report_md) links += ' · <a href="' + esc(r.report_md) + '" target="_blank" rel="noopener">可读全文</a>';
+    if (r.report_json) links += ' · <a href="' + esc(r.report_json) + '" target="_blank" rel="noopener">原始数据</a>';
+    var failed = (r.failed_sources || []).length
+      ? '<div class="muted">失败源：' + esc(r.failed_sources.join('、')) + '</div>' : '';
+    el.innerHTML = '<div class="card"><div class="card-head"><span class="card-title">市场调研'
+      + '<span class="type-pill">来源真实</span></span>'
+      + '<span class="muted">' + esc(r.generated_at || '') + '</span></div>'
+      + '<div class="goal">岗位 ' + (counts.jd_samples || 0) + ' 条 · 案例 '
+      + (counts.cases || 0) + ' 条</div>' + failed
+      + (links ? '<div class="task-res">' + links + '</div>' : '')
+      + '</div>';
+  }
+
+  function renderApplications() {
+    var el = document.getElementById('applications');
+    var apps = state.applications || [];
+    if (!apps.length) { el.innerHTML = ''; return; }
+    var labels = {
+      applied: '已投递', screening: '进初筛', interview: '进面试',
+      offer: 'offer', rejected: '已拒绝', withdrawn: '已撤回',
+    };
+    el.innerHTML = '<div class="card"><div class="card-head"><span class="card-title">求职漏斗</span>'
+      + '<span class="muted">最近 ' + apps.length + ' 条</span></div>'
+      + '<ul class="ms-preview">' + apps.map(function (a) {
+        return '<li>' + esc(a.company) + (a.role ? ' · ' + esc(a.role) : '')
+          + ' <span class="muted">' + esc(labels[a.status] || a.status) + '</span></li>';
+      }).join('') + '</ul></div>';
   }
 
   function render() {
@@ -141,6 +184,8 @@
     }
 
     document.getElementById('phases').innerHTML = state.phases.map(renderPhase).join('');
+    renderResearch();
+    renderApplications();
   }
 
   function setBusy(value) {

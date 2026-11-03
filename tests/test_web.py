@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 import src.tools.profile as profile_module  # noqa: E402
-from src.models import CareerProfile, Task  # noqa: E402
+from src.models import Application, CareerProfile, Task  # noqa: E402
 from src.web import build_state, create_server  # noqa: E402
 
 
@@ -40,6 +40,14 @@ def _profile() -> CareerProfile:
         how_to=["先想 10 分钟"], done_criteria="独立写出 5 题",
         resources=[{"label": "LeetCode", "url": "https://leetcode.cn/"}],
     )]
+    profile.research = {
+        "report_md": "report.md",
+        "report_html": "report.html",
+        "generated_at": "2026-11-03",
+        "counts": {"jd_samples": 10, "cases": 3},
+        "source_status": [{"source": "boss", "status": "failed"}],
+    }
+    profile.applications = [Application(id="app_001", company="某公司", role="Agent 实习")]
     return profile
 
 
@@ -53,6 +61,9 @@ def test_build_state_exposes_roadmap_and_playbook(temp_profile):
     assert state["phases"][0]["tasks"][0]["how_to"] == ["先想 10 分钟"]
     assert state["phases"][0]["tasks"][0]["done_criteria"] == "独立写出 5 题"
     assert state["total_tasks"] == 1
+    assert state["research"]["counts"]["jd_samples"] == 10
+    assert state["research"]["failed_sources"] == ["boss"]
+    assert state["applications"][0]["company"] == "某公司"
 
 
 def test_server_requires_token_and_writes_checkin(temp_profile):
