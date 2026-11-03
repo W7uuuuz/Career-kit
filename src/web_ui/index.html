@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Kit 控制台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-token="__CK_TOKEN__">
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Career Kit 控制台</h1>
+      <p class="sub" id="sub">正在读取档案…</p>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" id="assets-link" href="#" target="_blank" rel="noopener">打开资产中心</a>
+      <button class="btn" id="refresh">刷新</button>
+    </div>
+  </header>
+
+  <div class="overview">
+    <div class="ring" id="ring"><span id="ring-pct">0%</span></div>
+    <div>
+      <div class="big" id="total-pct">0%</div>
+      <div class="muted" id="total-done">0 / 0 个任务</div>
+      <div class="muted" id="start-level"></div>
+    </div>
+  </div>
+
+  <div id="warnings"></div>
+  <div id="phases"></div>
+
+  <p class="footer">数据直接写入本机档案，与 MCP 共用；这里不需要导出打卡指令。顺序归产品，时间归用户。</p>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -514,6 +514,8 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 .ck-btn {{ padding: 3px 10px; border: 1px solid var(--brand); background: var(--brand-soft);
            color: var(--brand); border-radius: 8px; font-size: 12px; cursor: pointer; }}
 .ck-btn:hover {{ background: var(--brand); color: #fff; }}
+.ck-btn.ghost {{ background: transparent; border-color: var(--line); color: var(--muted); }}
+.ck-btn.ghost:hover {{ border-color: var(--brand); color: var(--brand); background: transparent; }}
 .done-badge {{ color: var(--ok); font-size: 12px; margin-right: 8px; font-weight: 600; }}
 .ck-ctl input[type=range] {{ width: 110px; accent-color: var(--brand); }}
 .ms {{ font-size: 12px; color: var(--muted); margin-top: 8px; font-weight: 600; }}
@@ -651,20 +653,33 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 
       var tasksHtml = '';
       if (ph.tasks.length) {{
+        var msStats = {{}};
+        ph.tasks.forEach(function (t) {{
+          if (!t.milestone_id) return;
+          var s = msStats[t.milestone_id] || {{ done: 0, total: 0 }};
+          s.total += 1;
+          if (t.state === 'done') s.done += 1;
+          msStats[t.milestone_id] = s;
+        }});
         var lastMs = null;
         ph.tasks.forEach(function (t) {{
           var msLabel = '';
           if (t.milestone_id && t.milestone_id !== lastMs) {{
             lastMs = t.milestone_id;
-            msLabel = '<div class="ms">里程碑：' + esc(ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M')) + '</div>';
+            var ms = msStats[t.milestone_id] || {{ done: 0, total: 0 }};
+            var msName = ph.milestone_names[t.milestone_id] || t.milestone_id.replace(/.*_ms_/, 'M');
+            msLabel = '<div class="ms">里程碑：' + esc(msName)
+              + '（' + ms.done + '/' + ms.total + '）</div>';
           }}
           var pr = {{ high: 'pr-high', medium: 'pr-medium', low: 'pr-low' }}[t.priority] || 'pr-medium';
           var nameCls = t.state === 'done' ? ' task-name done' : ' task-name';
           var tid = esc(t.id);
           var ctl = '';
           if (t.state === 'done') {{
-            // 已完成：显示打勾状态 + 完成标记
-            ctl = '<span class="done-badge">完成</span>';
+            // 已完成：显示打勾状态 + 完成标记；本地打卡可撤销
+            ctl = '<span class="done-badge">完成</span>'
+              + (t.__server_done ? '' : ' <button class="ck-btn ghost" data-action="undo" data-id="'
+                + tid + '">撤销</button>');
           }} else if (t.mode === 'daily') {{
             ctl = '<span class="ck-ctl" data-mode="daily" data-id="' + tid + '">'
               + '打卡 ' + Math.floor(t.progress) + '/' + (t.goal || '?') + ' 天'
@@ -771,7 +786,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       ph.tasks.forEach(function (t) {{
         if (t.id === id) {{
           t.state = done ? 'done' : 'open';
-          if (mode === 'daily') t.progress = done ? (t.goal || 1) : (t.progress || 0);
+          if (mode === 'daily') t.progress = done ? (t.goal || 1) : 0;
           if (mode === 'percent') t.progress = amount;
           updated = true;
         }}
@@ -812,6 +827,13 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       var doneNow = goal > 0 && newProg >= goal;
       task.progress = newProg;
       applyCheckin(id, 'daily', doneNow, doneNow ? goal : newProg);
+    }} else if (action === 'undo') {{
+      var task = null;
+      phases.forEach(function (ph) {{
+        ph.tasks.forEach(function (x) {{ if (x.id === id) task = x; }});
+      }});
+      if (!task) return;
+      applyCheckin(id, task.mode || 'once', false, 0);
     }}
   }});
 

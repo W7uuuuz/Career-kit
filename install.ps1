@@ -20,10 +20,10 @@ Write-Host ""
 
 $uv = Get-Command uv -ErrorAction SilentlyContinue
 if ($uv) {
-    Write-Host "[1/3] uv: install Python 3.12 and create venv ..."
+    Write-Host "[1/4] uv: install Python 3.12 and create venv ..."
     uv python install 3.12
     uv venv .venv --python 3.12 --clear
-    Write-Host "[2/3] installing dependencies (-e .) ..."
+    Write-Host "[2/4] installing dependencies (-e .) ..."
     uv pip install -e . --index-url $Index
 } else {
     $py = Get-Command python -ErrorAction SilentlyContinue
@@ -31,10 +31,10 @@ if ($uv) {
         Write-Host "Neither python nor uv found. Install uv (recommended): https://docs.astral.sh/uv/" -ForegroundColor Red
         exit 1
     }
-    Write-Host "[1/3] python -m venv .venv ..."
+    Write-Host "[1/4] python -m venv .venv ..."
     & python -m venv .venv
     & $VenvPy -m pip install --upgrade pip
-    Write-Host "[2/3] installing dependencies (-e .) ..."
+    Write-Host "[2/4] installing dependencies (-e .) ..."
     & $VenvPy -m pip install -e . --index-url $Index
 }
 
@@ -43,7 +43,31 @@ if (-not (Test-Path $VenvPy)) {
     exit 1
 }
 
-Write-Host "[3/3] done." -ForegroundColor Green
+Write-Host "[3/4] dependencies done." -ForegroundColor Green
+
+# Desktop shortcut: start the local console and open the browser (data stays local).
+Write-Host "[4/4] creating desktop shortcut ..."
+$Desktop = [Environment]::GetFolderPath("Desktop")
+if ($Desktop -and (Test-Path $Desktop)) {
+    try {
+        $LinkPath = Join-Path $Desktop "Career Kit.lnk"
+        $Shell = New-Object -ComObject WScript.Shell
+        $Shortcut = $Shell.CreateShortcut($LinkPath)
+        $Shortcut.TargetPath = $VenvPy
+        $Shortcut.Arguments = "-m src.web --open"
+        $Shortcut.WorkingDirectory = $Root
+        $Shortcut.Description = "Career Kit local console"
+        $Shortcut.Save()
+        Write-Host "  desktop: $LinkPath" -ForegroundColor Green
+    } catch {
+        Write-Host "  shortcut skipped: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  desktop folder not found; shortcut skipped" -ForegroundColor Yellow
+}
+Write-Host ""
+Write-Host "Local console (also available as the desktop shortcut):"
+Write-Host "  $VenvPy -m src.web --open" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Interpreter (use this ABSOLUTE path to register the MCP server):"
 Write-Host "  $VenvPy" -ForegroundColor Yellow

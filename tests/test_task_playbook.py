@@ -163,3 +163,5 @@ def test_dashboard_renders_task_playbook(temp_profile):
     assert "https://leetcode.cn/problem-list/2cktkvj/" in html
     assert "独立写出 5 题并通过" in html
     assert "怎么做 / 完成标准" in html
+    assert 'data-action="undo"' in html
+    assert "里程碑：" in html

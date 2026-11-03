@@ -25,6 +25,7 @@ src/tools/__pycache__/
 .pytest_cache/
 tests/career-kit-test/
 artifacts/e2e/
+start-career-kit.command
 
 # 内部开发文档（不随开源仓库发布，保留本地）
 docs/internal/

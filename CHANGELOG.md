@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **本地控制台 + 桌面快捷方式（2026-11-03，P2+P3 MVP）**：
+  - 新增 `src/web.py`：`career-kit-serve` 启动本地 HTTP 控制台，只绑定 `127.0.0.1`，
+    启动 token 鉴权；前端不使用 localStorage，打卡直接写回档案
+  - 新增 `src/web_ui/`：路线图查看、任务怎么做/资源/完成标准、once/daily/percent
+    打卡与撤销；MCP 下次运行直接读到同一份进度
+  - `install.ps1` / `install.sh` 增加桌面快捷方式（Windows `.lnk`、macOS/Linux `.command`）
+  - 职业地图增加单任务撤销与里程碑完成数
+  - 新增 `tests/test_web.py`；`pyproject.toml` 注册 `career-kit-serve`
+
 - **引导与执行 playbook（2026-11-03，P0+P1）**：
   - `[USER_BRIEF]` 增加「这是什么 / 能帮你做什么 / 怎么用 / 数据在本机」四段，
     新用户第一轮就知道产品边界与预期

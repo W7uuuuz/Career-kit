@@ -21,10 +21,10 @@ echo "repo: $ROOT"
 echo ""
 
 if command -v uv >/dev/null 2>&1; then
-    echo "[1/3] uv: install Python 3.12 and create venv ..."
+    echo "[1/4] uv: install Python 3.12 and create venv ..."
     uv python install 3.12
     uv venv .venv --python 3.12 --clear
-    echo "[2/3] installing dependencies (-e .) ..."
+    echo "[2/4] installing dependencies (-e .) ..."
     uv pip install -e . --index-url "$INDEX"
 else
     PY="$(command -v python3 || command -v python || true)"
@@ -32,10 +32,10 @@ else
         echo "Neither python3 nor uv found. Install uv (recommended): https://docs.astral.sh/uv/"
         exit 1
     fi
-    echo "[1/3] python -m venv .venv ..."
+    echo "[1/4] python -m venv .venv ..."
     "$PY" -m venv .venv
     "$VENV_PY" -m pip install --upgrade pip
-    echo "[2/3] installing dependencies (-e .) ..."
+    echo "[2/4] installing dependencies (-e .) ..."
     "$VENV_PY" -m pip install -e . --index-url "$INDEX"
 fi
 
@@ -44,7 +44,27 @@ if [ ! -x "$VENV_PY" ]; then
     exit 1
 fi
 
-echo "[3/3] done."
+echo "[3/4] dependencies done."
+
+# Desktop shortcut: start the local console and open the browser.
+echo "[4/4] creating desktop shortcut ..."
+LAUNCHER="$ROOT/start-career-kit.command"
+cat > "$LAUNCHER" <<EOF
+#!/usr/bin/env bash
+cd "$ROOT"
+exec "$VENV_PY" -m src.web --open
+EOF
+chmod +x "$LAUNCHER"
+DESKTOP="$HOME/Desktop"
+if [ -d "$DESKTOP" ]; then
+    ln -sf "$LAUNCHER" "$DESKTOP/Career Kit.command"
+    echo "  desktop: $DESKTOP/Career Kit.command"
+else
+    echo "  desktop folder not found; launcher created at $LAUNCHER"
+fi
+echo ""
+echo "Local console:"
+echo "  \"$VENV_PY\" -m src.web --open"
 echo ""
 echo "Interpreter (use this ABSOLUTE path to register the MCP server):"
 echo "  $VENV_PY"

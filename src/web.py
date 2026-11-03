@@ -1,0 +1,283 @@
+"""Career Kit 本地控制台：HTTP + 静态前端，读写同一份档案。
+
+设计原则：
+- 只绑定 127.0.0.1；启动时生成一次性 token，API 必须带 token。
+- 前端不使用 localStorage；所有打卡写回档案，MCP 下次直接读到。
+- 与 MCP 共用 `src.tools.*` 领域函数，不复制业务逻辑。
+
+启动：
+    python -m src.web --open
+    career-kit-serve --open
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import secrets
+import sys
+import threading
+import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from .assets import INDEX_FILENAME, get_assets_root
+from .guidance import warnings
+from .models import TaskStatus
+from .tools.profile import get_active_profile_name, load_profile, save_profile
+from .tools.task_manager import (
+    checkin_task as do_checkin,
+    record_capability_evidence,
+)
+
+WEB_DIR = Path(__file__).parent / "web_ui"
+INDEX_FILE = WEB_DIR / "index.html"
+APP_JS = WEB_DIR / "app.js"
+STYLE_CSS = WEB_DIR / "style.css"
+
+
+# ---------------------------------------------------------------------------
+# 状态构建
+# ---------------------------------------------------------------------------
+
+
+def _task_payload(task: Any) -> dict[str, Any]:
+    return {
+        "id": task.id,
+        "name": task.name,
+        "desc": task.description,
+        "status": task.status,
+        "priority": task.priority,
+        "milestone_id": task.milestone_id,
+        "checkin_mode": task.checkin_mode or "once",
+        "checkin_goal": task.checkin_goal,
+        "checkin_progress": task.checkin_progress,
+        "how_to": list(task.how_to or []),
+        "resources": list(task.resources or []),
+        "done_criteria": task.done_criteria or "",
+    }
+
+
+def undo_task(task_id: str) -> None:
+    """把任务恢复为待办（本地控制台的「撤销」）。"""
+    profile = load_profile()
+    task = profile.get_task(task_id)
+    if not task:
+        raise ValueError(f"任务 {task_id} 不存在")
+    task.status = TaskStatus.PENDING
+    task.started_at = None
+    task.completed_at = None
+    task.checkin_progress = 0
+    profile.touch()
+    save_profile(profile)
+
+
+def build_state(profile: Any | None = None) -> dict[str, Any]:
+    """把档案整理成前端需要的只读快照。"""
+    profile = profile or load_profile()
+    plan = profile.plan if isinstance(profile.plan, dict) else {}
+    roadmap = plan.get("roadmap", plan)
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+
+    phase_ids = [p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases)]
+    open_phase_ids = {
+        t.phase_id for t in profile.tasks
+        if t.status not in ("completed", "skipped")
+    }
+    current_phase_id = next((pid for pid in phase_ids if pid in open_phase_ids), None)
+    if current_phase_id is None and phase_ids:
+        current_phase_id = phase_ids[0] if not profile.tasks else phase_ids[-1]
+
+    phases_out: list[dict[str, Any]] = []
+    total_done = 0
+    total_tasks = 0
+    for idx, phase in enumerate(phases):
+        phase_id = phase_ids[idx]
+        phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
+        done = sum(1 for t in phase_tasks if t.status in ("completed", "skipped"))
+        total_done += done
+        total_tasks += len(phase_tasks)
+        ms_names = {
+            ms.get("id"): ms.get("name", "")
+            for ms in phase.get("milestones", [])
+            if isinstance(ms, dict)
+        }
+        phases_out.append({
+            "id": phase_id,
+            "name": phase.get("name", phase_id),
+            "type": phase.get("type", "learn"),
+            "goal": phase.get("goal", ""),
+            "company": phase.get("company", ""),
+            "rationale": phase.get("rationale", ""),
+            "is_current": phase_id == current_phase_id,
+            "done": done,
+            "total": len(phase_tasks),
+            "milestone_names": ms_names,
+            "tasks": [_task_payload(t) for t in phase_tasks],
+        })
+
+    return {
+        "profile": get_active_profile_name(),
+        "start_level": (profile.gap or {}).get("start_level", ""),
+        "strategy": (roadmap.get("strategy_summary", "") if isinstance(roadmap, dict) else ""),
+        "phases": phases_out,
+        "total_done": total_done,
+        "total_tasks": total_tasks,
+        "warnings": warnings(profile),
+        "assets_index": (get_assets_root() / INDEX_FILENAME).as_uri(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# HTTP
+# ---------------------------------------------------------------------------
+
+
+def _json_response(handler: BaseHTTPRequestHandler, status: int, data: Any) -> None:
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _text_response(handler: BaseHTTPRequestHandler, status: int, body: bytes, ctype: str) -> None:
+    handler.send_response(status)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "CareerKitWeb/0.1"
+
+        def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
+            if "/api/" in str(args[0] if args else ""):
+                sys.stderr.write("[career-kit] %s\n" % (fmt % args))
+
+        def _authorized(self) -> bool:
+            return self.headers.get("X-CK-Token", "") == token
+
+        def _json_body(self) -> dict[str, Any]:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            data = json.loads(raw.decode("utf-8") or "{}")
+            return data if isinstance(data, dict) else {}
+
+        def do_GET(self) -> None:  # noqa: N802
+            path = urlparse(self.path).path
+            if path in ("/", "/index.html"):
+                html = INDEX_FILE.read_text(encoding="utf-8")
+                html = html.replace("__CK_TOKEN__", token)
+                _text_response(self, 200, html.encode("utf-8"), "text/html; charset=utf-8")
+                return
+            if path == "/app.js":
+                _text_response(self, 200, APP_JS.read_bytes(), "application/javascript; charset=utf-8")
+                return
+            if path == "/style.css":
+                _text_response(self, 200, STYLE_CSS.read_bytes(), "text/css; charset=utf-8")
+                return
+            if path == "/api/health":
+                _json_response(self, 200, {"ok": True})
+                return
+            if path == "/api/state":
+                if not self._authorized():
+                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
+                    return
+                _json_response(self, 200, build_state())
+                return
+            _json_response(self, 404, {"error": "not found"})
+
+        def do_POST(self) -> None:  # noqa: N802
+            path = urlparse(self.path).path
+            if path != "/api/checkin":
+                _json_response(self, 404, {"error": "not found"})
+                return
+            if not self._authorized():
+                _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
+                return
+            try:
+                body = self._json_body()
+            except (ValueError, TypeError):
+                _json_response(self, 400, {"error": "invalid json"})
+                return
+            task_id = str(body.get("task_id") or "").strip()
+            status = str(body.get("status") or "completed")
+            amount = float(body.get("amount") or 0)
+            if not task_id:
+                _json_response(self, 400, {"error": "task_id required"})
+                return
+            if status == "pending":
+                try:
+                    undo_task(task_id)
+                except ValueError as exc:
+                    _json_response(self, 400, {"error": str(exc)})
+                    return
+                _json_response(self, 200, {"ok": True, "state": build_state()})
+                return
+            try:
+                profile, _ = do_checkin(
+                    load_profile(), task_id, status=status, amount=amount
+                )
+            except ValueError as exc:
+                _json_response(self, 400, {"error": str(exc)})
+                return
+            task = profile.get_task(task_id)
+            if task and task.status == "completed":
+                record_capability_evidence(profile, task)
+            save_profile(profile)
+            _json_response(self, 200, {"ok": True, "state": build_state(profile)})
+
+    return Handler
+
+
+def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[ThreadingHTTPServer, str]:
+    """创建服务器；端口占用时自动顺延。返回 (server, token)。"""
+    token = secrets.token_urlsafe(18)
+    last_error: OSError | None = None
+    for candidate in range(port, port + 10):
+        try:
+            server = ThreadingHTTPServer((host, candidate), create_handler(token))
+            return server, token
+        except OSError as exc:
+            last_error = exc
+            continue
+    raise OSError(f"无法绑定 {host}:{port}-{port + 9}：{last_error}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Career Kit 本地控制台")
+    parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认仅本机）")
+    parser.add_argument("--port", type=int, default=8765, help="起始端口（占用时自动顺延）")
+    parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    args = parser.parse_args(argv)
+
+    try:
+        server, token = create_server(args.host, args.port)
+    except OSError as exc:
+        print(f"启动失败：{exc}", file=sys.stderr)
+        return 1
+
+    host, port = server.server_address[:2]
+    url = f"http://{host}:{port}/?token={token}"
+    print(f"Career Kit 控制台：{url}")
+    print("按 Ctrl+C 停止。数据直接写入 ~/.career-kit，与 MCP 共用。")
+    if not args.no_open:
+        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

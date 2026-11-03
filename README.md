@@ -66,6 +66,19 @@ pip install -e .
 > macOS 用户把 python 换成 python3。
 > opencode 的 `.opencode/config.json` 不是 MCP 注册入口，改它是无效的。
 
+### 本地控制台（可选）
+
+安装脚本会在桌面创建「Career Kit」快捷方式；也可以手动运行：
+
+```bash
+career-kit-serve --open
+# 或
+"<venv-python>" -m src.web --open
+```
+
+它会启动只监听 `127.0.0.1` 的本地页面，用于查看路线图、任务怎么做/资源/完成标准并直接打卡。
+打卡写入同一份档案，MCP 下次运行时直接读到，不再需要复制指令或依赖浏览器 localStorage。
+
 ### 验证安装
 
 先跑体检：
