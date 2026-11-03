@@ -129,6 +129,8 @@ def test_command_scripts_are_thin_and_guidance_driven():
         assert not missing, f"{rel} 缺少引导锚点：{missing}"
         assert "从起步到上岸全流程 6 步" not in text, f"{rel} 不应复制首屏模板"
         assert "1. 建档摸底" not in text, f"{rel} 不应复制阶段清单"
+        assert "第一条动作必须是调用" in text, f"{rel} 缺少先调 start_session 的硬规则"
+        assert "detail_current_phase" in text, f"{rel} 执行阶段应先细化再生成任务"
 
 
 def test_user_brief_is_single_source_of_truth():
