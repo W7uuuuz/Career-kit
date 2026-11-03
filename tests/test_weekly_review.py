@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -203,9 +203,10 @@ def test_get_weekly_review_renders_and_marks_last_review(temp_profile):
     from src.server import get_weekly_review
 
     profile = profile_module.load_profile()
+    recent = (datetime.now() - timedelta(hours=1)).isoformat()
     profile.tasks = [Task(id="task_001", name="任务 A", phase_id="p1",
-                          status="completed", completed_at=_ts(23))]
-    profile.checkins = [CheckIn(task_id="task_001", timestamp=_ts(23))]
+                          status="completed", completed_at=recent)]
+    profile.checkins = [CheckIn(task_id="task_001", timestamp=recent)]
     profile_module.save_profile(profile)
 
     out = get_weekly_review()
