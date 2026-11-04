@@ -101,11 +101,17 @@ def _map_job(raw: dict) -> dict:
     ]
     location = "·".join(p for p in location_parts if p)
 
+    company = (
+        raw.get("brandName")
+        or raw.get("companyName")
+        or raw.get("brandNameTrans")
+        or ""
+    )
     return {
         "title": raw.get("jobName") or "",
         "salary": raw.get("salaryDesc") or "",
         "location": location,
-        "company": raw.get("brandName") or "",
+        "company": company or "公司名未获取",
         "experience": raw.get("jobExperience") or "",
         "degree": raw.get("jobDegree") or "",
         "url": f"{BASE_URL}/job_detail/{encrypt_job_id}.html" if encrypt_job_id else "",

@@ -22,30 +22,67 @@ from .tool_helpers import _json, _parse_json_param
 
 @mcp.tool()
 def generate_tasks() -> str:
-    """从路线图生成任务列表。
+    """从路线图生成当前阶段的任务列表。
 
     何时调用：在 save_roadmap 之后调用，将路线图转化为可执行的任务。
     前置条件：档案中已有路线图（plan.roadmap）。
     后续步骤：调用 get_next_tasks 查看当前阶段的下一步任务。
 
-    注意：重建按「阶段 + 里程碑 + 任务名」复用旧任务 ID 与打卡进度；
-    不再每次从 task_001 重排，避免历史打卡串到新任务。
+    只生成当前阶段（第一个有未完成任务的阶段；全部完成后取下一个尚未
+    生成任务的阶段），后续阶段保留里程碑形态，避免出现一大堆空壳任务。
+    重建按「阶段 + 里程碑 + 任务名」复用旧任务 ID 与打卡进度。
     """
-    from .task_manager import create_tasks_from_roadmap, format_task_list
+    from .task_manager import (
+        create_tasks_from_roadmap,
+        format_task_list,
+        resolve_current_phase,
+    )
 
     profile = load_profile()
 
-    if not profile.plan.get("roadmap") and not profile.plan.get("phases"):
+    roadmap = profile.plan.get("roadmap", profile.plan)
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+    if not phases:
         return error_response(
             "MISSING_DATA",
             "档案中没有路线图，请先调用 generate_roadmap。",
             {"section": "plan"},
         )
 
-    # 重建：同一任务（phase + milestone + name）复用旧 ID 与打卡进度，
-    # 不再每次从 task_001 重排，也不重复追加能力证据。
+    phase_ids = [
+        p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases) if isinstance(p, dict)
+    ]
+    current = resolve_current_phase(profile)
+    target_phase_id = current["phase_id"] if current else ""
+    if not target_phase_id:
+        # 所有已有任务都完成了：找第一个还没有任务的阶段，继续推进
+        with_tasks = {t.phase_id for t in profile.tasks}
+        target_phase_id = next((pid for pid in phase_ids if pid not in with_tasks), "")
+
+    if not target_phase_id:
+        return _json({
+            "message": (
+                "所有阶段的任务都已生成并完成——没有新的当前阶段可生成。\n"
+                "建议回顾目标，规划下一步方向。\n\n"
+                f"{guide_for(profile)}"
+            ),
+            "next_steps": ["get_progress", "get_weekly_review"],
+            "context": {"phase": "all_phases_generated", "task_count": 0},
+        })
+
+    target_phase = next(
+        (p for p in phases if (p.get("id") or "") == target_phase_id), {}
+    )
+    target_name = target_phase.get("name") or target_phase_id
+
+    # 同一任务（phase + milestone + name）复用旧 ID 与打卡进度；
+    # 只替换当前阶段，其他阶段（含已完成阶段）原样保留。
     old_tasks = list(profile.tasks)
-    tasks = create_tasks_from_roadmap(profile)
+    kept_other = [
+        t for t in old_tasks
+        if t.phase_id != target_phase_id and t.phase_id in phase_ids
+    ]
+    tasks = create_tasks_from_roadmap(profile, only_phase_ids={target_phase_id})
     new_ids = {t.id for t in tasks}
     preserved = sum(
         1 for t in old_tasks
@@ -53,24 +90,47 @@ def generate_tasks() -> str:
     )
 
     profile.tasks = []
+    for task in kept_other:
+        profile.add_task(task)
     for task in tasks:
         profile.add_task(task)
 
     save_profile(profile)
 
+    # 任务生成后自动刷新路线图 HTML：避免用户打开旧快照看到「没有可打卡任务」（P1-4）
+    map_path = ""
+    map_error = ""
+    try:
+        map_html = _render_roadmap_map(profile)
+        map_path = _write_html(map_html, kind="roadmap")
+    except Exception as exc:  # noqa: BLE001 - 交付失败如实告知
+        map_error = str(exc)
+
     migrated_note = (
         f"已保留 {preserved} 个任务的打卡状态。\n" if preserved else ""
     )
+    map_note = (
+        f"路线图 HTML 已同步刷新，现在可以打卡：{map_path}\n"
+        if map_path
+        else f"路线图 HTML 刷新失败：{map_error}——可稍后用 export_dashboard(mode=\"roadmap\") 重试。\n"
+    )
     return _json({
         "message": (
-            f"{migrated_note}已从路线图生成 {len(tasks)} 个任务。\n"
-            "下一步：调用 get_next_tasks 查看当前阶段的执行任务，开始第一阶段；"
+            f"{migrated_note}已为当前阶段「{target_name}」生成 {len(tasks)} 个任务"
+            "（后续阶段保留里程碑，不生成空壳任务）。\n"
+            f"{map_note}"
+            "下一步：调用 get_next_tasks 查看执行任务；"
             "或调用 detail_current_phase 生成当前阶段的详细路线（含按天/按比例打卡点）。\n\n"
             f"{guide_for(profile)}"
         ),
-        "tasks": format_task_list(tasks, "生成的任务"),
+        "tasks": format_task_list(tasks, "当前阶段任务"),
         "next_steps": ["get_next_tasks", "detail_current_phase"],
-        "context": {"phase": "tasks_generated", "task_count": len(tasks)},
+        "context": {
+            "phase": "tasks_generated",
+            "phase_id": target_phase_id,
+            "phase_name": target_name,
+            "task_count": len(tasks),
+        },
     })
 
 
@@ -336,6 +396,10 @@ def get_next_tasks() -> str:
 
     if view is None:
         lines.append("所有阶段已完成！建议回顾目标，规划下一步方向。")
+    elif view["total"] == 0:
+        lines.append(f"## 当前阶段：{view['phase_name']}（任务尚未生成）")
+        lines.append("")
+        lines.append("下一步：调用 generate_tasks 为这个阶段生成任务，再开始执行。")
     else:
         pct = int(view["done"] / view["total"] * 100) if view["total"] else 0
         lines.append(f"## 当前阶段：{view['phase_name']}（{view['done']}/{view['total']}，{pct}%）")
@@ -794,19 +858,24 @@ def get_workflow_status() -> str:
 
     if profile.summary:
         phase = "analysis"
+        has_research = bool((profile.research or {}).get("report_md"))
+        if has_research:
+            # 已完成步骤从实际产物推导，不依赖会话内事件（P1-3）
+            for done in ("research_market", "gather_research_data"):
+                if done not in completed_steps:
+                    completed_steps.append(done)
         if stale_gap:
             next_step = stale_step
         elif not profile.gap:
             if _has_goal(profile):
-                if not (profile.research or {}).get("report_md"):
+                if not has_research:
                     # 调研是独立一步（软引导，不硬挡）：报告是一切分析的地基
                     phase = "research"
                     next_step = (
-                        "research_market（推荐先做：真实市场是分析的地基，约半分钟）；"
+                        "research_market（推荐先做：真实市场是分析的地基）；"
                         "也可直接 analyze_gaps"
                     )
                 else:
-                    completed_steps.append("research_market")
                     next_step = "analyze_gaps"
             else:
                 next_step = "explore_goals（尚无明确目标——先用三轴定位选定方向，再 analyze_gaps）"
@@ -932,10 +1001,11 @@ def export_dashboard(mode: str = "progress") -> str:
         index_hint = f"{get_assets_root() / INDEX_FILENAME}"
         return (
             f"职业地图已生成：{out_path}\n\n"
-            "用浏览器打开即可查看。这是一个可交互打卡应用：\n"
-            "- 勾选任务即打卡，进度实时更新，状态保存在浏览器（localStorage）\n"
-            "- 顶部 tab 切换阶段；「导出打卡数据」可复制打卡指令回传，由你同步到档案\n"
-            "重新生成时已打卡记录不会丢失。\n"
+            "用浏览器打开即可查看。打卡有两种方式：\n"
+            "- 推荐：运行 career-kit-serve --open，从控制台打开「职业地图」——直接写档案，刷新不丢；\n"
+            "- 离线：直接双击 HTML，打卡存在浏览器 localStorage；移动目录、换浏览器或清缓存会丢，"
+            "可用「下载打卡 JSON」备份，或「复制打卡指令」回传对话。\n"
+            "- 顶部 tab 切换阶段；打卡后需回传时由 LLM 调用 checkin_task 同步到档案。\n"
             f"资产总览：双击 {index_hint}（调研报告/路线图/仪表盘都在里面）。\n"
             "下一步：用户回传打卡数据后调用 checkin_task 同步到档案。"
         )

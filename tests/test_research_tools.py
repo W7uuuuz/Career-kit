@@ -271,7 +271,7 @@ def test_save_report_dated_files_and_research_contract(temp_profile):
     paths = save_report(profile, report)
     assert Path(paths["md"]).exists() and Path(paths["html"]).exists()
     assert Path(paths["json"]).exists() and Path(paths["index"]).exists()
-    assert re.search(r"\d{4}-\d{2}-\d{2}_AI Agent 工程师", paths["md"]), "日期_方向留档"
+    assert re.search(r"\d{4}-\d{2}-\d{2}_\d{4}_AI Agent 工程师", paths["md"]), "日期_时分_方向留档"
 
     profile2 = profile_module.load_profile()
     assert profile2.research["counts"]["jd_samples"] == 1

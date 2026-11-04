@@ -256,7 +256,8 @@ def search_company_jobs(company: str, **kwargs: Any) -> dict[str, Any]:
     scraper_config = _load_config().get("scrapers", {}).get(company, {})
     company_name = scraper_config.get("name", company)
     for r in valid_items:
-        r.setdefault("company", company_name)
+        if not r.get("company"):
+            r["company"] = company_name
 
     # 校验输出（仅对有效结果）
     valid_items = _validate_results(valid_items, company_name)

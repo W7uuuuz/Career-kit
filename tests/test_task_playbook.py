@@ -137,7 +137,14 @@ def test_resolve_current_phase_rules():
     assert resolve_current_phase(profile)["phase_id"] == "phase_2"  # 跳过零任务阶段
 
     profile.tasks[0].status = "skipped"
-    assert resolve_current_phase(profile) is None  # skipped 算完成
+    # skipped 算完成；下一阶段（phase_1）还没有任务，作为当前阶段等待生成
+    assert resolve_current_phase(profile)["phase_id"] == "phase_1"
+
+    profile.tasks = [
+        Task(id="task_001", name="任务1", phase_id="phase_1", status="skipped"),
+        Task(id="task_002", name="任务2", phase_id="phase_2", status="skipped"),
+    ]
+    assert resolve_current_phase(profile) is None  # 全部阶段都有任务且都完成
 
 
 def test_generate_tasks_preserves_ids_and_progress(temp_profile):

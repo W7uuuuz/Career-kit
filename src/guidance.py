@@ -373,7 +373,8 @@ def build_guide(profile: Any) -> Guide:
         return _guide(
             "research",
             "research",
-            "下一步做市场调研：抓真实岗位和同背景经历，约半分钟。要现在开始吗？",
+            "下一步做市场调研：抓真实岗位和同背景经历。按来源数量约 30-90 秒，"
+            "超过 90 秒建议拆批。要现在开始吗？",
             options=["开始调研", "先跳过，直接分析"],
             next_action="同意后走 research_market → gather_research_data",
             profile=profile,

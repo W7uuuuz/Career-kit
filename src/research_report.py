@@ -167,33 +167,6 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     cases_result = gathered.get("cases_result") or {}
     case_sources = cases_result.get("sources") or {}
     case_warnings = cases_result.get("warnings") or []
-    # 复测 BUG #5：JD 源与案例源分开统计——案例源也进状态面板（失败如实入缺口）
-    for slug, raw_count in case_sources.items():
-        count = int(raw_count or 0)
-        error = ""
-        for warning in case_warnings:
-            text = str(warning)
-            if text.startswith(f"{slug}:"):
-                error = _one_line(text.split(":", 1)[1].strip())
-                break
-        if slug == "local" and count == 0 and not error:
-            continue  # 本地知识库为空是常态，不当作「来源无结果」计入缺口
-        if count > 0:
-            status = "ok"
-        elif error:
-            status = "failed"
-        else:
-            status = "empty"
-        source_status.append(
-            {
-                "source": f"案例·{slug}",
-                "scope": "cases",
-                "status": status,
-                "count": count,
-                "elapsed": 0.0,
-                "error": error,
-            }
-        )
 
     # 本地已抓 JD 与本次 JD 表去重：同一岗位不在「同背景经历」里重复出现（复测 BUG #2）
     jd_urls = {sample["url"] for sample in jd_samples if sample["url"]}
@@ -237,6 +210,43 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
 
     for idx, case in enumerate(cases, 1):
         case["id"] = f"CS{idx:02d}"
+
+    # 案例源计数口径：用「最终进入花名册的条数」，与汇报和花名册保持一致
+    # （原始抓取数只作补充说明，避免 5 条 vs 12 条的自相矛盾，P1-1）。
+    kept_by_source: dict[str, int] = {}
+    for case in cases:
+        src = str(case.get("source") or "unknown")
+        kept_by_source[src] = kept_by_source.get(src, 0) + 1
+    for slug, raw_count in case_sources.items():
+        raw = int(raw_count or 0)
+        kept = kept_by_source.get(str(slug), 0)
+        error = ""
+        for warning in case_warnings:
+            text = str(warning)
+            if text.startswith(f"{slug}:"):
+                error = _one_line(text.split(":", 1)[1].strip())
+                break
+        if slug == "local" and raw == 0 and kept == 0 and not error:
+            continue  # 本地知识库为空是常态，不当作「来源无结果」计入缺口
+        if error:
+            status = "failed"
+        elif kept > 0:
+            status = "ok"
+        else:
+            status = "empty"
+            if raw > 0:
+                error = f"原始 {raw} 条未通过去重/相关度筛选"
+        source_status.append(
+            {
+                "source": f"案例·{slug}",
+                "scope": "cases",
+                "status": status,
+                "count": kept,
+                "raw_count": raw,
+                "elapsed": 0.0,
+                "error": error,
+            }
+        )
 
     digest = build_digest(
         jd_samples, cases, dropped_no_detail, raw_case_count=len(raw_cases)

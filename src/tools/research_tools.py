@@ -10,9 +10,11 @@ research_market 返回方法论与 4 步执行模板；gather_research_data 一�
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,7 @@ from ..research_digest import render_digest_lines
 from ..research_report import build_report, save_report
 from ..scrapers.boss.auth import has_valid_cookies as boss_has_valid_cookies
 from ..scrapers.loader import get_job_detail, search_company_jobs
+from . import profile as profile_store
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import load_profile
@@ -37,6 +40,13 @@ _ROSTER_CASE_MAX = 8
 _BRIEF_LIMIT = 60
 _DETAIL_MAX_IDS = 10
 _DETAIL_TEXT_LIMIT = 6000
+_SOURCE_TIMEOUT = 30.0
+_CASE_TIMEOUT = 25.0
+_TOTAL_BUDGET = 75.0
+_PARTIAL_CACHE_TTL = 3600
+_PARTIAL_CACHE_VERSION = 1
+_CACHE_LOCK = threading.Lock()
+
 
 
 @mcp.tool()
@@ -94,7 +104,8 @@ def research_market() -> str:
                       "不要把命令丢给用户手动执行，也不要直接宣布调研失败。"
                       "抓取阶段会逐条补抓岗位详情；未取得正文的岗位将被剔除，"
                       "因此耗时略高于纯列表抓取。"
-                      "调用前播报「正在抓取 N 家岗位与案例，并补抓详情，约半分钟至一分钟」",
+                      "调用前按源数量播报耗时：每源约 10-30 秒，另加逐条详情补抓；"
+                      "超过 90 秒建议拆成两批（目标 1 家 + 对照 2-4 家）",
             "output": {
                 "report_paths": {"md": "", "html": "", "json": "", "index": ""},
                 "source_status": [],
@@ -146,8 +157,8 @@ def research_market() -> str:
         "样本量较大时，若宿主 harness 支持子 Agent，用 Task 发起 research-analyst"
         "（仓库提供 .opencode/agent 与 .claude/agents 定义），把花名册、聚合摘要与"
         " delegate.prompt 交给它，父 Agent 仅汇总其结论与重点名单。\n"
-        "播报纪律：调用 gather_research_data 前说明「抓取哪些来源 + 约半分钟至一分钟」，"
-        "不得静默执行。\n"
+        "播报纪律：调用 gather_research_data 前说明「抓取哪些来源 + 每源约 10-30 秒、"
+        "详情逐条补抓；超过 90 秒建议拆批」，不得静默执行。\n"
         "汇报口径：摘要须包含样本数与来源成败；路径展示工具返回的完整位置（不得编造）；"
         "明确说明「每条附来源链接可逐条核验；未获取的内容已标注未获取」。\n"
         "调研只采集事实，不做评价——解读留给差距分析，汇报中对数据的评述不超过一句。\n"
@@ -243,6 +254,251 @@ def _enrich_with_detail(
     return kept, dropped
 
 
+def _partial_cache_path() -> Path:
+    return Path(profile_store.PROFILE_DIR) / "cache" / "research_partial.json"
+
+
+def _research_fingerprint(
+    specs: list[dict[str, Any]], query: dict[str, Any], direction: str
+) -> str:
+    payload = json.dumps(
+        {"specs": specs, "query": query, "direction": direction},
+        ensure_ascii=False, sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _read_partial_cache(fingerprint: str) -> dict[str, Any]:
+    path = _partial_cache_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    if data.get("version") != _PARTIAL_CACHE_VERSION:
+        return {}
+    if data.get("fingerprint") != fingerprint:
+        return {}
+    if time.time() - float(data.get("saved_at") or 0) > _PARTIAL_CACHE_TTL:
+        return {}
+    entries = data.get("entries")
+    return entries if isinstance(entries, dict) else {}
+
+
+def _write_partial_cache(
+    fingerprint: str, key: str, value: dict[str, Any]
+) -> None:
+    """单源完成即落盘；超时后线程继续跑完也能被下一次调用复用。"""
+    path = _partial_cache_path()
+    with _CACHE_LOCK:
+        entries = _read_partial_cache(fingerprint)
+        entries[key] = value
+        payload = {
+            "version": _PARTIAL_CACHE_VERSION,
+            "fingerprint": fingerprint,
+            "saved_at": time.time(),
+            "entries": entries,
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+            )
+            tmp.replace(path)
+        except OSError:
+            pass
+
+
+def _clear_partial_cache(fingerprint: str) -> None:
+    with _CACHE_LOCK:
+        path = _partial_cache_path()
+        try:
+            if _read_partial_cache(fingerprint):
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _family_cache_key(slug: str, raw_spec: dict[str, Any]) -> str:
+    payload = json.dumps({"slug": slug, "spec": raw_spec}, sort_keys=True)
+    return "jd:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _fetch_family_sync(
+    slug: str,
+    label: str,
+    raw_spec: dict[str, Any],
+    cache_key: str,
+    fingerprint: str,
+) -> dict[str, Any]:
+    """抓取单个 JD 源并补详情；成功/空结果立即写断点缓存。"""
+    t0 = time.perf_counter()
+    try:
+        resp = search_company_jobs(slug, **raw_spec)
+    except Exception as exc:  # noqa: BLE001 - 单源失败不拖垮整批
+        resp = {"error": f"{type(exc).__name__}: {exc}", "results": []}
+    elapsed = time.perf_counter() - t0
+    rows = resp.get("results") or []
+    if resp.get("error") and not rows:
+        return {
+            "slug": slug, "label": label or slug, "rows": [], "status": "failed",
+            "error": str(resp["error"]), "elapsed": elapsed,
+            "dropped_no_detail": 0, "dropped_titles": [],
+        }
+    dropped: list[str] = []
+    if rows:
+        rows, dropped = _enrich_with_detail(slug, rows)
+    family = {
+        "slug": slug, "label": label or slug, "rows": rows,
+        "status": "ok" if rows else "empty", "error": "",
+        "elapsed": elapsed,
+        "dropped_no_detail": len(dropped),
+        "dropped_titles": dropped[:5],
+    }
+    if family["status"] in ("ok", "empty"):
+        _write_partial_cache(fingerprint, cache_key, family)
+    return family
+
+
+async def _run_research(
+    profile: Any,
+    specs: list[dict[str, Any]],
+    query: dict[str, Any],
+    direction: str,
+    city: str,
+    role: str,
+    fingerprint: str,
+    cache_entries: dict[str, Any],
+) -> dict[str, Any]:
+
+    families: list[dict[str, Any]] = []
+    resumed = 0
+    incomplete = False
+    deadline = time.perf_counter() + _TOTAL_BUDGET
+
+    for spec in specs:
+        raw_spec = dict(spec)
+        raw_name = str(raw_spec.pop("company", "") or "")
+        label = str(raw_spec.pop("label", "") or raw_name)
+        if not raw_name:
+            families.append(
+                {"slug": "", "label": label or "无效配置", "rows": [],
+                 "status": "failed", "error": "spec 缺少 company 字段", "elapsed": 0.0}
+            )
+            incomplete = True
+            continue
+        slug = resolve_company(raw_name)
+        cache_key = _family_cache_key(slug, raw_spec)
+        cached = cache_entries.get(cache_key)
+        if isinstance(cached, dict) and cached.get("status") in ("ok", "empty"):
+            family = dict(cached)
+            family["from_cache"] = True
+            families.append(family)
+            resumed += 1
+            continue
+
+        remaining = deadline - time.perf_counter()
+        if remaining <= 2:
+            families.append(
+                {"slug": slug, "label": label or slug, "rows": [], "status": "failed",
+                 "error": "本次总时长预算已用完，该源未抓取；已完成来源已落盘，重跑会续抓",
+                 "elapsed": 0.0, "dropped_no_detail": 0, "dropped_titles": []}
+            )
+            incomplete = True
+            continue
+
+        timeout = min(_SOURCE_TIMEOUT, remaining)
+        try:
+            family = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _fetch_family_sync, slug, label, raw_spec, cache_key, fingerprint
+                ),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            family = {
+                "slug": slug, "label": label or slug, "rows": [], "status": "failed",
+                "error": f"单源超时（超过 {timeout:.0f} 秒），已跳过；其他源继续，"
+                         "重跑会从断点续抓",
+                "elapsed": timeout, "dropped_no_detail": 0, "dropped_titles": [],
+            }
+            incomplete = True
+        except Exception as exc:  # noqa: BLE001 - 单源异常不拖垮整批
+            family = {
+                "slug": slug, "label": label or slug, "rows": [], "status": "failed",
+                "error": f"{type(exc).__name__}: {exc}", "elapsed": 0.0,
+                "dropped_no_detail": 0, "dropped_titles": [],
+            }
+            incomplete = True
+        if family.get("status") == "failed":
+            incomplete = True
+        families.append(family)
+
+    cases_result: dict[str, Any] = {"cases": [], "warnings": [], "sources": {}}
+    if role:
+        case_company = str(query.get("company") or "")
+        cached_cases = cache_entries.get("cases")
+        if isinstance(cached_cases, dict) and cached_cases.get("cases"):
+            cases_result = dict(cached_cases)
+            resumed += 1
+        else:
+            remaining = deadline - time.perf_counter()
+            if remaining <= 2:
+                cases_result = {
+                    "cases": [], "sources": {},
+                    "warnings": ["cases: 本次总时长预算已用完，案例未抓取；可重跑续抓"],
+                }
+                incomplete = True
+            else:
+                try:
+                    cases_result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            collect_cases,
+                            role=role,
+                            company=case_company,
+                            city=str(query.get("city") or ""),
+                            education=str(query.get("education") or ""),
+                            kind=str(query.get("kind") or "both"),
+                            limit=int(query.get("limit") or _CASE_DEFAULT_LIMIT),
+                        ),
+                        timeout=min(_CASE_TIMEOUT, remaining),
+                    )
+                    _write_partial_cache(fingerprint, "cases", cases_result)
+                except TimeoutError:
+                    cases_result = {
+                        "cases": [], "sources": {},
+                        "warnings": [f"cases: 案例抓取超时（超过 {_CASE_TIMEOUT:.0f} 秒），已跳过"],
+                    }
+                    incomplete = True
+
+    want = profile.want or {}
+    who = profile.who or {}
+    direction_value = (direction or role or str(want.get("target_role") or "")).strip()
+    city_value = (
+        city
+        or str(query.get("city") or "")
+        or str(want.get("city") or who.get("city") or "")
+    ).strip()
+    education_value = str(
+        query.get("education") or who.get("education") or ""
+    ).strip()
+    return {
+        "direction": direction_value or "市场调研",
+        "city": city_value,
+        "education_tag": education_value,
+        "jd_families": families,
+        "cases_result": cases_result,
+        "partial": {
+            "incomplete": incomplete,
+            "resumed_sources": resumed,
+            "cache_path": str(_partial_cache_path()),
+            "budget_seconds": _TOTAL_BUDGET,
+        },
+    }
+
+
 @mcp.tool()
 async def gather_research_data(
     jd_specs: str = "",
@@ -263,10 +519,10 @@ async def gather_research_data(
         direction: 报告标题与档案归档使用的方向名（默认取 case_query.role）
         city: 报告上下文城市（默认取 case_query.city / want / who）
         boss_confirmed: 范围含 BOSS 直聘时必须先问用户，用户同意后传 true。
-            BOSS 需要扫码登录（登录态 2 小时有效）；未确认会返回 CONFIRMATION_REQUIRED
-            让你先去问用户，未登录会返回 LOGIN_REQUIRED 让你问用户是否现在登录。
-            用户同意后用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），
-            不要把命令丢给用户手动执行。
+             BOSS 需要扫码登录（登录态 2 小时有效）；未确认会返回 CONFIRMATION_REQUIRED
+            让你先去问用户；确认但未登录会在抓取前直接返回 LOGIN_REQUIRED（不浪费整批抓取），
+            让你问用户是否现在登录。用户同意后用 harness 的终端/Bash 直接运行
+            login_command（用户只需扫码），不要把命令丢给用户手动执行。
 
     Returns:
         汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（index.html 资产总览入口） +
@@ -313,8 +569,8 @@ async def gather_research_data(
             },
         )
 
-    # BOSS 登录确认：未登录不阻断其他源。抓取前必须询问用户（确认关卡）；
-    # 已确认但未登录时，BOSS 记为来源失败，其余源照常执行（任一源失败不中断）。
+    # BOSS 登录确认：抓取前先做一次轻量登录态探测，避免先跑完其他源才发现
+    # BOSS 不可用（P2-9）。未登录直接返回 LOGIN_REQUIRED，不浪费整批抓取。
     uses_boss = _uses_boss(specs, query)
     boss_unlogged = uses_boss and not boss_has_valid_cookies()
     if uses_boss and not boss_confirmed:
@@ -334,90 +590,31 @@ async def gather_research_data(
             },
         )
 
+    if uses_boss and boss_unlogged:
+        return error_response(
+            "LOGIN_REQUIRED",
+            "BOSS 直聘登录态不可用（未登录或超过 2 小时）：本次没有启动抓取，"
+            "避免先跑完其他源才发现登录问题。先问用户是否现在登录；"
+            "也可以移除 BOSS 源后先抓其他来源。",
+            {
+                **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                "question": "BOSS 直聘未登录，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
+                "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
+                "alternative": "不想登录时，把 jd_specs / case_query 里的 boss 移除后重跑，其他源照常抓取",
+                "resume_hint": "已完成来源会写入断点缓存，登录后重跑会自动续抓，不必从头再来",
+                "rule": "先问用户是否现在登录；同意后用 harness 直接运行 login_command，"
+                        "不要把命令丢给用户手动执行；不得把登录失败直接当调研失败宣布",
+            },
+        )
+
     profile = load_profile()
 
-    def _run() -> dict[str, Any]:
-        families: list[dict[str, Any]] = []
-        for spec in specs:
-            raw_spec = dict(spec)
-            raw_name = str(raw_spec.pop("company", "") or "")
-            label = str(raw_spec.pop("label", "") or raw_name)
-            if not raw_name:
-                families.append(
-                    {"slug": "", "label": label or "无效配置", "rows": [],
-                     "status": "failed", "error": "spec 缺少 company 字段", "elapsed": 0.0}
-                )
-                continue
-            slug = resolve_company(raw_name)
-            if boss_unlogged and slug == "boss":
-                families.append(
-                    {"slug": slug, "label": label or slug, "rows": [], "status": "failed",
-                     "error": "BOSS 直聘登录态不可用（未登录或超过 2 小时），未抓取该源；其他源继续",
-                     "elapsed": 0.0, "dropped_no_detail": 0, "dropped_titles": []}
-                )
-                continue
-            t0 = time.perf_counter()
-            try:
-                resp = search_company_jobs(slug, **raw_spec)
-            except Exception as exc:  # noqa: BLE001
-                resp = {"error": f"{type(exc).__name__}: {exc}", "results": []}
-            elapsed = time.perf_counter() - t0
-            rows = resp.get("results") or []
-            if resp.get("error") and not rows:
-                families.append(
-                    {"slug": slug, "label": label or slug, "rows": [], "status": "failed",
-                     "error": str(resp["error"]), "elapsed": elapsed,
-                     "dropped_no_detail": 0, "dropped_titles": []}
-                )
-            else:
-                # 详情必抓：没有正文的岗位对调研没有价值——补抓后仍无详情则剔除，
-                # 剔除数量进报告的来源面板与数据缺口（如实告知，不拿标题凑数）
-                dropped: list[str] = []
-                if rows:
-                    rows, dropped = _enrich_with_detail(slug, rows)
-                status = "ok" if rows else "empty"
-                families.append(
-                    {"slug": slug, "label": label or slug, "rows": rows,
-                     "status": status, "error": "", "elapsed": elapsed,
-                     "dropped_no_detail": len(dropped),
-                     "dropped_titles": dropped[:5]}
-                )
+    fingerprint = _research_fingerprint(specs, query, direction)
+    cache_entries = _read_partial_cache(fingerprint)
 
-        cases_result: dict[str, Any] = {"cases": [], "warnings": [], "sources": {}}
-        if role:
-            case_company = str(query.get("company") or "")
-            if boss_unlogged and resolve_company(case_company) == "boss":
-                case_company = ""  # 已记录 BOSS 未登录，不再重复请求
-            cases_result = collect_cases(
-                role=role,
-                company=case_company,
-                city=str(query.get("city") or ""),
-                education=str(query.get("education") or ""),
-                kind=str(query.get("kind") or "both"),
-                limit=int(query.get("limit") or _CASE_DEFAULT_LIMIT),
-            )
-
-        want = profile.want or {}
-        who = profile.who or {}
-        direction_value = (direction or role or str(want.get("target_role") or "")).strip()
-        city_value = (
-            city
-            or str(query.get("city") or "")
-            or str(want.get("city") or who.get("city") or "")
-        ).strip()
-        education_value = str(
-            query.get("education") or who.get("education") or ""
-        ).strip()
-        gathered_payload = {
-            "direction": direction_value or "市场调研",
-            "city": city_value,
-            "education_tag": education_value,
-            "jd_families": families,
-            "cases_result": cases_result,
-        }
-        return gathered_payload
-
-    gathered = await asyncio.to_thread(_run)
+    gathered = await _run_research(
+        profile, specs, query, direction, city, role, fingerprint, cache_entries
+    )
     report = build_report(profile, gathered)
     counts = report.get("counts") or {}
     # 运行中可能被 API 环境异常主动销毁；重新读一次，不能只看抓取前状态
@@ -456,21 +653,26 @@ async def gather_research_data(
                     "换关键词/城市重跑（例：jd_specs 增加 BOSS 源 + keyword），"
                     "或用 import_jd / import_jd_file 导入手头 JD"
                 ),
+                "partial_cache": str(_partial_cache_path()),
+                "resume_hint": "已完成的来源会写入断点缓存；重跑同一范围会自动续抓",
             },
         )
 
     paths = await asyncio.to_thread(save_report, profile, report)
     message = _render_report_message(report, paths)
+    partial_info = gathered.get("partial") or {}
+    if partial_info.get("incomplete"):
+        message += (
+            "\n\n本次有来源未完成（单源超时/失败或总时长预算用完）："
+            f"已完成的来源已落盘到断点缓存（{partial_info.get('cache_path')}）；"
+            "重跑同一范围会自动续抓，不必从头再来。"
+        )
+    else:
+        _clear_partial_cache(fingerprint)
     login_command = f'"{sys.executable}" -m src.scrapers.boss.login'
     if boss_auth_lost:
         message += (
             "\n\nBOSS 直聘：登录态已过期或触发环境异常，已被销毁。"
-            "需要补全时，先问用户是否现在登录；同意后直接用 harness 运行 "
-            f"{login_command}（用户只需扫码），再带 boss_confirmed=true 重跑。"
-        )
-    elif boss_unlogged:
-        message += (
-            "\n\nBOSS 直聘：未登录，已跳过（其他来源已照常抓取）。"
             "需要补全时，先问用户是否现在登录；同意后直接用 harness 运行 "
             f"{login_command}（用户只需扫码），再带 boss_confirmed=true 重跑。"
         )

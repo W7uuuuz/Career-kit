@@ -235,7 +235,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
     不要在档案不完整时调用此工具。
 
     前置条件：至少 who/have/want 中有一个 section 有内容。
-    后续步骤：调用 analyze_gaps 开始差距分析。
+    后续步骤：先 research_market 做市场调研（推荐），再 analyze_gaps。
     """
     profile = load_profile()
 
@@ -303,6 +303,10 @@ def finalize_profile(skip_probing: bool = False) -> str:
         parts.append(f"目标：{_summarize_dict(profile.want)}")
 
     profile.summary = "；".join(parts) if parts else "（档案为空）"
+    # 建档已走到 finalize，说明用户已确认方向；否则 GUIDE 会一直停在
+    # 「确认毕业方向」，重复问用户已经回答过的问题（P1-3）。
+    if _has_goal(profile):
+        mark_goal_confirmed(profile)
     save_profile(profile)
 
     # 跳过留痕提示
@@ -322,9 +326,17 @@ def finalize_profile(skip_probing: bool = False) -> str:
             "再用 intake(section='want') 落定，然后才进入 analyze_gaps。"
         )
 
+    if _has_goal(profile):
+        next_step = (
+            "下一步：先调用 research_market 做市场调研（推荐，真实市场是分析的地基），"
+            "再调用 analyze_gaps；用户想跳过调研时也可直接 analyze_gaps。"
+        )
+    else:
+        next_step = "下一步：先调用 explore_goals 帮用户选定方向，再进入分析。"
+
     return (
         f"档案已确认。\n\n摘要：{profile.summary}{skip_note}{goal_reminder}\n\n"
-        "下一步：调用 analyze_gaps 开始差距分析。"
+        f"{next_step}"
     )
 
 

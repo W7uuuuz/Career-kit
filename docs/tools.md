@@ -38,7 +38,7 @@
 | `get_industry_snapshot` | 轻量行业快照（扫盲子流程）：行业地图 + 岗位卡 + 当前招聘样本/薪资 + 相关专业 + 来源/缺口；默认互联网/软件，支持能源动力 |
 | `search_cases` | 聚合搜寻同背景成功经验与面试要求（本地 + 牛客 + GitHub + 目标企业 JD，学历五档四层归一打分） |
 | `research_market` | 返回市场调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析） |
-| `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源须先询问用户并传 `boss_confirmed=true`，未登录返回 `LOGIN_REQUIRED`；用户同意后由 Agent 用 harness 运行登录脚本（用户只需扫码） |
+| `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；单源/总预算超时不会拖垮整批，已完成来源写入断点缓存、重跑续抓；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源须先询问用户并传 `boss_confirmed=true`，未登录在抓取前直接返回 `LOGIN_REQUIRED`；用户同意后由 Agent 用 harness 运行登录脚本（用户只需扫码） |
 | `read_research_details` | 按花名册标识读取调研详情：不传 `ids` 返回花名册、聚合摘要与子 Agent 委派方案（`delegate`，对应 `research-analyst`）；传 `ids` 读取选定条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径），单次上限 10 条 |
 
 ### 分析规划工具（7）
@@ -57,7 +57,7 @@
 
 | 工具 | 作用 |
 |------|------|
-| `generate_tasks` | 从路线图生成任务；重建时历史进度沉淀为能力证据 |
+| `generate_tasks` | 只从路线图生成当前阶段任务（后续阶段保留里程碑），并自动刷新职业地图 HTML；重建时历史进度沉淀为能力证据 |
 | `detail_current_phase` | 只细化当前阶段：返回方法论 + 资源目录；任务需带 how_to / resources / done_criteria 与打卡点 |
 | `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点；phase_id 必须存在于当前路线图） |
 | `get_next_tasks` | 返回当前阶段下一步任务（关卡式） |
@@ -74,7 +74,7 @@
 | `get_progress` | 查看整体进度（含求职漏斗与投递清单） |
 | `get_weekly_review` | 周检视：周期事实复盘（打卡/阶段/漏斗），days 合法范围 1-90 |
 | `get_workflow_status` | 工作流状态 + 目标变更检测 + 换 JD 后差距分析过期提示 + 周检视提示 |
-| `export_dashboard` | 自包含 HTML：`progress` 仪表盘（含近 7 天与漏斗卡片）/ `roadmap` 职业地图（无路线图拒绝导出） |
+| `export_dashboard` | 自包含 HTML：`progress` 仪表盘（含近 7 天与漏斗卡片）/ `roadmap` 职业地图（无路线图拒绝导出）；控制台提供时走 API 直接写档案，`file://` 离线用 localStorage 并支持下载 JSON 备份 |
 
 ## 工作流
 

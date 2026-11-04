@@ -247,12 +247,29 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
                     "level_continuity",
                 ))
             else:
-                advisories.append(_advisory(
-                    "start_level_after",
-                    f"阶段「{name}」声明复评升级到「{after}」：请写清复评标准（evidence_gate/条件），"
-                    "升级只影响后续阶段，不会自动改写差距分析起点。",
-                    "level_continuity",
-                ))
+                gate = phase.get("evidence_gate") or []
+                condition = str(phase.get("condition") or "").strip()
+                if not gate and not condition:
+                    advisories.append(_advisory(
+                        "start_level_after",
+                        f"阶段「{name}」声明复评升级到「{after}」，但既没有 evidence_gate "
+                        "也没有 condition——请写清复评标准与保底路径。",
+                        "level_continuity",
+                    ))
+                elif not gate:
+                    advisories.append(_advisory(
+                        "start_level_after",
+                        f"阶段「{name}」声明复评升级到「{after}」，condition 已写，"
+                        "但缺 evidence_gate（复评达标证据）。",
+                        "level_continuity",
+                    ))
+                elif not condition:
+                    advisories.append(_advisory(
+                        "start_level_after",
+                        f"阶段「{name}」声明复评升级到「{after}」，evidence_gate 已写，"
+                        "但缺 condition（不达标时的保底路径）。",
+                        "level_continuity",
+                    ))
                 running_rank = _level_rank(after)
                 running_name = after
 
@@ -285,19 +302,20 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
         for milestone in phase.get("milestones", []) or []:
             if not isinstance(milestone, dict):
                 continue
-            texts = [(milestone.get("name", ""), f"里程碑「{milestone.get('name', '')}」")]
-            texts.extend(
-                (task.get("name", ""), "任务")
+            ms_name = str(milestone.get("name", "") or "")
+            subjects = [(ms_name, f"里程碑「{ms_name}」")]
+            subjects.extend(
+                (str(task.get("name", "") or ""), f"任务「{task.get('name', '')}」")
                 for task in (milestone.get("tasks") or [])
                 if isinstance(task, dict)
             )
-            for text, label in texts:
+            for text, subject in subjects:
                 text = str(text or "")
                 time_hit = next((w for w in _TIME_WORDS if w in text), "")
                 if time_hit:
                     advisories.append(_advisory(
                         "time_word",
-                        f"阶段「{phase_name}」{label}「{text}」含时间词「{time_hit}」——"
+                        f"阶段「{phase_name}」的{subject}含时间词「{time_hit}」——"
                         "产品不排期，建议改为完成标准描述。",
                         "quantifiable",
                     ))
@@ -308,7 +326,7 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
                 if umbrella_hit:
                     advisories.append(_advisory(
                         "umbrella_task",
-                        f"阶段「{phase_name}」{label}「{text}」较笼统——建议拆成一次可完成的具体动作。",
+                        f"阶段「{phase_name}」的{subject}较笼统——建议拆成一次可完成的具体动作。",
                         "quantifiable",
                     ))
 
@@ -507,18 +525,30 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     audit_note = ""
     if audit:
         verdict = audit.get("latest_verdict") or ""
-        stale = "（已过期：路线图内容已变化）" if audit.get("stale") else ""
-        audit_note = (
-            f"\n\n审计记录：{verdict_label(verdict)}{stale}（第二意见，不阻断定稿）。"
-        )
+        if audit.get("stale"):
+            audit_note = (
+                f"\n\n审计记录：第 {len(audit.get('rounds') or [])} 轮结论是"
+                f"「{verdict_label(verdict)}」，但绑定的是修改前的旧版本（已过期）。"
+                "定稿前建议重新交给 career-roadmap-auditor 审计一次，"
+                "再用 save_roadmap_audit 落库；是否重审由用户决定。"
+            )
+        else:
+            audit_note = (
+                f"\n\n审计记录：{verdict_label(verdict)}（第二意见，不阻断定稿）。"
+            )
 
     return _json({
         "message": (
             f"路线图已保存。\n\n{report}{advisory_text}{audit_note}\n\n"
             + (
                 f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
-                "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡），"
-                "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
+                + (
+                    "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡），"
+                    "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
+                    if profile.tasks
+                    else "当前是任务生成前的全貌（只有里程碑预览，不能打卡）；"
+                    "调用 generate_tasks 后会自动刷新为可打卡版本。\n"
+                )
                 if map_path
                 else f"路线图 HTML 生成失败：{map_error}——可用 export_dashboard(mode=\"roadmap\") 重试。\n"
             )

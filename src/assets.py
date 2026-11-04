@@ -137,14 +137,15 @@ def next_asset_stem(
 ) -> str:
     """生成留档文件名主干：日期_方向；同日同目录撞名时自动降级到 时分/序号。"""
     now = now or datetime.now()
-    base = f"{now:%Y-%m-%d}_{sanitize_name(direction)}"
+    # 统一带 HHMM：同一天重跑不会出现「无时间 / 有时分」两套命名（P2-3）；
+    # 同一分钟重跑用序号区分，旧报告仍保留可追溯。
+    base = f"{now:%Y-%m-%d_%H%M}_{sanitize_name(direction)}"
     if not (kind and profile_name):
         return base
     directory = kind_assets_dir(kind, profile_name)
     candidates = [
         base,
-        f"{now:%Y-%m-%d_%H%M}_{sanitize_name(direction)}",
-        *(f"{now:%Y-%m-%d_%H%M}_{sanitize_name(direction)}_{i:02d}" for i in range(1, 100)),
+        *(f"{base}_{i:02d}" for i in range(1, 100)),
     ]
     for candidate in candidates:
         if not (directory / f"{candidate}.md").exists():

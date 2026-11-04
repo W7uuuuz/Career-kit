@@ -219,7 +219,10 @@ def analyze_gaps() -> str:
 
     research = profile.research or {}
     return _json({
-        "guide": guide_for(profile),
+        "guide": (
+            "[分析进行中] 本轮按 step_template 走完 4 步并 save_gap_analysis 落盘；"
+            "落盘后再调用 get_workflow_status 获取新的 [GUIDE]，不要重复播放分析前的提问。"
+        ),
         "next_steps": ["read_research_details", "search_cases", "save_gap_analysis"],
         "methodologies": [ctx1["methodology"], ctx2["methodology"]],
         "profile": ctx1["profile"],

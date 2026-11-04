@@ -29,6 +29,7 @@ BOSS 前端用 Error.stack 序列化技巧检测该调用，附着后约 5 秒�
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import sys
 import time
@@ -241,7 +242,15 @@ def _attempt_login(p, channel: str, force_direct: bool) -> bool | None:
         ctx.close()
 
 
+def _configure_output_encoding() -> None:
+    """统一 UTF-8 输出，避免中文在 GBK/管道捕获时乱码（P2-1）。"""
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, ValueError):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> None:
+    _configure_output_encoding()
     # 本工具设计为零参数（OBS-004）：任何参数都可能是误操作，
     # 直接打印用法退出，绝不带参拉起浏览器
     if len(sys.argv) > 1:

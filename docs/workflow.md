@@ -93,16 +93,18 @@
 
 ```
 1. research_market()                              # 调研方法论与 4 步模板
-2. 向用户播报调研菜单（抓哪家、约半分钟、报告落在哪），宣告即执行
+2. 向用户播报调研菜单（抓哪家、每源约 10-30 秒、超过 90 秒建议拆批、报告落在哪），宣告即执行
 3. 名单含 BOSS 时先问用户「是否抓取 BOSS 直聘（我可以直接帮你打开登录窗口扫码）」，
    同意后在下一步传 boss_confirmed=true
 4. gather_research_data(jd_specs, case_query, boss_confirmed)
    - jd_specs：目标公司 1 家 + 同方向对照 2-4 家（优先含薪来源如 BOSS）
    - case_query：role + education（五档四层写法如「双非本」）+ company/city
    - 逐条补抓岗位详情（无详情岗位剔除并计入数据缺口）
-   - 返回 CONFIRMATION_REQUIRED / LOGIN_REQUIRED 时把问题转问用户；用户同意登录后，
-     用 harness 的终端/Bash 运行 login_command（用户只需扫码），
-     不得静默跳过 BOSS 或直接宣布调研失败
+   - 单源 30 秒 / 总预算 75 秒：超时或失败不会拖垮整批，已完成来源写断点缓存，
+     重跑同一范围自动续抓；汇报里会标出「本次有来源未完成」
+   - 返回 CONFIRMATION_REQUIRED / LOGIN_REQUIRED 时把问题转问用户；登录预检在抓取前
+     完成，未登录不会先跑其他源；用户同意登录后，用 harness 的终端/Bash 运行
+     login_command（用户只需扫码），不得静默跳过 BOSS 或直接宣布调研失败
 5. 报告三件套自动落盘（代码渲染，不经 LLM），向用户汇报三要素
 6. 按需读取全文：从花名册中选择 3-5 条，调用 read_research_details(ids=..., kind="jd"/"case")；
    宿主 harness 支持子 Agent 时，用 Task 发起 research-analyst（仓库提供
@@ -128,7 +130,8 @@
    读取全文时选取 3-5 条；宿主 harness 支持子 Agent 时，用 Task 发起 research-analyst，
    父 Agent 按 `delegate` 方案委派并汇总结论与重点名单
 5. BOSS 直聘需扫码登录：抓取前必须询问用户；工具返回 `CONFIRMATION_REQUIRED`
-   （尚未确认）/ `LOGIN_REQUIRED`（尚未登录）时先询问用户。用户同意登录后，
+   （尚未确认）/ `LOGIN_REQUIRED`（尚未登录）时先询问用户。登录预检在抓取前完成，
+   未登录会直接返回 `LOGIN_REQUIRED`，不会先跑其他源；用户同意登录后，
    用 harness 的终端/Bash 运行 `login_command`（用户只需扫码），
    不得静默跳过或直接判定失败
 6. 任一源失败不中断，失败原因进报告「来源状态面板」如实展示；
@@ -244,7 +247,8 @@ KPI 完全缺失、届别硬冲突、任务不可打卡），最多 3 条 must_f
 1. detail_current_phase()              # 先细化当前阶段
 2. save_current_detail(detail_json)    # how_to / resources / done_criteria
                                        # + once / daily / percent
-3. generate_tasks()                    # 合并 playbook 与打卡点
+3. generate_tasks()                    # 只生成当前阶段 + 合并 playbook 与打卡点
+                                       # 并自动刷新职业地图 HTML
 4. get_next_tasks()
 5. checkin_task(task_id, status, notes, amount)
 ```

@@ -52,7 +52,10 @@ async def test_new_user_full_flow_quality(sandbox, quality):
         tasks_result = await driver.generate_tasks()
         next_tasks = await driver.next_tasks()
 
-        assert len(driver.tasks) >= 5, driver.tasks
+        assert len(driver.tasks) >= 3, driver.tasks
+        assert {t["phase_id"] for t in driver.tasks} == {"phase_1"}, (
+            "只生成当前阶段任务，后续阶段保留里程碑"
+        )
         daily_id = driver.task_id_by_name("学习 LangGraph")
         once_id = driver.task_id_by_name("实现工具调用 Agent")
         await driver.checkin(daily_id, amount=1, notes="E2E 每日推进")

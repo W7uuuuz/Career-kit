@@ -28,7 +28,10 @@ def next_task_id(profile: CareerProfile) -> str:
     return f"task_{max_num + 1:03d}"
 
 
-def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
+def create_tasks_from_roadmap(
+    profile: CareerProfile,
+    only_phase_ids: set[str] | None = None,
+) -> list[Task]:
     """从路线图生成任务列表。
 
     任务 schema 与 sop/roadmap.yaml 的 output_schema 一致：
@@ -39,6 +42,7 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
 
     Args:
         profile: 用户职业档案
+        only_phase_ids: 只生成这些阶段的任务；None 表示全部阶段（兼容直接调用）
 
     Returns:
         生成的任务列表
@@ -120,6 +124,8 @@ def create_tasks_from_roadmap(profile: CareerProfile) -> list[Task]:
 
     for phase_idx, phase in enumerate(phases):
         phase_id = phase.get("id") or f"phase_{phase_idx + 1}"
+        if only_phase_ids is not None and phase_id not in only_phase_ids:
+            continue
         phase_name = phase.get("name", f"阶段 {phase_idx + 1}")
 
         if detail_phase_id and phase_id == detail_phase_id and detail_tasks:
@@ -358,6 +364,11 @@ def resolve_current_phase(profile: CareerProfile) -> dict[str, Any] | None:
     if profile.tasks:
         for row in phase_rows:
             if row["open_tasks"]:
+                return row
+        # 当前阶段完成后，下一阶段的粗任务尚未生成：把它作为「当前阶段」，
+        # 让 detail_current_phase / generate_tasks 能继续推进（P2-11）。
+        for row in phase_rows:
+            if row["total"] == 0:
                 return row
         return None
 

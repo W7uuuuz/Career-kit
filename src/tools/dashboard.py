@@ -299,11 +299,10 @@ def render_roadmap_map(profile) -> str:
     """渲染「职业地图」HTML（mode="roadmap"）：完整路线图 + 可交互打卡。
 
     自包含单文件：双击打开即用，无服务器依赖。
-    - 任务勾选打卡：点击 checkbox 标记完成/取消，状态持久化到浏览器 localStorage
-    - 进度实时更新：阶段/总进度条随勾选联动
-    - 阶段导航：顶部 tab 点击切换当前查看的阶段
-    - 导出打卡数据：一键复制 JSON，粘贴回对话让 LLM 用 checkin_task 同步到档案
-    重新生成时保留已打卡记录（localStorage 按档案名隔离）。
+    - 本地控制台提供时（/roadmap）走 API，打卡直接写档案，刷新不丢；
+    - file:// 离线打开时回退 localStorage，按档案名隔离，但移动目录/换浏览器会丢；
+    - 任务勾选打卡、阶段导航、进度条实时联动；
+    - 支持复制打卡指令与下载 JSON 备份，回传对话后由 checkin_task 同步档案。
     """
     import json as _json_lib
 
@@ -567,11 +566,12 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
   <div id="cards"></div>
 
   <div class="actions">
-    <button class="btn" id="export-btn">导出打卡数据</button>
+    <button class="btn" id="export-btn">复制打卡指令</button>
+    <button class="btn" id="download-btn">下载打卡 JSON</button>
     <button class="btn" id="reset-btn">重置本地打卡</button>
   </div>
 
-  <p class="footer">顺序归产品，时间归用户。勾选任务即本地打卡（浏览器保存）；点「导出打卡数据」把打卡结果粘贴回对话，即可同步到档案。</p>
+  <p class="footer">顺序归产品，时间归用户。离线打开时打卡存在浏览器 localStorage：移动目录、换浏览器或清理浏览器数据会丢失，建议用 <code>career-kit-serve</code> 控制台打开（直接写档案）。可复制打卡指令回传对话，或下载 JSON 备份。</p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -928,6 +928,25 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     try {{ document.execCommand('copy'); toast('已复制 ' + rows.length + ' 条打卡指令'); }}
     catch (err) {{ prompt('复制以下打卡指令回传对话：', text); }}
     pre.remove();
+  }});
+
+  // 下载打卡 JSON 备份（不依赖 localStorage 存活）
+  document.getElementById('download-btn').addEventListener('click', function () {{
+    var payload = {{
+      profile: DATA.profile,
+      exported_at: new Date().toISOString(),
+      source: API ? 'career-kit-serve' : 'localStorage',
+      checkins: checkins
+    }};
+    var blob = new Blob([JSON.stringify(payload, null, 2)], {{ type: 'application/json' }});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'career-kit-checkins-' + (DATA.profile || 'default') + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () {{ URL.revokeObjectURL(a.href); }}, 1000);
+    toast('已下载打卡 JSON 备份');
   }});
 
   // 重置本地打卡
