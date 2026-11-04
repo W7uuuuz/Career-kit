@@ -88,7 +88,7 @@ def detail_current_phase() -> str:
     前置条件：路线图已保存（save_roadmap）。任务尚未生成时以第一段为当前阶段。
     后续步骤：LLM 设计后调用 save_current_detail，再 generate_tasks 生成/合并任务。
     """
-    from .task_manager import current_phase_view
+    from .task_manager import resolve_current_phase
 
     profile = load_profile()
 
@@ -101,23 +101,19 @@ def detail_current_phase() -> str:
             {"missing": "plan.roadmap"},
         )
 
-    if not profile.tasks:
-        # 先细化、后生成任务：没有任务时以路线图第一段作为当前阶段
-        first = phases[0]
-        view = {
-            "phase_id": first.get("id") or "phase_1",
-            "phase_name": first.get("name", "阶段 1"),
-            "next_tasks": [],
-            "done": 0,
-            "total": 0,
-        }
-    else:
-        view = current_phase_view(profile)
-        if view is None:
-            return (
-                "所有阶段的任务都已完成——没有需要细化的当前阶段。\n"
-                "建议回顾目标，规划下一步方向。"
-            )
+    current = resolve_current_phase(profile)
+    if current is None:
+        return (
+            "所有阶段的任务都已完成——没有需要细化的当前阶段。\n"
+            "建议回顾目标，规划下一步方向。"
+        )
+    view = {
+        "phase_id": current["phase_id"],
+        "phase_name": current["phase_name"],
+        "next_tasks": current["open_tasks"][:5],
+        "done": current["done"],
+        "total": current["total"],
+    }
 
     # 当前阶段的路线图信息
     phase = next((p for p in phases if p.get("id") == view["phase_id"]), None) or {}

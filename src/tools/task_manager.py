@@ -326,39 +326,55 @@ def collect_completed_evidence(profile: CareerProfile) -> list[dict[str, Any]]:
     return entries
 
 
-def current_phase_view(profile: CareerProfile) -> dict[str, Any] | None:
-    """定位当前阶段：第一个存在未完成任务的阶段。
+def resolve_current_phase(profile: CareerProfile) -> dict[str, Any] | None:
+    """唯一的当前阶段判定。
 
-    Returns:
-        {"phase_id", "phase_name", "next_tasks", "done", "total"}，
-        全部完成时返回 None。
+    规则：
+    - 有任务：按路线图顺序找第一个存在未完成任务的阶段；全部完成返回 None。
+    - 无任务：返回第一阶段（用于细化/预览），total=0。
+    - 孤儿任务（phase_id 不在路线图）不参与判定。
     """
-    done_status = (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
-    for task in profile.tasks:
-        if task.status not in done_status:
-            break
-    else:
+    roadmap = profile.plan.get("roadmap", profile.plan)
+    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+    if not phases:
         return None
 
-    roadmap = profile.plan.get("roadmap", profile.plan)
-    phases = roadmap.get("phases", [])
-    phase_names = {}
+    finished = (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
+    phase_rows: list[dict[str, Any]] = []
     for idx, phase in enumerate(phases):
         phase_id = phase.get("id") or f"phase_{idx + 1}"
-        phase_names[phase_id] = phase.get("name", phase_id)
+        phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
+        open_tasks = [t for t in phase_tasks if t.status not in finished]
+        phase_rows.append({
+            "phase_id": phase_id,
+            "phase_name": phase.get("name", phase_id),
+            "phase": phase,
+            "tasks": phase_tasks,
+            "open_tasks": open_tasks,
+            "done": len(phase_tasks) - len(open_tasks),
+            "total": len(phase_tasks),
+        })
 
-    first_open = next(t for t in profile.tasks if t.status not in done_status)
-    phase_id = first_open.phase_id
+    if profile.tasks:
+        for row in phase_rows:
+            if row["open_tasks"]:
+                return row
+        return None
 
-    phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
-    open_tasks = [t for t in phase_tasks if t.status not in done_status]
+    return phase_rows[0]
 
+
+def current_phase_view(profile: CareerProfile) -> dict[str, Any] | None:
+    """当前阶段的展示视图（兼容旧调用）。"""
+    current = resolve_current_phase(profile)
+    if current is None:
+        return None
     return {
-        "phase_id": phase_id,
-        "phase_name": phase_names.get(phase_id, phase_id),
-        "next_tasks": open_tasks[:5],
-        "done": len(phase_tasks) - len(open_tasks),
-        "total": len(phase_tasks),
+        "phase_id": current["phase_id"],
+        "phase_name": current["phase_name"],
+        "next_tasks": current["open_tasks"][:5],
+        "done": current["done"],
+        "total": current["total"],
     }
 
 

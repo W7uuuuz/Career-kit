@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **当前阶段与进度口径统一（2026-11-03）**：
+  - 新增 `task_manager.resolve_current_phase()`：唯一当前阶段判定（跳过零任务阶段、
+    `skipped` 算完成、全部完成返回 None、无任务返回第一段）
+  - `current_phase_view`、`detail_current_phase`、职业地图、进度仪表盘、本地控制台
+    全部改用同一判定，避免不同入口高亮不同阶段
+  - 全部完成时不再打 `[当前]`，页面显示「全部完成」并保留一张可见卡片
+  - 新增 `save_current_detail` 的 checkin_mode/goal 校验建议（无效 mode、daily goal<1、
+    percent goal 越界），避免任务永远无法完成
+  - 目标复述兼容 `direction/position/industry` 等键；match_score 统一为三维口径
+
 - **全仓审计后的数据一致性修复（2026-11-03）**：
   - 打卡协议统一：percent 的 amount 为绝对目标值；daily 同日幂等，amount>1 为目标天数；
     静态地图 daily 进度不再归零，percent 不再把绝对值当增量累加

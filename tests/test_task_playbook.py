@@ -122,6 +122,24 @@ def test_save_detail_and_generate_tasks_keep_playbook(temp_profile):
     assert task.checkin_mode == "daily" and task.checkin_goal == 5
 
 
+def test_resolve_current_phase_rules():
+    from src.models import Task
+    from src.tools.task_manager import resolve_current_phase
+
+    profile = CareerProfile()
+    profile.plan = {"roadmap": {"phases": [
+        {"id": "phase_1", "name": "空阶段"},
+        {"id": "phase_2", "name": "有任务"},
+    ]}}
+    assert resolve_current_phase(profile)["phase_id"] == "phase_1"  # 无任务时第一段
+
+    profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_2")]
+    assert resolve_current_phase(profile)["phase_id"] == "phase_2"  # 跳过零任务阶段
+
+    profile.tasks[0].status = "skipped"
+    assert resolve_current_phase(profile) is None  # skipped 算完成
+
+
 def test_generate_tasks_preserves_ids_and_progress(temp_profile):
     from src.server import generate_tasks
 

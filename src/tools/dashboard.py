@@ -14,6 +14,7 @@ from html import escape
 from pathlib import Path
 
 from .profile import get_active_profile_name
+from .task_manager import resolve_current_phase
 
 _FINISHED_STATUS = ("completed", "skipped")
 
@@ -233,15 +234,8 @@ def render_progress_html(profile) -> str:
 
     overall_pct = int(completed / total_tasks * 100) if total_tasks else 0
 
-    current_phase_name = ""
-    for idx, phase in enumerate(phases):
-        phase_id = phase.get("id") or f"phase_{idx + 1}"
-        if any(
-            t.phase_id == phase_id and t.status not in _FINISHED_STATUS
-            for t in profile.tasks
-        ):
-            current_phase_name = str(phase.get("name", phase_id))
-            break
+    current = resolve_current_phase(profile)
+    current_phase_name = current["phase_name"] if current else ""
     summary = f"{len(phases)} 个阶段 · {completed}/{total_tasks} 个任务"
     if current_phase_name:
         summary += f" · 当前：{current_phase_name}"
@@ -322,25 +316,25 @@ def render_roadmap_map(profile) -> str:
         "profile": get_active_profile_name(),
         "start_level": (profile.gap or {}).get("start_level", ""),
         "strategy": strategy,
+        "all_complete": False,
         "phases": [],
     }
     phase_ids = [p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases)]
-    open_phase_ids = {
-        t.phase_id for t in profile.tasks if t.status not in _FINISHED_STATUS
-    }
-    current_phase_id = next(
-        (pid for pid in phase_ids if pid in open_phase_ids), None
+    current = resolve_current_phase(profile)
+    current_phase_id = current["phase_id"] if current else None
+    all_complete = bool(profile.tasks) and all(
+        t.status in _FINISHED_STATUS for t in profile.tasks
     )
     if current_phase_id is None and phase_ids:
-        # 未生成任务时默认第一段；全部完成时展示最后一段
-        current_phase_id = phase_ids[0] if not profile.tasks else phase_ids[-1]
+        # 全部完成时保留一个可见阶段（展示用，不代表“当前”）
+        current_phase_id = phase_ids[-1]
 
     for idx, phase in enumerate(phases):
         phase_id = phase_ids[idx]
         phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
         done = sum(1 for t in phase_tasks if t.status in _FINISHED_STATUS)
         total = len(phase_tasks)
-        is_current = phase_id == current_phase_id
+        is_current = phase_id == current_phase_id and not all_complete
 
         jd_status = phase.get("jd_status", "not_required")
         confirmed = phase.get("confirmed", False)
@@ -411,6 +405,7 @@ def render_roadmap_map(profile) -> str:
             "milestone_names": ms_names,
         })
 
+    data["all_complete"] = all_complete
     total_tasks = sum(int(p.get("total") or 0) for p in data["phases"])
     done_tasks = sum(int(p.get("done") or 0) for p in data["phases"])
     current_name = next(
@@ -763,7 +758,14 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     document.getElementById('ring').style.setProperty('--p', totalPct);
     document.getElementById('ring-pct').textContent = totalPct + '%';
     document.getElementById('total-pct').textContent = totalPct + '%';
-    document.getElementById('total-done').textContent = '已完成 ' + totalDone + ' / ' + totalAll + ' 个任务';
+    document.getElementById('total-done').textContent = DATA.all_complete
+      ? '全部完成 · ' + totalDone + ' / ' + totalAll + ' 个任务'
+      : '已完成 ' + totalDone + ' / ' + totalAll + ' 个任务';
+    // 全部完成时没有“当前阶段”：仍展示第一张卡，但不打 [当前]
+    if (!document.querySelector('.card.active') && cardsEl.firstChild) {{
+      cardsEl.firstChild.classList.add('active');
+      if (tabsEl.firstChild) tabsEl.firstChild.classList.add('active');
+    }}
   }}
 
   function toast(msg) {{

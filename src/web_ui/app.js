@@ -180,7 +180,8 @@
     document.getElementById('ring').style.setProperty('--p', totalPct);
     document.getElementById('ring-pct').textContent = totalPct + '%';
     document.getElementById('total-pct').textContent = totalPct + '%';
-    document.getElementById('total-done').textContent = state.total_done + ' / ' + state.total_tasks + ' 个任务';
+    document.getElementById('total-done').textContent = (state.all_complete ? '全部完成 · ' : '')
+      + state.total_done + ' / ' + state.total_tasks + ' 个任务';
     var link = document.getElementById('assets-link');
     if (state.assets_index) link.href = withToken(state.assets_index);
 

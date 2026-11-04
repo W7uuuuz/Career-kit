@@ -37,6 +37,7 @@ from .tools.profile import (
 from .tools.task_manager import (
     checkin_task as do_checkin,
     record_capability_evidence,
+    resolve_current_phase,
 )
 
 WEB_DIR = Path(__file__).parent / "web_ui"
@@ -109,13 +110,10 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
     phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
 
     phase_ids = [p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases)]
-    open_phase_ids = {
-        t.phase_id for t in profile.tasks
-        if t.status not in ("completed", "skipped")
-    }
-    current_phase_id = next((pid for pid in phase_ids if pid in open_phase_ids), None)
+    current = resolve_current_phase(profile)
+    current_phase_id = current["phase_id"] if current else None
     if current_phase_id is None and phase_ids:
-        current_phase_id = phase_ids[0] if not profile.tasks else phase_ids[-1]
+        current_phase_id = phase_ids[-1]
 
     phases_out: list[dict[str, Any]] = []
     total_done = 0
@@ -192,6 +190,9 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         "phases": phases_out,
         "total_done": total_done,
         "total_tasks": total_tasks,
+        "all_complete": bool(profile.tasks) and all(
+            t.status in ("completed", "skipped") for t in profile.tasks
+        ),
         "warnings": warnings(profile),
         "assets_index": _asset_url(get_assets_root() / INDEX_FILENAME),
         "research": research_out,
