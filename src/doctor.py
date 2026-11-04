@@ -170,6 +170,53 @@ def check_browser() -> Check:
     return Check("浏览器内核", OK, str(executable))
 
 
+def check_boss_browser() -> Check:
+    """BOSS 登录依赖 patchright + 系统 Chrome/Edge，与普通抓取的 Chromium 不同。"""
+    try:
+        import patchright  # noqa: F401
+    except Exception as exc:
+        return Check(
+            "BOSS 浏览器",
+            WARN,
+            f"patchright 不可导入：{exc}",
+            "安装依赖：pip install -e .（patchright 已锁定版本）",
+        )
+
+    candidates = []
+    if os.name == "nt":
+        roots = [
+            os.environ.get("PROGRAMFILES", ""),
+            os.environ.get("PROGRAMFILES(X86)", ""),
+            os.environ.get("LOCALAPPDATA", ""),
+        ]
+        for root in filter(None, roots):
+            candidates += [
+                Path(root) / "Google/Chrome/Application/chrome.exe",
+                Path(root) / "Microsoft/Edge/Application/msedge.exe",
+            ]
+    else:
+        import shutil
+
+        for name in ("google-chrome", "microsoft-edge", "chromium"):
+            found = shutil.which(name)
+            if found:
+                candidates.append(Path(found))
+        candidates += [
+            Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+        ]
+
+    existing = next((p for p in candidates if p.exists()), None)
+    if existing is None:
+        return Check(
+            "BOSS 浏览器",
+            WARN,
+            "未找到系统 Chrome/Edge",
+            "BOSS 登录只允许系统 Chrome/Edge，不支持 Chromium；请先安装",
+        )
+    return Check("BOSS 浏览器", OK, str(existing))
+
+
 def check_network() -> list[Check]:
     import httpx
 
@@ -294,6 +341,7 @@ def run_checks(*, browser: bool = False, network: bool = False) -> list[Check]:
     ]
     if browser:
         checks.append(check_browser())
+        checks.append(check_boss_browser())
     checks.extend(check_configs(Path.cwd()))
     if network:
         checks.extend(check_network())

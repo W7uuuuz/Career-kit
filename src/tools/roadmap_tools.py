@@ -589,6 +589,15 @@ def save_roadmap_audit(audit_json: str) -> str:
     notes = data.get("notes") or []
     if not isinstance(notes, list):
         notes = [str(notes)]
+    # SOP 约定最多 3 条 must_fix；多出的硬矛盾降级为建议，避免无限重审
+    if verdict == "FAIL" and len(issues) > 3:
+        for extra in issues[3:]:
+            if isinstance(extra, dict):
+                notes.append(
+                    f"其余硬矛盾：[{extra.get('checklist_id', '?')}] "
+                    f"{extra.get('problem', '')}"
+                )
+        issues = issues[:3]
 
     profile = load_profile()
     if not (profile.plan or {}).get("roadmap"):

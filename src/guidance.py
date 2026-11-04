@@ -489,17 +489,18 @@ def render_guide(guide: Guide) -> str:
     lines.append(f"本轮只问一个问题：{guide.ask}")
     if guide.options:
         lines.append("可选回答：" + " / ".join(guide.options))
+    for note in guide.warnings:
+        lines.append(f"事实提醒：{note}")
+    lines.append("[GUIDE_MODEL]")
     if guide.next_action:
         lines.append(f"用户回答后的动作：{guide.next_action}")
     if guide.rules_hint:
         lines.append(f"规则入口：{guide.rules_hint}")
-    for note in guide.warnings:
-        lines.append(f"事实提醒：{note}")
     if guide.brief_needed:
         lines.append("首次进入：先发上面的 [USER_BRIEF]，再问下面的问题。")
     lines += [
-        "转述纪律：不要出现工具名、字段名、JD01/CS03 这类内部代号；"
-        "不要一次问多个问题。",
+        "转述纪律：只把 [GUIDE] 到 [GUIDE_MODEL] 之间的内容转述给用户；"
+        "不要出现工具名、字段名、JD01/CS03 这类内部代号；不要一次问多个问题。",
         "[GUIDE END]",
     ]
     return "\n".join(lines)
