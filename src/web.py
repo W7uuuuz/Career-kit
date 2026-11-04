@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import queue
 import secrets
 import sys
 import threading
@@ -25,9 +26,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from .assets import INDEX_FILENAME, get_assets_root
+from .assets import INDEX_FILENAME, get_assets_root, kind_assets_dir
 from .guidance import warnings
 from .models import TaskStatus
+from .tools.application_tracker import (
+    add_application,
+    find_active_duplicate,
+)
+from .tools.dashboard import render_roadmap_map
 from .tools.profile import (
     get_active_profile_name,
     load_profile,
@@ -73,6 +79,100 @@ def _asset_url(path: str | Path) -> str:
     if not path:
         return ""
     return "/api/asset?path=" + quote(str(path), safe="")
+
+
+_SUBSCRIBERS: set[queue.Queue[str]] = set()
+_SUBSCRIBERS_LOCK = threading.Lock()
+
+
+def _broadcast_refresh() -> None:
+    with _SUBSCRIBERS_LOCK:
+        for subscriber in list(_SUBSCRIBERS):
+            subscriber.put("refresh")
+
+
+def _collect_reports(profile_name: str) -> list[dict[str, Any]]:
+    """列出调研报告（用于控制台筛选）。"""
+    directory = kind_assets_dir("research", profile_name)
+    reports: list[dict[str, Any]] = []
+    for json_path in sorted(directory.glob("*.json"), reverse=True):
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        stem = json_path.with_suffix("")
+        counts = data.get("counts") if isinstance(data.get("counts"), dict) else {}
+        failed = [
+            str(s.get("source") or "未知源")
+            for s in (data.get("source_status") or [])
+            if isinstance(s, dict) and s.get("status") == "failed"
+        ]
+        reports.append({
+            "direction": data.get("direction") or stem.name,
+            "generated_at": data.get("generated_at", ""),
+            "counts": counts,
+            "failed_sources": failed,
+            "html": _asset_url(stem.with_suffix(".html")) if stem.with_suffix(".html").exists() else "",
+            "md": _asset_url(stem.with_suffix(".md")) if stem.with_suffix(".md").exists() else "",
+            "json": _asset_url(json_path),
+        })
+    return reports
+
+
+def update_task(task_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """编辑任务字段（控制台写操作）。"""
+    with profile_lock():
+        profile = load_profile()
+        task = profile.get_task(task_id)
+        if not task:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if "name" in fields:
+            name = str(fields["name"] or "").strip()
+            if not name:
+                raise ValueError("任务名不能为空")
+            task.name = name
+        if "description" in fields:
+            task.description = str(fields["description"] or "")
+        if "priority" in fields and fields["priority"] in ("high", "medium", "low"):
+            task.priority = str(fields["priority"])
+        if "how_to" in fields:
+            task.how_to = [str(x) for x in (fields["how_to"] or []) if str(x).strip()]
+        if "done_criteria" in fields:
+            task.done_criteria = str(fields["done_criteria"] or "")
+        if "resources" in fields and isinstance(fields["resources"], list):
+            task.resources = [r for r in fields["resources"] if isinstance(r, dict)]
+        if "checkin_mode" in fields and fields["checkin_mode"] in ("once", "daily", "percent"):
+            task.checkin_mode = str(fields["checkin_mode"])
+        if "checkin_goal" in fields:
+            task.checkin_goal = float(fields["checkin_goal"] or 0)
+        profile.touch()
+        save_profile(profile)
+        return build_state(profile)
+
+
+def add_application_entry(data: dict[str, Any]) -> dict[str, Any]:
+    """新增投递记录（控制台写操作）。"""
+    company = str(data.get("company") or "").strip()
+    role = str(data.get("role") or "").strip()
+    if not company:
+        raise ValueError("公司名称不能为空")
+    with profile_lock():
+        profile = load_profile()
+        if find_active_duplicate(profile, company, role):
+            raise ValueError("已有同公司同岗位的活跃投递记录")
+        add_application(
+            profile,
+            company=company,
+            role=role,
+            status=str(data.get("status") or "applied"),
+            channel=str(data.get("channel") or ""),
+            notes=str(data.get("notes") or ""),
+        )
+        profile.touch()
+        save_profile(profile)
+        return build_state(profile)
 
 
 def undo_task(task_id: str) -> None:
@@ -172,6 +272,8 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
             "failed_sources": [str(s.get("source") or "未知源") for s in failed],
         }
 
+    reports = _collect_reports(get_active_profile_name())
+
     applications = []
     for app in (profile.applications or [])[-10:]:
         applications.append({
@@ -196,6 +298,7 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         "warnings": warnings(profile),
         "assets_index": _asset_url(get_assets_root() / INDEX_FILENAME),
         "research": research_out,
+        "reports": reports,
         "applications": applications,
     }
 
@@ -256,6 +359,19 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
             if path == "/style.css":
                 _text_response(self, 200, STYLE_CSS.read_bytes(), "text/css; charset=utf-8")
                 return
+            if path == "/roadmap":
+                if not self._authorized():
+                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
+                    return
+                host, port = self.server.server_address[:2]
+                html = render_roadmap_map(load_profile())
+                html = html.replace(
+                    "__CK_API_BASE__", f"http://{host}:{port}"
+                ).replace("__CK_TOKEN__", token)
+                _text_response(
+                    self, 200, html.encode("utf-8"), "text/html; charset=utf-8"
+                )
+                return
             if path == "/api/health":
                 _json_response(self, 200, {"ok": True})
                 return
@@ -264,6 +380,33 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
                     _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
                     return
                 _json_response(self, 200, build_state())
+                return
+            if path == "/api/events":
+                if not self._authorized():
+                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
+                subscriber: queue.Queue[str] = queue.Queue()
+                with _SUBSCRIBERS_LOCK:
+                    _SUBSCRIBERS.add(subscriber)
+                try:
+                    while True:
+                        try:
+                            message = subscriber.get(timeout=15)
+                            payload = f"data: {message}\n\n"
+                        except queue.Empty:
+                            payload = ": ping\n\n"
+                        self.wfile.write(payload.encode("utf-8"))
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                finally:
+                    with _SUBSCRIBERS_LOCK:
+                        _SUBSCRIBERS.discard(subscriber)
                 return
             if path == "/api/asset":
                 if not self._authorized():
@@ -287,7 +430,7 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
-            if path != "/api/checkin":
+            if path not in ("/api/checkin", "/api/task", "/api/application"):
                 _json_response(self, 404, {"error": "not found"})
                 return
             if not self._authorized():
@@ -298,33 +441,42 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
             except (ValueError, TypeError):
                 _json_response(self, 400, {"error": "invalid json"})
                 return
-            task_id = str(body.get("task_id") or "").strip()
-            status = str(body.get("status") or "completed")
-            amount = float(body.get("amount") or 0)
-            if not task_id:
-                _json_response(self, 400, {"error": "task_id required"})
-                return
-            if status == "pending":
-                try:
-                    undo_task(task_id)
-                except ValueError as exc:
-                    _json_response(self, 400, {"error": str(exc)})
-                    return
-                _json_response(self, 200, {"ok": True, "state": build_state()})
-                return
+
             try:
-                with profile_lock():
-                    profile, _ = do_checkin(
-                        load_profile(), task_id, status=status, amount=amount
-                    )
-                    task = profile.get_task(task_id)
-                    if task and task.status == "completed":
-                        record_capability_evidence(profile, task)
-                    save_profile(profile)
+                if path == "/api/task":
+                    task_id = str(body.get("task_id") or "").strip()
+                    if not task_id:
+                        _json_response(self, 400, {"error": "task_id required"})
+                        return
+                    state = update_task(task_id, body)
+                elif path == "/api/application":
+                    state = add_application_entry(body)
+                else:
+                    task_id = str(body.get("task_id") or "").strip()
+                    status = str(body.get("status") or "completed")
+                    amount = float(body.get("amount") or 0)
+                    if not task_id:
+                        _json_response(self, 400, {"error": "task_id required"})
+                        return
+                    if status == "pending":
+                        undo_task(task_id)
+                        state = build_state()
+                    else:
+                        with profile_lock():
+                            profile, _ = do_checkin(
+                                load_profile(), task_id, status=status, amount=amount
+                            )
+                            task = profile.get_task(task_id)
+                            if task and task.status == "completed":
+                                record_capability_evidence(profile, task)
+                            save_profile(profile)
+                        state = build_state(profile)
             except ValueError as exc:
                 _json_response(self, 400, {"error": str(exc)})
                 return
-            _json_response(self, 200, {"ok": True, "state": build_state(profile)})
+
+            _broadcast_refresh()
+            _json_response(self, 200, {"ok": True, "state": state})
 
     return Handler
 

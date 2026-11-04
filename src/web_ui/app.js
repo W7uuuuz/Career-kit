@@ -34,6 +34,24 @@
     });
   }
 
+  function postJSON(path, body) {
+    return api(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+  }
+
+  function findTask(id) {
+    var found = null;
+    (state.phases || []).forEach(function (phase) {
+      (phase.tasks || []).forEach(function (task) {
+        if (task.id === id) found = task;
+      });
+    });
+    return found;
+  }
+
   function loadState() {
     return api('/api/state').then(function (data) {
       state = data;
@@ -114,7 +132,9 @@
           + taskControl(t)
           + '<span class="' + nameCls + '"><span class="pr ' + pr + '"></span>' + esc(t.name) + '</span>'
           + '<span class="task-meta">' + esc(t.id) + '</span>'
-          + '</label>' + taskDetail(t) + '</div>');
+          + '</label>'
+          + '<button class="ck-btn ghost" data-action="edit" data-id="' + esc(t.id) + '">编辑</button>'
+          + taskDetail(t) + '</div>');
       });
     } else if (ph.milestone_tasks && ph.milestone_tasks.length) {
       lines.push('<div class="empty">里程碑已规划；回到对话里细化当前阶段后会变成可打卡任务。</div>');
@@ -155,6 +175,78 @@
       + '</div>';
   }
 
+  function renderReports() {
+    var el = document.getElementById('reports');
+    var reports = state.reports || [];
+    if (!reports.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="card"><div class="card-head"><span class="card-title">调研报告'
+      + '<span class="type-pill">' + reports.length + ' 份</span></span></div>'
+      + '<input id="report-search" placeholder="按方向筛选，如 AI Agent" '
+      + 'style="margin-top:10px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:100%">'
+      + '<ul class="ms-preview" id="report-list"></ul></div>';
+    var input = document.getElementById('report-search');
+    var paint = function () {
+      var q = (input.value || '').trim().toLowerCase();
+      var list = document.getElementById('report-list');
+      var filtered = reports.filter(function (r) {
+        return !q || String(r.direction || '').toLowerCase().indexOf(q) >= 0;
+      });
+      if (!filtered.length) {
+        list.innerHTML = '<li class="muted">没有匹配的报告</li>';
+        return;
+      }
+      list.innerHTML = filtered.map(function (r) {
+        var counts = r.counts || {};
+        var links = [];
+        if (r.html) links.push('<a href="' + esc(withToken(r.html)) + '" target="_blank" rel="noopener">阅读版</a>');
+        if (r.md) links.push('<a href="' + esc(withToken(r.md)) + '" target="_blank" rel="noopener">全文</a>');
+        if (r.json) links.push('<a href="' + esc(withToken(r.json)) + '" target="_blank" rel="noopener">原始数据</a>');
+        var failed = (r.failed_sources || []).length
+          ? ' · 失败源：' + esc(r.failed_sources.join('、')) : '';
+        return '<li><strong>' + esc(r.direction) + '</strong>'
+          + ' <span class="muted">' + esc(r.generated_at || '') + '</span>'
+          + '<br><span class="muted">岗位 ' + (counts.jd_samples || 0)
+          + ' · 案例 ' + (counts.cases || 0) + failed + '</span>'
+          + (links.length ? '<br>' + links.join(' · ') : '') + '</li>';
+      }).join('');
+    };
+    input.addEventListener('input', paint);
+    paint();
+  }
+
+  function editTask(id) {
+    var task = findTask(id);
+    if (!task) return;
+    var name = prompt('任务名', task.name);
+    if (name === null) return;
+    var desc = prompt('描述', task.desc || '');
+    if (desc === null) return;
+    var how = prompt('怎么做（分号分隔）', (task.how_to || []).join('；'));
+    if (how === null) return;
+    var done = prompt('完成标准', task.done_criteria || '');
+    if (done === null) return;
+    var priority = prompt('优先级 high/medium/low', task.priority || 'medium');
+    if (priority === null) return;
+    var mode = prompt('打卡方式 once/daily/percent', task.checkin_mode || 'once');
+    if (mode === null) return;
+    var goal = prompt('目标（daily 天数 / percent 百分比）', String(task.checkin_goal || 0));
+    if (goal === null) return;
+    postJSON('/api/task', {
+      task_id: id,
+      name: name,
+      description: desc,
+      how_to: how.split(/[；;\n]/).map(function (s) { return s.trim(); }).filter(Boolean),
+      done_criteria: done,
+      priority: priority,
+      checkin_mode: mode,
+      checkin_goal: parseFloat(goal) || 0,
+    }).then(function (data) {
+      state = data.state;
+      render();
+      toast('任务已保存');
+    }).catch(function (err) { toast(err.message); });
+  }
+
   function renderApplications() {
     var el = document.getElementById('applications');
     var apps = state.applications || [];
@@ -184,6 +276,8 @@
       + state.total_done + ' / ' + state.total_tasks + ' 个任务';
     var link = document.getElementById('assets-link');
     if (state.assets_index) link.href = withToken(state.assets_index);
+    var mapLink = document.getElementById('map-link');
+    if (mapLink) mapLink.href = '/roadmap?token=' + encodeURIComponent(TOKEN);
 
     var warn = document.getElementById('warnings');
     if (state.warnings && state.warnings.length) {
@@ -194,6 +288,7 @@
 
     document.getElementById('phases').innerHTML = state.phases.map(renderPhase).join('');
     renderResearch();
+    renderReports();
     renderApplications();
   }
 
@@ -229,6 +324,7 @@
     var id = btn.getAttribute('data-id');
     if (action === 'daily') checkin(id, 'completed', 1);
     else if (action === 'undo') checkin(id, 'pending', 0);
+    else if (action === 'edit') editTask(id);
   });
 
   document.getElementById('phases').addEventListener('change', function (e) {
@@ -244,6 +340,28 @@
   document.getElementById('refresh').addEventListener('click', function () {
     loadState().then(function () { toast('已刷新'); });
   });
+
+  document.getElementById('app-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var form = e.target;
+    var payload = {
+      company: form.company.value,
+      role: form.role.value,
+      channel: form.channel.value,
+      status: form.status.value,
+    };
+    postJSON('/api/application', payload).then(function (data) {
+      state = data.state;
+      form.reset();
+      render();
+      toast('投递已登记');
+    }).catch(function (err) { toast(err.message); });
+  });
+
+  if (window.EventSource) {
+    var events = new EventSource('/api/events?token=' + encodeURIComponent(TOKEN));
+    events.onmessage = function () { loadState(); };
+  }
 
   loadState();
 })();

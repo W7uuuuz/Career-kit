@@ -84,6 +84,18 @@ input[type=range] { width: 110px; accent-color: var(--brand); }
   border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 10px 0;
 }
 .footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }
+#app-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+#app-form input, #app-form select {
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; background: #fff; color: var(--ink);
+}
+#app-form input:focus, #app-form select:focus { outline: 2px solid var(--brand-soft); border-color: var(--brand); }
+.edit-grid { display: grid; gap: 6px; margin-top: 8px; }
+.edit-grid input, .edit-grid textarea, .edit-grid select {
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12.5px;
+  font-family: inherit;
+}
+.edit-grid textarea { min-height: 54px; }
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
   background: #1f2430; color: #fff; padding: 9px 18px; border-radius: 10px;

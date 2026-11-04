@@ -50,138 +50,26 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 分析或规划前必须至少调用一次 `search_cases` 或 `fetch_company_jobs`。
 数据不可用时如实告知，并引导 `import_jd` / `import_jd_file` 导入用户手头 JD，不要编造。
 
-## 工作流
+## 工作流（唯一事实源：workflow.md）
+
+完整前置条件、输入输出与质量门以 `career-kit://docs/workflow` 为准；这里只给命令顺序。
 
 ```
-建档 → 市场调研 → 差距分析 → 路线图 → 阶段任务 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
+start_session → parse_resume? → intake(who/have/want) → finalize_profile
+→ research_market → gather_research_data
+→ analyze_gaps → save_gap_analysis
+→ generate_roadmap → save_roadmap
+→ detail_current_phase → save_current_detail → generate_tasks
+→ get_next_tasks → checkin_task
+→ trigger_insight / apply_insight / get_weekly_review
 ```
 
-### 1. 建档
-
-```
-start_session()
-→ parse_resume(file_path)         # 可选：先解析简历素材，再逐项确认证据 + 自评三问
-→ intake(who / have / want)       # 技能带 evidence + verified + authorship + control_level，
-                                   # 整份简历自评写 have.self_assessment
-→ finalize_profile()              # 技能无证据或缺 authorship/control_level 自评会被摸排门禁拦截
-```
-
-无目标时先 `explore_goals()`，用「能力 × 兴趣 × 真实岗位」选出方向，再 `intake(want)` 落定。
-
-### 2. 市场调研（分析的地基，核心卖点「来源真实」）
-
-```
-research_market()                                    # 调研方法论与 4 步模板
-→ 名单含 BOSS 时先问用户是否抓取（需扫码登录）
-→ gather_research_data(jd_specs, case_query, boss_confirmed)   # 一次批量抓取：JD 目标 1 家 + 对照 2-4 家
-```
-
-- case_query：role=目标方向；education=学历档（五档四层写法如「双非本」）
-- BOSS 直聘需扫码登录：抓取前必须询问用户是否抓取，同意后传 `boss_confirmed=true`；
-  询问时直接说明「我可以帮你打开登录窗口，你只需扫码」。工具返回
-  `CONFIRMATION_REQUIRED` / `LOGIN_REQUIRED` 时把问题转问用户；用户同意登录后，
-  用 harness 的终端/Bash 运行 `login_command`，不要把命令丢给用户手动执行，
-  也不得静默跳过或直接将登录缺失视为调研失败
-- 岗位详情必抓：未取得详情的岗位不纳入报告，并在数据缺口如实说明
-- 花名册机制：`gather_research_data` 返回「花名册（标识与摘要）+ 聚合摘要」，
-  岗位全文仅写入报告与档案；读取全文用 `read_research_details(ids=..., kind="jd"/"case")`，
-  单次 3-5 条为宜。宿主 harness 支持子 Agent 时，用 Task 发起 `research-analyst`
-  （仓库提供 `.opencode/agent` 与 `.claude/agents` 定义）并按返回的 `delegate.prompt` 委派，
-  父 Agent 只汇总结论与重点名单
-- 任一源失败不中断，失败原因原样进报告的来源状态面板；无数据报错不给空报告
-- 报告 md/html/json 自动落盘 `~/CareerKit/<档案>/调研报告/`，`profile.research`
-  同步更新，后续分析/规划直接引用；资产总览：双击 `~/CareerKit/index.html`
-
-### 3. 分析
-
-```
-list_data_sources()                                  # 查看可用源与参数
-get_scraper_guide(company)                           # 首次使用某源前读取
-research_market() → gather_research_data(...)        # 建档后先做（报告落盘可查证）
-read_research_details(ids, kind)                     # 按花名册标识读取全文（先筛选后读取）
-search_cases(role, education, company)               # 有调研直接引用；不足处定向补充
-fetch_company_jobs(company, params)                  # 真实岗位/面经（底层单源抓取）
-fetch_jd_detail(url)                                 # JD 全文或面经/经验帖详情
-search_knowledge(query)                              # 本地资料
-analyze_gaps() → save_gap_analysis(gap_json)
-```
-
-`analyze_gaps` 会返回 4 步 step_template（现状盘点 → 读取调研 → 三维分析 → 结果预览）：
-**step 2 读取调研：有 `profile.research` 时先 `read_research_details()` 取花名册与聚合摘要，
-选取 3-5 条读取全文（标注来源），不一次性注入全量正文**；
-没有调研先给一句软提示（建议先 `research_market` → `gather_research_data`），
-用户暂不需要时以 `search_cases` 补充，并如实说明「临时检索、尚无正式调研报告」；
-把第一轮回复先做成「步骤预告」（报完 4 步菜单再动手），每步产出用户看得见的中间结果，
-工具调用前先播报，表格必须带「为什么」，案例卡必须标来源，用户确认预览后才 `save_gap_analysis`。
-
-`skill_gaps` 建议标注 `source`；`resume_red_flags` 建议带 `signal/risk/evidence_fix`；
-缺少这些会给 advisory，不阻断保存。技能 authorship 为 ai_assisted/ai_generated 时，
-建议在 red_flags 说明 AI 生成/手写风险——由 LLM 判断是否确实需要，不做关键词硬门禁。
-
-### 4. 规划
-
-```
-generate_roadmap() → save_roadmap(roadmap_json) → 审计（第二意见，可选）
-# 已有规划文档时：import_plan(file_path) → 对话中整理取舍 → save_roadmap
-```
-
-- `save_roadmap` 只做结构校验，质量项以 `advisories` 返回（层级跨度、KPI、届别、
-  任务措辞等），不阻断保存；`force` 已废弃
-- 审计输出 `PASS / PASS_WITH_NOTES / FAIL`，FAIL 只用于硬矛盾，最多 3 条 must_fix；
-  审计记录在 `profile.audit`，按 `roadmap_hash` 绑定版本，不阻断定稿
-- 产品不排期：任务名尽量不带时间节奏词；里程碑建议有 `done_criteria`
-- 阶段与 JD 遵循「知识光谱」：公司/推荐理由可写常识；JD 细节必须有真实数据，
-  否则留空并标 `jd_status=pending_user_import`
-- 层级是命中率参考，不是投递许可：跨级不禁止，建议说明证据（作品集/内推/前序交付）；
-  `start_level_after` 只影响后续阶段，不写回差距分析
-
-### 5. 执行
-
-```
-detail_current_phase()               # 先细化当前阶段（先细化，后生成任务）
-→ save_current_detail(detail_json)   # 每个任务带 how_to / resources / done_criteria
-                                     # + once / daily / percent 打卡点
-→ generate_tasks()                   # 合并 playbook 与打卡点
-→ get_next_tasks()                   # 展示下一步任务、怎么做、资源链接、完成标准
-→ checkin_task(task_id, status, notes, amount)
-→ record_application(company, role, status, ...)   # 用户口述投递/面试/offer 事实时
-```
-
-用户拒绝细化时，才直接 `generate_tasks()` 按里程碑生成粗任务。
-
-完成任务会自动沉淀能力证据到 `have.capability_evidence`。
-
-投递纪律：只记录用户口述的真实事实，禁止编造或代替用户「估计」状态；
-同公司+同岗位的活跃记录会拒重复，更新需传返回的 `application_id`；
-进面试/拿 offer 属重大事件，按返回提示触发 `trigger_insight(event)`。
-
-### 6. 洞察与周检视
-
-```
-trigger_insight(trigger_type="stage_audit" | "event", event_description)
-→ apply_insight(insight_json)
-get_weekly_review(days=7)            # 周期事实复盘（打卡/阶段/漏斗）
-```
-
-- 阶段审计每阶段只触发一次（`audited_phases`）
-- 事件示例：「拿到大厂面试」→ 增加面试冲刺阶段
-- 调整类型只有 add_task / remove_task / modify_task
-- 洞察 prompt 内含求职漏斗事实：过筛率低（样本足够）归因简历、
-  面试转化低归因面试准备、零投递归因执行；样本 <5 不下结论
-- 周检视只陈列事实与规则化建议：距上次打卡 N 天是事实陈述，
-  不是超期判定；禁止催促、禁止替用户排时间
-
-### 7. 产出与状态
-
-```
-get_progress()                       # 整体进度（含求职漏斗与投递清单）
-get_workflow_status()                # 目标变更检测 + 久未打卡时的周检视提示
-export_dashboard(mode="progress")    # 进度仪表盘（落到 ~/CareerKit/进度/，近 7 天与漏斗卡片）
-export_dashboard(mode="roadmap")     # 可交互职业地图（落到 ~/CareerKit/路线图/路线图.html）
-```
-
-多档案场景：`list_profiles` / `switch_profile` / `delete_profile`（回收站式）/
-`list_trash` / `restore_profile`。
+关键纪律：
+- BUG021 摸排：技能必须带 `authorship` / `control_level`，整份简历写 `self_assessment`；AI 不得代填。
+- 目标由用户确认：`intake(want)` 带 `user_confirmed=true`；推断目标只能候选。
+- BOSS：抓取/登录前先问；同意后用 harness 执行，用户只扫码。
+- 数据真实：没抓到就写「未获取」；失败源如实展示。
+- 路线图后先细化当前阶段，再生成任务；用户拒绝细化才走粗任务。
 
 ## 返回值与错误
 

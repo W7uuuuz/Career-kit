@@ -424,6 +424,10 @@ def render_roadmap_map(profile) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="career-kit-summary" content="{escape(summary)}">
+<script>
+  window.__CK_API__ = "__CK_API_BASE__";
+  window.__CK_TOKEN__ = "__CK_TOKEN__";
+</script>
 <title>Career Kit 职业地图</title>
 <style>
 :root {{
@@ -441,6 +445,9 @@ header {{ display: flex; align-items: flex-end; justify-content: space-between;
 h1 {{ font-size: 24px; letter-spacing: .3px; }}
 .home {{ color: var(--brand); text-decoration: none; font-size: 13px; }}
 .home:hover {{ text-decoration: underline; }}
+.mode-banner {{ margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; }}
+.mode-banner.online {{ background: var(--ok-soft); color: #146c43; }}
+.mode-banner.offline {{ background: var(--warn-soft); color: var(--warn); }}
 .meta {{ color: var(--muted); font-size: 12.5px; }}
 .start {{ margin: 6px 0 18px; color: var(--muted); font-size: 13.5px; }}
 .start b {{ color: var(--brand); }}
@@ -541,6 +548,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     </div>
     <span class="meta">生成于 {datetime.now().strftime("%Y-%m-%d %H:%M")} · 路线图 v{profile.version}</span>
   </header>
+  <div class="mode-banner" id="mode-banner"></div>
 
   <p class="start">起点层级：<b id="start-level">—</b>（差距分析产出，路线图按此对齐）</p>
 
@@ -573,6 +581,10 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
   'use strict';
   var DATA = JSON.parse(document.getElementById('career-data').textContent);
   var KEY = 'career-kit-checkins-' + DATA.profile;
+  // 由本地控制台提供时走 API（薄客户端）；直接用 file:// 打开时回退 localStorage
+  var API = (window.__CK_API__ && String(window.__CK_API__).indexOf('__CK_') !== 0)
+    ? String(window.__CK_API__).replace(/[/]$/, '') : null;
+  var TOKEN = window.__CK_TOKEN__ || '';
 
   // HTML 转义：任务名/阶段名/JD 等来自 LLM 与用户输入，拼接进 innerHTML 前必须转义
   function esc(s) {{
@@ -586,8 +598,33 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     catch (e) {{ return {{}}; }}
   }}
   function saveCheckins(c) {{ localStorage.setItem(KEY, JSON.stringify(c)); }}
+  function apiCheckin(id, status, amount) {{
+    return fetch(API + '/api/checkin', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json', 'X-CK-Token': TOKEN }},
+      body: JSON.stringify({{ task_id: id, status: status, amount: amount || 0 }})
+    }}).then(function (res) {{
+      if (!res.ok) throw new Error('同步失败（' + res.status + '）');
+      return res.json();
+    }});
+  }}
 
-  var checkins = loadCheckins();
+  var checkins = API ? {{}} : loadCheckins();
+
+  (function initMode() {{
+    var banner = document.getElementById('mode-banner');
+    if (API) {{
+      banner.className = 'mode-banner online';
+      banner.textContent = '已连接本地档案：打卡直接写入，刷新后仍保留。';
+      var exportBtn = document.getElementById('export-btn');
+      var resetBtn = document.getElementById('reset-btn');
+      if (exportBtn) exportBtn.style.display = 'none';
+      if (resetBtn) resetBtn.style.display = 'none';
+    }} else {{
+      banner.className = 'mode-banner offline';
+      banner.textContent = '离线模式：打卡保存在此浏览器，需导出同步到档案。';
+    }}
+  }})();
 
   // 阶段初始状态：服务端已有 completed/skipped 的任务视为已打卡
   var phases = DATA.phases.map(function (ph) {{
@@ -784,7 +821,13 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
   }});
 
   // 任务打卡：once checkbox / daily 按钮 / percent 滑块
-  function applyCheckin(id, mode, done, amount) {{
+  function applyCheckin(id, mode, done, amount, isUndo) {{
+    if (API) {{
+      apiCheckin(id, isUndo ? 'pending' : 'completed', isUndo ? 0 : amount)
+        .then(function () {{ location.reload(); }})
+        .catch(function (err) {{ toast(err.message); }});
+      return;
+    }}
     var updated = false;
     phases.forEach(function (ph) {{
       ph.tasks.forEach(function (t) {{
@@ -838,7 +881,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       }});
       if (!task) return;
       if ((task.mode || 'once') === 'daily') task.progress = 0;
-      applyCheckin(id, task.mode || 'once', false, 0);
+      applyCheckin(id, task.mode || 'once', false, 0, true);
     }}
   }});
 

@@ -92,7 +92,20 @@ def test_asset_route_is_token_protected_and_scoped(temp_profile):
 
 
 def test_build_state_exposes_roadmap_and_playbook(temp_profile):
+    from src.assets import kind_assets_dir
+    from src.tools.profile import get_active_profile_name
+
     profile_module.save_profile(_profile())
+    report_dir = kind_assets_dir("research", get_active_profile_name())
+    (report_dir / "2026-11-03_AI_Agent.json").write_text(
+        json.dumps({
+            "direction": "AI Agent",
+            "generated_at": "2026-11-03",
+            "counts": {"jd_samples": 8, "cases": 2},
+            "source_status": [{"source": "boss", "status": "failed"}],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
     state = build_state()
 
@@ -104,6 +117,49 @@ def test_build_state_exposes_roadmap_and_playbook(temp_profile):
     assert state["research"]["counts"]["jd_samples"] == 10
     assert state["research"]["failed_sources"] == ["boss"]
     assert state["applications"][0]["company"] == "某公司"
+    assert state["reports"][0]["direction"] == "AI Agent"
+
+
+def test_task_edit_and_application_entry(temp_profile):
+    profile_module.save_profile(_profile())
+    server, token = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+
+    def post(path: str, payload: dict) -> dict:
+        request = urllib.request.Request(
+            base + path,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"X-CK-Token": token, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request) as res:
+            return json.loads(res.read())
+
+    try:
+        data = post("/api/task", {
+            "task_id": "task_001",
+            "name": "改过的任务",
+            "how_to": ["先做", "再检查"],
+            "done_criteria": "通过",
+            "checkin_mode": "daily",
+            "checkin_goal": 3,
+        })
+        task = data["state"]["phases"][0]["tasks"][0]
+        assert task["name"] == "改过的任务"
+        assert task["how_to"] == ["先做", "再检查"]
+        assert task["checkin_mode"] == "daily"
+
+        data = post("/api/application", {
+            "company": "新公司", "role": "Agent 实习", "status": "applied",
+        })
+        assert data["state"]["applications"][-1]["company"] == "新公司"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_server_requires_token_and_writes_checkin(temp_profile):
@@ -126,6 +182,11 @@ def test_server_requires_token_and_writes_checkin(temp_profile):
         with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(f"{base}/api/state")
         assert exc.value.code == 403
+
+        with urllib.request.urlopen(f"{base}/roadmap?token={token}") as res:
+            roadmap_html = res.read().decode("utf-8")
+        assert "__CK_API_BASE__" not in roadmap_html
+        assert f"http://{host}:{port}" in roadmap_html
 
         request = urllib.request.Request(
             f"{base}/api/state", headers={"X-CK-Token": token}

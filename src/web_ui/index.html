@@ -14,6 +14,7 @@
       <p class="sub" id="sub">正在读取档案…</p>
     </div>
     <div class="actions">
+      <a class="btn ghost" id="map-link" href="/roadmap" target="_blank" rel="noopener">职业地图</a>
       <a class="btn ghost" id="assets-link" href="#" target="_blank" rel="noopener">打开资产中心</a>
       <button class="btn" id="refresh">刷新</button>
     </div>
@@ -30,8 +31,24 @@
 
   <div id="warnings"></div>
   <div id="research"></div>
+  <div id="reports"></div>
   <div id="phases"></div>
   <div id="applications"></div>
+  <div class="card" id="app-card">
+    <div class="card-head"><span class="card-title">登记投递</span></div>
+    <form id="app-form">
+      <input name="company" placeholder="公司" required>
+      <input name="role" placeholder="岗位">
+      <input name="channel" placeholder="渠道（BOSS/官网/内推）">
+      <select name="status">
+        <option value="applied">已投递</option>
+        <option value="screening">进初筛</option>
+        <option value="interview">进面试</option>
+        <option value="offer">offer</option>
+      </select>
+      <button class="btn primary" type="submit">登记</button>
+    </form>
+  </div>
 
   <p class="footer">数据直接写入本机档案，与 MCP 共用；这里不需要导出打卡指令。顺序归产品，时间归用户。</p>
 </div>

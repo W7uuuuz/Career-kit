@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -94,6 +95,80 @@ def _release_lock(handle: Any) -> None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+_DB_READY: set[str] = set()
+
+
+def _db_path() -> Path:
+    return PROFILE_DIR / "career-kit.db"
+
+
+def _connect() -> sqlite3.Connection:
+    path = _db_path()
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS profiles ("
+        "name TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    key = str(path)
+    if key not in _DB_READY:
+        conn.execute("PRAGMA journal_mode=WAL")
+        # 一次性导入已有 JSON 档案，兼容旧版本
+        _import_json_profiles(conn)
+        _DB_READY.add(key)
+    return conn
+
+
+def _import_json_profiles(conn: sqlite3.Connection) -> None:
+    for json_path in PROFILE_DIR.glob("*.json"):
+        try:
+            data = json_path.read_text(encoding="utf-8")
+            conn.execute(
+                "INSERT OR IGNORE INTO profiles(name, data, updated_at) "
+                "VALUES (?, ?, ?)",
+                (json_path.stem, data, datetime.now().isoformat()),
+            )
+        except OSError:
+            continue
+    conn.commit()
+
+
+def _read_profile_data(name: str) -> str | None:
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT data FROM profiles WHERE name = ?", (name,)
+        ).fetchone()
+        return str(row["data"]) if row else None
+    finally:
+        conn.close()
+
+
+def _write_profile_data(name: str, data: str) -> None:
+    conn = _connect()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO profiles(name, data, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET data=excluded.data, "
+                "updated_at=excluded.updated_at",
+                (name, data, datetime.now().isoformat()),
+            )
+    finally:
+        conn.close()
+
+
+def _delete_profile_data(name: str) -> None:
+    conn = _connect()
+    try:
+        with conn:
+            conn.execute("DELETE FROM profiles WHERE name = ?", (name,))
+    finally:
+        conn.close()
+
+
 def validate_profile_name(name: str) -> str:
     """校验档案名，非法时抛 ValueError。"""
     if not name or not PROFILE_NAME_RE.match(name):
@@ -125,32 +200,48 @@ def set_active_profile_name(name: str) -> None:
 
 
 def profile_exists(name: str) -> bool:
-    """档案文件是否存在。非法档案名抛 ValueError。"""
+    """档案是否存在（SQLite 为主，JSON 为兼容镜像）。非法档案名抛 ValueError。"""
     validate_profile_name(name)
-    return (PROFILE_DIR / f"{name}.json").exists()
+    return (
+        _read_profile_data(name) is not None
+        or (PROFILE_DIR / f"{name}.json").exists()
+    )
 
 
 def list_profiles() -> list[dict[str, Any]]:
-    """列出所有档案（含元信息），不含 .active_profile 等非档案文件。"""
+    """列出所有档案（SQLite 为主，JSON 为兼容镜像）。"""
     if not PROFILE_DIR.exists():
         return []
     active = get_active_profile_name()
+    conn = _connect()
+    try:
+        _import_json_profiles(conn)
+        rows = conn.execute(
+            "SELECT name, data, updated_at FROM profiles ORDER BY name"
+        ).fetchall()
+    finally:
+        conn.close()
+
     profiles = []
-    for path in sorted(PROFILE_DIR.glob("*.json")):
-        name = path.stem
+    for row in rows:
+        name = str(row["name"])
         info: dict[str, Any] = {"name": name, "is_active": name == active}
         try:
-            profile = CareerProfile.model_validate_json(path.read_text(encoding="utf-8"))
+            profile = CareerProfile.model_validate_json(str(row["data"]))
             info["version"] = profile.version
             info["updated_at"] = profile.updated_at
             who = profile.who or {}
             info["person"] = who.get("name") or who.get("raw", "")
             want = profile.want or {}
-            info["target"] = want.get("target_role") or want.get("direction") or want.get("raw", "")
-            info["has_plan"] = bool(profile.plan.get("roadmap") or profile.plan.get("phases"))
+            info["target"] = (
+                want.get("target_role") or want.get("direction") or want.get("raw", "")
+            )
+            info["has_plan"] = bool(
+                profile.plan.get("roadmap") or profile.plan.get("phases")
+            )
         except Exception:
             info["version"] = 0
-            info["updated_at"] = datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+            info["updated_at"] = str(row["updated_at"])
         profiles.append(info)
     return profiles
 
@@ -170,8 +261,11 @@ def delete_profile(name: str) -> Path | None:
     """
     validate_profile_name(name)
     path = PROFILE_DIR / f"{name}.json"
-    if not path.exists():
+    data = _read_profile_data(name)
+    if data is None and not path.exists():
         return None
+    if not path.exists() and data is not None:
+        path.write_text(data, encoding="utf-8")
 
     trash_dir = _trash_dir()
     trash_dir.mkdir(parents=True, exist_ok=True)
@@ -183,6 +277,7 @@ def delete_profile(name: str) -> Path | None:
         if target.exists():
             target = trash_dir / f"{name}_{ts}.json"
         path.rename(target)
+        _delete_profile_data(name)
     return target
 
 
@@ -227,6 +322,7 @@ def restore_profile(name: str) -> Path | None:
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
     with profile_lock(name):
         latest.rename(target)
+        _write_profile_data(name, target.read_text(encoding="utf-8"))
     return target
 
 
@@ -239,9 +335,14 @@ def load_profile(name: str | None = None) -> CareerProfile:
         name = get_active_profile_name()
     else:
         validate_profile_name(name)
+    data = _read_profile_data(name)
+    if data is not None:
+        return CareerProfile.model_validate_json(data)
     path = PROFILE_DIR / f"{name}.json"
     if path.exists():
-        return CareerProfile.model_validate_json(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        _write_profile_data(name, text)
+        return CareerProfile.model_validate_json(text)
     return CareerProfile()
 
 
@@ -257,9 +358,12 @@ def save_profile(profile: CareerProfile, name: str | None = None) -> None:
         validate_profile_name(name)
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     path = PROFILE_DIR / f"{name}.json"
+    data = profile.model_dump_json(indent=2)
     with profile_lock(name):
+        _write_profile_data(name, data)
+        # JSON 镜像：兼容 E2E harness、用户手工查看与旧版本回滚
         temp = path.with_name(f".{path.name}.tmp")
-        temp.write_text(profile.model_dump_json(indent=2), encoding="utf-8")
+        temp.write_text(data, encoding="utf-8")
         os.replace(temp, path)
 
 

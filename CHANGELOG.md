@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **SQLite 存储 + 控制台写操作 + 静态地图薄客户端（2026-11-03）**：
+  - 档案主存储迁移到 `~/.career-kit/career-kit.db`（SQLite，WAL）；
+    JSON 保留为兼容镜像，旧 JSON 自动导入，E2E/手工查看不受影响
+  - 控制台新增任务编辑（名称/描述/how_to/完成标准/打卡方式）、投递登记、
+    调研报告列表与方向筛选；SSE 自动刷新
+  - 静态职业地图新增薄客户端模式：由控制台 `/roadmap` 提供时打卡直接走 API，
+    `file://` 打开时回退 localStorage，并显示当前模式提示
+  - `/api/asset` 与 `/api/events` 受 token 保护；资产访问限制在 `~/CareerKit`
+  - 新增 `tests/test_profile_sqlite.py`；Web 测试覆盖任务编辑、投递登记、
+    报告列表与 `/roadmap`
+  - 文档收敛：`docs/workflow.md` 为唯一流程源；`docs/llms.txt` 改为命令速查，
+    `session.py` 改为执行纪律手册，不再复制完整流程
+
 - **当前阶段与进度口径统一（2026-11-03）**：
   - 新增 `task_manager.resolve_current_phase()`：唯一当前阶段判定（跳过零任务阶段、
     `skipped` 算完成、全部完成返回 None、无任务返回第一段）
