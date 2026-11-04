@@ -25,6 +25,7 @@
 start_session → intake(who/have/want) → finalize_profile
 → fetch_company_jobs → analyze_gaps → save_gap_analysis
 → generate_roadmap → save_roadmap
-→ generate_tasks → get_next_tasks → checkin_task
+→ detail_current_phase → save_current_detail → generate_tasks
+→ get_next_tasks → checkin_task
 → export_dashboard
 ```

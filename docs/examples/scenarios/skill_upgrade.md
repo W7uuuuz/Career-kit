@@ -137,6 +137,7 @@ save_roadmap(roadmap_json='{
 ### 4. 任务执行
 
 ```
+detail_current_phase() → save_current_detail(detail_json)
 generate_tasks()
 get_next_tasks()   # 从返回值中取 task_id
 checkin_task(task_id="<get_next_tasks 返回的 ID>", status="completed", notes="多Agent系统学习完成")
