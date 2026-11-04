@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Kit · AI 职业陪练</title>
+<meta name="description" content="Career Kit：真实招聘数据差距分析、分阶段路线图、可打卡任务与求职漏斗。">
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #fff; --ink: #1f2430; --muted: #6b7280;
+    --line: #e6e9f0; --brand: #4a6cf7; --brand-soft: #eef1fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    line-height: 1.7;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 64px 22px 80px; }
+  .eyebrow { color: var(--brand); font-size: 13px; font-weight: 600; letter-spacing: .08em; }
+  h1 { font-size: 34px; line-height: 1.25; margin: 10px 0 12px; letter-spacing: -.5px; }
+  .lead { color: var(--muted); font-size: 16px; margin: 0 0 28px; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 40px; }
+  .btn {
+    display: inline-block; padding: 11px 18px; border-radius: 10px;
+    text-decoration: none; font-size: 14px; border: 1px solid var(--line);
+    color: var(--ink); background: var(--card);
+  }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .card h2 { font-size: 15px; margin: 0 0 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .card a { color: var(--brand); text-decoration: none; }
+  footer { margin-top: 44px; color: var(--muted); font-size: 12.5px; }
+  code { background: var(--brand-soft); color: var(--brand); padding: 1px 6px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">CAREER KIT</p>
+  <h1>别再海投了。<br>让 AI 用真实岗位数据陪你求职。</h1>
+  <p class="lead">
+    真实招聘数据差距分析 → 分阶段路线图 → 可打卡任务 → 求职漏斗复盘。
+    接入 Claude Code / Cursor / opencode / Codex，数据全部留在本地。
+  </p>
+
+  <div class="actions">
+    <a class="btn primary" href="examples/demo/career-map.html">在线体验职业地图</a>
+    <a class="btn" href="https://github.com/W7uuuuz/Career-kit">GitHub 仓库</a>
+    <a class="btn" href="https://github.com/W7uuuuz/Career-kit#快速开始">安装与注册</a>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>真实数据，不瞎分析</h2>
+      <p>BOSS、字节、腾讯、百度、阿里、牛客、GitHub 经验帖；差距分析必须锚定真实来源。</p>
+    </div>
+    <div class="card">
+      <h2>拆成可执行任务</h2>
+      <p>分阶段、里程碑、按次 / 按天 / 按比例打卡；随时问「下一步做什么」。</p>
+    </div>
+    <div class="card">
+      <h2>求职漏斗复盘</h2>
+      <p>投递 → 过筛 → 面试 → offer 全程记录，判断问题在简历还是面试。</p>
+    </div>
+    <div class="card">
+      <h2>可交互职业地图</h2>
+      <p>自包含 HTML，勾选即打卡、进度实时更新，浏览器本地保存。</p>
+    </div>
+    <div class="card">
+      <h2>本地优先</h2>
+      <p>档案在 <code>~/.career-kit</code>，报告在 <code>~/CareerKit</code>，不上传服务器。</p>
+    </div>
+    <div class="card">
+      <h2>MIT 开源</h2>
+      <p>可自托管、可扩展企业数据源。欢迎 issue 与 PR。</p>
+    </div>
+  </div>
+
+  <footer>
+    <a href="https://github.com/W7uuuuz/Career-kit">GitHub</a> ·
+    <a href="https://github.com/W7uuuuz/Career-kit/tree/main/docs">文档</a> ·
+    顺序归产品，时间归用户。
+  </footer>
+</main>
+</body>
+</html>

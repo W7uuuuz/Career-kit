@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.w7uuuuz/career-kit",
+  "description": "AI career coach MCP server: real job-market gap analysis, staged roadmap, check-in tasks, and an application funnel. Data stays local.",
+  "title": "Career Kit",
+  "websiteUrl": "https://w7uuuuz.github.io/Career-kit/",
+  "repository": {
+    "url": "https://github.com/W7uuuuz/Career-kit",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "career-kit",
+      "version": "0.2.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CAREER_KIT_DATA_DIR",
+          "description": "Override the program data directory (default: ~/.career-kit)",
+          "isRequired": false
+        },
+        {
+          "name": "CAREER_KIT_ASSETS_DIR",
+          "description": "Override the generated assets directory (default: ~/CareerKit)",
+          "isRequired": false
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "tool": "manual",
+      "build_info": {
+        "python": "3.11+",
+        "license": "MIT"
+      }
+    }
+  }
+}

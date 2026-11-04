@@ -29,8 +29,12 @@ MCP Resource 同源）。
 ## 根目录文件
 
 - [README.md](../README.md)：安装、注册、快速开始
+- [README.en.md](../README.en.md)：English README
 - [llms.txt](../llms.txt)：仓库级 LLM 入口索引（llmstxt 约定）
 - [CONTRIBUTING.md](../CONTRIBUTING.md)：贡献流程与开发规范
+- [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)：贡献者行为准则
+- [DISCLAIMER.md](../DISCLAIMER.md)：数据源、抓取与责任边界
+- [SECURITY.md](../SECURITY.md)：安全问题报告流程
 
 ## 维护约定
 

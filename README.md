@@ -1,35 +1,89 @@
 # Career Kit
 
+[English](README.en.md) | 中文
+
 [![CI](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
-> 别再海投了。AI 帮你规划路线、打卡执行、达成目标。
+> 别再海投了。Career Kit 是一个 AI 职业陪练 MCP 服务：抓真实岗位 → 分析差距 → 分阶段路线图 → 可打卡任务 → 求职漏斗复盘。
 
-**Career Kit 是一个 MCP 服务**——接入 Claude Code / Cursor / opencode 等任意支持 MCP 的 AI Agent，
-把你的求职从「投简历碰运气」变成「有真实数据支撑的分阶段计划 + 可打卡执行」。
+接入 Claude Code / Cursor / opencode / Codex，把你的求职从「投简历碰运气」变成「有真实数据支撑、可长期追踪」的计划。
+
+**[在线体验职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)** · [示例产物](docs/examples/demo/) · [完整文档](docs/README.md)
 
 ![Career Kit 职业地图](docs/examples/demo/career-map.png)
 
-> 上图是 `docs/examples/demo/career-map.html` 的真实截图——一份样例简历经完整链路生成的
-> **可交互职业地图**（勾选打卡、进度实时更新、本地保存）。无需安装，双击即可打开体验。
+> 上图是真实产物：一份样例简历经完整链路生成的交互式职业地图。勾选即打卡、进度实时更新；在线版无需安装。
 
 ## 30 秒看懂
 
-- **真实数据，不瞎分析**：接入 BOSS / 字节 / 腾讯 / 百度 / 阿里 / 牛客等真实岗位数据，
-  AI 基于市场真实要求分析差距；差距必须锚定真实数据来源，否则被硬门禁拒绝。
-- **拆成阶段任务**：分阶段、里程碑、可打卡任务（按次/按天/按比例），随时问「下一步做什么」。
-- **求职漏斗可复盘**：投递 → 过筛 → 面试 → offer 全程记录（事件口径），
-  「面试后被拒仍计入面试数」；转化的问题是简历还是面试，让数据开口说话。
-- **周检视**：一键生成周期复盘（打卡 / 阶段 / 漏斗 + 事实性建议），过段时间回来也能立刻接续。
+- **真实数据，不瞎分析**：接入 BOSS / 字节 / 腾讯 / 百度 / 阿里 / 牛客 / GitHub 经验帖，AI 基于市场真实要求分析差距；差距必须锚定真实来源，否则被硬门禁拒绝。
+- **拆成阶段任务**：分阶段、里程碑、可打卡任务（按次 / 按天 / 按比例），随时问「下一步做什么」。
+- **求职漏斗可复盘**：投递 → 过筛 → 面试 → offer 全程记录（事件口径），「面试后被拒仍计入面试数」，让数据告诉你问题在简历还是面试。
+- **周检视**：一键生成周期复盘（打卡 / 阶段 / 漏斗 + 事实性建议），隔一段时间回来也能立刻接续。
 - **可交互职业地图**：一键导出自包含 HTML，勾选即打卡、进度实时更新、浏览器本地保存。
 - **跟着你变，不是死计划**：拿到面试触发洞察重估；换目标时已完成进度自动沉淀为能力证据。
-- **顺序归产品，时间归用户**：只为任务定义顺序与完成标准，不为它设时限。
+- **顺序归产品，时间归用户**：只为任务定义顺序与完成标准，不设时限。
 
 ## 快速开始
 
-### 一键安装（推荐）
+### 方式一：一行启动（推荐）
+
+需要 [uv](https://docs.astral.sh/uv/)。未安装时：
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+```bash
+uvx --from career-kit career-kit-doctor   # 安装体检
+uvx --from career-kit career-kit          # 启动 MCP 服务（stdio）
+```
+
+注册到你的 AI Agent：
+
+| Agent | 注册方式 |
+|-------|---------|
+| Claude Code | `claude mcp add career-kit -- uvx --from career-kit career-kit` |
+| Codex CLI | `codex mcp add career-kit -- uvx --from career-kit career-kit` |
+| opencode | 项目根目录 `opencode.json`（或全局 `~/.config/opencode/opencode.jsonc`）加入：`{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
+| Cursor / Windsurf | MCP 设置中手动添加：command=`uvx`，args=`["--from", "career-kit", "career-kit"]` |
+
+> PyPI 首发前，请先用下方「源码安装」；发布后以上命令即可直接使用。
+
+### 方式二：源码安装
+
+```bash
+git clone https://github.com/W7uuuuz/Career-kit.git
+cd Career-kit
+pip install -e .
+```
+
+> **解释器很重要**：注册命令里的 `python` 必须是执行过 `pip install -e .` 的那一个。本机有多个 Python 时，裸 `python` 可能指向缺依赖的解释器。最稳妥是 venv 绝对路径：
+> `D:\path\to\Career-kit\.venv\Scripts\python.exe`（Windows）或 `.venv/bin/python`（macOS/Linux）。
+
+注册命令（把 `<venv-python>` 换成你的绝对路径）：
+
+```bash
+claude mcp add career-kit -- <venv-python> -m src.server
+codex mcp add career-kit -- <venv-python> -m src.server
+```
+
+opencode 配置：
+
+```json
+{"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}
+```
+
+> macOS 用户把 python 换成 python3。opencode 的 `.opencode/config.json` 不是 MCP 注册入口，改它是无效的。
+
+### 方式三：一键安装脚本
 
 ```bash
 # macOS / Linux
@@ -39,36 +93,9 @@ bash install.sh
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-脚本会建好 `.venv`、装好依赖，并直接打印注册命令——**用绝对解释器路径**，
-避开「裸 `python` 指到错误解释器」的经典坑。
-
-### 手动安装
-
-```bash
-git clone https://github.com/W7uuuuz/Career-kit.git
-cd Career-kit
-pip install -e .
-```
-
-> **解释器很重要**：注册命令里的 `python` 必须是执行过 `pip install -e .` 的那一个。
-> 本机存在多个 Python 时，裸 `python` 可能指向缺依赖的解释器。最稳妥是 venv 绝对路径：
-> `D:\path\to\Career-kit\.venv\Scripts\python.exe`（Windows）或 `.venv/bin/python`（macOS/Linux）。
-
-### 注册到你的 AI Agent
-
-| Agent | 注册方式 |
-|-------|---------|
-| Claude Code | `claude mcp add career-kit -- <venv-python> -m src.server` |
-| Codex CLI | `codex mcp add career-kit -- <venv-python> -m src.server` |
-| opencode | 项目根目录 `opencode.json`（或全局 `~/.config/opencode/opencode.jsonc`）加入：`{"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}` |
-| Cursor / Windsurf | MCP 设置中手动添加：command=`<venv-python>`，args=`["-m", "src.server"]` |
-
-> macOS 用户把 python 换成 python3。
-> opencode 的 `.opencode/config.json` 不是 MCP 注册入口，改它是无效的。
+脚本会建好 `.venv`、装好依赖，并直接打印注册命令（使用绝对解释器路径）。
 
 ### 本地控制台（可选）
-
-安装脚本会在桌面创建「Career Kit」快捷方式；也可以手动运行：
 
 ```bash
 career-kit-serve --open
@@ -76,44 +103,25 @@ career-kit-serve --open
 "<venv-python>" -m src.web --open
 ```
 
-它会启动只监听 `127.0.0.1` 的本地页面，用于查看路线图、任务怎么做/资源/完成标准并直接打卡；
-还可以编辑任务、登记投递、按方向筛选调研报告，并通过 SSE 自动刷新。
-打卡写入同一份 SQLite 档案，MCP 下次运行时直接读到，不再需要复制指令或依赖浏览器 localStorage。
-控制台里的「职业地图」会以薄客户端模式打开静态地图：在线时直接写档案，离线 `file://` 打开时回退浏览器本地。
+只监听 `127.0.0.1`，用于查看路线图、任务怎么做 / 资源 / 完成标准并直接打卡；还可以编辑任务、登记投递、按方向筛选调研报告，并通过 SSE 自动刷新。打卡写入同一份 SQLite 档案，MCP 下次运行时直接读到。
 
 ### 验证安装
 
-先跑体检：
-
 ```bash
-"<venv-python>" -m src.doctor
-# 或安装后
 career-kit-doctor
+# 或
+"<venv-python>" -m src.doctor
 ```
 
-全部 OK 后，对新会话说「调用 start_session」，或直接敲 `/career-kit`——
-收到「欢迎使用 Career Kit」欢迎信息即接入成功。
+全部 OK 后，对新会话说「调用 start_session」，或直接敲 `/career-kit`——收到「欢迎使用 Career Kit」即接入成功。
 
-### 故障排查
+## 60 秒体验（不安装）
 
-| 现象 | 处理 |
-|------|------|
-| 工具列表里没有 career-kit 的工具 | 先运行 `career-kit-doctor`；确认注册命令在 Career-kit 目录下执行；Claude Code 会话内用 `/mcp` 查看连接状态 |
-| 服务器启动即崩 / `No module named 'mcp'` | 注册用了错误解释器——改用 venv 绝对路径（见上方警告） |
-| 抓取工具报 Playwright 相关错误 | 先执行 `playwright install chromium` 安装浏览器内核 |
-| BOSS 直聘提示需要登录 | 同意登录后由 Agent 运行登录脚本并打开浏览器，你只需扫码；不要把命令丢给用户手动执行 |
-| uv 装依赖报 `iv8 was not found` | iv8 只在官方 PyPI，不在镜像上：`uv pip install -e . --index-url https://pypi.org/simple` |
-| `career-kit-serve` 命令找不到 | 重新执行 `pip install -e .`；或直接用 `<venv-python> -m src.web --open` |
-| 桌面没有 Career Kit 快捷方式 | 重新运行 `install.ps1` / `install.sh`；快捷方式只在安装时创建 |
+- **在线版**：打开 [交互式职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)，直接勾选任务看进度变化。
+- **本地版**：双击 `docs/examples/demo/career-map.html`，或安装后运行 `career-kit-demo`。
+- 想看完整链路：`docs/examples/demo/` 里有样例简历生成的路线图、进度仪表盘和原始档案。
 
-### 斜杠命令（可选）
-
-- **Claude Code**：仓库已内置 `/career-kit [目标]` 与 `/career-kit-profile`。在任意目录使用：
-  `mkdir -p ~/.claude/commands && cp .claude/commands/*.md ~/.claude/commands/`
-- **opencode**：内置 `.opencode/commands/`，全局版复制到 `~/.config/opencode/commands/`
-- **Codex CLI**：把 `.claude/commands/*.md` 复制为 `~/.codex/prompts/`
-
-## 它能做什么？
+## 它怎么工作
 
 ```
 你：我想转 AI Agent 方向
@@ -129,21 +137,25 @@ Career Kit：打卡记录 → 沉淀能力证据 → 阶段完成自动审计
 Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 ```
 
-## 为什么是它？
+底层是 41 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、任务与漏斗、洞察产出六大类。完整清单与调用时机见[工具总览](docs/tools.md)。
+
+## 为什么是它
 
 | | ChatGPT | 求职网站 | Career Kit |
 |---|---------|----------|------------|
 | 真实岗位数据 | 无 | 有 | 有（可抓取，含薪资） |
 | 个性化路线图 | 泛泛而谈 | 无 | 分阶段 + 里程碑 + 完成标准 |
-| 阶段任务打卡 | 无 | 无 | 有（按次/按天/按比例） |
+| 阶段任务打卡 | 无 | 无 | 有（按次 / 按天 / 按比例） |
 | 进度追踪调整 | 无 | 无 | 阶段审计 + 事件洞察 |
 | 数据本地、可自托管 | 否 | 否 | 是 |
 
-## 工具与文档
+## 隐私与数据边界
 
-41 个 MCP 工具覆盖建档、档案管理、数据获取（含市场调研）、分析规划、任务与漏斗、洞察产出六大类。
-完整清单与调用时机见[工具总览](docs/tools.md)，文档全貌见[文档地图](docs/README.md)；
-LLM 运行时还会通过 MCP Resources 自动读取工作流和企业库。
+- 程序数据存储在本地 `~/.career-kit/`（档案主存储为 `career-kit.db`，JSON 为兼容镜像），报告与路线图存储在 `~/CareerKit/`，不会发送到任何外部服务器。
+- 知识库是用户自有资产，不随包升级丢失。
+- 抓取只读取公开岗位 / 面经页面，请遵守来源站点条款与频率限制；本项目不提供内推、保 offer 或任何就业承诺。详见 [DISCLAIMER.md](DISCLAIMER.md)。
+
+## 文档
 
 - [文档地图](docs/README.md)：所有文档的唯一入口
 - [LLM 使用指南](docs/llms.txt)：工作流、规则、常见场景
@@ -152,19 +164,18 @@ LLM 运行时还会通过 MCP Resources 自动读取工作流和企业库。
 - [企业库](docs/scrapers.md)：已收录企业、数据源说明
 - [知识库](docs/knowledge.md)：目录结构、文件格式
 - [示例](docs/examples/README.md)：可交互职业地图与场景示例
+- [贡献指南](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) · [安全策略](SECURITY.md)
 
 ## 适合谁
 
-- 适合你，如果你：在找工作或转行、会用 Claude Code / opencode 这类 AI 编程工具、
-  想要一份「有真实岗位数据支撑、可长期追踪」的计划。
-- 暂不适合你，如果你：完全没有命令行使用经验。当前形态需要安装 Python + 注册 MCP，
-  Web / 无安装版本在规划中。
+- **适合你，如果你**：在找工作或转行、会用 Claude Code / opencode 这类 AI 编程工具、想要一份「有真实岗位数据支撑、可长期追踪」的计划。
+- **暂不适合你，如果你**：完全没有命令行使用经验。当前形态需要安装 Python + 注册 MCP，Web / 无安装版本在规划中。
 
-## 隐私
+## 贡献
 
-程序数据存储在本地 `~/.career-kit/`（档案主存储为 `career-kit.db`，JSON 为兼容镜像），
-报告与路线图存储在 `~/CareerKit/`，不会发送到任何外部服务器。
-知识库是用户自有资产，不随包升级丢失。
+欢迎 issue、PR 和新的企业数据源。开始前请读 [CONTRIBUTING.md](CONTRIBUTING.md)；新增企业源请参考 `src/scrapers/_template/`。
+
+如果这个项目帮你少走了弯路，点一个 Star 就是最好的支持——它会让更多正在求职的人看到它。
 
 ## 开源协议
 

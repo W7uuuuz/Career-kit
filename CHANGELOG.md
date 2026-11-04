@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.2.0 (2026-11-04)
+
+首个面向公开发布的版本，重点是把「装得上、看得懂、点得动」补齐。
+
+- **一行安装**：补齐 PyPI 元数据（classifiers / keywords / project.urls），新增
+  `publish.yml`（Trusted Publishing，推送 `v*` tag 自动发布），安装可简化为
+  `uvx --from career-kit career-kit`。
+- **官方 MCP Registry**：新增 `server.json`（pypi / uvx / stdio），可直接发布到
+  registry.modelcontextprotocol.io。
+- **在线演示**：新增 `docs/index.html` 与 `pages.yml`，把 `docs/examples/demo/`
+  的交互式职业地图部署到 GitHub Pages，README 首屏提供零安装体验入口。
+- **零安装本地演示**：新增 `career-kit-demo` 命令，打开随包附带的职业地图。
+- **首屏与国际化**：README 重写为「一句话 + 在线体验 + 一行安装 + 60 秒 demo」；
+  新增 `README.en.md` 与中英文切换。
+- **开源协作**：新增 `DISCLAIMER.md`、`CODE_OF_CONDUCT.md`、issue 表单
+  （bug / feature）与 Discussions 入口。
+- **版本**：`0.1.0` → `0.2.0`。
+
 ## Unreleased
 
 - **2026-11-04 复测清单修复（P0/P1/P2）**：

@@ -4,7 +4,7 @@
 分阶段任务 → 打卡）生成的交付物。**无需安装任何东西**，双击 `career-map.html` 即可在
 浏览器打开并交互（勾选任务、进度实时更新、本地持久化）。
 
-- `career-map.html` — 交互式职业地图（`export_dashboard(mode="roadmap")`）
+- `career-map.html` — 交互式职业地图（`export_dashboard(mode="roadmap")`）；安装后也可用 `career-kit-demo` 直接打开
 - `dashboard.html` — 进度仪表盘（`export_dashboard(mode="progress")`）
 - `career-map.png` / `dashboard.png` — 截图，供 README 使用
 - `demo_profile.json` — 生成的完整档案（含 `plan` / `tasks` / `checkins`）

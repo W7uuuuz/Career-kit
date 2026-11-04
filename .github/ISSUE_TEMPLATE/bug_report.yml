@@ -1,0 +1,67 @@
+name: Bug 报告
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先运行 `career-kit-doctor`，并尽量附上输出，这能覆盖大部分安装问题。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 期望行为 vs 实际行为
+      placeholder: 我期望……实际却……
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 运行 ...
+        2. 调用 ...
+        3. 看到 ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交
+      placeholder: "career-kit 0.2.0 / commit abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python 版本
+      placeholder: "3.12.4"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: 使用的 AI Agent
+      placeholder: "Claude Code / Cursor / opencode / Codex / 其他"
+  - type: textarea
+    id: doctor
+    attributes:
+      label: career-kit-doctor 输出
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志或报错
+      render: text

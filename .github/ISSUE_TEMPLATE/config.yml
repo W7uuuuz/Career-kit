@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用问题与讨论
+    url: https://github.com/W7uuuuz/Career-kit/discussions
+    about: 安装、配置、使用方式等问题优先在 Discussions 交流
+  - name: 安全漏洞
+    url: https://github.com/W7uuuuz/Career-kit/security/policy
+    about: 请按 SECURITY.md 的流程私下报告安全问题
