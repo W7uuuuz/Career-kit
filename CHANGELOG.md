@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1 (2026-11-05)
+
+- **MCP Registry**：README 增加 `mcp-name: io.github.w7uuuuz/career-kit`
+  所有权标记；`server.json` 描述压缩到 100 字符以内，满足官方 Registry 的
+  PyPI 包校验。
+- **文档**：补充 `uvx` 镜像回退（`--default-index https://pypi.org/simple`）
+  与常见问题。
+
 ## v0.2.0 (2026-11-04)
 
 首个面向公开发布的版本，重点是把「装得上、看得懂、点得动」补齐。

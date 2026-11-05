@@ -1,5 +1,7 @@
 # Career Kit
 
+<!-- mcp-name: io.github.w7uuuuz/career-kit -->
+
 [English](README.en.md) | 中文
 
 [![CI](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml)

@@ -1,20 +1,20 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.w7uuuuz/career-kit",
-  "description": "AI career coach MCP server: real job-market gap analysis, staged roadmap, check-in tasks, and an application funnel. Data stays local.",
+  "description": "AI career coach: real job-market gap analysis, staged roadmap, check-in tasks, application funnel.",
   "title": "Career Kit",
   "websiteUrl": "https://w7uuuuz.github.io/Career-kit/",
   "repository": {
     "url": "https://github.com/W7uuuuz/Career-kit",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "career-kit",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
