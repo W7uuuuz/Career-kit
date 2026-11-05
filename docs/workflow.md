@@ -23,7 +23,7 @@
 2. 先发 [USER_BRIEF]，再只问 [GUIDE].ask（完全不了解 / 有一些想法 / 已有明确目标）
 3. 完全不了解或没有规划：
    - 显式询问是否扫盲；拒绝则直接 explore_goals，不阻塞
-   - 同意：确认行业（MVP 互联网/软件、能源动力），专业可选
+   - 同意：确认行业（MVP 互联网/软件、能源动力、电子/半导体/通信），专业可选
    - get_industry_snapshot(industry, major?, city?)
 4. 已有明确目标：跳过扫盲，确认行业后进入阶段 1
 5. 业务引导状态由 src/guidance.py 推导，后续每轮以最新 [GUIDE] 为准

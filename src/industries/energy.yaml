@@ -1,6 +1,7 @@
 id: energy
 name: 能源动力行业
 status: supported
+data_fit: medium
 aliases:
   - 能源
   - 动力

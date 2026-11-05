@@ -1,6 +1,7 @@
 id: internet
 name: 互联网/软件行业
 status: supported
+data_fit: high
 aliases:
   - 互联网
   - 软件

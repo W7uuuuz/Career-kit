@@ -31,6 +31,16 @@ _KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
         "产品", "需求分析", "用户研究", "项目管理", "跨团队", "沟通", "协作",
         "英语", "论文", "开源",
     ),
+    "电子/半导体": (
+        "半导体", "芯片", "集成电路", "数字IC", "模拟IC", "射频", "版图",
+        "Verilog", "SystemVerilog", "UVM", "FPGA", "SoC", "MCU", "PCB",
+        "EDA", "封装", "良率", "工艺", "器件", "光刻", "刻蚀", "薄膜",
+        "MEMS", "CIS",
+    ),
+    "通信/网络": (
+        "通信", "5G", "6G", "光模块", "光通信", "光纤", "基站", "核心网",
+        "TCP/IP", "路由", "交换", "天线", "协议", "网络优化", "运营商",
+    ),
 }
 
 _KEYWORDS: list[str] = [word for group in _KEYWORD_GROUPS.values() for word in group]

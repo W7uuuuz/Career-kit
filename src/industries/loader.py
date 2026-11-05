@@ -30,7 +30,28 @@ def _load_all() -> dict[str, dict[str, Any]]:
         pack = dict(raw)
         pack["_path"] = str(path)
         packs[str(pack["id"])] = pack
+    _validate_namespace(packs)
     return packs
+
+
+def _validate_namespace(packs: dict[str, dict[str, Any]]) -> None:
+    """行业 id / 名称 / 别名必须跨包唯一，避免解析时静默覆盖。"""
+    seen: dict[str, str] = {}
+    for pack in packs.values():
+        owner = str(pack.get("id", ""))
+        values = [owner, str(pack.get("name", ""))]
+        values.extend(str(alias) for alias in (pack.get("aliases") or []))
+        for value in values:
+            key = value.strip().lower()
+            if not key:
+                continue
+            previous = seen.get(key)
+            if previous and previous != owner:
+                raise IndustryError(
+                    f"行业标识冲突：「{value}」同时属于 {previous} 和 {owner}；"
+                    "请修改其中一个行业包的 id / name / aliases。"
+                )
+            seen[key] = owner
 
 
 def clear_cache() -> None:
@@ -47,6 +68,7 @@ def list_industries() -> list[dict[str, Any]]:
                 "id": pack.get("id", ""),
                 "name": pack.get("name", ""),
                 "status": pack.get("status", ""),
+                "data_fit": pack.get("data_fit", "unknown"),
                 "description": pack.get("description", ""),
                 "aliases": list(pack.get("aliases") or []),
             }

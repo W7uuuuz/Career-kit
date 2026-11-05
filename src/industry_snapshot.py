@@ -210,8 +210,10 @@ def build_snapshot(
             "id": pack.get("id", ""),
             "name": pack.get("name", ""),
             "description": pack.get("description", ""),
+            "data_fit": pack.get("data_fit", "unknown"),
             "subdirections": pack.get("subdirections") or [],
             "related_majors": pack.get("related_majors") or {},
+            "leading_companies": pack.get("leading_companies") or [],
         },
         "input": {
             "major": major,

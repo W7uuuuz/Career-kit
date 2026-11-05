@@ -42,7 +42,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 | 数据源 | 内容 | 获取方式 |
 |--------|------|----------|
 | 企业数据源（BOSS/字节/腾讯/百度/阿里/牛客） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
-| 行业快照 | 行业地图、岗位卡、招聘样本与薪资、相关专业 | `get_industry_snapshot`（扫盲子流程，默认互联网/软件；支持能源动力） |
+| 行业快照 | 行业地图、岗位卡、招聘样本与薪资、相关专业 | `get_industry_snapshot`（扫盲子流程，默认互联网/软件；支持能源动力、电子/半导体/通信） |
 | GitHub 经验帖 | 秋招成功经验/面经（学历自述） | `search_cases`（聚合）或 `fetch_company_jobs(company="github")` |
 | 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
 | 聚合案例搜寻 | 同背景成功经验 + 面试要求（学历五档四层打分） | `search_cases(role, education, company, kind)` |

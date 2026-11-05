@@ -31,7 +31,8 @@ async def get_industry_snapshot(
 
     Args:
         industry: 行业 id、名称或别名（MVP 支持 internet / 互联网 / 软件 / 计算机；
-            energy / 能源 / 能源动力 / 电力 / 新能源）
+            energy / 能源 / 能源动力 / 电力 / 新能源；
+            electronics / 电子 / 半导体 / 芯片 / 集成电路 / 通信）
         major: 可选，用于展示“你的专业在行业中的位置”；专业不是入口
         school: 可选，当前仅记录，不用于同校过滤
         degree: 可选，当前仅记录
@@ -103,6 +104,8 @@ async def get_industry_snapshot(
                 "最后问用户想深入哪个方向。"
                 "所有数字必须来自本快照并标注来源/样本数；没有数据的部分直接说未获取，"
                 "不要用通用知识补具体薪资或招聘要求。"
+                "leading_companies 只作目标公司参考，不能推断招聘难度；"
+                "data_fit 为 high/medium/low 时，说明数据能覆盖到什么程度。"
                 "用户看完后引导到目标选择/规划，不要停留在扫盲。"
                 + (
                     " 注意：本次切换了行业，旧差距分析已过期；进入规划前需要重新分析。"

@@ -186,3 +186,106 @@ def test_scan_industry_change_marks_old_analysis_stale(temp_profile, monkeypatch
     updated = profile_module.load_profile()
     assert updated.want["industry_id"] == "energy"
     assert updated.gap_stale_at
+
+
+def test_electronics_industry_loader_and_major_alias():
+    from src.industries.loader import get_industry, match_major
+
+    pack = get_industry("半导体")
+    assert pack["id"] == "electronics"
+    assert "微电子科学与工程" in pack["related_majors"]["core"]
+    info = match_major(pack, "微电子")
+    assert info["match"] == "core"
+    assert info["canonical"] == "微电子科学与工程"
+
+
+def test_electronics_snapshot_uses_electronics_pack(temp_profile, monkeypatch):
+    jobs = [
+        {
+            "title": "数字IC验证工程师",
+            "company": "某芯片公司",
+            "location": "上海",
+            "salary": "25-40K",
+            "url": "https://example.com/electronics/1",
+            "_role_id": "digital_ic",
+            "_role_name": "数字IC设计/验证工程师",
+        }
+    ]
+    monkeypatch.setattr(snapshot_module, "_collect_market", lambda *args, **kwargs: (jobs, []))
+
+    data = _call(industry="电子", major="微电子科学与工程", city="上海")
+
+    assert data["industry"]["id"] == "electronics"
+    assert data["industry"]["data_fit"] == "high"
+    assert data["industry"]["leading_companies"]
+    assert any(r["id"] == "digital_ic" for r in data["roles"])
+    assert data["market"]["job_count"] == 1
+    assert any(b["value"] == 7282 for b in data["benchmarks"])
+
+
+def test_mechanical_industry_loader_and_major_alias():
+    from src.industries.loader import get_industry, match_major
+
+    pack = get_industry("机械")
+    assert pack["id"] == "mechanical"
+    assert "机械设计制造及其自动化" in pack["related_majors"]["core"]
+    info = match_major(pack, "机械")
+    assert info["match"] == "core"
+    assert info["canonical"] == "机械设计制造及其自动化"
+
+
+def test_electrical_industry_loader_and_major_alias():
+    from src.industries.loader import get_industry, match_major
+
+    pack = get_industry("电气")
+    assert pack["id"] == "electrical"
+    assert "电气工程及其自动化" in pack["related_majors"]["core"]
+    info = match_major(pack, "电气")
+    assert info["match"] == "core"
+    assert info["canonical"] == "电气工程及其自动化"
+
+
+def test_mechanical_snapshot_uses_mechanical_pack(temp_profile, monkeypatch):
+    jobs = [
+        {
+            "title": "机械设计工程师",
+            "company": "某装备公司",
+            "location": "苏州",
+            "salary": "10-18K",
+            "url": "https://example.com/mechanical/1",
+            "_role_id": "mechanical_design",
+            "_role_name": "机械设计/结构工程师",
+        }
+    ]
+    monkeypatch.setattr(snapshot_module, "_collect_market", lambda *args, **kwargs: (jobs, []))
+
+    data = _call(industry="机械", major="机械设计制造及其自动化", city="苏州")
+
+    assert data["industry"]["id"] == "mechanical"
+    assert data["industry"]["data_fit"] == "medium"
+    assert any(r["id"] == "mechanical_design" for r in data["roles"])
+    assert data["market"]["job_count"] == 1
+    assert any(b["value"] == 7183 for b in data["benchmarks"])
+
+
+def test_electrical_snapshot_uses_electrical_pack(temp_profile, monkeypatch):
+    jobs = [
+        {
+            "title": "电气设计工程师",
+            "company": "某电气公司",
+            "location": "常州",
+            "salary": "9-15K",
+            "url": "https://example.com/electrical/1",
+            "_role_id": "electrical_design",
+            "_role_name": "电气设计工程师",
+        }
+    ]
+    monkeypatch.setattr(snapshot_module, "_collect_market", lambda *args, **kwargs: (jobs, []))
+
+    data = _call(industry="电气", major="电气工程及其自动化", city="常州")
+
+    assert data["industry"]["id"] == "electrical"
+    assert data["industry"]["data_fit"] == "medium"
+    assert any(r["id"] == "electrical_design" for r in data["roles"])
+    assert data["market"]["job_count"] == 1
+    assert any(b["value"] == 7160 for b in data["benchmarks"])
