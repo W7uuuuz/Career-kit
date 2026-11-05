@@ -51,28 +51,34 @@ def show(tag: str, out) -> None:
 
 
 WHO = {
-    "name": "陈墨", "graduation_year": "2028",
-    "education": "双非本科 · 计算机科学与技术",
-    "status": "在校生（2028 届）", "location": "上海",
+    "name": "示例用户", "graduation_year": "2027",
+    "education": "双非本科 · 计算机相关专业",
+    "status": "在校生（2027 届）", "location": "一线城市",
 }
 
 HAVE = {
+    "self_assessment": {
+        "resume_trust": "基本可信；AI 辅助部分已单独标注",
+        "notes": "合成样例数据，仅用于演示",
+    },
     "core_skills": [
         {"skill": "Python", "level": "熟练",
-         "evidence": "课程 + 多个独立项目；用户确认能独立完成", "user_verified": True},
+         "evidence": "课程 + 多个独立项目；用户确认能独立完成", "user_verified": True,
+         "authorship": "self_written", "control_level": 8},
         {"skill": "LangChain / LangGraph", "level": "入门",
-         "evidence": "HotMirror Studio 独立编写 6 个 Subgraph；用户确认独立完成，但无团队评审",
-         "user_verified": True},
+         "evidence": "某 Agent 项目独立编写 6 个 Subgraph；用户确认独立完成，但无团队评审",
+         "user_verified": True, "authorship": "ai_assisted", "control_level": 6},
         {"skill": "RAG 检索增强", "level": "入门",
-         "evidence": "自建 3 层知识注入；用户确认实际跑通", "user_verified": True},
+         "evidence": "自建 3 层知识注入；用户确认实际跑通", "user_verified": True,
+         "authorship": "ai_assisted", "control_level": 6},
     ],
     "experience": "1 段 3 个月小公司实习（电商）",
-    "projects": ["HotMirror Studio（独立开发，未开源协作）"],
+    "projects": ["某 Agent 项目（独立开发，未开源协作）"],
 }
 
 WANT = {
-    "target_role": "AI Agent 工程师", "target_company": "大厂（字节 / 阿里）",
-    "city": "上海", "salary": "20k-30k", "direction_confidence": 8,
+    "target_role": "AI Agent 工程师", "target_company": "大厂",
+    "city": "一线城市", "salary": "面议", "direction_confidence": 8,
     "experience_level": "有一定基础但缺协作经历",
 }
 
@@ -93,7 +99,7 @@ GAP = {
          "evidence_fix": "补一段有规模的团队协作产出（开源 PR / 组队 hackathon）"},
         {"signal": "项目全为独立开发，零团队协作证据",
          "risk": "大厂校招最看重协作 / 代码评审 / 跨角色配合，这里完全空白",
-         "narrative_fix": "把 HotMirror 的接口契约设计讲成跨角色协作的雏形",
+         "narrative_fix": "把项目的接口契约设计讲成跨角色协作的雏形",
          "evidence_fix": "参与开源项目并拿到 3 个被 merge 的 PR；记录 review 往返"},
         {"signal": "实习仅 3 个月、时长偏短",
          "risk": "被质疑缺乏长期在团队中交付的稳定性",
@@ -106,7 +112,7 @@ GAP = {
          "how_to_improve": "参与开源项目提交 PR 并完成 review 往返",
          "source": "字节跳动 AI Agent JD（协作与工程规范要求）"},
         {"skill": "Agent 工程化（可观测 / 评测）", "priority": "high", "current_level": "入门",
-         "required_level": "熟练", "how_to_improve": "为 HotMirror 增加 trace 与评测集",
+         "required_level": "熟练", "how_to_improve": "为项目增加 trace 与评测集",
          "source": "阿里通义 Agent 平台 JD"},
         {"skill": "分布式与后端基础", "priority": "medium", "current_level": "入门",
          "required_level": "熟练", "how_to_improve": "系统补后端并发与服务化",
@@ -114,7 +120,7 @@ GAP = {
     ],
     "priority_actions": [
         {"action": "参与一个 Agent 相关开源项目并拿下 3 个 merged PR", "impact": "high", "difficulty": "medium"},
-        {"action": "把 HotMirror 补上 trace + 评测集并开源", "impact": "high", "difficulty": "medium"},
+        {"action": "把项目补上 trace + 评测集并开源", "impact": "high", "difficulty": "medium"},
     ],
     "market_context": "AI Agent 岗位需求持续增长；大厂更看重工程规范与团队协作，独立开发是常见短板。",
     "resume_optimization": {
@@ -130,7 +136,7 @@ GAP = {
              "prepare_advice": "准备协作叙事的 STAR"},
         ],
         "project_deep_dive": [
-            {"project": "HotMirror Studio",
+            {"project": "某 Agent 项目",
              "likely_questions": ["为什么这么拆 Subgraph", "团队里谁 review 你的代码"],
              "key_points": ["契约先行", "重试幂等"],
              "star_story": "S: 10 人视频团队效率低 T: 搭 Agent 链路 A: 6 Subgraph + 网关 R: 45→18 分钟"},
@@ -148,12 +154,12 @@ ROADMAP = {
         {
             "type": "learn", "name": "阶段一｜工程化补齐",
             "goal": "把独立开发补成有规范、可观测、可评测的工程能力",
-            "kpi": {"metric": "HotMirror 补齐 trace + 评测集并开源",
+            "kpi": {"metric": "项目补齐 trace + 评测集并开源",
                     "target": "1 个可演示仓库", "evidence": "仓库链接 + 评测报告"},
             "milestones": [
                 {"name": "工程规范", "done_criteria": "项目有 CI、单测、结构化日志",
                  "tasks": [
-                     {"name": "为 HotMirror 增加结构化日志与 trace", "priority": "high"},
+                     {"name": "为项目增加结构化日志与 trace", "priority": "high"},
                      {"name": "补单测与 CI 流水线", "priority": "medium"},
                  ]},
                 {"name": "Agent 评测", "done_criteria": "有一份可复现的评测集与指标",
@@ -202,10 +208,10 @@ ROADMAP = {
             ],
         },
         {
-            "type": "校招", "name": "阶段四｜秋招：大厂 AI Agent 岗（2028 届）",
+            "type": "校招", "name": "阶段四｜秋招：大厂 AI Agent 岗（2027 届）",
             "goal": "以中厂实习 + 开源协作证据冲击大厂校招",
-            "company": "字节跳动 / 阿里巴巴", "rationale": "Agent 岗位布局重，且中厂实习 + 开源协作是有效加分项",
-            "graduation_year": "2028", "jd_status": "pending_user_import", "confirmed": True,
+            "company": "某大厂", "rationale": "Agent 岗位布局重，且中厂实习 + 开源协作是有效加分项",
+            "graduation_year": "2027", "jd_status": "pending_user_import", "confirmed": True,
             "resume_value": "大厂 AI Agent 方向校招 offer",
             "kpi": {"metric": "大厂面试轮次", "target": "进入终面", "evidence": "面试记录"},
             "milestones": [
@@ -222,19 +228,23 @@ ROADMAP = {
 DETAIL = {
     "phase_id": "phase_1",
     "tasks": [
-        {"name": "为 HotMirror 增加结构化日志与 trace", "priority": "high",
+        {"name": "为项目增加结构化日志与 trace", "priority": "high",
          "checkin_mode": "percent", "checkin_goal": 80, "description": "按模块推进，完成 80% 即可"},
+        {"name": "补单测与 CI 流水线", "priority": "medium",
+         "checkin_mode": "once", "description": "CI 跑通即完成"},
         {"name": "构建 30 条评测样本集", "priority": "high",
          "checkin_mode": "daily", "checkin_goal": 10, "description": "每天推进一批，共 10 天"},
+        {"name": "跑通评测并输出报告", "priority": "medium",
+         "checkin_mode": "once", "description": "产出可复现的评测报告"},
     ],
 }
 
-# 演示打卡：(task_id, amount, notes)
+# 演示打卡：(任务名, amount, notes)
 CHECKINS = [
-    ("task_003", 0, "选定一个 Agent 相关开源项目，读完 CONTRIBUTING"),
-    ("task_004", 0, "跑通贡献流程，本地构建通过"),
-    ("task_001", 40, "日志已接入 4 个 Subgraph"),
-    ("task_002", 0, "评测样本已完成第一批 12 条"),
+    ("构建 30 条评测样本集", 0, "选定一个 Agent 相关开源项目，读完 CONTRIBUTING"),
+    ("跑通评测并输出报告", 0, "跑通贡献流程，本地构建通过"),
+    ("为项目增加结构化日志与 trace", 40, "日志已接入 4 个 Subgraph"),
+    ("补单测与 CI 流水线", 0, "评测样本已完成第一批 12 条"),
 ]
 
 
@@ -250,8 +260,16 @@ def main() -> None:
     show("save_current_detail", save_current_detail(json.dumps(DETAIL, ensure_ascii=False)))
     show("generate_tasks(merge)", generate_tasks())
 
-    for tid, amount, notes in CHECKINS:
-        show(f"checkin {tid}", checkin_task(task_id=tid, status="completed", notes=notes, amount=amount))
+    profile = load_profile()
+    task_ids = {t.name: t.id for t in profile.tasks}
+    for name, amount, notes in CHECKINS:
+        task_id = task_ids.get(name)
+        if not task_id:
+            print(f"skip checkin: task not found: {name}")
+            continue
+        show(f"checkin {name}", checkin_task(
+            task_id=task_id, status="completed", notes=notes, amount=amount
+        ))
 
     profile = load_profile()
     out = ROOT / "docs" / "examples" / "demo"
