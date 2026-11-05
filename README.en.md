@@ -7,9 +7,9 @@ English | [中文](README.md)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
-> Stop mass-applying. Career Kit is an AI career coach MCP server: real job postings → gap analysis → staged roadmap → check-in tasks → application funnel review.
+> Stop mass-applying. Career Kit is an AI career coach MCP server: real postings and peer paths → direction → gap analysis → one next step.
 
-Works with Claude Code, Cursor, opencode, and Codex. It turns job hunting from "send resumes and hope" into a plan grounded in real market data and trackable over time.
+Works with Claude Code, Cursor, opencode, and Codex. It helps you choose a direction, close the right gaps, and take the next step.
 
 ![Career Kit demo: 200 applications, still no idea what is missing → real postings and peer paths → gap diagnosis → next step](docs/examples/demo/readme-demo.gif)
 

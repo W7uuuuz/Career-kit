@@ -9,9 +9,9 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
-> 别再海投了。Career Kit 是一个 AI 职业陪练 MCP 服务：抓真实岗位 → 分析差距 → 分阶段路线图 → 可打卡任务 → 求职漏斗复盘。
+> 别再海投了。Career Kit 是一个 AI 职业陪练 MCP 服务：用真实岗位和同背景案例，帮你找方向、看差距、拆出今天就能开始的下一步。
 
-接入 Claude Code / Cursor / opencode / Codex，把你的求职从「投简历碰运气」变成「有真实数据支撑、可长期追踪」的计划。
+接入 Claude Code / Cursor / opencode / Codex，帮你找对方向、补齐差距、走好下一步。
 
 ![Career Kit 演示：投了 200 份没回音 → 真实岗位与同背景案例 → 差距诊断 → 下一步](docs/examples/demo/readme-demo.gif)
 
