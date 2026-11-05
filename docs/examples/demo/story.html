@@ -50,6 +50,7 @@
     opacity: 1; transform: none;
     animation: sceneIn .38s ease;
   }
+  .scene.no-anim.active { animation: none; }
   @keyframes sceneIn {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: none; }
@@ -140,6 +141,19 @@
   }
   .case b { color: #fff; }
   .case .meta { color: #8ea0c0; font-size: 12px; margin-left: 6px; }
+  .case.match::before { box-shadow: 0 0 0 6px rgba(74,108,247,.28); }
+  .match-tag {
+    display: inline-block; margin-right: 8px; padding: 2px 8px;
+    border-radius: 999px; background: rgba(74,108,247,.22);
+    border: 1px solid rgba(145,167,255,.45);
+    color: #c7d2ff; font-size: 12px; font-weight: 600;
+    vertical-align: 1px;
+  }
+  .case-note { border-left: 4px solid var(--brand); padding: 16px 18px; }
+  .case-note-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .case-note-meta { color: #8b93a5; font-size: 12px; }
+  .case-note-quote { margin: 0 0 8px; color: #4a5160; font-size: clamp(13px, 1.05vw, 16px); line-height: 1.6; }
+  .case-note-foot { margin: 0; color: #6b7280; font-size: 12px; }
 
   /* scene 5 */
   .diag-card { border-left: 6px solid #e5484d; }
@@ -228,7 +242,7 @@
     <div class="demo-chip">示例数据 · 仅用于演示</div>
   </div>
 
-  <section class="scene" data-scene="1">
+  <section class="scene no-anim active" data-scene="1">
     <div>
       <p class="kicker">不知道做什么工作？</p>
       <h1>先看<br><span class="accent">和你一样的人</span><br>去了哪</h1>
@@ -290,11 +304,21 @@
       <h1>和你一样的人<br><span class="accent">是这么走的</span></h1>
       <p class="sub">不是鸡汤，是可对照的路径。</p>
     </div>
-    <div class="visual timeline">
-      <div class="case"><b>双非本</b> → 中厂实习 → 大厂校招 <span class="meta">24 个月</span></div>
-      <div class="case"><b>双非本</b> → 开源贡献 → 中厂 → 大厂 <span class="meta">18 个月</span></div>
-      <div class="case"><b>专科</b> → 小厂 → 中厂 <span class="meta">30 个月</span></div>
-      <div class="case"><b>211 硕</b> → 大厂实习 → 大厂校招 <span class="meta">12 个月</span></div>
+    <div class="visual">
+      <div class="timeline">
+        <div class="case match"><span class="match-tag">和你最接近</span><b>双非本</b> → 中厂实习 → 大厂校招 <span class="meta">24 个月</span></div>
+        <div class="case"><b>双非本</b> → 开源贡献 → 中厂 → 大厂 <span class="meta">18 个月</span></div>
+        <div class="case"><b>专科</b> → 小厂 → 中厂 <span class="meta">30 个月</span></div>
+        <div class="case"><b>211 硕</b> → 大厂实习 → 大厂校招 <span class="meta">12 个月</span></div>
+      </div>
+      <div class="card case-note">
+        <div class="case-note-head">
+          <span class="source">牛客 · 面经 · 示例</span>
+          <span class="case-note-meta">双非本 · 24 个月</span>
+        </div>
+        <p class="case-note-quote">“二面追问 RAG 召回评估，我拿实习项目的 trace 讲，面试官连追了 3 轮。”</p>
+        <p class="case-note-foot">案例 02 · 中厂实习 → 大厂校招</p>
+      </div>
     </div>
   </section>
 
