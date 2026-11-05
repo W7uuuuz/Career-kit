@@ -16,6 +16,13 @@
 | `jd` | 京东 | JD | 社招 | [guide](../src/scrapers/jd/guide.md) |
 | `kuaishou` | 快手 | JD | 社招 | [guide](../src/scrapers/kuaishou/guide.md) |
 | `pdd` | 拼多多 | JD | 社招 | [guide](../src/scrapers/pdd/guide.md) |
+| `xiaohongshu` | 小红书 | JD | 社招 | [guide](../src/scrapers/xiaohongshu/guide.md) |
+| `didi` | 滴滴 | JD | 社招 | [guide](../src/scrapers/didi/guide.md) |
+| `ant` | 蚂蚁集团 | JD | 社招 | [guide](../src/scrapers/ant/guide.md) |
+| `ctrip` | 携程 | JD | 社招 | [guide](../src/scrapers/ctrip/guide.md) |
+| `bilibili` | 哔哩哔哩 | JD | 社招 | [guide](../src/scrapers/bilibili/guide.md) |
+| `xiaomi` | 小米 | JD | 社招 | [guide](../src/scrapers/xiaomi/guide.md) |
+| `alibaba_social` | 阿里巴巴（社招） | JD | 社招 | [guide](../src/scrapers/alibaba_social/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 

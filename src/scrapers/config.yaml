@@ -98,6 +98,64 @@ scrapers:
       - "careers.pddglobalhr.com"
       - "careers.pinduoduo.com"
 
+  xiaohongshu:
+    name: 小红书
+    module: xiaohongshu.scraper
+    class: Scraper
+    description: 小红书社会招聘（job.xiaohongshu.com），公开 JSON 接口，社招，不公开薪资
+    url_patterns:
+      - "job.xiaohongshu.com"
+
+  didi:
+    name: 滴滴
+    module: didi.scraper
+    class: Scraper
+    description: 滴滴社会招聘（talent.didiglobal.com），公开 JSON 接口，社招，不公开薪资
+    url_patterns:
+      - "talent.didiglobal.com"
+
+  ant:
+    name: 蚂蚁集团
+    module: ant.scraper
+    class: Scraper
+    description: 蚂蚁集团社会招聘（talent.antgroup.com），需浏览器携带 ctoken，社招，不公开薪资
+    url_patterns:
+      - "talent.antgroup.com"
+
+  ctrip:
+    name: 携程
+    module: ctrip.scraper
+    class: Scraper
+    description: 携程社会招聘（careers.ctrip.com），公开 JSON 接口，社招，不公开薪资
+    url_patterns:
+      - "careers.ctrip.com"
+      - "job.ctrip.com"
+
+  bilibili:
+    name: 哔哩哔哩
+    module: bilibili.scraper
+    class: Scraper
+    description: 哔哩哔哩社会招聘（jobs.bilibili.com），需浏览器携带 csrf 头，社招，不公开薪资
+    url_patterns:
+      - "jobs.bilibili.com"
+
+  xiaomi:
+    name: 小米
+    module: xiaomi.scraper
+    class: Scraper
+    description: 小米社会招聘（hr.xiaomi.com），公开 JSON 接口，社招，不公开薪资
+    url_patterns:
+      - "hr.xiaomi.com"
+      - "xiaomi.jobs.f.mioffice.cn"
+
+  alibaba_social:
+    name: 阿里巴巴（社招）
+    module: alibaba_social.scraper
+    class: Scraper
+    description: 阿里巴巴社会招聘（talent.alibaba.com），公开 JSON 接口，需自签 CSRF token，社招，不公开薪资
+    url_patterns:
+      - "talent.alibaba.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper

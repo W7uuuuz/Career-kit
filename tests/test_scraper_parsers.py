@@ -13,13 +13,20 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import src.scrapers.alibaba.scraper as alibaba
+import src.scrapers.alibaba_social.scraper as alibaba_social
+import src.scrapers.ant.scraper as ant
 import src.scrapers.baidu.scraper as baidu
+import src.scrapers.bilibili.scraper as bilibili
+import src.scrapers.ctrip.scraper as ctrip
+import src.scrapers.didi.scraper as didi
 import src.scrapers.jd.scraper as jd
 import src.scrapers.kuaishou.scraper as kuaishou
 import src.scrapers.meituan.scraper as meituan
 import src.scrapers.netease.scraper as netease
 import src.scrapers.pdd.scraper as pdd
 import src.scrapers.tencent.scraper as tencent
+import src.scrapers.xiaohongshu.scraper as xiaohongshu
+import src.scrapers.xiaomi.scraper as xiaomi
 from src.scrapers import list_scrapers
 from src.scrapers.loader import get_scraper, get_scraper_for_url
 
@@ -420,13 +427,262 @@ def test_pdd_parse_payload_and_detail_format():
 
 
 # ---------------------------------------------------------------------------
+# 小红书
+# ---------------------------------------------------------------------------
+
+
+def test_xiaohongshu_search_and_detail(monkeypatch):
+    payload = {
+        "statusCode": 200,
+        "data": {
+            "totalPage": 1,
+            "list": [
+                {
+                    "positionId": 18987,
+                    "positionName": "Java后端开发工程师",
+                    "workplace": "北京市，上海市",
+                    "duty": "负责企业级平台研发",
+                    "qualification": "熟悉 Java",
+                    "jobType": "基础后端",
+                    "directionName": "研发",
+                    "publishTime": "2026-09-12",
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(xiaohongshu, "request_json", lambda *a, **k: payload)
+    scraper = xiaohongshu.Scraper()
+
+    rows = scraper.search(keyword="Java", city="上海", limit=1)
+    assert rows[0]["title"] == "Java后端开发工程师"
+    assert rows[0]["location"] == "北京市，上海市"
+    assert rows[0]["url"].endswith("/18987")
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert "负责企业级平台研发" in detail["description"]
+    assert detail["company"] == "小红书"
+
+
+# ---------------------------------------------------------------------------
+# 滴滴
+# ---------------------------------------------------------------------------
+
+
+def test_didi_search_and_detail(monkeypatch):
+    payload = {
+        "meta": {"code": 0},
+        "data": {
+            "total": 1,
+            "items": [
+                {
+                    "jdId": 66786,
+                    "jobName": "AI Agent 开发工程师",
+                    "workArea": "北京市",
+                    "deptName": "Food Tech",
+                    "jobDuty": "负责 Agent 架构",
+                    "jobQualification": "熟悉 LangChain",
+                    "jobTypeName": "技术",
+                    "refreshTime": "2026-11-05",
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(didi, "request_json", lambda *a, **k: payload)
+    scraper = didi.Scraper()
+
+    rows = scraper.search(keyword="Agent", city="北京", limit=1)
+    assert rows[0]["title"] == "AI Agent 开发工程师"
+    assert rows[0]["url"].endswith("/66786")
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert "负责 Agent 架构" in detail["description"]
+    assert detail["company"] == "滴滴"
+
+
+# ---------------------------------------------------------------------------
+# 小米
+# ---------------------------------------------------------------------------
+
+
+def test_xiaomi_search_and_detail(monkeypatch):
+    payload = {
+        "code": 0,
+        "data": {
+            "list": [
+                {
+                    "title": "JAVA开发工程师",
+                    "cityZhNames": ["武汉"],
+                    "levelOneDeptName": "集团信息技术部",
+                    "description": "参与物料系统开发",
+                    "requirement": "熟悉 Java",
+                    "publishTime": "2026-10-26",
+                    "url": "https://xiaomi.jobs.f.mioffice.cn/index/position/7678236665135745286/detail",
+                    "jobPostId": "7678236665135745286",
+                    "jobId": "7678236665135630598",
+                    "id": 475168,
+                }
+            ]
+        },
+    }
+    monkeypatch.setattr(xiaomi, "request_json", lambda *a, **k: payload)
+    scraper = xiaomi.Scraper()
+
+    rows = scraper.search(keyword="Java", city="武汉", limit=1)
+    assert rows[0]["title"] == "JAVA开发工程师"
+    assert rows[0]["location"] == "武汉"
+    assert rows[0]["url"].endswith("/detail")
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert "参与物料系统开发" in detail["description"]
+    assert detail["company"] == "小米"
+
+
+# ---------------------------------------------------------------------------
+# 携程
+# ---------------------------------------------------------------------------
+
+
+def test_ctrip_search_and_detail(monkeypatch):
+    payload = {
+        "retCode": "201",
+        "retValue": {
+            "total": 1,
+            "recruitJobAdList": [
+                {
+                    "jobId": "8917cb97-270b-441a-829d-6209a40dd402",
+                    "fromId": "MJ037750",
+                    "jobTitle": "景玩项目经理",
+                    "cityName": "上海",
+                    "requirements": "<p>熟悉项目管理</p>",
+                    "duty": "<p>负责项目交付</p>",
+                    "publishDate": "2026-11-05",
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(ctrip, "request_json", lambda *a, **k: payload)
+    scraper = ctrip.Scraper()
+
+    rows = scraper.search(keyword="项目", city="上海", limit=1)
+    assert rows[0]["title"] == "景玩项目经理"
+    assert rows[0]["location"] == "上海"
+    assert "jobId=8917" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert "负责项目交付" in detail["description"]
+    assert detail["company"] == "携程"
+
+
+# ---------------------------------------------------------------------------
+# 阿里巴巴（社招）
+# ---------------------------------------------------------------------------
+
+
+def test_alibaba_social_search_and_detail(monkeypatch):
+    payload = {
+        "success": True,
+        "content": {
+            "totalCount": 1,
+            "datas": [
+                {
+                    "id": 100034220002,
+                    "name": "鹿鸣工作室-服务器开发-java",
+                    "workLocations": ["苏州"],
+                    "categories": ["技术类"],
+                    "description": "负责游戏服务端",
+                    "requirement": "熟悉 Java",
+                    "experience": {"from": 3, "to": 5},
+                    "publishTime": 1787383311000,
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(alibaba_social, "request_json", lambda *a, **k: payload)
+    scraper = alibaba_social.Scraper()
+
+    rows = scraper.search(keyword="Java", city="苏州", limit=1)
+    assert rows[0]["title"] == "鹿鸣工作室-服务器开发-java"
+    assert rows[0]["experience"] == "3-5年"
+    assert "positionId=100034220002" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert "负责游戏服务端" in detail["description"]
+    assert detail["company"] == "阿里巴巴"
+
+
+# ---------------------------------------------------------------------------
+# 蚂蚁集团 / 哔哩哔哩（解析层）
+# ---------------------------------------------------------------------------
+
+
+def test_ant_format_and_detail_fallback():
+    scraper = ant.Scraper()
+    row = {
+        "id": 261020012485394,
+        "name": "蚂蚁国际-卡组计费管理与运营",
+        "workLocations": ["上海", "杭州"],
+        "categories": ["综合类-财务及内控"],
+        "description": "负责卡组计费",
+        "requirement": "熟悉财务",
+        "publishTime": "2026-11-05T12:14:56.000+00:00",
+    }
+    item = scraper._format_post(row)
+    assert item["title"] == "蚂蚁国际-卡组计费管理与运营"
+    assert item["location"] == "上海/杭州"
+    assert "positionId=261020012485394" in item["url"]
+    assert ant._find_cookie([{"name": "ctoken", "value": "abc"}], "ctoken") == "abc"
+
+
+def test_bilibili_parse_payload_and_detail():
+    payload = {
+        "data": {
+            "list": [
+                {
+                    "id": 31092,
+                    "positionName": "直播生态治理策略",
+                    "positionDescription": "负责直播内容治理",
+                    "positionTypeName": "全职",
+                    "postCodeName": "产品运营类",
+                    "pushTime": "2026-11-03",
+                    "workLocation": "上海",
+                }
+            ]
+        }
+    }
+    scraper = bilibili.Scraper()
+    rows = scraper._parse_payload(payload, city="上海", limit=1)
+    assert rows[0]["title"] == "直播生态治理策略"
+    assert rows[0]["url"].endswith("/31092")
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责直播内容治理"
+    assert detail["company"] == "哔哩哔哩"
+
+
+# ---------------------------------------------------------------------------
 # 注册与路由
 # ---------------------------------------------------------------------------
 
 
 def test_new_scrapers_registered_with_params():
     by_id = {s["id"]: s for s in list_scrapers()}
-    for cid in ("tencent", "baidu", "alibaba", "meituan", "netease", "jd", "kuaishou", "pdd"):
+    for cid in (
+        "tencent",
+        "baidu",
+        "alibaba",
+        "meituan",
+        "netease",
+        "jd",
+        "kuaishou",
+        "pdd",
+        "xiaohongshu",
+        "didi",
+        "ant",
+        "ctrip",
+        "bilibili",
+        "xiaomi",
+        "alibaba_social",
+    ):
         assert cid in by_id
         assert by_id[cid]["params"]
         assert get_scraper(cid) is not None
@@ -443,6 +699,13 @@ def test_new_scraper_url_routing():
         "https://zhaopin.jd.com/web/job/job_info_list/3?requirementId=1": "jd",
         "https://zhaopin.kuaishou.cn/recruit/e/#/official/social/?positionId=1": "kuaishou",
         "https://careers.pddglobalhr.com/jobs/detail?code=T1": "pdd",
+        "https://job.xiaohongshu.com/social/position/1": "xiaohongshu",
+        "https://talent.didiglobal.com/social/p/1": "didi",
+        "https://talent.antgroup.com/off-campus-position?positionId=1": "ant",
+        "https://careers.ctrip.com/#/experienced/jobDetail?jobId=1": "ctrip",
+        "https://jobs.bilibili.com/social/positions/1": "bilibili",
+        "https://hr.xiaomi.com/website/opportunities.html?jobId=1": "xiaomi",
+        "https://talent.alibaba.com/off-campus/position-detail?positionId=1": "alibaba_social",
     }
     for url, expected in cases.items():
         scraper = get_scraper_for_url(url)
