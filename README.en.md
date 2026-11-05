@@ -7,13 +7,13 @@ English | [中文](README.md)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
-> Stop mass-applying. Career Kit is an AI career coach MCP server: real postings and peer paths → direction → gap analysis → one next step.
+> Not sure what job to pursue? Career Kit is an AI career coach MCP server: real postings and peer paths → direction → gap analysis → one next step.
 
 Works with Claude Code, Cursor, opencode, and Codex. It helps you choose a direction, close the right gaps, and take the next step.
 
-![Career Kit demo: 200 applications, still no idea what is missing → real postings and peer paths → gap diagnosis → next step](docs/examples/demo/readme-demo.gif)
+![Career Kit demo: not sure what job to pursue → peer paths → gap diagnosis → next step](docs/examples/demo/readme-demo.gif)
 
-> **People like you → the real requirements → your gap → one next step.**
+> **See where people like you went → the real requirements → your gap → one next step.**
 > Demo data is synthetic; the demo UI is in Chinese.
 
 > **[Click here to try the interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**  
@@ -151,7 +151,7 @@ Then ask your agent to call `start_session`.
 
 ## Who it is for
 
-- **Good fit**: you are job hunting or switching careers, you use an AI coding agent, and you want a plan grounded in real postings that you can track over time.
+- **Good fit**: you are not sure what job to pursue, switching careers without a clear starting point, or already applying but unsure what is missing; you use an AI coding agent.
 - **Not yet**: you have no command-line experience. The current form requires Python and MCP registration.
 
 ## Contributing

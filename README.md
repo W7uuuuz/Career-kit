@@ -9,13 +9,13 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
-> 别再海投了。Career Kit 是一个 AI 职业陪练 MCP 服务：用真实岗位和同背景案例，帮你找方向、看差距、拆出今天就能开始的下一步。
+> 不知道做什么工作？Career Kit 是一个 AI 职业陪练 MCP 服务：用真实岗位和同背景案例，帮你找方向、看差距、拆出今天就能开始的下一步。
 
 接入 Claude Code / Cursor / opencode / Codex，帮你找对方向、补齐差距、走好下一步。
 
-![Career Kit 演示：投了 200 份没回音 → 真实岗位与同背景案例 → 差距诊断 → 下一步](docs/examples/demo/readme-demo.gif)
+![Career Kit 演示：不知道做什么工作 → 同背景的人怎么走 → 差距诊断 → 下一步](docs/examples/demo/readme-demo.gif)
 
-> **和你一样的人怎么走 → 你差哪一项 → 今天先做什么。**
+> **先看和你一样的人去了哪 → 你差哪一项 → 今天先做什么。**
 > 演示数据为合成，不含真实用户简历或报告。
 
 > **[点我 → 在线体验职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**  
@@ -198,7 +198,7 @@ career-kit-doctor
 
 ## 适合谁
 
-- **适合你，如果你**：在找工作或转行、会用 Claude Code / opencode 这类 AI 编程工具、想要一份「有真实岗位数据支撑、可长期追踪」的计划。
+- **适合你，如果你**：不知道做什么工作、想转行但不知道从哪开始，或者已经在找工作但不知道差在哪；会用 Claude Code / opencode 这类 AI 编程工具。
 - **暂不适合你，如果你**：完全没有命令行使用经验。当前形态需要安装 Python + 注册 MCP，Web / 无安装版本在规划中。
 
 ## 贡献
