@@ -32,36 +32,47 @@
 
 ## 快速开始
 
-### 方式一：一行启动（推荐）
+### 方式一：pipx 安装（推荐）
 
-需要 [uv](https://docs.astral.sh/uv/)。未安装时：
+`pipx` 会把命令装进独立环境，不污染系统 Python，也不需要记 uv 的用法。
 
 ```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 安装 pipx（只需一次）
+python -m pip install --user pipx
+python -m pipx ensurepath
 
-# Windows PowerShell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+# 安装 Career Kit
+pipx install career-kit
+
+# 体检
+career-kit-doctor
 ```
+
+> Windows 提示 `career-kit` 不是命令时，重开终端，或执行 `python -m pipx ensurepath`。
+> 镜像未同步时：`pipx install --pip-args="--index-url https://pypi.org/simple" career-kit`。
+
+### 方式二：uvx 免安装
+
+已经装了 [uv](https://docs.astral.sh/uv/) 的话，可以完全不安装：
 
 ```bash
 uvx --from career-kit career-kit-doctor   # 安装体检
 uvx --from career-kit career-kit          # 启动 MCP 服务（stdio）
 ```
 
-注册到你的 AI Agent：
-
-| Agent | 注册方式 |
-|-------|---------|
-| Claude Code | `claude mcp add career-kit -- uvx --from career-kit career-kit` |
-| Codex CLI | `codex mcp add career-kit -- uvx --from career-kit career-kit` |
-| opencode | 项目根目录 `opencode.json`（或全局 `~/.config/opencode/opencode.jsonc`）加入：`{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
-| Cursor / Windsurf | MCP 设置中手动添加：command=`uvx`，args=`["--from", "career-kit", "career-kit"]` |
-
-> 如果默认镜像还没收录新版本，或安装 `iv8` 失败，加官方索引：
+> 镜像未同步或安装 `iv8` 失败时，加官方索引：
 > `uvx --from career-kit --default-index https://pypi.org/simple career-kit`。
 
-### 方式二：源码安装
+### 注册到你的 AI Agent
+
+| Agent | pipx / pip 安装后 | uvx 免安装 |
+|-------|------------------|------------|
+| Claude Code | `claude mcp add career-kit -- career-kit` | `claude mcp add career-kit -- uvx --from career-kit career-kit` |
+| Codex CLI | `codex mcp add career-kit -- career-kit` | `codex mcp add career-kit -- uvx --from career-kit career-kit` |
+| opencode | `{"mcp": {"career-kit": {"type": "local", "command": ["career-kit"], "enabled": true}}}` | `{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
+| Cursor / Windsurf | command=`career-kit` | command=`uvx`，args=`["--from", "career-kit", "career-kit"]` |
+
+### 方式三：源码安装
 
 ```bash
 git clone https://github.com/W7uuuuz/Career-kit.git
@@ -87,7 +98,7 @@ opencode 配置：
 
 > macOS 用户把 python 换成 python3。opencode 的 `.opencode/config.json` 不是 MCP 注册入口，改它是无效的。
 
-### 方式三：一键安装脚本
+### 方式四：一键安装脚本
 
 ```bash
 # macOS / Linux
@@ -123,7 +134,7 @@ career-kit-doctor
 
 | 现象 | 处理 |
 |------|------|
-| `uvx` 报找不到 `career-kit`，或安装 `iv8` 失败 | 默认镜像未同步或缺包：加 `--default-index https://pypi.org/simple` |
+| `pipx` / `uvx` 报找不到 `career-kit`，或安装 `iv8` 失败 | 默认镜像未同步：pipx 加 `--pip-args="--index-url https://pypi.org/simple"`；uvx 加 `--default-index https://pypi.org/simple` |
 | `No module named 'mcp'` | 注册用了错误解释器，改用 venv 绝对路径或 `uvx` |
 | 抓取报 Playwright 相关错误 | 先执行 `playwright install chromium` |
 | BOSS 提示需要登录 | 由 Agent 运行登录脚本并打开浏览器，你只需扫码 |

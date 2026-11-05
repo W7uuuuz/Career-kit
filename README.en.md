@@ -29,9 +29,24 @@ Works with Claude Code, Cursor, opencode, and Codex. It turns job hunting from "
 
 ## Quick start
 
-### Option 1: one command (recommended)
+### Option 1: pipx (recommended)
 
-Requires [uv](https://docs.astral.sh/uv/).
+`pipx` installs the CLI in an isolated environment without touching your system Python.
+
+```bash
+python -m pip install --user pipx
+python -m pipx ensurepath
+pipx install career-kit
+career-kit-doctor
+```
+
+> On Windows, reopen the terminal or run `python -m pipx ensurepath` if
+> `career-kit` is not found. If your mirror has not synced the release:
+> `pipx install --pip-args="--index-url https://pypi.org/simple" career-kit`.
+
+### Option 2: uvx (no install)
+
+If you already use [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uvx --from career-kit career-kit-doctor   # health check
@@ -41,16 +56,16 @@ uvx --from career-kit career-kit          # start the MCP server (stdio)
 > If your package mirror has not synced the release or fails on `iv8`, add
 > `--default-index https://pypi.org/simple`.
 
-Register with your agent:
+### Register with your agent
 
-| Agent | Command |
-|-------|---------|
-| Claude Code | `claude mcp add career-kit -- uvx --from career-kit career-kit` |
-| Codex CLI | `codex mcp add career-kit -- uvx --from career-kit career-kit` |
-| opencode | add to `opencode.json`: `{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
-| Cursor / Windsurf | add an MCP server: command=`uvx`, args=`["--from", "career-kit", "career-kit"]` |
+| Agent | pipx / pip | uvx |
+|-------|-----------|-----|
+| Claude Code | `claude mcp add career-kit -- career-kit` | `claude mcp add career-kit -- uvx --from career-kit career-kit` |
+| Codex CLI | `codex mcp add career-kit -- career-kit` | `codex mcp add career-kit -- uvx --from career-kit career-kit` |
+| opencode | `{"mcp": {"career-kit": {"type": "local", "command": ["career-kit"], "enabled": true}}}` | `{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
+| Cursor / Windsurf | command=`career-kit` | command=`uvx`, args=`["--from", "career-kit", "career-kit"]` |
 
-### Option 2: from source
+### Option 3: from source
 
 ```bash
 git clone https://github.com/W7uuuuz/Career-kit.git
@@ -65,7 +80,7 @@ claude mcp add career-kit -- <venv-python> -m src.server
 codex mcp add career-kit -- <venv-python> -m src.server
 ```
 
-### Option 3: install script
+### Option 4: install script
 
 ```bash
 bash install.sh                 # macOS / Linux
