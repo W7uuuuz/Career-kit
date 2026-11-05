@@ -11,6 +11,11 @@
 | `tencent` | 腾讯 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/tencent/guide.md) |
 | `baidu` | 百度 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/baidu/guide.md) |
 | `alibaba` | 阿里巴巴 | JD | 校招 / 实习 | [guide](../src/scrapers/alibaba/guide.md) |
+| `meituan` | 美团 | JD | 社招 | [guide](../src/scrapers/meituan/guide.md) |
+| `netease` | 网易 | JD | 社招 | [guide](../src/scrapers/netease/guide.md) |
+| `jd` | 京东 | JD | 社招 | [guide](../src/scrapers/jd/guide.md) |
+| `kuaishou` | 快手 | JD | 社招 | [guide](../src/scrapers/kuaishou/guide.md) |
+| `pdd` | 拼多多 | JD | 社招 | [guide](../src/scrapers/pdd/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 
@@ -53,6 +58,8 @@
 - [HA7CH/job-pro](https://github.com/HA7CH/job-pro)：腾讯校招接口、阿里 batch/CSRF 流程
 - [Enzoding/JobHunt-CLI](https://github.com/Enzoding/JobHunt-CLI)：多站点统一字段与渠道映射
 - [Nanaeo/RecruitSpider](https://github.com/Nanaeo/RecruitSpider)：腾讯/百度早期实现
+- [devnp2007/career-ops](https://github.com/devnp2007/career-ops)：美团 getJobList 接口与字段映射
+- [CSDN：网易招聘 queryPage 接口](https://blog.csdn.net/weixin_65149153/article/details/140274834)：网易列表接口参数
 
 ## 贡献新 Scraper
 

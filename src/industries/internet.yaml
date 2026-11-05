@@ -63,6 +63,24 @@ subdirections:
     name: 产品
     description: 理解用户和业务，定义需求、方案与优先级。
 
+leading_companies:
+  - 字节跳动
+  - 腾讯
+  - 阿里巴巴
+  - 百度
+  - 美团
+  - 京东
+  - 网易
+  - 拼多多
+  - 快手
+  - 小红书
+  - 滴滴
+  - 蚂蚁集团
+  - 携程
+  - 哔哩哔哩
+  - 华为
+  - 小米
+
 roles:
   - id: backend
     name: 后端开发

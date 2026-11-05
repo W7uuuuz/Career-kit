@@ -57,6 +57,47 @@ scrapers:
     url_patterns:
       - "campus-talent.alibaba.com"
 
+  meituan:
+    name: 美团
+    module: meituan.scraper
+    class: Scraper
+    description: 美团社会招聘（zhaopin.meituan.com），公开 JSON 接口，社招，不公开薪资
+    url_patterns:
+      - "zhaopin.meituan.com"
+
+  netease:
+    name: 网易
+    module: netease.scraper
+    class: Scraper
+    description: 网易社会招聘（hr.163.com），公开 JSON 接口，社招，不公开薪资
+    url_patterns:
+      - "hr.163.com"
+
+  jd:
+    name: 京东
+    module: jd.scraper
+    class: Scraper
+    description: 京东社会招聘（zhaopin.jd.com），公开列表接口，社招，不公开薪资
+    url_patterns:
+      - "zhaopin.jd.com"
+
+  kuaishou:
+    name: 快手
+    module: kuaishou.scraper
+    class: Scraper
+    description: 快手社会招聘（zhaopin.kuaishou.cn），需浏览器执行签名，社招，不公开薪资
+    url_patterns:
+      - "zhaopin.kuaishou.cn"
+
+  pdd:
+    name: 拼多多
+    module: pdd.scraper
+    class: Scraper
+    description: 拼多多社会招聘（careers.pddglobalhr.com），需浏览器执行 anti_content 风控，社招，不公开薪资
+    url_patterns:
+      - "careers.pddglobalhr.com"
+      - "careers.pinduoduo.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper

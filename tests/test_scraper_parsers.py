@@ -14,6 +14,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import src.scrapers.alibaba.scraper as alibaba
 import src.scrapers.baidu.scraper as baidu
+import src.scrapers.jd.scraper as jd
+import src.scrapers.kuaishou.scraper as kuaishou
+import src.scrapers.meituan.scraper as meituan
+import src.scrapers.netease.scraper as netease
+import src.scrapers.pdd.scraper as pdd
 import src.scrapers.tencent.scraper as tencent
 from src.scrapers import list_scrapers
 from src.scrapers.loader import get_scraper, get_scraper_for_url
@@ -231,13 +236,197 @@ def test_alibaba_search_and_detail(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# 美团
+# ---------------------------------------------------------------------------
+
+
+def test_meituan_search_and_detail(monkeypatch):
+    payload = {
+        "data": {
+            "page": {"totalCount": 1},
+            "list": [
+                {
+                    "name": "AI 工程师",
+                    "jobUnionId": "m1",
+                    "cityList": [{"name": "北京"}],
+                    "department": [{"name": "AI 平台"}],
+                    "jobFamily": "技术",
+                    "workYear": "3-5年",
+                    "jobDuty": "负责 AI 平台研发",
+                    "jobRequirement": "熟悉 Python",
+                }
+            ],
+        }
+    }
+    monkeypatch.setattr(meituan, "request_json", lambda *a, **k: payload)
+    scraper = meituan.Scraper()
+
+    rows = scraper.search(keyword="AI", city="北京", limit=1)
+    assert rows[0]["title"] == "AI 工程师"
+    assert rows[0]["location"] == "北京"
+    assert rows[0]["url"].endswith("jobUnionId=m1")
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"].startswith("部门: AI 平台")
+    assert detail["company"] == "美团"
+
+
+# ---------------------------------------------------------------------------
+# 网易
+# ---------------------------------------------------------------------------
+
+
+def test_netease_search_and_detail(monkeypatch):
+    payload = {
+        "code": 200,
+        "data": {
+            "pages": 1,
+            "total": 1,
+            "list": [
+                {
+                    "id": 77492,
+                    "name": "资深 Java 开发工程师",
+                    "description": "负责 HR 系统",
+                    "requirement": "熟悉 Java",
+                    "firstDepName": "人力资源部",
+                    "workPlaceNameList": ["杭州市"],
+                    "reqEducationName": "本科",
+                    "reqWorkYearsName": "3-5年",
+                    "postTypeFullName": "技术",
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(netease, "request_json", lambda *a, **k: payload)
+    scraper = netease.Scraper()
+
+    rows = scraper.search(keyword="Java", city="杭州", limit=1)
+    assert rows[0]["title"] == "资深 Java 开发工程师"
+    assert rows[0]["location"] == "杭州市"
+    assert "id=77492" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责 HR 系统"
+    assert detail["company"] == "网易"
+
+
+# ---------------------------------------------------------------------------
+# 京东
+# ---------------------------------------------------------------------------
+
+
+def test_jd_search_and_detail(monkeypatch):
+    payload = [
+        {
+            "positionNameOpen": "JAVA开发工程师",
+            "requirementId": 226892,
+            "workCity": "北京市",
+            "positionDeptName": "技术研发",
+            "workContent": "负责交易系统",
+            "qualification": "熟悉 Java",
+            "jobType": "研发类",
+            "formatPublishTime": "2026-10-21",
+        }
+    ]
+    monkeypatch.setattr(jd, "request_json", lambda *a, **k: payload)
+    scraper = jd.Scraper()
+
+    rows = scraper.search(keyword="Java", city="北京", limit=1)
+    assert rows[0]["title"] == "JAVA开发工程师"
+    assert rows[0]["location"] == "北京市"
+    assert "requirementId=226892" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责交易系统"
+    assert detail["company"] == "京东"
+
+
+# ---------------------------------------------------------------------------
+# 快手
+# ---------------------------------------------------------------------------
+
+
+def test_kuaishou_parse_payload_and_detail():
+    payload = {
+        "result": {
+            "total": 1,
+            "list": [
+                {
+                    "id": 30644,
+                    "name": "Java开发工程师（海外商业化）",
+                    "workLocationCode": "Beijing",
+                    "description": "负责海外商业化",
+                    "positionDemand": "熟悉 Java",
+                    "positionCategoryCode": "J0012",
+                    "workExperienceCode": "4",
+                }
+            ],
+        }
+    }
+    scraper = kuaishou.Scraper()
+
+    rows = scraper._parse_payload(payload, keyword="Java", city="北京", limit=1)
+    assert rows[0]["title"] == "Java开发工程师（海外商业化）"
+    assert rows[0]["location"] == "北京"
+    assert "positionId=30644" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责海外商业化 熟悉 Java"
+    assert detail["company"] == "快手"
+
+
+# ---------------------------------------------------------------------------
+# 拼多多
+# ---------------------------------------------------------------------------
+
+
+def test_pdd_parse_payload_and_detail_format():
+    payload = {
+        "result": {
+            "list": [
+                {
+                    "name": "Java工程师",
+                    "code": "T024973",
+                    "workLocation": "上海",
+                    "job": "研发类",
+                    "updateTime": "2026-11-05",
+                }
+            ]
+        }
+    }
+    scraper = pdd.Scraper()
+
+    rows = scraper._parse_payload(payload, city="上海", limit=1)
+    assert rows[0]["title"] == "Java工程师"
+    assert rows[0]["location"] == "上海"
+    assert "code=T024973" in rows[0]["url"]
+
+    detail = scraper._format_detail(
+        {
+            "name": "Java工程师",
+            "code": "T024973",
+            "recruitType": "研发类",
+            "workLocation": "上海",
+            "jobDuty": "<p>负责交易系统<br/>保障稳定性</p>",
+            "serveRequirement": "<p>熟悉 Java</p>",
+            "bonus": "<p>有电商经验优先</p>",
+        },
+        rows[0]["url"],
+    )
+    assert detail["description"] == "负责交易系统\n保障稳定性"
+    assert detail["requirements"] == "熟悉 Java"
+    assert detail["benefits"] == "有电商经验优先"
+    assert detail["company"] == "拼多多"
+
+
+# ---------------------------------------------------------------------------
 # 注册与路由
 # ---------------------------------------------------------------------------
 
 
 def test_new_scrapers_registered_with_params():
     by_id = {s["id"]: s for s in list_scrapers()}
-    for cid in ("tencent", "baidu", "alibaba"):
+    for cid in ("tencent", "baidu", "alibaba", "meituan", "netease", "jd", "kuaishou", "pdd"):
         assert cid in by_id
         assert by_id[cid]["params"]
         assert get_scraper(cid) is not None
@@ -249,6 +438,11 @@ def test_new_scraper_url_routing():
         "https://join.qq.com/post_detail.html?postid=1": "tencent",
         "https://talent.baidu.com/jobs/detail/SOCIAL/x": "baidu",
         "https://campus-talent.alibaba.com/campus/positionDetail?positionId=1": "alibaba",
+        "https://zhaopin.meituan.com/web/position/detail?jobUnionId=1": "meituan",
+        "https://hr.163.com/job-detail.html?id=1&lang=zh": "netease",
+        "https://zhaopin.jd.com/web/job/job_info_list/3?requirementId=1": "jd",
+        "https://zhaopin.kuaishou.cn/recruit/e/#/official/social/?positionId=1": "kuaishou",
+        "https://careers.pddglobalhr.com/jobs/detail?code=T1": "pdd",
     }
     for url, expected in cases.items():
         scraper = get_scraper_for_url(url)
