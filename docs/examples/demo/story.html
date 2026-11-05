@@ -75,10 +75,20 @@
   .chat-bubble {
     position: relative; background: #eef0f6; color: #4a5160;
     border-radius: 16px; padding: 18px 20px; font-size: clamp(15px, 1.3vw, 19px);
+    align-self: flex-start; max-width: 100%;
   }
-  .chat-bubble::after {
-    content: ""; position: absolute; left: 6%; right: 6%; top: 50%;
-    height: 3px; background: #e5484d; transform: rotate(-3deg); border-radius: 2px;
+  .chat-bubble::before {
+    content: "✕"; position: absolute; right: -14px; top: -14px;
+    width: clamp(24px, 2.2vw, 30px); height: clamp(24px, 2.2vw, 30px);
+    border-radius: 50%; background: #e5484d; color: #fff;
+    font-size: clamp(12px, 1.2vw, 15px); font-weight: 800; line-height: 1;
+    display: grid; place-items: center; z-index: 2;
+    box-shadow: 0 6px 18px rgba(229,72,77,.35);
+  }
+  .chat-bubble .advice {
+    text-decoration: line-through;
+    text-decoration-color: #e5484d;
+    text-decoration-thickness: 3px;
   }
   .strike { color: #8ea0c0; font-size: clamp(14px, 1.2vw, 17px); padding-left: 4px; }
 
@@ -225,7 +235,7 @@
       <p class="sub">不是你不努力，是没人给你看过真实路径。</p>
     </div>
     <div class="visual">
-      <div class="chat-bubble">AI：先做个职业测评，多尝试几个方向</div>
+      <div class="chat-bubble">AI：<span class="advice">先做个职业测评，多尝试几个方向</span></div>
       <p class="strike">听起来都对，但明天还是不知道做什么。</p>
     </div>
   </section>

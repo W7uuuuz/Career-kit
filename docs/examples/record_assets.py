@@ -38,7 +38,7 @@ SCENE_SECONDS = [2.8, 3.2, 4.0, 4.0, 4.2, 4.2, 4.0]
 
 # README 短版：钩子 → 真实 JD → 同背景案例 → 差距诊断 → 下一步 → CTA
 README_SCENES = [0, 2, 3, 4, 5, 6]
-README_SECONDS = [2.6, 3.4, 3.2, 3.6, 3.6, 2.8]
+README_SECONDS = [3.1, 3.9, 3.7, 4.1, 4.1, 3.3]
 
 
 def ensure_dirs() -> None:
