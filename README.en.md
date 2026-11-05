@@ -38,6 +38,9 @@ uvx --from career-kit career-kit-doctor   # health check
 uvx --from career-kit career-kit          # start the MCP server (stdio)
 ```
 
+> If your package mirror has not synced the release or fails on `iv8`, add
+> `--default-index https://pypi.org/simple`.
+
 Register with your agent:
 
 | Agent | Command |

@@ -56,7 +56,8 @@ uvx --from career-kit career-kit          # 启动 MCP 服务（stdio）
 | opencode | 项目根目录 `opencode.json`（或全局 `~/.config/opencode/opencode.jsonc`）加入：`{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
 | Cursor / Windsurf | MCP 设置中手动添加：command=`uvx`，args=`["--from", "career-kit", "career-kit"]` |
 
-> PyPI 首发前，请先用下方「源码安装」；发布后以上命令即可直接使用。
+> 如果默认镜像还没收录新版本，或安装 `iv8` 失败，加官方索引：
+> `uvx --from career-kit --default-index https://pypi.org/simple career-kit`。
 
 ### 方式二：源码安装
 
@@ -115,6 +116,16 @@ career-kit-doctor
 ```
 
 全部 OK 后，对新会话说「调用 start_session」，或直接敲 `/career-kit`——收到「欢迎使用 Career Kit」即接入成功。
+
+### 常见问题
+
+| 现象 | 处理 |
+|------|------|
+| `uvx` 报找不到 `career-kit`，或安装 `iv8` 失败 | 默认镜像未同步或缺包：加 `--default-index https://pypi.org/simple` |
+| `No module named 'mcp'` | 注册用了错误解释器，改用 venv 绝对路径或 `uvx` |
+| 抓取报 Playwright 相关错误 | 先执行 `playwright install chromium` |
+| BOSS 提示需要登录 | 由 Agent 运行登录脚本并打开浏览器，你只需扫码 |
+| 工具列表里没有 career-kit | 先跑 `career-kit-doctor`，再检查 Agent 的 MCP 连接状态 |
 
 ## 60 秒体验（不安装）
 
