@@ -30,3 +30,13 @@ start-career-kit.command
 # 内部开发文档（不随开源仓库发布，保留本地）
 docs/internal/
 
+# 本地职业档案 / 报告（隐私数据，绝不入库）
+CareerKit/
+career-kit.db
+career-kit.db-*
+*.db-wal
+*.db-shm
+
+# GitHub Pages 暂存目录（由 workflow 在 runner 内生成）
+site/
+
