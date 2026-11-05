@@ -16,6 +16,8 @@
   新增 `README.en.md` 与中英文切换。
 - **开源协作**：新增 `DISCLAIMER.md`、`CODE_OF_CONDUCT.md`、issue 表单
   （bug / feature）与 Discussions 入口。
+- **隐私**：演示数据全部匿名化（示例用户 / 一线城市 / 面议）；GitHub Pages
+  只发布落地页与演示 HTML，不上传任何原始档案 JSON。
 - **版本**：`0.1.0` → `0.2.0`。
 
 ## Unreleased

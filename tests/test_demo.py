@@ -21,3 +21,13 @@ def test_demo_no_open_prints_path(capsys):
     assert main(["--no-open"]) == 0
     out = capsys.readouterr().out
     assert "career-map.html" in out
+
+
+def test_demo_profile_has_no_personal_markers():
+    """演示档案必须是匿名样例，防止把真实简历重新带进公开仓库。"""
+    target = demo_html()
+    assert target is not None
+    text = (target.parent / "demo_profile.json").read_text(encoding="utf-8")
+    for marker in ("陈墨", "HotMirror", "20k-30k", "2028 届"):
+        assert marker not in text, f"演示档案仍包含 {marker}"
+    assert "示例用户" in text
