@@ -50,8 +50,6 @@ Register with your agent:
 | opencode | add to `opencode.json`: `{"mcp": {"career-kit": {"type": "local", "command": ["uvx", "--from", "career-kit", "career-kit"], "enabled": true}}}` |
 | Cursor / Windsurf | add an MCP server: command=`uvx`, args=`["--from", "career-kit", "career-kit"]` |
 
-> Until the first PyPI release, use the source install below.
-
 ### Option 2: from source
 
 ```bash
