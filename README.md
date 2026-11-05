@@ -1,6 +1,6 @@
 # Career Kit
 
-<!-- mcp-name: io.github.w7uuuuz/career-kit -->
+<!-- mcp-name: io.github.W7uuuuz/career-kit -->
 
 [English](README.en.md) | 中文
 

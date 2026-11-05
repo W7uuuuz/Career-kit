@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.w7uuuuz/career-kit",
+  "name": "io.github.W7uuuuz/career-kit",
   "description": "AI career coach: real job-market gap analysis, staged roadmap, check-in tasks, application funnel.",
   "title": "Career Kit",
   "websiteUrl": "https://w7uuuuz.github.io/Career-kit/",
@@ -8,13 +8,13 @@
     "url": "https://github.com/W7uuuuz/Career-kit",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "career-kit",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

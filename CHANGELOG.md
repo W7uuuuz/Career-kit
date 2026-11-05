@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.2 (2026-11-05)
+
+- **MCP Registry**：namespace 大小写改为 `io.github.W7uuuuz/career-kit`，与
+  GitHub OIDC 授权（`io.github.W7uuuuz/*`）一致；PyPI README 的 `mcp-name`
+  标记同步更新。
+
 ## v0.2.1 (2026-11-05)
 
 - **MCP Registry**：README 增加 `mcp-name: io.github.w7uuuuz/career-kit`
