@@ -40,6 +40,7 @@
 
 - `story.html`：痛点叙事页（示例数据，16:9 / 9:16 自适应）
 - `social-preview.html`：1280×640 社交预览
+- `readme-demo.gif`：README 首屏短版演示
 - `../record_assets.py`：Playwright 录制脚本
 
 ```bash

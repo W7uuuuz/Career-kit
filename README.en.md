@@ -11,11 +11,12 @@ English | [中文](README.md)
 
 Works with Claude Code, Cursor, opencode, and Codex. It turns job hunting from "send resumes and hope" into a plan grounded in real market data and trackable over time.
 
+![Career Kit demo: 200 applications, still no idea what is missing → real postings and peer paths → gap diagnosis → next step](docs/examples/demo/readme-demo.gif)
+
+> **People like you → the real requirements → your gap → one next step.**
+> Demo data is synthetic; the demo UI is in Chinese.
+
 **[Try the interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)** · [Sample output](docs/examples/demo/) · [Docs](docs/README.md)
-
-![Career Kit career map](docs/examples/demo/career-map.png)
-
-> The image above is a real artifact generated from a sample resume through the full pipeline. Check a task to log progress; the online demo requires no installation.
 
 ## Why it is different
 
@@ -26,6 +27,8 @@ Works with Claude Code, Cursor, opencode, and Codex. It turns job hunting from "
 - **Interactive career map**: export a self-contained HTML file. Check tasks, watch progress update, persist locally.
 - **Adapts to you**: getting an interview triggers a re-evaluation; switching goals turns completed work into capability evidence.
 - **Order is the product's job; pace is yours**: no deadlines are imposed on tasks.
+
+> If this saves you time, a star helps more job seekers find it.
 
 ## Quick start
 

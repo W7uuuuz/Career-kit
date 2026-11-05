@@ -33,8 +33,12 @@ RAW = OUT / "raw"
 STILLS = OUT / "stills"
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
-# 7 个场景，总时长约 25 秒
+# 7 个场景，总时长约 28 秒
 SCENE_SECONDS = [2.8, 3.2, 4.0, 4.0, 4.2, 4.2, 4.0]
+
+# README 短版：钩子 → 真实 JD → 同背景案例 → 差距诊断 → 下一步 → CTA
+README_SCENES = [0, 2, 3, 4, 5, 6]
+README_SECONDS = [2.6, 3.4, 3.2, 3.6, 3.6, 2.8]
 
 
 def ensure_dirs() -> None:
@@ -50,7 +54,15 @@ def _move_video(video, name: str) -> Path:
     return target
 
 
-def record_story(name: str, width: int, height: int) -> Path:
+def record_story(
+    name: str,
+    width: int,
+    height: int,
+    scenes: list[int] | None = None,
+    durations: list[float] | None = None,
+) -> Path:
+    scenes = scenes if scenes is not None else list(range(len(SCENE_SECONDS)))
+    durations = durations if durations is not None else [SCENE_SECONDS[i] for i in scenes]
     with sync_playwright() as p:
         browser = p.chromium.launch()
         context = browser.new_context(
@@ -61,7 +73,7 @@ def record_story(name: str, width: int, height: int) -> Path:
         page = context.new_page()
         page.goto(STORY.as_uri())
         page.wait_for_timeout(500)
-        for index, seconds in enumerate(SCENE_SECONDS):
+        for index, seconds in zip(scenes, durations):
             page.evaluate("(i) => window.showScene(i)", index)
             page.wait_for_timeout(int(seconds * 1000))
         # 给最后一帧和视频封装留足时间，避免 CTA 被截断
@@ -183,18 +195,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vertical", action="store_true", help="只录 9:16 痛点视频")
     parser.add_argument("--loop", action="store_true", help="只录职业地图打卡")
     parser.add_argument("--stills", action="store_true", help="只截静帧")
+    parser.add_argument("--readme", action="store_true", help="只录 README 短版 GIF")
     parser.add_argument("--convert-only", action="store_true", help="只做 mp4/gif 转换")
     args = parser.parse_args(argv)
 
     ensure_dirs()
     do_all = args.all or not any(
-        [args.story, args.vertical, args.loop, args.stills, args.convert_only]
+        [
+            args.story,
+            args.vertical,
+            args.loop,
+            args.stills,
+            args.readme,
+            args.convert_only,
+        ]
     )
 
     if do_all or args.story:
         print("recording story 16:9 ...")
         to_mp4(record_story("pain-16x9", 1280, 720), OUT / "pain-16x9.mp4")
         to_gif(OUT / "pain-16x9.webm", OUT / "pain-readme.gif", 800, 8)
+
+    if do_all or args.readme:
+        print("recording readme cut ...")
+        readme_webm = record_story(
+            "readme-demo", 1280, 720, README_SCENES, README_SECONDS
+        )
+        to_mp4(readme_webm, OUT / "readme-demo.mp4")
+        to_gif(readme_webm, OUT / "readme-demo.gif", 960, 10)
 
     if do_all or args.vertical:
         print("recording story 9:16 ...")
