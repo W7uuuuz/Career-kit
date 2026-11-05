@@ -23,8 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # 只发布落地页与合成数据的演示 HTML。
+      # 不上传 ~/CareerKit、~/.career-kit，也不上传任何原始档案 JSON。
+      - name: Stage public demo only
+        run: |
+          mkdir -p site/examples/demo
+          cp docs/index.html site/index.html
+          cp docs/examples/demo/career-map.html site/examples/demo/career-map.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
