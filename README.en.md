@@ -16,7 +16,10 @@ Works with Claude Code, Cursor, opencode, and Codex. It turns job hunting from "
 > **People like you → the real requirements → your gap → one next step.**
 > Demo data is synthetic; the demo UI is in Chinese.
 
-**[Try the interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)** · [Sample output](docs/examples/demo/) · [Docs](docs/README.md)
+> **[Click here to try the interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**  
+> No install; check a task and watch progress update.
+
+[Sample output](docs/examples/demo/) · [Docs](docs/README.md)
 
 ## Why it is different
 
@@ -29,6 +32,35 @@ Works with Claude Code, Cursor, opencode, and Codex. It turns job hunting from "
 - **Order is the product's job; pace is yours**: no deadlines are imposed on tasks.
 
 > If this saves you time, a star helps more job seekers find it.
+
+## Try it in 60 seconds (no install)
+
+- **Online**: open the [interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html) and check a task.
+- **Local**: open `docs/examples/demo/career-map.html`, or run `career-kit-demo` after installing.
+- Full pipeline sample: `docs/examples/demo/` contains the roadmap, progress dashboard, and raw profile.
+
+## How it works
+
+```
+You: I want to move into AI Agent engineering.
+Career Kit: gap analysis → fetch real postings → design a roadmap → break it into staged tasks
+
+You: I don't know what to do. Help me choose a direction.
+Career Kit: three-axis positioning (skills × interests × real market data) → candidate directions → pick one
+
+You: Done with this step.
+Career Kit: check-in → capability evidence → automatic phase audit
+
+You: I got a big-tech interview.
+Career Kit: event-triggered insight → re-evaluate the plan → adjust tasks
+```
+
+Under the hood: 41 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, tasks and funnel, and insight generation. See [tools.md](docs/tools.md).
+
+## Privacy and boundaries
+
+- Data stays local: `~/.career-kit/` for program data, `~/CareerKit/` for reports and roadmaps. Nothing is sent to an external server.
+- Scraping only reads public job and interview pages. Respect each site's terms and rate limits. No referrals, no guaranteed offers. See [DISCLAIMER.md](DISCLAIMER.md).
 
 ## Quick start
 
@@ -105,35 +137,6 @@ career-kit-doctor
 ```
 
 Then ask your agent to call `start_session`.
-
-## Try it in 60 seconds (no install)
-
-- **Online**: open the [interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html) and check a task.
-- **Local**: open `docs/examples/demo/career-map.html`, or run `career-kit-demo` after installing.
-- Full pipeline sample: `docs/examples/demo/` contains the roadmap, progress dashboard, and raw profile.
-
-## How it works
-
-```
-You: I want to move into AI Agent engineering.
-Career Kit: gap analysis → fetch real postings → design a roadmap → break it into staged tasks
-
-You: I don't know what to do. Help me choose a direction.
-Career Kit: three-axis positioning (skills × interests × real market data) → candidate directions → pick one
-
-You: Done with this step.
-Career Kit: check-in → capability evidence → automatic phase audit
-
-You: I got a big-tech interview.
-Career Kit: event-triggered insight → re-evaluate the plan → adjust tasks
-```
-
-Under the hood: 41 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, tasks and funnel, and insight generation. See [tools.md](docs/tools.md).
-
-## Privacy and boundaries
-
-- Data stays local: `~/.career-kit/` for program data, `~/CareerKit/` for reports and roadmaps. Nothing is sent to an external server.
-- Scraping only reads public job and interview pages. Respect each site's terms and rate limits. No referrals, no guaranteed offers. See [DISCLAIMER.md](DISCLAIMER.md).
 
 ## Documentation
 
