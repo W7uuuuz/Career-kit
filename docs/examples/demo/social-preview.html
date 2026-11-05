@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Career Kit · Social Preview</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    color: #fff;
+    background:
+      radial-gradient(900px 520px at 88% -10%, #1c2d50 0%, transparent 60%),
+      radial-gradient(700px 460px at -10% 110%, #17233c 0%, transparent 55%),
+      #0b1220;
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .wrap { position: relative; width: 1280px; height: 640px; padding: 42px 56px; }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .brand { font-weight: 800; letter-spacing: .06em; font-size: 18px; }
+  .brand i { color: #4a6cf7; font-style: normal; }
+  .chip {
+    border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+    padding: 6px 12px; font-size: 13px; color: #a9b7d0;
+  }
+  .main {
+    display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px;
+    align-items: center; height: 470px;
+  }
+  .kicker { color: #7f93b8; font-size: 14px; letter-spacing: .14em; margin: 0 0 14px; }
+  h1 { font-size: 46px; line-height: 1.18; letter-spacing: -.8px; margin: 0 0 18px; font-weight: 800; }
+  h1 em { color: #e5484d; font-style: normal; }
+  .sub { color: #a9b7d0; font-size: 18px; line-height: 1.6; margin: 0; }
+  .card {
+    background: #fff; color: #1f2430; border-radius: 18px;
+    padding: 24px 26px; box-shadow: 0 24px 70px rgba(0,0,0,.38);
+    border-left: 6px solid #e5484d;
+  }
+  .card p { margin: 0 0 16px; font-size: 20px; line-height: 1.5; font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips span {
+    background: #f6f7fb; color: #5a6270; border: 1px solid #e6e9f0;
+    border-radius: 8px; padding: 7px 11px; font-size: 13px;
+  }
+  .cta {
+    position: absolute; left: 56px; bottom: 42px;
+    display: inline-block; padding: 12px 22px; border-radius: 12px;
+    background: #4a6cf7; color: #fff; font-weight: 700; font-size: 17px;
+    box-shadow: 0 16px 40px rgba(74,108,247,.35);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">CAREER <i>KIT</i></div>
+    <div class="chip">示例数据 · 仅用于演示</div>
+  </div>
+  <div class="main">
+    <div>
+      <p class="kicker">差距诊断</p>
+      <h1>你的短板不是技术，<br>是<em>零团队协作证据</em></h1>
+      <p class="sub">用真实岗位和同背景案例，告诉你差哪一项、先补什么。</p>
+    </div>
+    <div class="card">
+      <p>不是「提升项目经验」这种空话</p>
+      <div class="chips">
+        <span>JD 07：要求 3 个 merged PR</span>
+        <span>案例 02：靠开源贡献拿到中厂</span>
+        <span>起点：小厂</span>
+      </div>
+    </div>
+  </div>
+  <div class="cta">GitHub 搜 Career Kit</div>
+</div>
+</body>
+</html>

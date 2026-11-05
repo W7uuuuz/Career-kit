@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Kit · 痛点演示</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --ink: #1f2430;
+    --muted: #6b7280;
+    --line: #e6e9f0;
+    --brand: #4a6cf7;
+    --brand-soft: #eef1fe;
+    --ok: #22a06b;
+    --warn: #b26a00;
+    --card: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    overflow: hidden;
+    color: #fff;
+    background:
+      radial-gradient(1100px 700px at 85% -10%, #1c2d50 0%, transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, #17233c 0%, transparent 55%),
+      var(--bg);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .stage { position: relative; width: 100vw; height: 100vh; }
+  .topbar {
+    position: absolute; top: 3.2vh; left: 4vw; right: 4vw;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 14px; color: #8ea0c0; z-index: 5;
+  }
+  .brand { font-weight: 800; letter-spacing: .06em; color: #fff; font-size: 15px; }
+  .brand i { color: var(--brand); font-style: normal; }
+  .demo-chip {
+    border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+    padding: 4px 10px; font-size: 12px; color: #a9b7d0;
+  }
+  .scene {
+    position: absolute; inset: 9vh 5vw 6vh;
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 4vw;
+    align-items: center;
+    opacity: 0; transform: translateY(16px);
+    pointer-events: none;
+  }
+  .scene.active {
+    opacity: 1; transform: none;
+    animation: sceneIn .38s ease;
+  }
+  @keyframes sceneIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  .kicker {
+    color: #7f93b8; font-size: 14px; letter-spacing: .14em;
+    text-transform: uppercase; margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 4.1vw, 58px); line-height: 1.16;
+    letter-spacing: -.8px; margin: 0 0 18px; font-weight: 800;
+  }
+  h1 .accent { color: #91a7ff; }
+  .sub { color: #a9b7d0; font-size: clamp(15px, 1.35vw, 20px); line-height: 1.7; margin: 0; max-width: 34em; }
+  .visual { display: flex; flex-direction: column; gap: 14px; }
+  .card {
+    background: var(--card); color: var(--ink);
+    border-radius: 18px; padding: 20px 22px;
+    box-shadow: 0 24px 70px rgba(0,0,0,.38);
+  }
+
+  /* scene 1 */
+  .chat-bubble {
+    position: relative; background: #eef0f6; color: #4a5160;
+    border-radius: 16px; padding: 18px 20px; font-size: clamp(15px, 1.3vw, 19px);
+  }
+  .chat-bubble::after {
+    content: ""; position: absolute; left: 6%; right: 6%; top: 50%;
+    height: 3px; background: #e5484d; transform: rotate(-3deg); border-radius: 2px;
+  }
+  .strike { color: #8ea0c0; font-size: clamp(14px, 1.2vw, 17px); padding-left: 4px; }
+
+  /* scene 2 */
+  .resume-card .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tag {
+    background: var(--brand-soft); color: var(--brand);
+    border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 600;
+  }
+  .resume-line { margin: 0 0 16px; color: #4a5160; font-size: clamp(14px, 1.2vw, 18px); }
+  .scan-line {
+    display: flex; align-items: center; gap: 10px;
+    background: #f6f7fb; border-radius: 10px; padding: 10px 12px;
+    color: #5a6270; font-size: clamp(13px, 1.1vw, 16px);
+  }
+  .scan-line span {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--brand);
+    box-shadow: 0 0 0 0 rgba(74,108,247,.6); animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(74,108,247,.55); }
+    70% { box-shadow: 0 0 0 12px rgba(74,108,247,0); }
+    100% { box-shadow: 0 0 0 0 rgba(74,108,247,0); }
+  }
+
+  /* scene 3 */
+  .jd-stack { gap: 10px; }
+  .jd-card { padding: 16px 18px; }
+  .jd-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .jd-head b { font-size: clamp(14px, 1.15vw, 17px); }
+  .salary { color: #0d9488; font-weight: 700; font-size: clamp(13px, 1.05vw, 16px); white-space: nowrap; }
+  .jd-card p { margin: 8px 0 10px; color: #5a6270; font-size: clamp(13px, 1.05vw, 16px); }
+  .source {
+    display: inline-block; background: #f1f3f8; color: #6b7280;
+    border-radius: 999px; padding: 3px 9px; font-size: 12px;
+  }
+
+  /* scene 4 */
+  .timeline { position: relative; padding-left: 18px; }
+  .timeline::before {
+    content: ""; position: absolute; left: 4px; top: 8px; bottom: 8px;
+    width: 2px; background: rgba(145,167,255,.35);
+  }
+  .case { position: relative; padding: 10px 0 10px 18px; color: #dbe4f5; font-size: clamp(14px, 1.15vw, 18px); }
+  .case::before {
+    content: ""; position: absolute; left: -18px; top: 18px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--brand); box-shadow: 0 0 0 4px rgba(74,108,247,.2);
+  }
+  .case b { color: #fff; }
+  .case .meta { color: #8ea0c0; font-size: 12px; margin-left: 6px; }
+
+  /* scene 5 */
+  .diag-card { border-left: 6px solid #e5484d; }
+  .diag-main { font-size: clamp(18px, 1.7vw, 26px); line-height: 1.5; margin: 0 0 16px; font-weight: 700; }
+  .diag-main em { color: #e5484d; font-style: normal; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips span {
+    background: #f6f7fb; color: #5a6270; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; font-size: clamp(12px, 1vw, 14px);
+  }
+
+  /* scene 6 */
+  .task-head { display: flex; gap: 10px; align-items: flex-start; font-size: clamp(15px, 1.25vw, 19px); }
+  .check {
+    flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px;
+    background: var(--ok); color: #fff; display: grid; place-items: center;
+    font-size: 14px; font-weight: 700; margin-top: 1px;
+  }
+  .task-card ol { margin: 14px 0 10px 22px; padding: 0; color: #5a6270; font-size: clamp(13px, 1.05vw, 16px); }
+  .task-card li { margin: 5px 0; }
+  .done { margin: 0; color: var(--ok); font-size: clamp(13px, 1.05vw, 16px); font-weight: 600; }
+  .progress {
+    position: relative; margin-top: 16px; height: 12px; border-radius: 999px;
+    background: #eef0f6; overflow: hidden;
+  }
+  .progress .fill {
+    width: 50%; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--brand), #6f8bff);
+    transition: width 1.2s ease .35s;
+  }
+  .scene.active .progress .fill { width: 75%; }
+  .progress span {
+    position: absolute; right: 10px; top: -22px; color: #6b7280; font-size: 12px;
+  }
+
+  /* scene 7 */
+  .cta { grid-column: 1 / -1; text-align: center; max-width: 900px; margin: 0 auto; }
+  .cta h1 { font-size: clamp(34px, 5vw, 70px); }
+  .cta .sub { margin: 0 auto; font-size: clamp(16px, 1.5vw, 22px); }
+  .cta .url {
+    display: inline-block; margin-top: 26px; padding: 12px 22px;
+    border-radius: 12px; background: var(--brand); color: #fff;
+    font-weight: 700; font-size: clamp(15px, 1.3vw, 19px);
+    box-shadow: 0 16px 40px rgba(74,108,247,.35);
+  }
+
+  @media (orientation: portrait) {
+    .topbar { top: 2.4vh; left: 6vw; right: 6vw; font-size: 3.4vw; }
+    .brand { font-size: 3.8vw; }
+    .scene {
+      inset: 9vh 6vw 7vh;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto;
+      gap: 4vh;
+      align-content: center;
+    }
+    .kicker { font-size: 3.2vw; }
+    h1 { font-size: 9.2vw; }
+    .sub { font-size: 4.2vw; }
+    .card { border-radius: 4vw; padding: 4.5vw; }
+    .chat-bubble { font-size: 4.2vw; padding: 4.5vw; }
+    .strike { font-size: 3.8vw; }
+    .resume-line, .jd-card p, .case, .task-card ol, .done { font-size: 3.8vw; }
+    .tag, .source, .chips span { font-size: 3.2vw; }
+    .jd-head b { font-size: 3.9vw; }
+    .salary { font-size: 3.6vw; }
+    .diag-main { font-size: 5.2vw; }
+    .task-head { font-size: 4.2vw; }
+    .check { width: 6vw; height: 6vw; font-size: 3.8vw; border-radius: 1.6vw; }
+    .progress { height: 3vw; }
+    .progress span { font-size: 3.2vw; top: -5.5vw; }
+    .cta h1 { font-size: 9.2vw; }
+    .cta .sub { font-size: 4.4vw; }
+    .cta .url { font-size: 4.2vw; padding: 3.2vw 6vw; border-radius: 3vw; }
+    .visual { gap: 3vh; }
+    .jd-stack { gap: 2vh; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="topbar">
+    <div class="brand">CAREER <i>KIT</i></div>
+    <div class="demo-chip">示例数据 · 仅用于演示</div>
+  </div>
+
+  <section class="scene" data-scene="1">
+    <div>
+      <p class="kicker">投了 200 份简历</p>
+      <h1>还是不知道<br><span class="accent">差在哪？</span></h1>
+      <p class="sub">不是你不努力，是没人告诉你具体差哪一项。</p>
+    </div>
+    <div class="visual">
+      <div class="chat-bubble">AI：建议多投简历、提升项目经验</div>
+      <p class="strike">听起来都对，但明天还是不知道做什么。</p>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="2">
+    <div>
+      <p class="kicker">先别改简历</p>
+      <h1>让 AI 先看<br><span class="accent">真实市场</span></h1>
+      <p class="sub">抓真实岗位，再看同背景的人怎么走。</p>
+    </div>
+    <div class="visual">
+      <div class="card resume-card">
+        <div class="tags">
+          <span class="tag">双非本</span>
+          <span class="tag">计算机相关专业</span>
+          <span class="tag">1 段小公司实习</span>
+        </div>
+        <p class="resume-line">目标：AI Agent 工程师 · 一线城市</p>
+        <div class="scan-line"><span></span>正在抓取 42 条真实岗位 + 8 条同背景经历…</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="3">
+    <div>
+      <p class="kicker">真实岗位，不是 AI 记忆</p>
+      <h1>市场到底<br><span class="accent">要什么</span></h1>
+      <p class="sub">每条岗位都有来源，能点开验证。</p>
+    </div>
+    <div class="visual jd-stack">
+      <div class="card jd-card">
+        <div class="jd-head"><b>某大厂 · AI Agent 工程师</b><span class="salary">20-35K</span></div>
+        <p>Python / LangGraph / RAG / 团队协作</p>
+        <span class="source">BOSS · 示例</span>
+      </div>
+      <div class="card jd-card">
+        <div class="jd-head"><b>某中厂 · AI 应用实习</b><span class="salary">200-300/天</span></div>
+        <p>Python / LLM 应用 / 有团队协作意识</p>
+        <span class="source">牛客 · 示例</span>
+      </div>
+      <div class="card jd-card">
+        <div class="jd-head"><b>某公司 · Agent 开发</b><span class="salary">18-28K</span></div>
+        <p>工程化 / 评测 / 开源贡献</p>
+        <span class="source">GitHub 经验帖 · 示例</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="4">
+    <div>
+      <p class="kicker">同背景案例</p>
+      <h1>和你一样的人<br><span class="accent">是这么走的</span></h1>
+      <p class="sub">不是鸡汤，是可对照的路径。</p>
+    </div>
+    <div class="visual timeline">
+      <div class="case"><b>双非本</b> → 中厂实习 → 大厂校招 <span class="meta">24 个月</span></div>
+      <div class="case"><b>双非本</b> → 开源贡献 → 中厂 → 大厂 <span class="meta">18 个月</span></div>
+      <div class="case"><b>专科</b> → 小厂 → 中厂 <span class="meta">30 个月</span></div>
+      <div class="case"><b>211 硕</b> → 大厂实习 → 大厂校招 <span class="meta">12 个月</span></div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="5">
+    <div>
+      <p class="kicker">差距诊断</p>
+      <h1>差哪一项<br><span class="accent">说清楚</span></h1>
+      <p class="sub">不给你「提升项目经验」这种空话。</p>
+    </div>
+    <div class="visual">
+      <div class="card diag-card">
+        <p class="diag-main">你的短板不是技术，<br>是<em>零团队协作证据</em></p>
+        <div class="chips">
+          <span>JD 07：要求 3 个 merged PR</span>
+          <span>案例 02：靠开源贡献拿到中厂</span>
+          <span>起点：小厂</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="6">
+    <div>
+      <p class="kicker">下一步</p>
+      <h1>具体到<br><span class="accent">今天就能开始</span></h1>
+      <p class="sub">怎么做、用什么、什么算完成。</p>
+    </div>
+    <div class="visual">
+      <div class="card task-card">
+        <div class="task-head"><span class="check">✓</span><b>给项目补 trace + 评测集并开源</b></div>
+        <ol>
+          <li>梳理 4 条关键链路</li>
+          <li>接入结构化日志与 trace id</li>
+          <li>写一份可复现的评测报告</li>
+        </ol>
+        <p class="done">完成标准：4 条链路可复现 + 评测报告</p>
+        <div class="progress"><div class="fill"></div><span>50% → 75%</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="7">
+    <div class="cta">
+      <p class="kicker">Career Kit</p>
+      <h1>不是给你一句空话<br><span class="accent">是给你下一步</span></h1>
+      <p class="sub">开源免费 · 数据在本地 · 接 Claude Code / opencode / Cursor</p>
+      <div class="url">GitHub 搜 Career Kit</div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const scenes = Array.from(document.querySelectorAll('.scene'));
+  function showScene(index) {
+    scenes.forEach((scene, i) => scene.classList.toggle('active', i === index));
+    document.body.dataset.scene = String(index);
+  }
+  window.showScene = showScene;
+  const initial = Number(new URLSearchParams(location.search).get('scene') || 0);
+  showScene(Number.isFinite(initial) ? initial : 0);
+</script>
+</body>
+</html>

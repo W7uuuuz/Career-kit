@@ -45,13 +45,13 @@
       {
         "task": "跑通评测并输出报告",
         "milestone": "",
-        "completed_at": "2026-11-05T12:58:01.458184",
+        "completed_at": "2026-11-05T14:57:11.512096",
         "notes": "跑通贡献流程，本地构建通过"
       },
       {
         "task": "补单测与 CI 流水线",
         "milestone": "",
-        "completed_at": "2026-11-05T12:58:01.482995",
+        "completed_at": "2026-11-05T14:57:11.541139",
         "notes": "评测样本已完成第一批 12 条"
       }
     ]
@@ -416,26 +416,74 @@
           "priority": "high",
           "checkin_mode": "percent",
           "checkin_goal": 80,
-          "description": "按模块推进，完成 80% 即可"
+          "description": "按模块推进，完成 80% 即可",
+          "how_to": [
+            "先梳理 4 条关键链路",
+            "接入结构化日志与 trace id",
+            "在 README 写清如何复现"
+          ],
+          "resources": [
+            {
+              "label": "OpenTelemetry Python",
+              "url": "https://opentelemetry.io/docs/languages/python/"
+            }
+          ],
+          "done_criteria": "4 条链路都有 trace，能在本地复现一次完整请求"
         },
         {
           "name": "补单测与 CI 流水线",
           "priority": "medium",
           "checkin_mode": "once",
-          "description": "CI 跑通即完成"
+          "description": "CI 跑通即完成",
+          "how_to": [
+            "先补 3 个核心函数单测",
+            "加 GitHub Actions",
+            "确保 PR 上能跑"
+          ],
+          "resources": [
+            {
+              "label": "GitHub Actions 文档",
+              "url": "https://docs.github.com/actions"
+            }
+          ],
+          "done_criteria": "CI 在 PR 上跑通，至少 3 个单测"
         },
         {
           "name": "构建 30 条评测样本集",
           "priority": "high",
           "checkin_mode": "daily",
           "checkin_goal": 10,
-          "description": "每天推进一批，共 10 天"
+          "description": "每天推进一批，共 10 天",
+          "how_to": [
+            "按场景分 5 类",
+            "每类 6 条",
+            "记录预期输出与评分标准"
+          ],
+          "resources": [
+            {
+              "label": "评测最佳实践",
+              "url": "https://platform.openai.com/docs/guides/evaluation-best-practices"
+            }
+          ],
+          "done_criteria": "30 条样本可一键跑完，输出评分报告"
         },
         {
           "name": "跑通评测并输出报告",
           "priority": "medium",
           "checkin_mode": "once",
-          "description": "产出可复现的评测报告"
+          "description": "产出可复现的评测报告",
+          "how_to": [
+            "固定模型与参数",
+            "跑两轮对比",
+            "把结论写进 README"
+          ],
+          "resources": [
+            {
+              "label": "项目 README",
+              "url": "https://github.com/W7uuuuz/Career-kit"
+            }
+          ],
+          "done_criteria": "有一份可复现的评测报告与结论"
         }
       ]
     }
@@ -456,9 +504,18 @@
       "checkin_mode": "percent",
       "checkin_goal": 80.0,
       "checkin_progress": 40.0,
-      "how_to": [],
-      "resources": [],
-      "done_criteria": ""
+      "how_to": [
+        "先梳理 4 条关键链路",
+        "接入结构化日志与 trace id",
+        "在 README 写清如何复现"
+      ],
+      "resources": [
+        {
+          "label": "OpenTelemetry Python",
+          "url": "https://opentelemetry.io/docs/languages/python/"
+        }
+      ],
+      "done_criteria": "4 条链路都有 trace，能在本地复现一次完整请求"
     },
     {
       "id": "task_006",
@@ -469,13 +526,22 @@
       "status": "completed",
       "priority": "medium",
       "started_at": null,
-      "completed_at": "2026-11-05T12:58:01.482995",
+      "completed_at": "2026-11-05T14:57:11.541139",
       "checkin_mode": "once",
       "checkin_goal": 0.0,
       "checkin_progress": 0.0,
-      "how_to": [],
-      "resources": [],
-      "done_criteria": ""
+      "how_to": [
+        "先补 3 个核心函数单测",
+        "加 GitHub Actions",
+        "确保 PR 上能跑"
+      ],
+      "resources": [
+        {
+          "label": "GitHub Actions 文档",
+          "url": "https://docs.github.com/actions"
+        }
+      ],
+      "done_criteria": "CI 在 PR 上跑通，至少 3 个单测"
     },
     {
       "id": "task_007",
@@ -490,9 +556,18 @@
       "checkin_mode": "daily",
       "checkin_goal": 10.0,
       "checkin_progress": 1.0,
-      "how_to": [],
-      "resources": [],
-      "done_criteria": ""
+      "how_to": [
+        "按场景分 5 类",
+        "每类 6 条",
+        "记录预期输出与评分标准"
+      ],
+      "resources": [
+        {
+          "label": "评测最佳实践",
+          "url": "https://platform.openai.com/docs/guides/evaluation-best-practices"
+        }
+      ],
+      "done_criteria": "30 条样本可一键跑完，输出评分报告"
     },
     {
       "id": "task_008",
@@ -503,40 +578,49 @@
       "status": "completed",
       "priority": "medium",
       "started_at": null,
-      "completed_at": "2026-11-05T12:58:01.458184",
+      "completed_at": "2026-11-05T14:57:11.512096",
       "checkin_mode": "once",
       "checkin_goal": 0.0,
       "checkin_progress": 0.0,
-      "how_to": [],
-      "resources": [],
-      "done_criteria": ""
+      "how_to": [
+        "固定模型与参数",
+        "跑两轮对比",
+        "把结论写进 README"
+      ],
+      "resources": [
+        {
+          "label": "项目 README",
+          "url": "https://github.com/W7uuuuz/Career-kit"
+        }
+      ],
+      "done_criteria": "有一份可复现的评测报告与结论"
     }
   ],
   "checkins": [
     {
       "task_id": "task_007",
-      "timestamp": "2026-11-05T12:58:01.446433",
+      "timestamp": "2026-11-05T14:57:11.496888",
       "status": "completed",
       "notes": "选定一个 Agent 相关开源项目，读完 CONTRIBUTING",
       "amount": 0.0
     },
     {
       "task_id": "task_008",
-      "timestamp": "2026-11-05T12:58:01.458184",
+      "timestamp": "2026-11-05T14:57:11.512096",
       "status": "completed",
       "notes": "跑通贡献流程，本地构建通过",
       "amount": 0.0
     },
     {
       "task_id": "task_005",
-      "timestamp": "2026-11-05T12:58:01.470214",
+      "timestamp": "2026-11-05T14:57:11.527122",
       "status": "completed",
       "notes": "日志已接入 4 个 Subgraph",
       "amount": 40.0
     },
     {
       "task_id": "task_006",
-      "timestamp": "2026-11-05T12:58:01.482995",
+      "timestamp": "2026-11-05T14:57:11.541139",
       "status": "completed",
       "notes": "评测样本已完成第一批 12 条",
       "amount": 0.0
@@ -548,7 +632,7 @@
   "plan_history": [
     {
       "version": 1,
-      "timestamp": "2026-11-05T12:58:01.360968",
+      "timestamp": "2026-11-05T14:57:11.406019",
       "content": {
         "roadmap": {
           "strategy_summary": "从「独立开发者」升级为「能进团队的 Agent 工程师」：先补工程化与协作证据，用开源贡献拿到第一段团队经历，再以中厂实习过渡，最后冲大厂校招。",
@@ -759,7 +843,7 @@
   ],
   "journey": [
     {
-      "timestamp": "2026-11-05T12:58:01.335192",
+      "timestamp": "2026-11-05T14:57:11.373328",
       "phase": "analysis",
       "knowledge": [],
       "analysis": {
@@ -772,19 +856,19 @@
   ],
   "audited_phases": [],
   "section_updated_at": {
-    "who": "2026-11-05T12:58:01.257346",
-    "have": "2026-11-05T12:58:01.482995",
-    "want": "2026-11-05T12:58:01.293764",
-    "plan": "2026-11-05T12:58:01.347515"
+    "who": "2026-11-05T14:57:11.272078",
+    "have": "2026-11-05T14:57:11.541139",
+    "want": "2026-11-05T14:57:11.319493",
+    "plan": "2026-11-05T14:57:11.390993"
   },
-  "plan_saved_at": "2026-11-05T12:58:01.347515",
+  "plan_saved_at": "2026-11-05T14:57:11.390993",
   "gap_stale_at": "",
   "guidance": {
-    "goal_confirmed_at": "2026-11-05T12:58:01.315360"
+    "goal_confirmed_at": "2026-11-05T14:57:11.348657"
   },
   "probe_skipped": false,
   "summary": "身份：name=示例用户，graduation_year=2027，education=双非本科 · 计算机相关专业，status=在校生（2027 届），location=一线城市；现状：self_assessment={'resume_trust': '基本可信；AI 辅助部分已单独标注', 'notes': '合成样例数据，仅用于演示'}，core_skills=[{'skill': 'Python', 'level': '熟练', 'evidence': '课程 + 多个独立项目；用户确认能独立完成', 'user_verified': True, 'authorship': 'self_written', 'control_level': 8}, {'skill': 'LangChain / LangGraph', 'level': '入门', 'evidence': '某 Agent 项目独立编写 6 个 Subgraph；用户确认独立完成，但无团队评审', 'user_verified': True, 'authorship': 'ai_assisted', 'control_level': 6}, {'skill': 'RAG 检索增强', 'level': '入门', 'evidence': '自建 3 层知识注入；用户确认实际跑通', 'user_verified': True, 'authorship': 'ai_assisted', 'control_level': 6}]，experience=1 段 3 个月小公司实习（电商），projects=['某 Agent 项目（独立开发，未开源协作）']；目标：target_role=AI Agent 工程师，target_company=大厂，city=一线城市，salary=面议，direction_confidence=8，experience_level=有一定基础但缺协作经历",
   "version": 23,
-  "created_at": "2026-11-05T12:58:01.257346",
-  "updated_at": "2026-11-05T12:58:01.482995"
+  "created_at": "2026-11-05T14:57:11.272078",
+  "updated_at": "2026-11-05T14:57:11.541139"
 }

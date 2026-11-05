@@ -36,4 +36,16 @@
 "<venv-python>" docs/examples/build_demo.py   # 用本仓库真实管线重建以上产物
 ```
 
+## 素材录制
+
+- `story.html`：痛点叙事页（示例数据，16:9 / 9:16 自适应）
+- `social-preview.html`：1280×640 社交预览
+- `../record_assets.py`：Playwright 录制脚本
+
+```bash
+"<venv-python>" docs/examples/record_assets.py --all
+```
+
+产物在 `artifacts/media/`（已 gitignore）：痛点视频、职业地图闭环、README GIF、静帧。
+
 > 解释器需与执行过 `pip install -e .` 的一致；多 Python 环境请用 venv 绝对路径。
