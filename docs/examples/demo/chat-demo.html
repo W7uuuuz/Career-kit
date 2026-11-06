@@ -444,10 +444,42 @@ body {
   }
 
   function redFlags() {
-    var out = [PICKS.exp.flag, PICKS.edu.flag];
+    var out = [expFlagForTarget(), PICKS.edu.flag];
     if (!PICKS.exp.collab) out.push('零团队协作证据，而目标 JD 明确要求代码评审经验');
     out.push(PICKS.goal.flag);
     return out.filter(Boolean).slice(0, 3);
+  }
+
+  /* 目标方向：用于把文案从 Agent 口径切到后端 / 测试口径 */
+  function targetKey() {
+    var t = PICKS.goal.title;
+    if (t === '后端开发') return 'backend';
+    if (t === '测试开发') return 'qa';
+    if (t === 'AI 应用开发') return 'ai_app';
+    return 'agent';
+  }
+
+  function expFlagForTarget() {
+    var t = targetKey();
+    if (PICKS.exp === EXP.intern_big && t === 'backend') return '现有经历偏业务开发，缺一个能直接讲的后端项目';
+    if (PICKS.exp === EXP.intern_big && t === 'qa') return '现有经历偏业务开发，缺测试项目与用例经验';
+    return PICKS.exp.flag;
+  }
+
+  /* 阶段一目标：按目标方向复用经历，而不是一律套 AI 口径 */
+  function phase1Goal() {
+    var e = PICKS.exp, t = targetKey();
+    if (t === 'backend') {
+      return e.collab
+        ? '把实习里的业务开发经验沉淀成一个后端项目：接口设计、数据层与部署'
+        : '把现有项目重构成一个可演示的后端服务：接口、数据层与并发';
+    }
+    if (t === 'qa') {
+      return e.collab
+        ? '把实习里验证过的流程沉淀成一个自动化测试项目：用例设计、脚本与报告'
+        : '把现有项目补成一个可演示的自动化测试项目：用例设计、脚本与报告';
+    }
+    return e.phase1;
   }
 
   /* 方向探索候选：按背景排序，第一张为推荐 */
@@ -486,12 +518,27 @@ body {
 
   /* ---------- 调研后的分析（JD vs 个人 / 面经同背景路径） ---------- */
   function jdAnalysis() {
-    var e = PICKS.exp, g = PICKS.goal, edu = PICKS.edu;
+    var e = PICKS.exp, g = PICKS.goal, edu = PICKS.edu, t = targetKey();
     var collabState = e.collab ? '有（实习期经过 code review）' : '<span class="flag">空白</span>';
-    var agentState = e.minimal
-      ? '<span class="flag">只有课程作业，拿不出手</span>'
-      : (e.agentProject ? '有独立项目（AI 辅助，无评审）'
-        : (e.collab ? '有业务中的 AI 功能接入（有 review）' : '仅教程级 RAG demo'));
+    var projectLabel = (t === 'backend' || t === 'qa') ? '项目与目标相关度' : 'AI 项目深度';
+    var projectState;
+    if (e.minimal) {
+      projectState = '<span class="flag">只有课程作业，拿不出手</span>';
+    } else if (t === 'backend') {
+      projectState = e.collab
+        ? '有业务开发经验，可迁移到后端'
+        : '<span class="flag">有完整项目，但偏 AI 应用，需补一个后端服务</span>';
+    } else if (t === 'qa') {
+      projectState = e.collab
+        ? '有业务交付经验，可迁移到测试'
+        : '<span class="flag">有完整项目，但缺自动化测试实践</span>';
+    } else if (e.agentProject) {
+      projectState = '有独立项目（AI 辅助，无评审）';
+    } else if (e.collab) {
+      projectState = '有业务中的 AI 功能接入（有 review）';
+    } else {
+      projectState = '仅教程级 RAG demo';
+    }
     var eduState;
     if (edu.score >= 8) eduState = '匹配（学历加分）';
     else if (edu.score < 0) eduState = '偏弱（需用项目补）';
@@ -502,8 +549,10 @@ body {
       verdict = '现在谈匹配度没有意义——先用一个最小项目建立「做过」的证据，再拿 2-3 个方向的真实 JD 试投验证。';
     } else if (g.plan === 'big') {
       verdict = 'JD 的两条硬要求里，<b>协作与代码评审</b>是你唯一的硬缺口；先把这一项补出证据，JD 匹配度会显著上升。';
-    } else if (g.title === '后端开发') {
+    } else if (t === 'backend') {
       verdict = '后端 JD 的硬门槛是<b>数据结构 / 并发基础</b>——你必须在投递前把八股与手撕算法补到能过面的水平，否则项目再好也进不了面试。';
+    } else if (t === 'qa') {
+      verdict = '测试开发 JD 的核心是<b>代码基础 + 测试意识</b>——先用一个自动化测试项目把「会写代码」变成「会测」，再谈投递。';
     } else {
       verdict = '实习 JD 更看「能多快上手落地」：先把作品与简历加工到可直接投递，再去投。';
     }
@@ -512,7 +561,7 @@ body {
       '<ul>'
         + '<li><b>JD 要求</b>：' + esc(g.jdReq) + '</li>'
         + '<li><b>协作 / 代码评审</b>：' + collabState + '</li>'
-        + '<li><b>AI 项目深度</b>：' + agentState + '</li>'
+        + '<li><b>' + projectLabel + '</b>：' + projectState + '</li>'
         + '<li><b>学历门槛</b>：' + esc(edu.tier + ' · ' + edu.major) + ' → ' + eduState + '</li>'
         + '</ul>',
       '结论：' + verdict,
@@ -549,7 +598,10 @@ body {
     if (!strengths.length) strengths.push('起步阶段：时间成本低，可塑性强');
 
     var gaps = [];
+    var t = targetKey();
     if (PICKS.exp.minimal) gaps.push('第一个可运行的项目（高优）');
+    else if (t === 'backend') gaps.push('可演示的后端项目：接口 / 数据层 / 并发（高优）');
+    else if (t === 'qa') gaps.push('自动化测试项目：用例 / 脚本 / 报告（高优）');
     else if (!PICKS.exp.agentProject) gaps.push('可演示的 AI 项目与评测思路（高优）');
     else gaps.push('Agent 工程化：trace / 评测集（高优）');
     if (!PICKS.exp.collab) gaps.push('多人协作 / 代码评审（高优）');
@@ -648,16 +700,27 @@ body {
                   { name: '系统刷高频算法与系统设计', mode: 'daily' }] },
       ];
     } else if (g.plan === 'mid') {
+      var midT = targetKey();
+      var midKpi = midT === 'backend' ? '1 个后端项目 + README 与接口文档'
+        : (midT === 'qa' ? '1 个自动化测试项目 + 用例与报告'
+          : '1 个带 README 与演示视频的项目');
+      var midTasks;
+      if (midT === 'backend') {
+        midTasks = [{ name: '完成一个后端项目主链路并写清复现步骤', mode: 'once' },
+                    { name: '补接口文档与单测', mode: 'once' },
+                    { name: '系统刷高频八股与手撕算法', mode: 'daily' }];
+      } else if (midT === 'qa') {
+        midTasks = [{ name: '完成一个 Web / API 自动化测试项目', mode: 'once' },
+                    { name: '整理 20 条用例与缺陷记录', mode: 'once' },
+                    { name: '补测试报告并跑通一次 CI', mode: 'once' }];
+      } else {
+        midTasks = [{ name: '完成项目主链路并写清复现步骤', mode: 'once' },
+                    { name: '录制 2 分钟演示视频', mode: 'once' },
+                    { name: '补 3 条评测样例并写结论', mode: 'once' }];
+      }
       phases = [
-        { name: '阶段一｜作品补齐', type: 'learn', goal: e.phase1,
-          kpi: g.title === '后端开发' ? '1 个后端项目 + README 与接口文档' : '1 个带 README 与演示视频的项目',
-          tasks: g.title === '后端开发'
-            ? [{ name: '完成一个后端项目主链路并写清复现步骤', mode: 'once' },
-               { name: '补接口文档与单测', mode: 'once' },
-               { name: '系统刷高频八股与手撕算法', mode: 'daily' }]
-            : [{ name: '完成项目主链路并写清复现步骤', mode: 'once' },
-               { name: '录制 2 分钟演示视频', mode: 'once' },
-               { name: '补 3 条评测样例并写结论', mode: 'once' }] },
+        { name: '阶段一｜作品补齐', type: 'learn', goal: phase1Goal(),
+          kpi: midKpi, tasks: midTasks },
         { name: '阶段二｜实习投递冲刺', type: 'project',
           goal: '按「' + g.title + '」实习 JD 定制简历，准备面试与项目复盘',
           kpi: '投递 15 家 + 3 次面试复盘',
