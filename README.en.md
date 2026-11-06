@@ -96,7 +96,7 @@ Follow the README "Quick start" — install with pipx (or uvx), register as a lo
 ```
 
 <details>
-<summary>Manual install (pipx / uvx) and GUI client registration (ChatGPT desktop / Doubao Work)</summary>
+<summary>Manual install and registration — click to expand</summary>
 
 **pipx** (isolated environment, no system pollution):
 

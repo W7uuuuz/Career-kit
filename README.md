@@ -100,7 +100,7 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 ```
 
 <details>
-<summary>手动安装（pipx / uvx）与 GUI 客户端注册（ChatGPT 桌面版 / 豆包工作）</summary>
+<summary>手动安装（pipx / uvx）与 GUI 客户端注册 - 点击展开</summary>
 
 **pipx 安装**（将命令装进独立环境，不污染系统 Python）：
 
