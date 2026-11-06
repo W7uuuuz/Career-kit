@@ -146,6 +146,7 @@ body {
       <p>真实岗位数据 × 同背景案例 · 数据存本机</p>
     </div>
     <span class="demo-tag">演示 · 合成数据</span>
+    <button class="restart" id="self-btn" type="button">输入我的信息</button>
     <button class="restart" id="restart-btn" type="button">重新开始</button>
   </div>
 
@@ -220,7 +221,11 @@ body {
         '<b>现状：</b>双非本科·计算机相关，1 段 3 个月小公司实习，独立开发过 Agent 项目。',
         '确认目标后也不是直接开跑——下一步我会逐项<b>向 TA 求证简历</b>：每条技能的作者身份（手写 / AI 辅助）和把控度，由本人回答，AI 不代填。',
       ],
-      opts: [{ label: '怎么求证？（看已确认结果）', goto: 5 }, { label: '直接看求证结果', goto: 5 }] },
+      opts: [
+        { label: '怎么求证？（看已确认结果）', goto: 5 },
+        { label: '直接看求证结果', goto: 5 },
+        { label: '换成我自己的信息', goto: 12 },
+      ] },
     { /* 5 */
       stepName: '建档',
       ai: [
@@ -283,10 +288,34 @@ body {
         '每个阶段拆成可打卡任务：按天打卡、按比例推进、按次完成都有——完成即沉淀为<b>能力证据</b>。职业地图已经按这条策略生成好了。',
       ],
       opts: [{ label: '打开职业地图', goto: 11, primary: true }] },
-    { /* 11 · 揭晓 */
-      stepName: '揭晓',
-      ai: [],
-    },
+    { /* 11 · 揭晓 */ stepName: '揭晓', ai: [], opts: [] },
+    { /* 12 · 预制档案选择 */
+      stepName: '建档',
+      ai: [
+        '好，换成你的信息。真实产品里这一步会把<b>你的目标与经历</b>变成档案——选一份最接近你的预设档案继续（演示里不上传任何数据）：',
+      ],
+      opts: [
+        { label: '27 届双非本科 · 在校 · 有独立 Agent 项目', goto: 13, primary: true,
+          data: { role: 'AI Agent 工程师（校招）', city: '一线城市 · 2027 届',
+                  status: '双非本科 · 在校 · 独立开发过 Agent 项目，无协作经历' } },
+        { label: '28 届 211 硕士 · 在校 · 做过 NLP 项目', goto: 13,
+          data: { role: 'AI 应用 / Agent 方向（校招）', city: '北京 · 2028 届',
+                  status: '211 硕士 · 在校 · 有 NLP 项目与竞赛经历' } },
+        { label: '在职 3 年后端 · 想转 AI Agent', goto: 13,
+          data: { role: 'AI Agent 工程师（转行）', city: '上海 · 社招',
+                  status: '后端 3 年 · 在职 · 尚无 AI 项目经历' } },
+      ] },
+    { /* 13 · 预制确认 */
+      stepName: '建档',
+      ai: function () {
+        var u = userInfo();
+        return [
+          '已把你的信息记入档案：<b>' + esc(u.role) + '</b>｜' + esc(u.city) + '。背景：' + esc(u.status) + '。',
+          '<b>演示边界</b>：接下来的求证与诊断沿用<b>示例用户的合成结果</b>给你展示完整流程；'
+            + '真实产品里，你的档案会被逐项求证，抓取的岗位、面经也会换成和你目标与背景匹配的数据。',
+        ];
+      },
+      opts: [{ label: '继续（沿用示例演示）', goto: 5 }] },
   ];
 
   /* ---------------- 引擎 ---------------- */
@@ -336,6 +365,7 @@ body {
         if (busy) return;
         addMsg('user', esc(o.label));
         Array.prototype.forEach.call(optsEl.children, function (x) { x.disabled = true; });
+        if (o.data) CK_INFO = o.data;
         runNode(o.goto);
       });
       optsEl.appendChild(b);
@@ -345,9 +375,10 @@ body {
     busy = true;
     optsEl.innerHTML = '';
     hintEl.textContent = 'Career Kit 正在回复……';
+    var msgs = typeof node.ai === 'function' ? node.ai() : node.ai;
     var typing = addMsg('ai', '<div class="typing"><i></i><i></i><i></i></div>');
-    node.ai.forEach(function (m, i) {
-      var isLast = i === node.ai.length - 1;
+    msgs.forEach(function (m, i) {
+      var isLast = i === msgs.length - 1;
       timers.push(setTimeout(function () {
         if (i === 0) typing.remove();
         addMsg('ai', bubbleHtml(m));
@@ -358,6 +389,10 @@ body {
       }, 650 + i * 950));
     });
   }
+  /* ---------- 预制档案（用户信息按钮） ---------- */
+  var CK_INFO = { role: 'AI Agent 工程师（校招）', city: '一线城市 · 2027 届',
+                  status: '双非本科 · 在校 · 独立开发过 Agent 项目，无协作经历' };
+  function userInfo() { return CK_INFO; }
   function runNode(idx) {
     var node = S[idx];
     if (!node) return;
@@ -378,7 +413,7 @@ body {
     mapWrap.style.display = 'none';
     resetAll();
   }
-  function resetAll() {
+  function resetAll(autoNode) {
     timers.forEach(clearTimeout); timers = [];
     chatEl.innerHTML = '';
     optsEl.innerHTML = '';
@@ -388,9 +423,12 @@ body {
     chatCard.style.display = 'flex';
     busy = false;
     renderStepper('');
-    runNode(0);
+    runNode(typeof autoNode === 'number' ? autoNode : 0);
   }
   document.getElementById('restart-btn').addEventListener('click', resetAll);
+  document.getElementById('self-btn').addEventListener('click', function () {
+    resetAll(12);
+  });
   document.getElementById('restart-chat').addEventListener('click', function (e) {
     e.preventDefault(); backToChat();
   });
