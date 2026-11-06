@@ -18,9 +18,9 @@
 
 <div align="center">
 
-### [点我 → 在线体验对话式陪练](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)
+### [点我 → 3分钟在线模拟体验](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)
 
-无需安装，像和 AI 教练对话一样走完整个流程；演示为固定选项对话与合成数据。
+无需安装，像和 AI 教练对话一样走完整个流程；演示为固定选项对话与合成数据，真实使用请安装到本地。
 
 </div>
 
@@ -48,10 +48,6 @@
 - **经验帖**：来自牛客网面经与 GitHub 上岸经验库，用于佐证「同等背景的人如何走通」。
 
 **[查看全部数据源、数据类型与使用教程 →](docs/scrapers.md)** · 新数据源欢迎社区补充（[贡献指南](CONTRIBUTING.md)，参考 `src/scrapers/_template/`）；抓取仅读取公开页面。
-
-## 60 秒在线体验
-
-打开 [在线对话演示](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)，用固定选项模拟和 AI 教练对话，走完「方向 → 建档 → 调研 → 差距 → 路线」全流程；职业地图会按你的选择实时生成，任务可勾选查看进度变化。
 
 ## 工作方式
 

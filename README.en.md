@@ -16,9 +16,9 @@ English | [中文](README.md)
 
 <div align="center">
 
-### [Try the conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)
+### [Try it → 3-minute online simulation](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)
 
-Chat with the coach via fixed options and walk the whole flow; scripted demo with synthetic data.
+Chat with the coach via fixed options and walk the whole flow; scripted demo with synthetic data. Install locally for real use.
 
 </div>
 
@@ -46,10 +46,6 @@ Data comes from 27 collected sources, growing steadily, covering internet / manu
 - **Experience posts**: Nowcoder interview reports and GitHub experience threads, as evidence of how people with the same background got through.
 
 **[All sources, data types, and usage guides →](docs/scrapers.md)** · community additions welcome ([CONTRIBUTING.md](CONTRIBUTING.md), see `src/scrapers/_template/`); scraping reads public pages only.
-
-## Try it online in 60 seconds
-
-Open the [conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html): fixed-option chat simulating the coach, walking direction → profiling → research → gap → roadmap. The career map is generated live from your selections, with checkable tasks.
 
 ## How it works
 
