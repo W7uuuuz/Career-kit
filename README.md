@@ -9,49 +9,47 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
-> 不知道做什么工作？Career Kit 是一个 AI 职业陪练 MCP 服务：用真实岗位和同背景案例，帮你找方向、看差距、拆出今天就能开始的下一步。
-
-接入 Claude Code / Cursor / opencode / Codex，帮你找对方向、补齐差距、走好下一步。
+> 不知道做什么工作？Career Kit 是一个 AI 职业陪练 MCP 服务——以真实岗位数据和同背景案例为依据，帮你确定方向、看清差距、拆解出当下即可执行的一步。可接入 Claude Code / Cursor / opencode / Codex。
 
 ![Career Kit 演示：不知道做什么工作 → 同背景的人怎么走 → 差距诊断 → 下一步](docs/examples/demo/readme-demo.gif)
 
-> **先看和你一样的人去了哪 → 你差哪一项 → 今天先做什么。**
+> **先看同背景的人去了哪 → 再看你差在哪 → 今天先做什么。**
 > 演示数据为合成，不含真实用户简历或报告。
 
-> **[点我 → 在线体验职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**  
-> 无需安装，直接勾选任务、看进度变化。
+> **[在线体验职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**  
+> 无需安装，可直接勾选任务、查看进度变化。
 
 [示例产物](docs/examples/demo/) · [完整文档](docs/README.md)
 
 ## 30 秒看懂
 
-- **真实数据，不瞎分析**：接入 27 个数据源且持续新增——BOSS 直聘（含薪资）、字节 / 腾讯 / 阿里 / 百度 / 美团 / 华为等 24 家企业官网招聘专区，牛客面经与 GitHub 上岸经验帖；AI 基于市场真实要求分析差距，差距必须锚定真实来源，否则被硬门禁拒绝。
-- **拆成阶段任务**：分阶段、里程碑、可打卡任务（按次 / 按天 / 按比例），随时问「下一步做什么」。
-- **求职漏斗可复盘**：投递 → 过筛 → 面试 → offer 全程记录（事件口径），「面试后被拒仍计入面试数」，让数据告诉你问题在简历还是面试。
-- **周检视**：一键生成周期复盘（打卡 / 阶段 / 漏斗 + 事实性建议），隔一段时间回来也能立刻接续。
+- **基于真实数据，不臆测**：接入 27 个数据源并持续扩充——BOSS 直聘（含薪资）、字节 / 腾讯 / 阿里 / 百度 / 美团 / 华为等 24 家企业官网招聘专区，以及牛客面经与 GitHub 上岸经验帖；差距分析必须锚定可验证的真实来源，否则会被硬性校验拒绝。
+- **拆解为阶段任务**：按阶段与里程碑拆分，任务可打卡（按次 / 按天 / 按比例）；任何时刻都可询问「下一步做什么」。
+- **求职漏斗可复盘**：投递 → 过筛 → 面试 → offer 全程按事件口径记录（面试后被拒仍计入面试数），据此判断瓶颈在简历还是在面试。
+- **周期复盘**：一键生成打卡 / 阶段 / 漏斗复盘与事实性建议，中断一段时间后也能立即接续。
 - **可交互职业地图**：一键导出自包含 HTML，勾选即打卡、进度实时更新、浏览器本地保存。
-- **跟着你变，不是死计划**：拿到面试触发洞察重估；换目标时已完成进度自动沉淀为能力证据。
+- **计划随目标调整**：获得面试触发进度重估；更换目标时，已完成的进度自动沉淀为能力证据。
 - **顺序归产品，时间归用户**：只为任务定义顺序与完成标准，不设时限。
 
-> 如果这个项目帮你少走弯路，点一个 Star，让更多正在求职的人看到它。
+> 如果这个项目对你有帮助，欢迎点一个 Star。
 
 ## 支持哪些网站
 
 数据来自 27 个已收录数据源（持续新增），分三类：
 
-- **企业官网招聘专区（24 个）**：字节 / 腾讯 / 阿里 / 百度 / 美团 / 网易 / 京东 / 快手 / 拼多多 / 小红书 / B站 / 小米 / 滴滴 / 携程等互联网公司，以及华为 / 京东方 / 三一 / 中车 / 汇川技术 / 阳光电源等制造 / 能源 / 硬件企业——互联网之外的方向也能看差距。
-- **招聘平台**：BOSS 直聘（唯一公开真实薪资范围的平台源，行情分析靠它）。
-- **经验帖**：牛客网面经、GitHub 双非 / 跨行上岸经验库——「和你一样的人怎么走」的依据。
+- **企业官网招聘专区（24 个）**：字节 / 腾讯 / 阿里 / 百度 / 美团 / 网易 / 京东 / 快手 / 拼多多 / 小红书 / B站 / 小米 / 滴滴 / 携程等互联网公司，以及华为 / 京东方 / 三一 / 中车 / 汇川技术 / 阳光电源等制造 / 能源 / 硬件企业——互联网之外的方向也能做差距分析。
+- **招聘平台**：BOSS 直聘，公开岗位薪资范围，薪酬行情以此为依据。
+- **经验帖**：来自牛客网面经与 GitHub 上岸经验库，覆盖双非、跨行等背景，用于佐证「同等背景的人如何走通」。
 
-**[查看全部数据源、数据类型与使用教程 →](docs/scrapers.md)** · 新数据源社区随时可加（[贡献指南](CONTRIBUTING.md)，参考 `src/scrapers/_template/`）；抓取始终只读公开页面。
+**[查看全部数据源、数据类型与使用教程 →](docs/scrapers.md)** · 新数据源欢迎社区补充（[贡献指南](CONTRIBUTING.md)，参考 `src/scrapers/_template/`）；抓取仅读取公开页面。
 
 ## 60 秒体验（不安装）
 
-- **在线版**：打开 [交互式职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)，直接勾选任务看进度变化。
+- **在线版**：打开 [交互式职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)，勾选任务即可查看进度变化。
 - **本地版**：双击 `docs/examples/demo/career-map.html`，或安装后运行 `career-kit-demo`。
-- 想看完整链路：`docs/examples/demo/` 里有样例简历生成的路线图、进度仪表盘和原始档案。
+- 需要查看完整链路时：`docs/examples/demo/` 内含样例简历生成的路线图、进度仪表盘和原始档案。
 
-## 它怎么工作
+## 工作方式
 
 ```
 你：我想转 AI Agent 方向
@@ -69,7 +67,7 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 
 底层是 41 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、任务与漏斗、洞察产出六大类。完整清单与调用时机见[工具总览](docs/tools.md)。
 
-## 为什么是它
+## 与现有工具的对比
 
 | | ChatGPT | 求职网站 | Career Kit |
 |---|---------|----------|------------|
@@ -87,14 +85,14 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 
 ## 适合谁
 
-- **适合你，如果你**：不知道做什么工作、想转行但不知道从哪开始，或者已经在找工作但不知道差在哪；会用 Claude Code / opencode 这类 AI 编程工具。
-- **暂不适合你，如果你**：完全没有命令行使用经验。当前形态需要安装 Python + 注册 MCP，Web / 无安装版本在规划中。
+- **适合你，如果**：不知道做什么工作、想转行但不知从何入手，或正在求职但说不清差距所在；能使用 Claude Code / opencode 这类 AI 编程工具。
+- **暂不适合，如果**：完全没有命令行使用经验——当前形态需要安装 Python 并注册 MCP，Web 与免安装版本在规划中。
 
 ## 快速开始
 
 ### 方式一：pipx 安装（推荐）
 
-`pipx` 会把命令装进独立环境，不污染系统 Python，也不需要记 uv 的用法。
+`pipx` 将命令安装进独立环境，不污染系统 Python。
 
 ```bash
 # 安装 pipx（只需一次）
@@ -104,7 +102,7 @@ python -m pipx ensurepath
 # 安装 Career Kit
 pipx install career-kit
 
-# 体检
+# 安装自检
 career-kit-doctor
 ```
 
@@ -113,10 +111,10 @@ career-kit-doctor
 
 ### 方式二：uvx 免安装
 
-已经装了 [uv](https://docs.astral.sh/uv/) 的话，可以完全不安装：
+已安装 [uv](https://docs.astral.sh/uv/) 时可以完全免安装：
 
 ```bash
-uvx --from career-kit career-kit-doctor   # 安装体检
+uvx --from career-kit career-kit-doctor   # 安装自检
 uvx --from career-kit career-kit          # 启动 MCP 服务（stdio）
 ```
 
@@ -140,10 +138,10 @@ cd Career-kit
 pip install -e .
 ```
 
-> **解释器很重要**：注册命令里的 `python` 必须是执行过 `pip install -e .` 的那一个。本机有多个 Python 时，裸 `python` 可能指向缺依赖的解释器。最稳妥是 venv 绝对路径：
+> **解释器很重要**：注册命令里的 `python` 必须是执行过 `pip install -e .` 的那个解释器。本机存在多个 Python 时，裸 `python` 可能指向缺少依赖的环境，推荐改用 venv 解释器的绝对路径：
 > `D:\path\to\Career-kit\.venv\Scripts\python.exe`（Windows）或 `.venv/bin/python`（macOS/Linux）。
 
-注册命令（把 `<venv-python>` 换成你的绝对路径）：
+注册命令（把 `<venv-python>` 替换为解释器的绝对路径）：
 
 ```bash
 claude mcp add career-kit -- <venv-python> -m src.server
@@ -156,7 +154,7 @@ opencode 配置：
 {"mcp": {"career-kit": {"type": "local", "command": ["<venv-python>", "-m", "src.server"], "enabled": true}}}
 ```
 
-> macOS 用户把 python 换成 python3。opencode 的 `.opencode/config.json` 不是 MCP 注册入口，改它是无效的。
+> macOS 下将 `python` 替换为 `python3`。opencode 的 `.opencode/config.json` 不是 MCP 注册入口，修改它不会生效。
 
 ### 方式四：一键安装脚本
 
@@ -168,7 +166,7 @@ bash install.sh
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-脚本会建好 `.venv`、装好依赖，并直接打印注册命令（使用绝对解释器路径）。
+脚本会创建 `.venv`、安装依赖，并输出注册命令（使用解释器绝对路径）。
 
 ### 本地控制台（可选）
 
@@ -178,7 +176,7 @@ career-kit-serve --open
 "<venv-python>" -m src.web --open
 ```
 
-只监听 `127.0.0.1`，用于查看路线图、任务怎么做 / 资源 / 完成标准并直接打卡；还可以编辑任务、登记投递、按方向筛选调研报告，并通过 SSE 自动刷新。打卡写入同一份 SQLite 档案，MCP 下次运行时直接读到。
+仅监听 `127.0.0.1`，用于查看路线图与任务详情（怎么做 / 资源 / 完成标准）并直接打卡；也支持编辑任务、登记投递、按方向筛选调研报告，并通过 SSE 自动刷新。打卡写入同一份 SQLite 档案，MCP 下次运行时即可读取。
 
 ### 验证安装
 
@@ -188,17 +186,17 @@ career-kit-doctor
 "<venv-python>" -m src.doctor
 ```
 
-全部 OK 后，对新会话说「调用 start_session」，或直接敲 `/career-kit`——收到「欢迎使用 Career Kit」即接入成功。
+全部通过后，在新会话中输入「调用 start_session」或 `/career-kit`，收到「欢迎使用 Career Kit」即接入成功。
 
 ### 常见问题
 
 | 现象 | 处理 |
 |------|------|
 | `pipx` / `uvx` 报找不到 `career-kit`，或安装 `iv8` 失败 | 默认镜像未同步：pipx 加 `--pip-args="--index-url https://pypi.org/simple"`；uvx 加 `--default-index https://pypi.org/simple` |
-| `No module named 'mcp'` | 注册用了错误解释器，改用 venv 绝对路径或 `uvx` |
+| `No module named 'mcp'` | 注册使用了错误的解释器，改用 venv 绝对路径或 `uvx` |
 | 抓取报 Playwright 相关错误 | 先执行 `playwright install chromium` |
-| BOSS 提示需要登录 | 由 Agent 运行登录脚本并打开浏览器，你只需扫码 |
-| 工具列表里没有 career-kit | 先跑 `career-kit-doctor`，再检查 Agent 的 MCP 连接状态 |
+| BOSS 提示需要登录 | 由 Agent 运行登录脚本并打开浏览器，用户只需扫码 |
+| 工具列表中没有 career-kit | 先运行 `career-kit-doctor`，再检查 Agent 的 MCP 连接状态 |
 
 ## 文档
 
@@ -213,9 +211,9 @@ career-kit-doctor
 
 ## 贡献
 
-欢迎 issue、PR 和新的企业数据源。开始前请读 [CONTRIBUTING.md](CONTRIBUTING.md)；新增企业源请参考 `src/scrapers/_template/`。
+欢迎 issue、PR 与新的企业数据源。开始前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；新增企业源请参考 `src/scrapers/_template/`。
 
-如果这个项目帮你少走了弯路，点一个 Star 就是最好的支持——它会让更多正在求职的人看到它。
+如果这个项目帮你少走了弯路，一个 Star 会帮助更多求职者发现它。
 
 ## 开源协议
 
