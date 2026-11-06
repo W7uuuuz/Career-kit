@@ -9,7 +9,7 @@
 :root {
   --bg: #f3f5fb; --chat-bg: #f8f9fd; --card: #ffffff; --ink: #1f2430;
   --muted: #8a93a6; --line: #e6e9f0; --brand: #4a6cf7; --brand-2: #6f8bff;
-  --brand-soft: #eef1fe; --ok: #22a06b; --warn: #b26a00;
+  --brand-soft: #eef1fe; --ok: #22a06b; --ok-soft: #e8f7f0; --warn: #b26a00;
   --radius: 16px;
   --shadow: 0 1px 3px rgba(31,36,48,.06), 0 8px 24px rgba(31,36,48,.08);
   --shadow-lift: 0 6px 22px rgba(74,108,247,.22);
@@ -24,7 +24,7 @@ body {
     radial-gradient(900px 420px at 100% -20%, #e0ecff 0%, transparent 55%),
     var(--bg);
 }
-.page { max-width: 800px; margin: 0 auto; padding: 0 16px; display: flex; flex-direction: column; height: 100%; }
+.page { max-width: 820px; margin: 0 auto; padding: 0 16px; display: flex; flex-direction: column; height: 100%; }
 
 /* ---------- 顶栏 ---------- */
 .top { display: flex; align-items: center; gap: 12px; padding: 14px 2px 8px; }
@@ -42,7 +42,7 @@ body {
   color: var(--muted); font-size: 12px; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .restart:hover { color: var(--brand); border-color: var(--brand); }
 
-/* ---------- 旅程刻度（单行可横滑） ---------- */
+/* ---------- 旅程刻度 ---------- */
 .stepper { display: flex; gap: 6px; padding: 0 2px 10px; overflow-x: auto;
   scrollbar-width: none; -ms-overflow-style: none; }
 .stepper::-webkit-scrollbar { display: none; }
@@ -60,8 +60,7 @@ body {
 /* ---------- 对话区 ---------- */
 .chat-card { background: var(--chat-bg); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow);
-  display: flex; flex-direction: column; flex: 1; min-height: 0;
-  overflow: hidden; }
+  display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .chat { flex: 1; overflow-y: auto; padding: 18px 16px 8px; scroll-behavior: smooth; }
 .chat::-webkit-scrollbar { width: 8px; }
 .chat::-webkit-scrollbar-thumb { background: #dce0ec; border-radius: 4px; }
@@ -79,8 +78,6 @@ body {
   color: #fff; border-top-right-radius: 5px; }
 .bubble b { color: inherit; }
 .ai .bubble b { color: #2b3674; }
-
-/* 气泡内的小结构 */
 .bubble ul { margin: 6px 0 0 18px; font-size: 13px; }
 .bubble li { margin: 3px 0; }
 .bubble .flag { color: var(--warn); font-weight: 600; }
@@ -90,7 +87,7 @@ body {
   padding: 6px 10px; font-size: 12px; color: var(--muted); }
 .score b { font-size: 17px; color: var(--brand); }
 
-/* ---------- 调研结果：通栏面板 + 入场动效 ---------- */
+/* ---------- 调研结果：通栏面板 ---------- */
 .research { display: block; margin: -4px 0 16px; }
 .research .anchor { display: flex; align-items: center; gap: 8px; color: var(--brand);
   font-size: 12px; margin: 0 0 8px 40px; white-space: nowrap; }
@@ -100,8 +97,7 @@ body {
   linear-gradient(90deg, rgba(74,108,247,.55), transparent); }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(74,108,247,.45); }
   70% { box-shadow: 0 0 0 9px rgba(74,108,247,0); } 100% { box-shadow: 0 0 0 0 rgba(74,108,247,0); } }
-.research .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
-  margin: 0 -2px; }
+.research .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 -2px; }
 .rcard { position: relative; background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
   border: 1px solid #dde4ff; border-radius: 14px; padding: 13px 14px 12px;
   box-shadow: var(--shadow); opacity: 0; transform: translateY(16px) scale(.97);
@@ -117,6 +113,28 @@ body {
 .rcard .foot .okdot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 @media (max-width: 680px) { .research .cards { grid-template-columns: 1fr; } }
 
+/* ---------- 路线阶段面板（独立前端，不塞进气泡） ---------- */
+.plan { display: block; margin: -4px 0 16px; }
+.plan .anchor { display: flex; align-items: center; gap: 8px; color: var(--brand);
+  font-size: 12px; margin: 0 0 8px 40px; white-space: nowrap; }
+.plan .anchor .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand);
+  animation: pulse 1.8s infinite; }
+.plan .anchor .line { flex: 1; max-width: 60px; height: 1px;
+  background: linear-gradient(90deg, rgba(74,108,247,.55), transparent); }
+.plan .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 0 -2px; }
+.pcard { position: relative; background: #fff; border: 1px solid #dde4ff;
+  border-radius: 14px; padding: 13px 14px 12px; box-shadow: var(--shadow);
+  opacity: 0; transform: translateY(14px); animation: cardIn .5s cubic-bezier(.22,.9,.28,1) both; }
+.pcard:hover { border-color: var(--brand); box-shadow: var(--shadow-lift); transition: .2s; }
+.pcard .no { position: absolute; right: 12px; top: 10px; font-size: 11px;
+  color: var(--brand); background: var(--brand-soft); border-radius: 8px; padding: 1px 7px; }
+.pcard h4 { font-size: 13.5px; padding-right: 44px; }
+.pcard .goal { font-size: 12px; color: #5a6270; margin-top: 5px; }
+.pcard .kpi { font-size: 11.5px; color: var(--muted); margin-top: 6px;
+  padding-top: 6px; border-top: 1px dashed var(--line); }
+.pcard .kpi b { color: var(--ok); font-weight: 600; }
+@media (max-width: 680px) { .plan .grid { grid-template-columns: 1fr; } }
+
 /* ---------- 输入指示 ---------- */
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 14px; border-top-left-radius: 5px; }
@@ -131,13 +149,10 @@ body {
   padding: 12px 16px 14px; min-height: 80px; display: flex; flex-direction: column;
   gap: 8px; justify-content: center; }
 .hint { font-size: 11.5px; color: var(--muted); min-height: 15px; text-align: center; }
-
-/* 普通选项：居中 */
 .opts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .opt { border: 1.4px solid #ccd6ff; background: #fff; color: var(--brand);
   font-size: 13.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
-  transition: transform .12s, box-shadow .12s, opacity .2s;
-  animation: rise .3s ease both; }
+  transition: transform .12s, box-shadow .12s, opacity .2s; animation: rise .3s ease both; }
 .opt:hover { border-color: var(--brand); transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(74,108,247,.25); }
 .opt:active { transform: translateY(0); box-shadow: none; }
@@ -146,7 +161,7 @@ body {
 .opt:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
 .opt:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-/* 分轮信息：三张可选卡片（选中高亮） */
+/* 分轮信息：三张可选卡片 */
 .picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .pick { position: relative; text-align: left; cursor: pointer; background: #fff;
   border: 1.6px solid var(--line); border-radius: 13px; padding: 12px 13px 11px;
@@ -160,33 +175,58 @@ body {
   display: grid; place-items: center; font-size: 11px; color: transparent; transition: all .15s; }
 .pick[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft);
   box-shadow: 0 4px 16px rgba(74,108,247,.18); }
-.pick[aria-pressed="true"] .p-check { background: var(--brand); border-color: var(--brand);
-  color: #fff; }
+.pick[aria-pressed="true"] .p-check { background: var(--brand); border-color: var(--brand); color: #fff; }
 .pick[aria-pressed="true"] .p-title { color: #2b3674; }
 @media (max-width: 680px) { .picker { grid-template-columns: 1fr; } }
 
-/* 发送行：右下角 */
 .sendrow { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
 .sendrow .sel-note { font-size: 11.5px; color: var(--muted); margin-right: auto; }
 .send-btn { background: linear-gradient(135deg, var(--brand), var(--brand-2));
   color: #fff; border: none; border-radius: 999px; padding: 9px 22px;
   font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(74,108,247,.3);
   transition: transform .12s, opacity .2s; }
-.send-btn:hover:not(:disabled) { transform: translateY(-1px); }
-.send-btn:disabled { opacity: .4; cursor: default; box-shadow: none; }
+.send-btn:hover { transform: translateY(-1px); }
 
-/* ---------- 职业地图揭晓 ---------- */
-.map-wrap { display: none; padding: 14px 2px 0; flex: 1; min-height: 0; }
-.map-card { background: var(--card); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
-  display: flex; flex-direction: column; height: 100%; }
+/* ---------- 职业地图（按所选组合实时渲染） ---------- */
+.map-wrap { display: none; flex: 1; min-height: 0; padding: 10px 2px 0; }
+.map-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; height: 100%; }
 .map-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
   border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; flex-wrap: wrap; }
 .map-head .sub { color: var(--muted); font-size: 12px; font-weight: 400; }
-.map-head .lnk { margin-left: auto; }
+.map-head .lnk { margin-left: auto; display: flex; gap: 10px; }
 .map-head a { color: var(--brand); font-size: 12.5px; text-decoration: none; font-weight: 500; }
 .map-head a:hover { text-decoration: underline; }
-.map-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.map-body { flex: 1; overflow-y: auto; padding: 14px 16px 18px; }
+.m-sum { display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  padding-bottom: 10px; border-bottom: 1px dashed var(--line); margin-bottom: 12px; }
+.m-ring { --p: 0; width: 62px; height: 62px; border-radius: 50%;
+  background: conic-gradient(var(--brand) calc(var(--p) * 1%), #e9ecf6 0);
+  display: grid; place-items: center; flex: none; }
+.m-ring span { width: 48px; height: 48px; border-radius: 50%; background: #fff;
+  display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--brand); }
+.m-sum .txt { font-size: 12.5px; color: var(--muted); }
+.m-sum .txt b { color: var(--ink); font-size: 13.5px; }
+.m-strategy { font-size: 12.5px; color: #4a5160; background: var(--brand-soft);
+  border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; }
+.m-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.m-tab { border: 1px solid var(--line); background: #fff; color: var(--muted);
+  font-size: 12px; border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.m-tab.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.m-phase { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  animation: rise .3s ease both; }
+.m-phase h4 { font-size: 14px; }
+.m-phase .goal { font-size: 12.5px; color: #5a6270; margin-top: 4px; }
+.m-phase .kpi { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.m-phase .kpi b { color: var(--ok); }
+.m-tasks { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.m-task { display: flex; align-items: flex-start; gap: 9px; padding: 6px 2px; border-radius: 8px; }
+.m-task:hover { background: var(--brand-soft); }
+.m-task input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--brand); cursor: pointer; }
+.m-task .tname { flex: 1; font-size: 13px; }
+.m-task .tname.done { text-decoration: line-through; color: var(--muted); }
+.m-task .tmode { font-size: 11px; color: var(--muted); }
+.m-empty { color: var(--muted); font-size: 12.5px; }
 
 .footer { padding: 10px 2px 14px; text-align: center; color: var(--muted); font-size: 11.8px; }
 @media (max-width: 640px) {
@@ -223,15 +263,16 @@ body {
   <div class="map-wrap" id="map-wrap">
     <div class="map-card">
       <div class="map-head">
-        AI 陪练生成的职业地图
-        <span class="sub">任务可勾选，进度实时变化</span>
-        <span class="lnk"><a href="#" id="restart-chat">重新走一遍对话 ↺</a> · <a href="career-map.html" target="_blank" rel="noopener">新窗口打开</a></span>
+        职业地图 · 按你的选择实时生成
+        <span class="sub" id="map-sub"></span>
+        <span class="lnk"><a href="#" id="restart-chat">重新走一遍对话 ↺</a>
+          · <a href="career-map.html" target="_blank" rel="noopener">完整示例地图</a></span>
       </div>
-      <iframe class="map-frame" id="map-frame" src="about:blank" title="职业地图"></iframe>
+      <div class="map-body" id="map-body"></div>
     </div>
   </div>
 
-  <p class="footer">演示页不接入 LLM；对话与结论由所选信息按规则实时生成（合成数据，非真实用户档案）。</p>
+  <p class="footer">演示页不接入 LLM；对话、结论与职业地图均由所选信息按规则实时生成（合成数据，非真实用户档案）。</p>
 </div>
 
 <script>
@@ -243,34 +284,25 @@ body {
   var stepEl = document.getElementById('stepper');
   var mapWrap = document.getElementById('map-wrap');
   var chatCard = document.getElementById('chat-card');
+  var mapBody = document.getElementById('map-body');
+  var mapSub = document.getElementById('map-sub');
 
   var STEPS = ['方向', '建档', '调研', '差距', '路线', '揭晓'];
 
-  /* ---------------- 预置选项与画像（选择决定后续全部内容） ---------------- */
+  /* ---------------- 预置画像：选择决定后续全部内容 ---------------- */
   var EDU = {
-    ben_cs: {
-      title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目', year: '2027 届',
-      tier: '双非本科', major: '计算机',
-      score: 0, strength: '计算机基础完整，科班背景不自证',
-      flag: '双非学历，大厂简历初筛存在风险',
-    },
-    ms_211: {
-      title: '211 硕士 · 软件工程', sub: '2028 届在读 · 有课程项目', year: '2028 届',
-      tier: '211 硕士', major: '软件工程',
-      score: 8, strength: '211 硕士学历，过初筛有优势',
-      flag: '',
-    },
-    ben_noncs: {
-      title: '双非本科 · 非科班', sub: '2027 届在读 · 机械背景自学', year: '2027 届',
-      tier: '双非本科', major: '机械（非科班）',
-      score: -4, strength: '跨专业自学执行力强',
-      flag: '非科班，计算机基础需要用项目自证',
-    },
+    ben_cs: { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目', year: '2027 届',
+      tier: '双非本科', major: '计算机', score: 0,
+      strength: '计算机基础完整，科班背景不自证', flag: '双非学历，大厂简历初筛存在风险' },
+    ms_211: { title: '211 硕士 · 软件工程', sub: '2028 届在读 · 有课程项目', year: '2028 届',
+      tier: '211 硕士', major: '软件工程', score: 8,
+      strength: '211 硕士学历，过初筛有优势', flag: '' },
+    ben_noncs: { title: '双非本科 · 非科班', sub: '2027 届在读 · 机械背景自学', year: '2027 届',
+      tier: '双非本科', major: '机械（非科班）', score: -4,
+      strength: '跨专业自学执行力强', flag: '非科班，计算机基础需要用项目自证' },
   };
-
   var EXP = {
-    intern_small: {
-      title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）',
+    intern_small: { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）',
       score: 3, collab: false, agentProject: true,
       strength: '能独立搭起完整 Agent 链路（多 Subgraph + RAG）',
       flag: '实习公司小、时长仅 3 个月，含金量被 HR 打折',
@@ -279,10 +311,8 @@ body {
         { name: 'LangChain / LangGraph', auth: 'ai_assisted', level: '独立写 6 个 Subgraph，但没有任何人 review 过', control: 6 },
         { name: 'RAG 检索增强', auth: 'ai_assisted', level: '跑通 3 层知识注入', control: 6 },
       ],
-      phase1: '给现有 Agent 项目补 trace、评测集与 CI，把独立开发升级成有规范、可演示的工程产出',
-    },
-    exp_none: {
-      title: '无实习经历', sub: '课程项目 + 一个 RAG demo',
+      phase1: '给现有 Agent 项目补 trace、评测集与 CI，把独立开发升级成有规范、可演示的工程产出' },
+    exp_none: { title: '无实习经历', sub: '课程项目 + 一个 RAG demo',
       score: -6, collab: false, agentProject: false,
       strength: '学习路径自驱，已跑通 RAG demo',
       flag: '零实习经历，简历容易被直接筛掉',
@@ -291,10 +321,8 @@ body {
         { name: 'Django / Flask', auth: 'ai_assisted', level: '课程项目写过接口，无生产环境', control: 5 },
         { name: 'RAG 检索增强', auth: 'ai_assisted', level: '跟教程跑通 demo，未做评测', control: 4 },
       ],
-      phase1: '从 0 做一个能演示的 Agent 项目：目标可量化、有评测集、写清复现步骤',
-    },
-    intern_big: {
-      title: '6 个月中大厂实习', sub: '参与过真实业务团队开发',
+      phase1: '从 0 做一个能演示的 Agent 项目：目标可量化、有评测集、写清复现步骤' },
+    intern_big: { title: '6 个月中大厂实习', sub: '参与过真实业务团队开发',
       score: 9, collab: true, agentProject: false,
       strength: '有团队协作与生产环境交付经验',
       flag: 'AI 项目深度不足，需要补一个可展示的 AI 作品',
@@ -303,55 +331,38 @@ body {
         { name: '后端服务（FastAPI）', auth: 'self_written', level: '在生产环境迭代过接口', control: 7 },
         { name: 'LLM 应用', auth: 'ai_assisted', level: '参与过 AI 功能接入，有 code review', control: 6 },
       ],
-      phase1: '把实习里的业务经验延伸成一个 AI 应用作品：带 trace 与评测，突出你熟悉的工程规范',
-    },
+      phase1: '把实习里的业务经验延伸成一个 AI 应用作品：带 trace 与评测，突出你熟悉的工程规范' },
   };
-
   var GOAL = {
-    agent_big: {
-      title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海',
-      score: -3, city: '上海',
-      target: '大厂 AI Agent 岗（校招）',
+    agent_big: { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海',
+      score: -3, city: '上海', target: '大厂 AI Agent 岗（校招）',
       salary: '20-30K（BOSS 直聘同岗）',
-      jd: '字节官网 JD 原文点名「多人协作与代码评审经验」',
+      jd: '字节官网 JD 原文点名「多人协作与代码评审经验」', jdReq: '多人协作与代码评审经验',
       peer: '牛客 2027 届双非转 Agent：3 份面经共性为先补协作证据',
-      flag: '大厂校招竞争激烈，缺协作证据难破初筛',
-      plan: 'big',
-    },
-    app_mid: {
-      title: 'AI 应用开发', sub: '先中厂实习 · base 杭州',
-      score: 4, city: '杭州',
-      target: '中厂 AI 应用实习（转正 / 再跳）',
+      flag: '大厂校招竞争激烈，缺协作证据难破初筛', plan: 'big' },
+    app_mid: { title: 'AI 应用开发', sub: '先中厂实习 · base 杭州',
+      score: 4, city: '杭州', target: '中厂 AI 应用实习（转正 / 再跳）',
       salary: '200-300/天（BOSS 直聘实习岗）',
-      jd: '中厂实习 JD：Python / LLM 应用 / 团队协作意识',
+      jd: '中厂实习 JD：Python / LLM 应用 / 团队协作意识', jdReq: 'Python / LLM 应用 / 团队协作意识',
       peer: '牛客实习面经：中厂更看项目落地与沟通能力',
-      flag: '实习窗口期短，需要尽快准备好可投的项目',
-      plan: 'mid',
-    },
-    undecided: {
-      title: '方向还没定', sub: 'base 不限 · 想先看看市场',
-      score: 1, city: '不限',
-      target: 'AI 应用方向（待验证）',
+      flag: '实习窗口期短，需要尽快准备好可投的项目', plan: 'mid' },
+    undecided: { title: '方向还没定', sub: 'base 不限 · 想先看看市场',
+      score: 1, city: '不限', target: 'AI 应用方向（待验证）',
       salary: '15-30K（AI 应用岗位区间）',
-      jd: '多行业 JD 对比：AI 应用岗门槛低于算法岗，更看落地',
+      jd: '多行业 JD 对比：AI 应用岗门槛低于算法岗，更看落地', jdReq: 'AI 应用落地能力与沟通',
       peer: '牛客转行帖：先做一个小项目，再决定押哪个方向',
-      flag: '方向未定，容易分散投入，需要先验证',
-      plan: 'explore',
-    },
+      flag: '方向未定，容易分散投入，需要先验证', plan: 'explore' },
   };
 
-  /* 当前选择（默认第一项） */
-  var PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big };
+  var PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big, eduKey: 'ben_cs', expKey: 'intern_small', goalKey: 'agent_big' };
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
-  function matchScore() {
-    return clamp(54 + PICKS.edu.score + PICKS.exp.score + PICKS.goal.score, 40, 78);
-  }
+  function matchScore() { return clamp(54 + PICKS.edu.score + PICKS.exp.score + PICKS.goal.score, 40, 78); }
   function startLevel() { return matchScore() >= 65 ? '中厂' : '小厂'; }
 
   function redFlags() {
     var out = [PICKS.exp.flag, PICKS.edu.flag];
-    if (!PICKS.exp.collab) out.push('零团队协作证据，而大厂 JD 明确要求代码评审经验');
+    if (!PICKS.exp.collab) out.push('零团队协作证据，而目标 JD 明确要求代码评审经验');
     out.push(PICKS.goal.flag);
     return out.filter(Boolean).slice(0, 3);
   }
@@ -360,12 +371,138 @@ body {
     var steps = [];
     PICKS.exp.skills.forEach(function (s, i) {
       steps.push({ who: 'ai', text: '第 ' + (i + 1) + ' 项：<b>' + esc(s.name) + '</b>——能独立完成吗？代码是你自己写的，还是有 AI 参与？' });
-      var authLabel = s.auth === 'self_written' ? '手写，从设计到实现都是我自己完成' : 'AI 生成后我逐段验证并改过，但没有其他人 review';
-      steps.push({ who: 'user', text: authLabel + '。' + s.level + '。' });
+      steps.push({ who: 'user', text: (s.auth === 'self_written' ? '手写，从设计到实现都是我自己完成' : 'AI 生成后我逐段验证并改过，但没有其他人 review') + '。' + s.level + '。' });
     });
-    steps.push({ who: 'ai', text: '收到——这不是简历原文，而是你确认过的事实。把控度我按你的描述记档：' +
+    steps.push({ who: 'ai', text: '收到——这不是简历原文，而是你确认过的事实。把控度记档：' +
       PICKS.exp.skills.map(function (s) { return esc(s.name) + ' ' + s.control + '/10'; }).join('、') + '。' });
     return steps;
+  }
+
+  /* ---------- 调研后的分析（JD vs 个人 / 面经同背景路径） ---------- */
+  function jdAnalysis() {
+    var e = PICKS.exp, g = PICKS.goal, edu = PICKS.edu;
+    var collabState = e.collab ? '有（实习期经过 code review）' : '<span class="flag">空白</span>';
+    var agentState = e.agentProject ? '有独立项目（AI 辅助，无评审）'
+      : (e.collab ? '有业务中的 AI 功能接入（有 review）' : '仅教程级 RAG demo');
+    var eduState = g.plan === 'big'
+      ? (edu.score >= 8 ? '匹配（学历是加分项）' : '偏弱（用项目含金量补）')
+      : '不是主要门槛';
+    var verdict = g.plan === 'big'
+      ? 'JD 的两条硬要求里，<b>协作与代码评审</b>是你唯一的硬缺口；先把这一项补出证据，JD 匹配度会显著上升。'
+      : (g.plan === 'mid'
+        ? '实习 JD 更看「能多快上手落地」：你的项目目前演示力不足，先把作品与简历加工到可直接投递。'
+        : '各方向 JD 的共同点是「落地能力 + 沟通」：先用小项目验证方向，再决定押注，避免泛泛准备。');
+    return [
+      '先把刚抓到的 JD 和你的档案逐条对齐（这才是「真实数据」的价值，不只贴个链接）：',
+      '<ul>'
+        + '<li><b>JD 要求</b>：' + esc(g.jdReq) + '</li>'
+        + '<li><b>协作 / 代码评审</b>：' + collabState + '</li>'
+        + '<li><b>AI 项目深度</b>：' + esc(agentState) + '</li>'
+        + '<li><b>学历门槛</b>：' + esc(edu.tier + ' · ' + edu.major) + ' → ' + eduState + '</li>'
+        + '</ul>',
+      '结论：' + verdict,
+    ];
+  }
+
+  function peerAnalysis() {
+    var e = PICKS.exp, g = PICKS.goal;
+    var steps = [];
+    if (!e.collab) {
+      steps.push('先补「被协作过」的证据（开源 PR + review 往返），而不是直接投大厂');
+      steps.push(g.plan === 'explore' ? '同时试投 2-3 个方向的小岗位，用真实反馈校准方向' : '用补完证据的项目投中厂 / 实习岗，拿到第一段团队经历');
+    } else {
+      steps.push('把实习产出量化写清（做了什么、影响多少指标、和谁协作）');
+      steps.push(g.plan === 'big' ? '按大厂 JD 定制简历，重点讲团队里的项目复盘' : '用这段团队经历直接冲下一段更好的实习 / 岗位');
+    }
+    steps.push(g.plan === 'explore'
+      ? '共性结论：先验证再深耕——别在没验证的方向上砸时间'
+      : '共性结论：先有证据再投递——空有项目但无协作证明，面试前就会被筛掉');
+    return [
+      '再看刚抓到的面经：<b>和你背景相近的人，实际是怎么走通的？</b>',
+      '<ul>' + steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul>',
+    ];
+  }
+
+  /* ---------- 结构化路线（同时供阶段面板与职业地图使用） ---------- */
+  function roadmapPlan() {
+    var e = PICKS.exp, g = PICKS.goal, edu = PICKS.edu;
+    var strategyMap = {
+      big: '从当前背景出发，先补工程化与协作证据，再以中厂实习过渡，最后冲大厂校招——不做一步跳级。',
+      mid: '先把作品与简历加工到可直接投实习，再以中厂实习完成从校园到职场的过渡。',
+      explore: '先用小项目与试投验证方向，锁定后再集中补齐差距，避免分散投入。',
+    };
+    var phases;
+    if (g.plan === 'big') {
+      phases = [
+        { name: '阶段一｜工程化补齐', type: 'learn', goal: e.phase1,
+          kpi: '1 个可演示开源仓库（trace + 评测集）',
+          tasks: [{ name: '为项目补 trace 与结构化日志', mode: 'percent' },
+                  { name: '补单测与 CI 流水线', mode: 'once' },
+                  { name: '构建 30 条评测样本集', mode: 'daily' }] },
+        { name: '阶段二｜协作证据', type: 'project',
+          goal: e.collab ? '把已有协作经历升级成可讲的项目评审故事，并参与开源拿到 2 个 merge 的 PR' : '拿到「被团队协作过」的硬证据，补掉独立开发盲区',
+          kpi: '2-3 个被 merge 的开源 PR + review 往返记录',
+          tasks: [{ name: '选定并跑通 1 个开源项目贡献流程', mode: 'once' },
+                  { name: '提交第 1 个 PR（good-first-issue）', mode: 'once' },
+                  { name: '拿到一次 code review 并完成修改', mode: 'once' }] },
+        { name: '阶段三｜中厂实习过渡', type: 'intern', company: '某中厂 AI 应用团队',
+          goal: '用一段有 AI 业务的团队实习作为大厂跳板',
+          kpi: '1 段 ≥3 个月实习 + 项目产出',
+          tasks: [{ name: '按中厂 JD 定制简历并投递 15 家', mode: 'once' },
+                  { name: '准备 AI 应用面试与项目深挖', mode: 'once' }] },
+        { name: '阶段四｜大厂校招冲刺（' + edu.year + '）', type: '校招', company: '某大厂',
+          goal: '以实习 + 协作证据冲击大厂校招',
+          kpi: '进入终面',
+          tasks: [{ name: '整理目标岗位 JD 并定制简历', mode: 'once' },
+                  { name: '系统刷高频算法与系统设计', mode: 'daily' }] },
+      ];
+    } else if (g.plan === 'mid') {
+      phases = [
+        { name: '阶段一｜作品补齐', type: 'learn', goal: e.phase1,
+          kpi: '1 个带 README 与演示视频的项目',
+          tasks: [{ name: '完成项目主链路并写清复现步骤', mode: 'once' },
+                  { name: '录制 2 分钟演示视频', mode: 'once' },
+                  { name: '补 3 条评测样例并写结论', mode: 'once' }] },
+        { name: '阶段二｜实习投递冲刺', type: 'project',
+          goal: '按中厂实习 JD 定制简历，准备面试与项目复盘',
+          kpi: '投递 15 家 + 3 次面试复盘',
+          tasks: [{ name: '定制简历并投递 15 家', mode: 'daily' },
+                  { name: '整理高频面经题库并逐条准备', mode: 'daily' }] },
+        { name: '阶段三｜中厂实习落地（' + g.city + '）', type: 'intern', company: '某中厂 AI 应用团队',
+          goal: '进入 AI 业务团队，完成从校园到协作交付的过渡',
+          kpi: '1 段实习 + 首个迭代上线',
+          tasks: [{ name: '入职并完成首个迭代任务', mode: 'once' },
+                  { name: '记录并沉淀团队协作证据', mode: 'daily' }] },
+        { name: '阶段四｜转正评估 / 再跳', type: 'intern',
+          goal: '实习期结束前完成绩效复盘，决定转正或跳槽',
+          kpi: '转正结论或下一段 offer',
+          tasks: [{ name: '完成实习绩效复盘', mode: 'once' },
+                  { name: '更新简历并评估跳槽机会', mode: 'once' }] },
+      ];
+    } else {
+      phases = [
+        { name: '阶段一｜方向验证', type: 'learn', goal: e.phase1,
+          kpi: '1 个能演示的小项目 + 兴趣自评',
+          tasks: [{ name: '做一个小项目验证兴趣与耐受度', mode: 'once' },
+                  { name: '记录投入产出与真实感受', mode: 'once' }] },
+        { name: '阶段二｜岗位试投', type: 'project',
+          goal: '用真实岗位与反馈校准方向，而不是空想',
+          kpi: '2-3 个方向各投 5 家 + 反馈记录',
+          tasks: [{ name: '对比各方向真实 JD 与薪资', mode: 'once' },
+                  { name: '每个方向各投 5 家并记录反馈', mode: 'daily' }] },
+        { name: '阶段三｜聚焦主方向', type: 'learn',
+          goal: '根据反馈锁定一个方向，按该方向差距补证据',
+          kpi: '锁定 1 个方向 + 差距清单',
+          tasks: [{ name: '锁定主方向并明确目标岗位', mode: 'once' },
+                  { name: '按目标 JD 列出差距清单', mode: 'once' }] },
+        { name: '阶段四｜深入冲刺', type: 'project',
+          goal: '围绕锁定方向做深一个项目，准备面试',
+          kpi: '1 个深度项目 + 可面试的项目复盘',
+          tasks: [{ name: '做一个能讲 10 分钟的深度项目', mode: 'once' },
+                  { name: '准备项目复盘与面试问答', mode: 'once' }] },
+      ];
+    }
+    return { strategy: strategyMap[g.plan], phases: phases };
   }
 
   /* ---------------- 对话脚本 ---------------- */
@@ -396,20 +533,18 @@ body {
         '先把你的情况收进档案——两三轮就够。'],
       opts: [{ label: '开始收集', goto: 4 }] },
 
-    { /* 4 · 第一问 */
+    { /* 4 */
       stepName: '建档',
       ai: ['第一问：学历与专业是？'],
       picker: { key: 'edu', options: ['ben_cs', 'ms_211', 'ben_noncs'], goto: 5 } },
-
-    { /* 5 · 第二问 */
+    { /* 5 */
       stepName: '建档',
       ai: function () {
         return ['记下了：<b>' + esc(PICKS.edu.title) + '</b>（' + esc(PICKS.edu.year) + '）。',
           '第二问：有实习或项目经历吗？做过什么方向？'];
       },
       picker: { key: 'exp', options: ['intern_small', 'exp_none', 'intern_big'], goto: 6 } },
-
-    { /* 6 · 第三问 */
+    { /* 6 */
       stepName: '建档',
       ai: function () {
         var note = PICKS.exp.collab
@@ -422,7 +557,7 @@ body {
       },
       picker: { key: 'goal', options: ['agent_big', 'app_mid', 'undecided'], goto: 7 } },
 
-    { /* 7 · 收齐档案 + 自动求证对话 */
+    { /* 7 · 档案 + 自动求证 */
       stepName: '建档',
       ai: function () {
         return [
@@ -441,12 +576,12 @@ body {
       ai: function () {
         return [
           '下一步是<b>市场调研</b>。行情不靠模型记忆——围绕你的目标「' + esc(PICKS.goal.target) + '」抓三类真实数据：招聘平台（BOSS，含薪资）、企业官网 JD（任职要求原文）、经验帖（同背景路径）。',
-          '抓完后每条都带来源链接，结论必须锚定来源，锚不上的直接被拒。',
+          '关键是：抓完不是贴链接，而是把它和<b>你的档案逐条对齐分析</b>。',
         ];
       },
       opts: [{ label: '开始（演示中即时返回）', goto: 9 }] },
 
-    { /* 9 · 调研结果面板 */
+    { /* 9 · 调研卡片 + JD/面经分析 */
       stepName: '调研',
       ai: function () {
         return ['调研完成。针对「' + esc(PICKS.goal.title) + ' · ' + esc(PICKS.goal.city) + '」，三条来源已抓取并校验：'];
@@ -455,12 +590,15 @@ body {
         return [
           { kind: '招聘平台 · 含薪资', title: 'BOSS 直聘｜' + PICKS.goal.title,
             finding: PICKS.goal.salary, foot: '真实薪资范围 · 已锚定' },
-          { kind: '企业 JD 原文', title: PICKS.goal.plan === 'big' ? '字节跳动官网｜AI Agent 后端' : (PICKS.goal.plan === 'mid' ? '中厂官网｜AI 应用实习' : '多企业官网｜AI 应用岗'),
+          { kind: '企业 JD 原文',
+            title: PICKS.goal.plan === 'big' ? '字节跳动官网｜AI Agent 后端'
+              : (PICKS.goal.plan === 'mid' ? '中厂官网｜AI 应用实习' : '多企业官网｜AI 应用岗'),
             finding: PICKS.goal.jd, foot: '官方招聘页 · 已锚定' },
           { kind: '同背景经验帖', title: '牛客｜同背景路径',
             finding: PICKS.goal.peer, foot: '合成样例 · 已锚定' },
         ];
       },
+      analysis: function () { return jdAnalysis().concat(peerAnalysis()); },
       opts: [{ label: '下一步：差距分析', goto: 10 }] },
 
     { /* 10 · 差距预告 */
@@ -478,21 +616,25 @@ body {
             (PICKS.edu.strength ? '，' + esc(PICKS.edu.strength) : '') + '——这是可以直接写进简历首条的底牌。',
           '<span class="flag">主要短板</span>：' + flags + '。挑明了说：<b>目标方向对，缺的是能把差距补上的证据，不是空泛的「再努力」。' +
             (PICKS.exp.collab ? '' : '协作证据是当前最短的板。') + '</b>',
-          '<span class="score">目标匹配度 <b>' + score + '</b>/100　起点档位 <b>' + level + '</b>（学历 ' +
-            (PICKS.edu.score >= 0 ? '+' + PICKS.edu.score : PICKS.edu.score) + ' · 经历 ' +
-            (PICKS.exp.score >= 0 ? '+' + PICKS.exp.score : PICKS.exp.score) + ' · 目标难度 ' +
-            (PICKS.goal.score >= 0 ? '+' + PICKS.goal.score : PICKS.goal.score) + '）</span>',
+          '<span class="score">目标匹配度 <b>' + score + '</b>/100　起点档位 <b>' + startLevel() +
+            '</b>（学历 ' + (PICKS.edu.score >= 0 ? '+' + PICKS.edu.score : PICKS.edu.score) +
+            ' · 经历 ' + (PICKS.exp.score >= 0 ? '+' + PICKS.exp.score : PICKS.exp.score) +
+            ' · 目标难度 ' + (PICKS.goal.score >= 0 ? '+' + PICKS.goal.score : PICKS.goal.score) + '）</span>',
           picGapLine(),
         ];
       },
       opts: [{ label: '给我一条走得通的路线', goto: 12 }] },
 
-    { /* 12 · 路线 */
+    { /* 12 · 路线：策略气泡 + 阶段面板 */
       stepName: '路线',
-      ai: function () { return roadmapLines(); },
-      opts: [{ label: '打开职业地图', goto: 13, primary: true }] },
+      ai: function () {
+        var plan = roadmapPlan();
+        return ['<b>策略</b>：' + esc(plan.strategy)];
+      },
+      plan: roadmapPlan,
+      opts: [{ label: '生成职业地图', goto: 13, primary: true }] },
 
-    { /* 13 · 揭晓 */
+    { /* 13 · 揭晓：按选择实时渲染地图 */
       stepName: '揭晓',
       ai: [],
       opts: [] },
@@ -506,35 +648,6 @@ body {
     if (PICKS.edu.tier.indexOf('双非') >= 0) gaps.push('项目含金量与面试叙事（中优）');
     if (PICKS.edu.major.indexOf('非科班') >= 0) gaps.push('计算机基础：操作系统 / 网络（高优）');
     return '优先补的差距：' + gaps.join('；') + '。';
-  }
-
-  function roadmapLines() {
-    var g = PICKS.goal, e = PICKS.exp, edu = PICKS.edu;
-    var lines = ['<b>策略：围绕「' + esc(g.target) + '」补齐证据，不做一步跳级。</b>'];
-    if (g.plan === 'big') {
-      lines.push('<ul>'
-        + '<li><b>阶段一 · 工程化补齐</b>——' + esc(e.phase1) + '；KPI：1 个可演示开源仓库</li>'
-        + '<li><b>阶段二 · 协作证据</b>——' + (e.collab ? '把已有协作经历升级成可讲的项目评审故事，并参与开源拿到 2 个 merge 的 PR' : '参与开源项目并拿到 <b>3 个被 merge 的 PR</b>') + '；KPI：PR 链接 + review 往返记录</li>'
-        + '<li><b>阶段三 · 中厂实习过渡</b>——拿到一段有 AI 业务的团队实习，作为大厂跳板</li>'
-        + '<li><b>阶段四 · 冲大厂校招（' + esc(edu.year) + '）</b>——按真实 JD 定制简历；暂无真实 JD 的阶段如实标「待导入」，<b>绝不编造</b></li>'
-        + '</ul>');
-    } else if (g.plan === 'mid') {
-      lines.push('<ul>'
-        + '<li><b>阶段一 · 作品补齐</b>——' + esc(e.phase1) + '；KPI：1 个带 README 与演示视频的项目</li>'
-        + '<li><b>阶段二 · 实习投递冲刺</b>——按中厂实习 JD 定制简历，投递 15 家并复盘面经</li>'
-        + '<li><b>阶段三 · 中厂实习落地</b>（' + esc(g.city) + '）——优先 AI 业务团队，KPI：实习证明 + 项目产出</li>'
-        + '<li><b>阶段四 · 转正评估 / 再跳</b>——实习期结束前完成绩效复盘，决定转正或跳槽</li>'
-        + '</ul>');
-    } else {
-      lines.push('<ul>'
-        + '<li><b>阶段一 · 方向验证</b>——用一个小项目（' + esc(e.phase1) + '）验证你对 AI 应用的兴趣与耐受度</li>'
-        + '<li><b>阶段二 · 岗位试投</b>——对比 2-3 个方向的真实 JD 与薪资，各投 5 家拿反馈</li>'
-        + '<li><b>阶段三 · 聚焦主方向</b>——根据反馈锁定一个方向，再按该方向的差距补证据</li>'
-        + '<li><b>阶段四 · 深入冲刺</b>——围绕锁定方向做深一个项目，准备面试与项目复盘</li>'
-        + '</ul>');
-    }
-    lines.push('每个阶段拆成可打卡任务（按次 / 按天 / 按比例），完成即沉淀为<b>能力证据</b>。职业地图已按这条策略生成。');
-    return lines;
   }
 
   /* ---------------- 引擎 ---------------- */
@@ -589,7 +702,6 @@ body {
     var grid = document.createElement('div');
     grid.className = 'picker';
     var selected = 0;
-
     var cards = cfg.options.map(function (key, i) {
       var opt = dict[key];
       var b = document.createElement('button');
@@ -601,9 +713,7 @@ body {
         + '<div class="p-sub">' + esc(opt.sub) + '</div>';
       b.addEventListener('click', function () {
         selected = i;
-        cards.forEach(function (c, j) {
-          c.setAttribute('aria-pressed', j === i ? 'true' : 'false');
-        });
+        cards.forEach(function (c, j) { c.setAttribute('aria-pressed', j === i ? 'true' : 'false'); });
       });
       return b;
     });
@@ -620,7 +730,9 @@ body {
     sendBtn.textContent = '发送';
     sendBtn.addEventListener('click', function () {
       if (busy) return;
-      PICKS[cfg.key] = dict[cfg.options[selected]];
+      var key = cfg.options[selected];
+      PICKS[cfg.key] = dict[key];
+      PICKS[cfg.key + 'Key'] = key;
       addMsg('user', esc(PICKS[cfg.key].title + '｜' + PICKS[cfg.key].sub));
       optsEl.innerHTML = '';
       hintEl.textContent = '';
@@ -632,9 +744,18 @@ body {
     optsEl.appendChild(row);
   }
 
-  function addResearch(items) {
+  function addPanel(className, titleHTML, itemsHTML, countLabel) {
     var wrap = document.createElement('div');
-    wrap.className = 'msg research';
+    wrap.className = 'msg ' + className;
+    wrap.innerHTML = '<div class="anchor"><span class="dot"></span>'
+      + esc(countLabel) + '<span class="line"></span></div>'
+      + (titleHTML || '') + itemsHTML;
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return wrap;
+  }
+
+  function addResearch(items) {
     var cards = items.map(function (it, i) {
       return '<div class="rcard" style="animation-delay:' + (120 + i * 140) + 'ms">'
         + '<span class="kind">' + esc(it.kind) + '</span>'
@@ -643,15 +764,24 @@ body {
         + '<div class="foot"><span class="okdot"></span>' + esc(it.foot) + '</div>'
         + '</div>';
     }).join('');
-    wrap.innerHTML = '<div class="anchor"><span class="dot"></span>'
-      + '已锚定 ' + items.length + ' 个真实来源<span class="line"></span></div>'
-      + '<div class="cards">' + cards + '</div>';
-    chatEl.appendChild(wrap);
-    chatEl.scrollTop = chatEl.scrollHeight;
-    return wrap;
+    addPanel('research', '', '<div class="cards">' + cards + '</div>',
+      '已锚定 ' + items.length + ' 个真实来源');
   }
 
-  /* 自动播放求证对话（human / ai 交替，无需点击） */
+  function addPlan(plan) {
+    var cards = plan.phases.map(function (p, i) {
+      return '<div class="pcard" style="animation-delay:' + (100 + i * 130) + 'ms">'
+        + '<span class="no">阶段 ' + (i + 1) + '</span>'
+        + '<h4>' + esc(p.name) + '</h4>'
+        + '<div class="goal">' + esc(p.goal) + '</div>'
+        + '<div class="kpi">KPI：' + esc(p.kpi) + '</div>'
+        + '</div>';
+    }).join('');
+    addPanel('plan', '', '<div class="grid">' + cards + '</div>',
+      '路线已按你的档案拆成 ' + plan.phases.length + ' 个阶段');
+  }
+
+  /* 自动播放对话（human / ai 交替，无需点击） */
   function runAuto(steps, done) {
     var i = 0;
     hintEl.textContent = '正在逐项求证（自动进行）……';
@@ -659,7 +789,17 @@ body {
       if (i >= steps.length) { hintEl.textContent = ''; done(); return; }
       var s = steps[i++];
       addMsg(s.who, s.text);
-      timers.push(setTimeout(next, s.who === 'ai' ? 950 : 620));
+      timers.push(setTimeout(next, s.who === 'ai' ? 900 : 580));
+    }
+    next();
+  }
+  /* 顺序播放 AI 分析消息（调研后） */
+  function runAnalysis(steps, done) {
+    var i = 0;
+    function next() {
+      if (i >= steps.length) { done(); return; }
+      addMsg('ai', steps[i++]);
+      timers.push(setTimeout(next, 850));
     }
     next();
   }
@@ -676,23 +816,155 @@ body {
         if (i === 0) typing.remove();
         addMsg('ai', m);
         if (!isLast) return;
-        var afterAuto = function () {
-          if (node.research) {
-            var items = typeof node.research === 'function' ? node.research() : node.research;
-            timers.push(setTimeout(function () { addResearch(items); }, 380));
-          }
+        var finish = function () {
           busy = false;
           if (node.picker) showPicker(node.picker);
           else setOpts(node.opts);
         };
+        var afterAnalysis = function () {
+          if (node.analysis) {
+            var a = typeof node.analysis === 'function' ? node.analysis() : node.analysis;
+            runAnalysis(a, finish);
+          } else {
+            finish();
+          }
+        };
+        var afterResearch = function () {
+          if (node.research) {
+            var items = typeof node.research === 'function' ? node.research() : node.research;
+            addResearch(items);
+            timers.push(setTimeout(afterAnalysis, 700));
+          } else {
+            afterAnalysis();
+          }
+        };
+        var afterPlan = function () {
+          if (node.plan) {
+            var plan = typeof node.plan === 'function' ? node.plan() : node.plan;
+            addPlan(plan);
+            timers.push(setTimeout(afterResearch, 600));
+          } else {
+            afterResearch();
+          }
+        };
         if (node.auto) {
           var steps = typeof node.auto === 'function' ? node.auto() : node.auto;
-          runAuto(steps, afterAuto);
+          runAuto(steps, afterPlan);
         } else {
-          afterAuto();
+          afterPlan();
         }
       }, 420 + i * 620));
     });
+  }
+
+  /* ---------- 职业地图：按选择实时渲染 ---------- */
+  var mapState = { plan: null, done: {}, current: 0 };
+
+  function mapStoreKey() {
+    return 'ck-demo-map-' + PICKS.eduKey + '-' + PICKS.expKey + '-' + PICKS.goalKey;
+  }
+  function loadMapDone() {
+    try { return JSON.parse(localStorage.getItem(mapStoreKey()) || '{}'); } catch (e) { return {}; }
+  }
+  function saveMapDone() {
+    try { localStorage.setItem(mapStoreKey(), JSON.stringify(mapState.done)); } catch (e) {}
+  }
+  function taskKey(pi, ti) { return 'p' + pi + 't' + ti; }
+
+  function renderMap() {
+    var plan = roadmapPlan();
+    mapState.plan = plan;
+    mapState.done = loadMapDone();
+    mapSub.textContent = PICKS.edu.title + ' × ' + PICKS.exp.title + ' × ' + PICKS.goal.title;
+
+    var total = 0, done = 0;
+    plan.phases.forEach(function (p, pi) {
+      p.tasks.forEach(function (t, ti) {
+        total += 1;
+        if (mapState.done[taskKey(pi, ti)]) done += 1;
+      });
+    });
+    var pct = total ? Math.round(done / total * 100) : 0;
+
+    var tabs = plan.phases.map(function (p, i) {
+      return '<button class="m-tab' + (i === mapState.current ? ' active' : '') + '" data-phase="' + i + '">'
+        + '阶段 ' + (i + 1) + '</button>';
+    }).join('');
+
+    mapBody.innerHTML =
+      '<div class="m-sum">'
+      + '<div class="m-ring" style="--p:' + pct + '"><span id="m-pct">' + pct + '%</span></div>'
+      + '<div class="txt"><b>' + esc(PICKS.goal.target) + '</b><br>'
+      + '总进度 ' + done + ' / ' + total + ' 个任务 · 起点档位 ' + startLevel()
+      + ' · 匹配度 ' + matchScore() + '/100</div></div>'
+      + '<div class="m-strategy">' + esc(plan.strategy) + '</div>'
+      + '<div class="m-tabs">' + tabs + '</div>'
+      + '<div id="m-phase-view"></div>';
+
+    renderMapPhase();
+    mapBody.querySelectorAll('.m-tab').forEach(function (b) {
+      b.addEventListener('click', function () {
+        mapState.current = parseInt(b.getAttribute('data-phase'), 10);
+        mapBody.querySelectorAll('.m-tab').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        renderMapPhase();
+      });
+    });
+  }
+
+  function renderMapPhase() {
+    var plan = mapState.plan;
+    var p = plan.phases[mapState.current] || plan.phases[0];
+    var pi = plan.phases.indexOf(p);
+    var tasks = p.tasks.map(function (t, ti) {
+      var k = taskKey(pi, ti);
+      var isDone = !!mapState.done[k];
+      var mode = t.mode === 'daily' ? '按天打卡'
+        : (t.mode === 'percent' ? '按比例推进' : '按次完成');
+      return '<label class="m-task"><input type="checkbox" data-k="' + k + '"'
+        + (isDone ? ' checked' : '') + '>'
+        + '<span class="tname' + (isDone ? ' done' : '') + '">' + esc(t.name) + '</span>'
+        + '<span class="tmode">' + mode + '</span></label>';
+    }).join('');
+    document.getElementById('m-phase-view').innerHTML =
+      '<div class="m-phase">'
+      + '<h4>' + esc(p.name) + '</h4>'
+      + '<div class="goal">' + esc(p.goal) + '</div>'
+      + (p.company ? '<div class="goal">目标单位：' + esc(p.company) + '</div>' : '')
+      + '<div class="kpi">KPI：<b>' + esc(p.kpi) + '</b></div>'
+      + '<div class="m-tasks">' + tasks + '</div>'
+      + '</div>';
+
+    document.querySelectorAll('#m-phase-view input[type=checkbox]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var k = cb.getAttribute('data-k');
+        mapState.done[k] = cb.checked;
+        saveMapDone();
+        renderMap();
+      });
+    });
+  }
+
+  function revealMap() {
+    busy = false;
+    chatCard.style.display = 'none';
+    mapWrap.style.display = 'block';
+    mapState.current = 0;
+    renderMap();
+  }
+  function resetAll() {
+    timers.forEach(clearTimeout); timers = [];
+    chatEl.innerHTML = '';
+    optsEl.innerHTML = '';
+    hintEl.textContent = '';
+    PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big,
+              eduKey: 'ben_cs', expKey: 'intern_small', goalKey: 'agent_big' };
+    mapState = { plan: null, done: {}, current: 0 };
+    mapWrap.style.display = 'none';
+    chatCard.style.display = 'flex';
+    busy = false;
+    renderStepper('');
+    runNode(0);
   }
   function runNode(idx) {
     var node = S[idx];
@@ -700,26 +972,6 @@ body {
     renderStepper(node.stepName);
     if (idx === 13) { revealMap(); return; }
     play(node);
-  }
-  function revealMap() {
-    busy = false;
-    chatCard.style.display = 'none';
-    mapWrap.style.display = 'block';
-    var f = document.getElementById('map-frame');
-    if (f.getAttribute('src') === 'about:blank') f.src = 'career-map.html';
-  }
-  function resetAll() {
-    timers.forEach(clearTimeout); timers = [];
-    chatEl.innerHTML = '';
-    optsEl.innerHTML = '';
-    hintEl.textContent = '';
-    PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big };
-    document.getElementById('map-frame').src = 'about:blank';
-    mapWrap.style.display = 'none';
-    chatCard.style.display = 'flex';
-    busy = false;
-    renderStepper('');
-    runNode(0);
   }
   document.getElementById('restart-btn').addEventListener('click', resetAll);
   document.getElementById('restart-chat').addEventListener('click', function (e) {

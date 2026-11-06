@@ -8,8 +8,9 @@
 `index.html`、`chat-demo.html` 与 `career-map.html`，不上传原始档案 JSON。
 
 - `chat-demo.html` — 对话式体验页（手写静态页，不由 `build_demo.py` 重新生成）。三轮预置选项
-  决定后续全部内容：求证对话 / 档案 / 调研 / 差距 / 路线按所选组合实时生成；「逐项求证」
-  为自动播放的 human-AI 对话流；结尾嵌入展示 `career-map.html`。
+  决定后续全部内容：求证对话 / 档案 / 调研与 JD·面经分析 / 差距 / 四阶段路线面板均按所选组合实时生成；
+  「逐项求证」为自动播放的 human-AI 对话流；结尾的**职业地图也在前端按同一份路线实时渲染**
+  （阶段切换、任务勾选与本地进度持久化），不依赖预生成的 `career-map.html`。
 - `career-map.html` — 交互式职业地图（`export_dashboard(mode="roadmap")`）；安装后也可用 `career-kit-demo` 直接打开
 - `dashboard.html` — 进度仪表盘（`export_dashboard(mode="progress")`）
 - `career-map.png` / `dashboard.png` — 截图，供 README 使用
