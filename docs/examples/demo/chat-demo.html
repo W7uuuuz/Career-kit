@@ -146,10 +146,12 @@ body {
 
 /* ---------- 行动区 ---------- */
 .actionbar { border-top: 1px solid var(--line); background: rgba(255,255,255,.94);
-  padding: 12px 16px 14px; min-height: 80px; display: flex; flex-direction: column;
-  gap: 8px; justify-content: center; }
+  padding: 12px 16px 14px; min-height: 80px; max-height: 56vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .hint { font-size: 11.5px; color: var(--muted); min-height: 15px; text-align: center; }
 .opts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.opts > .picker { flex: 1 1 100%; width: 100%; }
+.opts > .sendrow { flex: 1 1 100%; width: 100%; }
 .opt { border: 1.4px solid #ccd6ff; background: #fff; color: var(--brand);
   font-size: 13.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
   transition: transform .12s, box-shadow .12s, opacity .2s; animation: rise .3s ease both; }
@@ -161,8 +163,8 @@ body {
 .opt:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
 .opt:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-/* 分轮信息：三张可选卡片 */
-.picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* 分轮信息：可选卡片（3-4 项自适应） */
+.picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .pick { position: relative; text-align: left; cursor: pointer; background: #fff;
   border: 1.6px solid var(--line); border-radius: 13px; padding: 12px 13px 11px;
   transition: border-color .15s, box-shadow .15s, transform .12s, background .15s; }
@@ -265,8 +267,7 @@ body {
       <div class="map-head">
         职业地图 · 按你的选择实时生成
         <span class="sub" id="map-sub"></span>
-        <span class="lnk"><a href="#" id="restart-chat">重新走一遍对话 ↺</a>
-          · <a href="career-map.html" target="_blank" rel="noopener">完整示例地图</a></span>
+        <span class="lnk"><a href="#" id="restart-chat">重新开始演示 ↺</a></span>
       </div>
       <div class="map-body" id="map-body"></div>
     </div>
@@ -295,15 +296,15 @@ body {
       tier: '双非本科', major: '计算机', score: 0,
       strength: '计算机基础完整，科班背景不自证', flag: '双非学历，大厂简历初筛存在风险' },
     ms_211: { title: '211 硕士 · 软件工程', sub: '2028 届在读 · 有课程项目', year: '2028 届',
-      tier: '211 硕士', major: '软件工程', score: 8,
+      tier: '211 硕士', major: '软件工程', score: 10,
       strength: '211 硕士学历，过初筛有优势', flag: '' },
     ben_noncs: { title: '双非本科 · 非科班', sub: '2027 届在读 · 机械背景自学', year: '2027 届',
-      tier: '双非本科', major: '机械（非科班）', score: -4,
+      tier: '双非本科', major: '机械（非科班）', score: -5,
       strength: '跨专业自学执行力强', flag: '非科班，计算机基础需要用项目自证' },
   };
   var EXP = {
     intern_small: { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）',
-      score: 3, collab: false, agentProject: true,
+      score: 4, collab: false, agentProject: true,
       strength: '能独立搭起完整 Agent 链路（多 Subgraph + RAG）',
       flag: '实习公司小、时长仅 3 个月，含金量被 HR 打折',
       skills: [
@@ -313,7 +314,7 @@ body {
       ],
       phase1: '给现有 Agent 项目补 trace、评测集与 CI，把独立开发升级成有规范、可演示的工程产出' },
     exp_none: { title: '无实习经历', sub: '课程项目 + 一个 RAG demo',
-      score: -6, collab: false, agentProject: false,
+      score: -8, collab: false, agentProject: false,
       strength: '学习路径自驱，已跑通 RAG demo',
       flag: '零实习经历，简历容易被直接筛掉',
       skills: [
@@ -323,7 +324,7 @@ body {
       ],
       phase1: '从 0 做一个能演示的 Agent 项目：目标可量化、有评测集、写清复现步骤' },
     intern_big: { title: '6 个月中大厂实习', sub: '参与过真实业务团队开发',
-      score: 9, collab: true, agentProject: false,
+      score: 14, collab: true, agentProject: false,
       strength: '有团队协作与生产环境交付经验',
       flag: 'AI 项目深度不足，需要补一个可展示的 AI 作品',
       skills: [
@@ -332,33 +333,51 @@ body {
         { name: 'LLM 应用', auth: 'ai_assisted', level: '参与过 AI 功能接入，有 code review', control: 6 },
       ],
       phase1: '把实习里的业务经验延伸成一个 AI 应用作品：带 trace 与评测，突出你熟悉的工程规范' },
+    exp_blank: { title: '什么经历都没有', sub: '只知道专业，没实习也没项目',
+      score: -14, collab: false, agentProject: false, blank: true,
+      strength: '',
+      flag: '零项目、零实习，简历目前没有可写产出',
+      skills: [
+        { name: 'Python', auth: 'self_written', level: '课堂学过，只能写基础脚本', control: 3 },
+        { name: '数据结构 / 算法', auth: 'self_written', level: '课程学过，没系统刷题', control: 3 },
+      ],
+      phase1: '从官方教程出发，完成一个最小可运行项目，把「学过一点」变成「做出来过」' },
   };
   var GOAL = {
     agent_big: { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海',
-      score: -3, city: '上海', target: '大厂 AI Agent 岗（校招）',
+      score: -4, city: '上海', target: '大厂 AI Agent 岗（校招）',
       salary: '20-30K（BOSS 直聘同岗）',
       jd: '字节官网 JD 原文点名「多人协作与代码评审经验」', jdReq: '多人协作与代码评审经验',
       peer: '牛客 2027 届双非转 Agent：3 份面经共性为先补协作证据',
       flag: '大厂校招竞争激烈，缺协作证据难破初筛', plan: 'big' },
     app_mid: { title: 'AI 应用开发', sub: '先中厂实习 · base 杭州',
-      score: 4, city: '杭州', target: '中厂 AI 应用实习（转正 / 再跳）',
+      score: 6, city: '杭州', target: '中厂 AI 应用实习（转正 / 再跳）',
       salary: '200-300/天（BOSS 直聘实习岗）',
       jd: '中厂实习 JD：Python / LLM 应用 / 团队协作意识', jdReq: 'Python / LLM 应用 / 团队协作意识',
       peer: '牛客实习面经：中厂更看项目落地与沟通能力',
       flag: '实习窗口期短，需要尽快准备好可投的项目', plan: 'mid' },
     undecided: { title: '方向还没定', sub: 'base 不限 · 想先看看市场',
-      score: 1, city: '不限', target: 'AI 应用方向（待验证）',
+      score: 2, city: '不限', target: 'AI 应用方向（待验证）',
       salary: '15-30K（AI 应用岗位区间）',
       jd: '多行业 JD 对比：AI 应用岗门槛低于算法岗，更看落地', jdReq: 'AI 应用落地能力与沟通',
       peer: '牛客转行帖：先做一个小项目，再决定押哪个方向',
       flag: '方向未定，容易分散投入，需要先验证', plan: 'explore' },
+    unsure: { title: '完全没想法', sub: '方向、城市都没定，想让你帮我选',
+      score: 0, city: '不限', target: '待共同定方向',
+      salary: '10-30K（AI / 后端 / 测试等初级岗区间）',
+      jd: '多方向 JD 对比：先看门槛与成长性，再决定投什么', jdReq: '各方向基础要求（Python / 计算机基础 / 沟通）',
+      peer: '牛客转行帖：先做一个小项目 + 试投验证方向',
+      flag: '方向完全未定，尚无任何验证投入', plan: 'explore' },
   };
 
   var PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big, eduKey: 'ben_cs', expKey: 'intern_small', goalKey: 'agent_big' };
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
-  function matchScore() { return clamp(54 + PICKS.edu.score + PICKS.exp.score + PICKS.goal.score, 40, 78); }
-  function startLevel() { return matchScore() >= 65 ? '中厂' : '小厂'; }
+  function matchScore() { return clamp(42 + PICKS.edu.score + PICKS.exp.score + PICKS.goal.score, 15, 78); }
+  function startLevel() {
+    var s = matchScore();
+    return s < 30 ? '暂不可入' : (s >= 62 ? '中厂' : '小厂');
+  }
 
   function redFlags() {
     var out = [PICKS.exp.flag, PICKS.edu.flag];
@@ -382,16 +401,27 @@ body {
   function jdAnalysis() {
     var e = PICKS.exp, g = PICKS.goal, edu = PICKS.edu;
     var collabState = e.collab ? '有（实习期经过 code review）' : '<span class="flag">空白</span>';
-    var agentState = e.agentProject ? '有独立项目（AI 辅助，无评审）'
-      : (e.collab ? '有业务中的 AI 功能接入（有 review）' : '仅教程级 RAG demo');
-    var eduState = g.plan === 'big'
-      ? (edu.score >= 8 ? '匹配（学历是加分项）' : '偏弱（用项目含金量补）')
-      : '不是主要门槛';
-    var verdict = g.plan === 'big'
-      ? 'JD 的两条硬要求里，<b>协作与代码评审</b>是你唯一的硬缺口；先把这一项补出证据，JD 匹配度会显著上升。'
-      : (g.plan === 'mid'
-        ? '实习 JD 更看「能多快上手落地」：你的项目目前演示力不足，先把作品与简历加工到可直接投递。'
-        : '各方向 JD 的共同点是「落地能力 + 沟通」：先用小项目验证方向，再决定押注，避免泛泛准备。');
+    var agentState = e.blank ? '<span class="flag">无（还没做过项目）</span>'
+      : (e.agentProject ? '有独立项目（AI 辅助，无评审）'
+        : (e.collab ? '有业务中的 AI 功能接入（有 review）' : '仅教程级 RAG demo'));
+    var eduState;
+    if (g.plan === 'explore') eduState = '暂不作主要门槛';
+    else if (edu.score >= 8) eduState = '匹配（学历加分）';
+    else if (edu.score < 0) eduState = '偏弱（需用项目补）';
+    else eduState = '偏弱（用项目含金量补）';
+
+    var verdict;
+    if (e.blank) {
+      verdict = g.plan === 'explore'
+        ? '现在谈匹配度没有意义——先用一个最小项目建立「做过」的证据，再拿 2-3 个方向的真实 JD 试投验证。'
+        : '别急着投：当前简历连初筛都过不了，先用一个最小项目 + 一次开源 PR 建立最低门槛，再谈投递。';
+    } else if (g.plan === 'big') {
+      verdict = 'JD 的两条硬要求里，<b>协作与代码评审</b>是你唯一的硬缺口；先把这一项补出证据，JD 匹配度会显著上升。';
+    } else if (g.plan === 'mid') {
+      verdict = '实习 JD 更看「能多快上手落地」：先把作品与简历加工到可直接投递，再去投。';
+    } else {
+      verdict = '各方向 JD 的共同点是「落地能力 + 沟通」：先用小项目验证方向，再决定押注，避免泛泛准备。';
+    }
     return [
       '先把刚抓到的 JD 和你的档案逐条对齐（这才是「真实数据」的价值，不只贴个链接）：',
       '<ul>'
@@ -407,7 +437,12 @@ body {
   function peerAnalysis() {
     var e = PICKS.exp, g = PICKS.goal;
     var steps = [];
-    if (!e.collab) {
+    if (e.blank) {
+      steps.push('先完成一个最小项目（教程级即可），让简历至少有一行可写');
+      steps.push(g.plan === 'explore'
+        ? '再用它去试投 2-3 个门槛较低的方向，收集真实反馈'
+        : '再用它去投门槛最低的实习 / 外包，换取第一段真实经历');
+    } else if (!e.collab) {
       steps.push('先补「被协作过」的证据（开源 PR + review 往返），而不是直接投大厂');
       steps.push(g.plan === 'explore' ? '同时试投 2-3 个方向的小岗位，用真实反馈校准方向' : '用补完证据的项目投中厂 / 实习岗，拿到第一段团队经历');
     } else {
@@ -431,14 +466,21 @@ body {
       mid: '先把作品与简历加工到可直接投实习，再以中厂实习完成从校园到职场的过渡。',
       explore: '先用小项目与试投验证方向，锁定后再集中补齐差距，避免分散投入。',
     };
+    var blankTasks = [
+      { name: '按官方教程完成一个最小项目', mode: 'once' },
+      { name: '补 README 与运行说明', mode: 'once' },
+      { name: '跑通一次端到端演示并录屏', mode: 'once' },
+    ];
     var phases;
     if (g.plan === 'big') {
       phases = [
-        { name: '阶段一｜工程化补齐', type: 'learn', goal: e.phase1,
-          kpi: '1 个可演示开源仓库（trace + 评测集）',
-          tasks: [{ name: '为项目补 trace 与结构化日志', mode: 'percent' },
-                  { name: '补单测与 CI 流水线', mode: 'once' },
-                  { name: '构建 30 条评测样本集', mode: 'daily' }] },
+        { name: e.blank ? '阶段一｜第一个可演示项目' : '阶段一｜工程化补齐', type: 'learn',
+          goal: e.phase1,
+          kpi: e.blank ? '1 个能跑起来的最小项目 + README' : '1 个可演示开源仓库（trace + 评测集）',
+          tasks: e.blank ? blankTasks : [
+            { name: '为项目补 trace 与结构化日志', mode: 'percent' },
+            { name: '补单测与 CI 流水线', mode: 'once' },
+            { name: '构建 30 条评测样本集', mode: 'daily' }] },
         { name: '阶段二｜协作证据', type: 'project',
           goal: e.collab ? '把已有协作经历升级成可讲的项目评审故事，并参与开源拿到 2 个 merge 的 PR' : '拿到「被团队协作过」的硬证据，补掉独立开发盲区',
           kpi: '2-3 个被 merge 的开源 PR + review 往返记录',
@@ -458,11 +500,13 @@ body {
       ];
     } else if (g.plan === 'mid') {
       phases = [
-        { name: '阶段一｜作品补齐', type: 'learn', goal: e.phase1,
-          kpi: '1 个带 README 与演示视频的项目',
-          tasks: [{ name: '完成项目主链路并写清复现步骤', mode: 'once' },
-                  { name: '录制 2 分钟演示视频', mode: 'once' },
-                  { name: '补 3 条评测样例并写结论', mode: 'once' }] },
+        { name: e.blank ? '阶段一｜第一个项目' : '阶段一｜作品补齐', type: 'learn',
+          goal: e.phase1,
+          kpi: e.blank ? '1 个能跑起来的最小项目 + README' : '1 个带 README 与演示视频的项目',
+          tasks: e.blank ? blankTasks : [
+            { name: '完成项目主链路并写清复现步骤', mode: 'once' },
+            { name: '录制 2 分钟演示视频', mode: 'once' },
+            { name: '补 3 条评测样例并写结论', mode: 'once' }] },
         { name: '阶段二｜实习投递冲刺', type: 'project',
           goal: '按中厂实习 JD 定制简历，准备面试与项目复盘',
           kpi: '投递 15 家 + 3 次面试复盘',
@@ -481,10 +525,17 @@ body {
       ];
     } else {
       phases = [
-        { name: '阶段一｜方向验证', type: 'learn', goal: e.phase1,
-          kpi: '1 个能演示的小项目 + 兴趣自评',
-          tasks: [{ name: '做一个小项目验证兴趣与耐受度', mode: 'once' },
-                  { name: '记录投入产出与真实感受', mode: 'once' }] },
+        { name: '阶段一｜方向验证', type: 'learn',
+          goal: e.blank
+            ? '从官方教程做一个最小项目，先建立动手经验，再判断自己愿意在哪个方向持续投入'
+            : e.phase1,
+          kpi: e.blank ? '1 个最小项目 + 兴趣自评' : '1 个能演示的小项目 + 兴趣自评',
+          tasks: e.blank ? [
+            { name: '按官方教程完成一个最小项目', mode: 'once' },
+            { name: '写 README 并跑通一次完整演示', mode: 'once' },
+            { name: '记录投入产出与真实感受', mode: 'once' }] : [
+            { name: '做一个小项目验证兴趣与耐受度', mode: 'once' },
+            { name: '记录投入产出与真实感受', mode: 'once' }] },
         { name: '阶段二｜岗位试投', type: 'project',
           goal: '用真实岗位与反馈校准方向，而不是空想',
           kpi: '2-3 个方向各投 5 家 + 反馈记录',
@@ -543,19 +594,24 @@ body {
         return ['记下了：<b>' + esc(PICKS.edu.title) + '</b>（' + esc(PICKS.edu.year) + '）。',
           '第二问：有实习或项目经历吗？做过什么方向？'];
       },
-      picker: { key: 'exp', options: ['intern_small', 'exp_none', 'intern_big'], goto: 6 } },
+      picker: { key: 'exp', options: ['intern_small', 'exp_none', 'intern_big', 'exp_blank'], goto: 6 } },
     { /* 6 */
       stepName: '建档',
       ai: function () {
-        var note = PICKS.exp.collab
-          ? '有团队协作经历——这是很多同背景同学缺的东西，后面规划会围绕它展开。'
-          : (PICKS.exp.agentProject
-            ? '独立 Agent 项目不错，但我注意到「AI 辅助、没有人 review」——这会成为诊断的关键点。'
-            : '没有实习不是死局，但「零协作证据」会被 HR 直接打折，后面规划会优先补它。');
+        var note;
+        if (PICKS.exp.blank) {
+          note = '没关系——绝大多数人一开始都是这样。这种情况我不会拿话术包装你，先承认现实：<b>简历现在没有可写的产出</b>，下一步就是先做出第一个项目。';
+        } else if (PICKS.exp.collab) {
+          note = '有团队协作经历——这是很多同背景同学缺的东西，后面规划会围绕它展开。';
+        } else if (PICKS.exp.agentProject) {
+          note = '独立 Agent 项目不错，但我注意到「AI 辅助、没有人 review」——这会成为诊断的关键点。';
+        } else {
+          note = '没有实习不是死局，但「零协作证据」会被 HR 直接打折，后面规划会优先补它。';
+        }
         return ['<b>' + esc(PICKS.exp.title) + '</b>：' + note,
           '第三问：目标方向和 base 城市，有想法吗？'];
       },
-      picker: { key: 'goal', options: ['agent_big', 'app_mid', 'undecided'], goto: 7 } },
+      picker: { key: 'goal', options: ['agent_big', 'app_mid', 'undecided', 'unsure'], goto: 7 } },
 
     { /* 7 · 档案 + 自动求证 */
       stepName: '建档',
@@ -574,10 +630,10 @@ body {
     { /* 8 · 调研预告 */
       stepName: '调研',
       ai: function () {
-        return [
-          '下一步是<b>市场调研</b>。行情不靠模型记忆——围绕你的目标「' + esc(PICKS.goal.target) + '」抓三类真实数据：招聘平台（BOSS，含薪资）、企业官网 JD（任职要求原文）、经验帖（同背景路径）。',
-          '关键是：抓完不是贴链接，而是把它和<b>你的档案逐条对齐分析</b>。',
-        ];
+        var lead = PICKS.goal.plan === 'explore' && PICKS.goal.title.indexOf('完全没想法') >= 0
+          ? '你还没定方向——我先按 AI 应用、后端、测试等常见方向抓真实 JD 做横向对比，再一起收敛。'
+          : '下一步是<b>市场调研</b>。行情不靠模型记忆——围绕你的目标「' + esc(PICKS.goal.target) + '」抓三类真实数据：招聘平台（BOSS，含薪资）、企业官网 JD（任职要求原文）、经验帖（同背景路径）。';
+        return [lead, '关键是：抓完不是贴链接，而是把它和<b>你的档案逐条对齐分析</b>。'];
       },
       opts: [{ label: '开始（演示中即时返回）', goto: 9 }] },
 
@@ -589,13 +645,13 @@ body {
       research: function () {
         return [
           { kind: '招聘平台 · 含薪资', title: 'BOSS 直聘｜' + PICKS.goal.title,
-            finding: PICKS.goal.salary, foot: '真实薪资范围 · 已锚定' },
+            finding: PICKS.goal.salary, foot: '合成来源 · 真实产品中可点开验证' },
           { kind: '企业 JD 原文',
             title: PICKS.goal.plan === 'big' ? '字节跳动官网｜AI Agent 后端'
               : (PICKS.goal.plan === 'mid' ? '中厂官网｜AI 应用实习' : '多企业官网｜AI 应用岗'),
-            finding: PICKS.goal.jd, foot: '官方招聘页 · 已锚定' },
+            finding: PICKS.goal.jd, foot: '合成来源 · 真实产品中可点开验证' },
           { kind: '同背景经验帖', title: '牛客｜同背景路径',
-            finding: PICKS.goal.peer, foot: '合成样例 · 已锚定' },
+            finding: PICKS.goal.peer, foot: '合成来源 · 真实产品中可点开验证' },
         ];
       },
       analysis: function () { return jdAnalysis().concat(peerAnalysis()); },
@@ -609,19 +665,30 @@ body {
     { /* 11 · 首屏诊断 */
       stepName: '差距',
       ai: function () {
-        var score = matchScore(), level = startLevel();
+        var score = matchScore(), level = startLevel(), plan = PICKS.goal.plan;
+        var locked = plan !== 'explore';
         var flags = redFlags().map(function (f) { return '「' + esc(f) + '」'; }).join('、');
-        return [
-          '<span class="okc">' + esc(PICKS.exp.strength) + '</span>' +
-            (PICKS.edu.strength ? '，' + esc(PICKS.edu.strength) : '') + '——这是可以直接写进简历首条的底牌。',
-          '<span class="flag">主要短板</span>：' + flags + '。挑明了说：<b>目标方向对，缺的是能把差距补上的证据，不是空泛的「再努力」。' +
-            (PICKS.exp.collab ? '' : '协作证据是当前最短的板。') + '</b>',
-          '<span class="score">目标匹配度 <b>' + score + '</b>/100　起点档位 <b>' + startLevel() +
-            '</b>（学历 ' + (PICKS.edu.score >= 0 ? '+' + PICKS.edu.score : PICKS.edu.score) +
-            ' · 经历 ' + (PICKS.exp.score >= 0 ? '+' + PICKS.exp.score : PICKS.exp.score) +
-            ' · 目标难度 ' + (PICKS.goal.score >= 0 ? '+' + PICKS.goal.score : PICKS.goal.score) + '）</span>',
-          picGapLine(),
-        ];
+        var lines = [];
+        if (PICKS.exp.blank) {
+          lines.push('<span class="flag">先说实话：你现在最大的问题不是「选错方向」，而是简历里还没有一行可写的产出。</span>这不是否定你——而是说，先做出来一个东西，比继续纠结方向更重要。');
+        } else {
+          lines.push('<span class="okc">' + esc(PICKS.exp.strength) + '</span>' +
+            (PICKS.edu.strength ? '，' + esc(PICKS.edu.strength) : '') + '——这是可以直接写进简历首条的底牌。');
+        }
+        lines.push('<span class="flag">主要短板</span>：' + flags + '。' +
+          (locked
+            ? '目标方向对，缺的是能把差距补上的证据，不是空泛的「再努力」。' + (PICKS.exp.collab ? '' : '协作证据是当前最短的板。')
+            : '方向还没锁定，先别急着谈匹配——用「小项目 + 试投」拿真实反馈再定。'));
+        lines.push('<span class="score">' + (locked ? '目标匹配度' : '参考匹配度（暂按 AI 应用方向估算）') +
+          ' <b>' + score + '</b>/100　起点档位 <b>' + level + '</b>（学历 ' +
+          (PICKS.edu.score >= 0 ? '+' + PICKS.edu.score : PICKS.edu.score) +
+          ' · 经历 ' + (PICKS.exp.score >= 0 ? '+' + PICKS.exp.score : PICKS.exp.score) +
+          ' · 目标难度 ' + (PICKS.goal.score >= 0 ? '+' + PICKS.goal.score : PICKS.goal.score) + '）</span>');
+        if (level === '暂不可入') {
+          lines.push('「暂不可入」是按市场命中率算的档位，不是能力判决——先完成阶段一，它会变。');
+        }
+        lines.push(picGapLine());
+        return lines;
       },
       opts: [{ label: '给我一条走得通的路线', goto: 12 }] },
 
@@ -642,12 +709,14 @@ body {
 
   function picGapLine() {
     var gaps = [];
-    if (!PICKS.exp.collab) gaps.push('多人协作 / 代码评审（<b>高优</b>）');
-    if (!PICKS.exp.agentProject) gaps.push('可演示的 AI 项目与评测思路（<b>高优</b>）');
+    if (PICKS.exp.blank) gaps.push('第一个可运行的项目（<b>高优</b>）');
+    else if (!PICKS.exp.agentProject) gaps.push('可演示的 AI 项目与评测思路（<b>高优</b>）');
     else gaps.push('Agent 工程化：trace / 评测集（<b>高优</b>）');
+    if (!PICKS.exp.collab) gaps.push('多人协作 / 代码评审（<b>高优</b>）');
+    if (PICKS.edu.major.indexOf('非科班') >= 0) gaps.push('计算机基础：操作系统 / 网络（<b>高优</b>）');
+    if (PICKS.goal.plan === 'explore') gaps.push('方向验证：2-3 周小项目 + 试投（<b>高优</b>）');
     if (PICKS.edu.tier.indexOf('双非') >= 0) gaps.push('项目含金量与面试叙事（中优）');
-    if (PICKS.edu.major.indexOf('非科班') >= 0) gaps.push('计算机基础：操作系统 / 网络（高优）');
-    return '优先补的差距：' + gaps.join('；') + '。';
+    return '优先补的差距：' + gaps.slice(0, 4).join('；') + '。';
   }
 
   /* ---------------- 引擎 ---------------- */
@@ -949,6 +1018,7 @@ body {
     busy = false;
     chatCard.style.display = 'none';
     mapWrap.style.display = 'block';
+    window.scrollTo(0, 0);
     mapState.current = 0;
     renderMap();
   }

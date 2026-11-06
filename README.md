@@ -46,7 +46,7 @@
 
 ## 60 秒在线体验
 
-打开 [在线对话演示](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)，用固定选项模拟和 AI 教练对话，走完「方向 → 建档 → 调研 → 差距 → 路线」全流程，预制的职业地图在对话尽头揭晓；[也可直接查看职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)。
+打开 [在线对话演示](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)，用固定选项模拟和 AI 教练对话，走完「方向 → 建档 → 调研 → 差距 → 路线」全流程；职业地图会按你的选择实时生成，任务可勾选查看进度变化。
 
 ## 工作方式
 

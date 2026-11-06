@@ -3,7 +3,10 @@
 
 用真实 MCP 管线（intake → finalize → save_gap_analysis → save_roadmap →
 detail_current_phase → save_current_detail → generate_tasks → checkin_task）把样例简历+JD 跑成：
-- career-map.html / dashboard.html / demo_profile.json
+- dashboard.html / demo_profile.json
+
+对话式体验页 chat-demo.html 为手写静态前端（不接入 LLM、按所选信息实时生成），
+不由本脚本生成、也不会被覆盖。
 
 运行：
     python docs/examples/build_demo.py
@@ -33,7 +36,6 @@ os.environ["CAREER_KIT_ASSETS_DIR"] = str(DATA / "CareerKit")
 
 from src.server import (  # noqa: E402
     _render_progress_html,
-    _render_roadmap_map,
     checkin_task,
     finalize_profile,
     generate_tasks,
@@ -292,7 +294,6 @@ def main() -> None:
     profile = load_profile()
     out = ROOT / "docs" / "examples" / "demo"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "career-map.html").write_text(_render_roadmap_map(profile), encoding="utf-8")
     (out / "dashboard.html").write_text(_render_progress_html(profile), encoding="utf-8")
     shutil.copy(DATA / "default.json", out / "demo_profile.json")
     print("\nDONE ->", out)

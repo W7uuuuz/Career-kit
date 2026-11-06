@@ -44,7 +44,7 @@ Data comes from 27 collected sources, growing steadily, covering internet / manu
 
 ## Try it online in 60 seconds
 
-Open the [conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html): fixed-option chat simulating the coach, walking direction → profiling → research → gap → roadmap, with the generated career map revealed at the end; [view the career map directly](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html).
+Open the [conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html): fixed-option chat simulating the coach, walking direction → profiling → research → gap → roadmap. The career map is generated live from your selections, with checkable tasks.
 
 ## How it works
 

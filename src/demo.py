@@ -1,11 +1,12 @@
-"""零安装演示：打开随包附带的交互式职业地图。
+"""零安装演示：打开随包附带的对话式体验页。
 
 用法：
     career-kit-demo
     career-kit-demo --no-open
 
-演示产物由 `docs/examples/build_demo.py` 用真实管线生成，随 wheel 一起分发；
-离线打开时打卡写入浏览器 localStorage，不会修改用户档案。
+演示页 `chat-demo.html` 为纯静态前端：预制选项模拟与 AI 陪练的对话，
+并按所选信息实时生成档案、调研结论、差距诊断与职业地图；数据为合成样例，
+不接入 LLM、不上传任何数据。
 """
 
 from __future__ import annotations
@@ -15,15 +16,17 @@ import sys
 import webbrowser
 from pathlib import Path
 
+DEMO_FILENAME = "chat-demo.html"
+
 
 def demo_html() -> Path | None:
-    """定位随包附带的示例职业地图；找不到返回 None。"""
+    """定位随包附带的对话式体验页；找不到返回 None。"""
     here = Path(__file__).resolve()
     # editable 安装：repo/src/demo.py → repo/docs/...
     # wheel 安装：site-packages/src/demo.py → site-packages/docs/...
     roots = (here.parent.parent, here.parent)
     for root in roots:
-        target = root / "docs" / "examples" / "demo" / "career-map.html"
+        target = root / "docs" / "examples" / "demo" / DEMO_FILENAME
         if target.is_file():
             return target
     return None
@@ -31,7 +34,7 @@ def demo_html() -> Path | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="打开 Career Kit 示例职业地图（无需安装与配置）"
+        description="打开 Career Kit 对话式体验（无需安装与配置）"
     )
     parser.add_argument(
         "--no-open", action="store_true", help="只打印文件路径，不打开浏览器"
@@ -47,8 +50,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    print(f"Career Kit 示例职业地图：{target}")
-    print("这是离线演示：勾选任务会把进度保存在当前浏览器，不会修改你的档案。")
+    print(f"Career Kit 对话式体验：{target}")
+    print("这是离线演示：结论与职业地图按所选信息实时生成，进度保存在当前浏览器，不会修改你的档案。")
     if not args.no_open:
         webbrowser.open(target.as_uri())
     return 0

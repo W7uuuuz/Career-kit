@@ -1,19 +1,17 @@
-# 零等待演示：一份真实的职业地图
+﻿# 零等待演示：对话式职业陪练体验
 
 这个目录是 **Career Kit 的真实产出**——一份**合成样例简历**（虚构的「示例用户」）经完整链路
 （差距分析 → 路线图 → 分阶段任务 → 打卡）生成的交付物。目录内不含任何真实用户简历或报告。
 
 **无需安装任何东西**，双击 `chat-demo.html` 即可在浏览器打开对话式演示（固定选项模拟与 AI 教练对话，
-走完方向 → 建档 → 调研 → 差距 → 路线全流程，结尾揭晓职业地图）；GitHub Pages 发布
-`index.html`、`chat-demo.html` 与 `career-map.html`，不上传原始档案 JSON。
+走完方向 → 建档 → 调研 → 差距 → 路线全流程，结尾揭晓职业地图）；GitHub Pages 只发布 `index.html` 与 `chat-demo.html`，不上传原始档案 JSON。
 
 - `chat-demo.html` — 对话式体验页（手写静态页，不由 `build_demo.py` 重新生成）。三轮预置选项
   决定后续全部内容：求证对话 / 档案 / 调研与 JD·面经分析 / 差距 / 四阶段路线面板均按所选组合实时生成；
   「逐项求证」为自动播放的 human-AI 对话流；结尾的**职业地图也在前端按同一份路线实时渲染**
-  （阶段切换、任务勾选与本地进度持久化），不依赖预生成的 `career-map.html`。
-- `career-map.html` — 交互式职业地图（`export_dashboard(mode="roadmap")`）；安装后也可用 `career-kit-demo` 直接打开
+  （阶段切换、任务勾选与本地进度持久化）。安装后 `career-kit-demo` 打开的也是这个页面。
 - `dashboard.html` — 进度仪表盘（`export_dashboard(mode="progress")`）
-- `career-map.png` / `dashboard.png` — 截图，供 README 使用
+- `dashboard.png` — 截图，供文档使用
 - `demo_profile.json` — 生成的完整档案（含 `plan` / `tasks` / `checkins`）
 
 ## 首屏诊断（教练在出 HTML 前就给结论）
@@ -38,7 +36,7 @@
 ## 复现
 
 ```bash
-"<venv-python>" docs/examples/build_demo.py   # 用本仓库真实管线重建以上产物
+"<venv-python>" docs/examples/build_demo.py   # 用真实管线重建 dashboard.html / demo_profile.json（chat-demo.html 不参与重建）
 ```
 
 ## 素材录制
@@ -52,6 +50,6 @@
 "<venv-python>" docs/examples/record_assets.py --all
 ```
 
-产物在 `artifacts/media/`（已 gitignore）：痛点视频、职业地图闭环、README GIF、静帧。
+产物在 `artifacts/media/`（已 gitignore）：痛点视频、对话体验闭环、README GIF、静帧。
 
 > 解释器需与执行过 `pip install -e .` 的一致；多 Python 环境请用 venv 绝对路径。

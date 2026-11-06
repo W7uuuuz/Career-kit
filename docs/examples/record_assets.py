@@ -27,7 +27,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 STORY = ROOT / "docs" / "examples" / "demo" / "story.html"
 SOCIAL = ROOT / "docs" / "examples" / "demo" / "social-preview.html"
-MAP = ROOT / "docs" / "examples" / "demo" / "career-map.html"
+CHAT = ROOT / "docs" / "examples" / "demo" / "chat-demo.html"
 OUT = ROOT / "artifacts" / "media"
 RAW = OUT / "raw"
 STILLS = OUT / "stills"
@@ -85,6 +85,7 @@ def record_story(
 
 
 def record_loop() -> Path:
+    """录制对话式体验闭环：三轮选择 → 调研 → 诊断 → 路线 → 地图勾选打卡。"""
     with sync_playwright() as p:
         browser = p.chromium.launch()
         context = browser.new_context(
@@ -93,39 +94,43 @@ def record_loop() -> Path:
             record_video_size={"width": 1280, "height": 720},
         )
         page = context.new_page()
-        page.goto(MAP.as_uri())
-        page.wait_for_timeout(1000)
+        page.goto(CHAT.as_uri())
+        page.wait_for_timeout(1800)
 
-        page.evaluate(
-            "() => { const s = document.querySelector('input[type=range][data-action=percent]');"
-            " if (s) s.scrollIntoView({block: 'center'}); }"
-        )
+        def wait_action(timeout_ms: int = 20000) -> bool:
+            elapsed = 0
+            while elapsed < timeout_ms:
+                if page.locator("#map-wrap").is_visible():
+                    return True
+                if page.locator(".opt:enabled").count() or page.locator(".pick").count():
+                    return True
+                page.wait_for_timeout(250)
+                elapsed += 250
+            return False
+
+        steps = 0
+        while steps < 40 and not page.locator("#map-wrap").is_visible():
+            if not wait_action():
+                break
+            if page.locator(".pick").count():
+                page.locator(".send-btn").click()
+            else:
+                page.locator(".opt:enabled").first.click()
+            steps += 1
+            page.wait_for_timeout(550)
+
+        # 地图页：勾选前两个任务，展示进度环变化
         page.wait_for_timeout(900)
-        page.evaluate(
-            "() => { const s = document.querySelector('input[type=range][data-action=percent]');"
-            " if (!s) return; s.value = s.max;"
-            " s.dispatchEvent(new Event('input', {bubbles: true}));"
-            " s.dispatchEvent(new Event('change', {bubbles: true})); }"
-        )
-        page.wait_for_timeout(1700)
-
-        page.evaluate(
-            "() => { const d = document.querySelector('details.task-detail');"
-            " if (d) { d.open = true; d.scrollIntoView({block: 'center'}); } }"
-        )
-        page.wait_for_timeout(2300)
-
-        for tab_index, wait_ms in ((1, 2200), (2, 2400), (0, 1800)):
-            page.evaluate(
-                "(i) => { const t = document.querySelectorAll('.tab'); if (t[i]) t[i].click(); }",
-                tab_index,
-            )
-            page.wait_for_timeout(wait_ms)
+        boxes = page.locator("#m-phase-view input[type=checkbox]")
+        for i in range(min(2, boxes.count())):
+            boxes.nth(i).check()
+            page.wait_for_timeout(1000)
+        page.wait_for_timeout(800)
 
         page.evaluate(
             "() => {"
             " const cta = document.createElement('div');"
-            " cta.textContent = 'GitHub 搜 Career Kit';"
+            " cta.textContent = 'GitHub �?Career Kit';"
             " cta.style.cssText = 'position:fixed;left:50%;bottom:26px;"
             "transform:translateX(-50%);background:#4a6cf7;color:#fff;"
             "padding:14px 26px;border-radius:12px;"
