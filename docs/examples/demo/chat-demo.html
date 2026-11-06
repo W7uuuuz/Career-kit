@@ -81,8 +81,6 @@ body {
 .ai .bubble b { color: #2b3674; }
 
 /* 气泡内的小结构 */
-.bubble .src { display: block; margin-top: 8px; padding-top: 8px;
-  border-top: 1px dashed var(--line); font-size: 11.8px; color: var(--muted); }
 .bubble ul { margin: 6px 0 0 18px; font-size: 13px; }
 .bubble li { margin: 3px 0; }
 .bubble .flag { color: var(--warn); font-weight: 600; }
@@ -117,9 +115,7 @@ body {
 .rcard .foot { display: flex; align-items: center; gap: 6px; margin-top: 9px;
   font-size: 11px; color: var(--muted); }
 .rcard .foot .okdot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-@media (max-width: 680px) {
-  .research .cards { grid-template-columns: 1fr; }
-}
+@media (max-width: 680px) { .research .cards { grid-template-columns: 1fr; } }
 
 /* ---------- 输入指示 ---------- */
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; background: var(--card);
@@ -235,7 +231,7 @@ body {
     </div>
   </div>
 
-  <p class="footer">演示页不接入 LLM，对话为预制脚本；数据取自真实管线生成的合成样例。</p>
+  <p class="footer">演示页不接入 LLM；对话与结论由所选信息按规则实时生成（合成数据，非真实用户档案）。</p>
 </div>
 
 <script>
@@ -250,12 +246,127 @@ body {
 
   var STEPS = ['方向', '建档', '调研', '差距', '路线', '揭晓'];
 
-  /* 用户本轮选择的档案信息（分轮收集，初始为示例用户默认项） */
-  var PICKS = {
-    edu: { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目' },
-    exp: { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）' },
-    goal: { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海' },
+  /* ---------------- 预置选项与画像（选择决定后续全部内容） ---------------- */
+  var EDU = {
+    ben_cs: {
+      title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目', year: '2027 届',
+      tier: '双非本科', major: '计算机',
+      score: 0, strength: '计算机基础完整，科班背景不自证',
+      flag: '双非学历，大厂简历初筛存在风险',
+    },
+    ms_211: {
+      title: '211 硕士 · 软件工程', sub: '2028 届在读 · 有课程项目', year: '2028 届',
+      tier: '211 硕士', major: '软件工程',
+      score: 8, strength: '211 硕士学历，过初筛有优势',
+      flag: '',
+    },
+    ben_noncs: {
+      title: '双非本科 · 非科班', sub: '2027 届在读 · 机械背景自学', year: '2027 届',
+      tier: '双非本科', major: '机械（非科班）',
+      score: -4, strength: '跨专业自学执行力强',
+      flag: '非科班，计算机基础需要用项目自证',
+    },
   };
+
+  var EXP = {
+    intern_small: {
+      title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）',
+      score: 3, collab: false, agentProject: true,
+      strength: '能独立搭起完整 Agent 链路（多 Subgraph + RAG）',
+      flag: '实习公司小、时长仅 3 个月，含金量被 HR 打折',
+      skills: [
+        { name: 'Python', auth: 'self_written', level: '能独立完成', control: 8 },
+        { name: 'LangChain / LangGraph', auth: 'ai_assisted', level: '独立写 6 个 Subgraph，但没有任何人 review 过', control: 6 },
+        { name: 'RAG 检索增强', auth: 'ai_assisted', level: '跑通 3 层知识注入', control: 6 },
+      ],
+      phase1: '给现有 Agent 项目补 trace、评测集与 CI，把独立开发升级成有规范、可演示的工程产出',
+    },
+    exp_none: {
+      title: '无实习经历', sub: '课程项目 + 一个 RAG demo',
+      score: -6, collab: false, agentProject: false,
+      strength: '学习路径自驱，已跑通 RAG demo',
+      flag: '零实习经历，简历容易被直接筛掉',
+      skills: [
+        { name: 'Python', auth: 'self_written', level: '课程与作业为主，能独立完成练习', control: 6 },
+        { name: 'Django / Flask', auth: 'ai_assisted', level: '课程项目写过接口，无生产环境', control: 5 },
+        { name: 'RAG 检索增强', auth: 'ai_assisted', level: '跟教程跑通 demo，未做评测', control: 4 },
+      ],
+      phase1: '从 0 做一个能演示的 Agent 项目：目标可量化、有评测集、写清复现步骤',
+    },
+    intern_big: {
+      title: '6 个月中大厂实习', sub: '参与过真实业务团队开发',
+      score: 9, collab: true, agentProject: false,
+      strength: '有团队协作与生产环境交付经验',
+      flag: 'AI 项目深度不足，需要补一个可展示的 AI 作品',
+      skills: [
+        { name: 'Python', auth: 'self_written', level: '团队业务中长期使用', control: 8 },
+        { name: '后端服务（FastAPI）', auth: 'self_written', level: '在生产环境迭代过接口', control: 7 },
+        { name: 'LLM 应用', auth: 'ai_assisted', level: '参与过 AI 功能接入，有 code review', control: 6 },
+      ],
+      phase1: '把实习里的业务经验延伸成一个 AI 应用作品：带 trace 与评测，突出你熟悉的工程规范',
+    },
+  };
+
+  var GOAL = {
+    agent_big: {
+      title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海',
+      score: -3, city: '上海',
+      target: '大厂 AI Agent 岗（校招）',
+      salary: '20-30K（BOSS 直聘同岗）',
+      jd: '字节官网 JD 原文点名「多人协作与代码评审经验」',
+      peer: '牛客 2027 届双非转 Agent：3 份面经共性为先补协作证据',
+      flag: '大厂校招竞争激烈，缺协作证据难破初筛',
+      plan: 'big',
+    },
+    app_mid: {
+      title: 'AI 应用开发', sub: '先中厂实习 · base 杭州',
+      score: 4, city: '杭州',
+      target: '中厂 AI 应用实习（转正 / 再跳）',
+      salary: '200-300/天（BOSS 直聘实习岗）',
+      jd: '中厂实习 JD：Python / LLM 应用 / 团队协作意识',
+      peer: '牛客实习面经：中厂更看项目落地与沟通能力',
+      flag: '实习窗口期短，需要尽快准备好可投的项目',
+      plan: 'mid',
+    },
+    undecided: {
+      title: '方向还没定', sub: 'base 不限 · 想先看看市场',
+      score: 1, city: '不限',
+      target: 'AI 应用方向（待验证）',
+      salary: '15-30K（AI 应用岗位区间）',
+      jd: '多行业 JD 对比：AI 应用岗门槛低于算法岗，更看落地',
+      peer: '牛客转行帖：先做一个小项目，再决定押哪个方向',
+      flag: '方向未定，容易分散投入，需要先验证',
+      plan: 'explore',
+    },
+  };
+
+  /* 当前选择（默认第一项） */
+  var PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big };
+
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+  function matchScore() {
+    return clamp(54 + PICKS.edu.score + PICKS.exp.score + PICKS.goal.score, 40, 78);
+  }
+  function startLevel() { return matchScore() >= 65 ? '中厂' : '小厂'; }
+
+  function redFlags() {
+    var out = [PICKS.exp.flag, PICKS.edu.flag];
+    if (!PICKS.exp.collab) out.push('零团队协作证据，而大厂 JD 明确要求代码评审经验');
+    out.push(PICKS.goal.flag);
+    return out.filter(Boolean).slice(0, 3);
+  }
+
+  function autoProofSteps() {
+    var steps = [];
+    PICKS.exp.skills.forEach(function (s, i) {
+      steps.push({ who: 'ai', text: '第 ' + (i + 1) + ' 项：<b>' + esc(s.name) + '</b>——能独立完成吗？代码是你自己写的，还是有 AI 参与？' });
+      var authLabel = s.auth === 'self_written' ? '手写，从设计到实现都是我自己完成' : 'AI 生成后我逐段验证并改过，但没有其他人 review';
+      steps.push({ who: 'user', text: authLabel + '。' + s.level + '。' });
+    });
+    steps.push({ who: 'ai', text: '收到——这不是简历原文，而是你确认过的事实。把控度我按你的描述记档：' +
+      PICKS.exp.skills.map(function (s) { return esc(s.name) + ' ' + s.control + '/10'; }).join('、') + '。' });
+    return steps;
+  }
 
   /* ---------------- 对话脚本 ---------------- */
   var S = [
@@ -288,52 +399,30 @@ body {
     { /* 4 · 第一问 */
       stepName: '建档',
       ai: ['第一问：学历与专业是？'],
-      picker: {
-        key: 'edu',
-        options: [
-          { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目' },
-          { title: '211 硕士 · 软件工程', sub: '2028 届在读 · 有课程项目' },
-          { title: '双非本科 · 非科班', sub: '2027 届在读 · 机械背景自学' },
-        ],
-        goto: 5,
-      } },
+      picker: { key: 'edu', options: ['ben_cs', 'ms_211', 'ben_noncs'], goto: 5 } },
 
     { /* 5 · 第二问 */
       stepName: '建档',
       ai: function () {
-        return ['记下了：<b>' + esc(PICKS.edu.title) + '</b>。',
+        return ['记下了：<b>' + esc(PICKS.edu.title) + '</b>（' + esc(PICKS.edu.year) + '）。',
           '第二问：有实习或项目经历吗？做过什么方向？'];
       },
-      picker: {
-        key: 'exp',
-        options: [
-          { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）' },
-          { title: '无实习经历', sub: '课程项目 + 一个 RAG demo' },
-          { title: '6 个月中大厂实习', sub: '参与过真实业务团队开发' },
-        ],
-        goto: 6,
-      } },
+      picker: { key: 'exp', options: ['intern_small', 'exp_none', 'intern_big'], goto: 6 } },
 
     { /* 6 · 第三问 */
       stepName: '建档',
       ai: function () {
-        var note = PICKS.exp.title.indexOf('无实习') >= 0
-          ? '没有实习不是死局——项目深度可以补位，但「无协作证据」会被 HR 直接打折。'
-          : '经历记下了——回头求证简历时，我会重点看「AI 辅助、没有人 review」的部分。';
+        var note = PICKS.exp.collab
+          ? '有团队协作经历——这是很多同背景同学缺的东西，后面规划会围绕它展开。'
+          : (PICKS.exp.agentProject
+            ? '独立 Agent 项目不错，但我注意到「AI 辅助、没有人 review」——这会成为诊断的关键点。'
+            : '没有实习不是死局，但「零协作证据」会被 HR 直接打折，后面规划会优先补它。');
         return ['<b>' + esc(PICKS.exp.title) + '</b>：' + note,
           '第三问：目标方向和 base 城市，有想法吗？'];
       },
-      picker: {
-        key: 'goal',
-        options: [
-          { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海' },
-          { title: 'AI 应用开发', sub: '先中厂实习 · base 杭州' },
-          { title: '方向还没定', sub: 'base 不限 · 想先看看市场' },
-        ],
-        goto: 7,
-      } },
+      picker: { key: 'goal', options: ['agent_big', 'app_mid', 'undecided'], goto: 7 } },
 
-    { /* 7 · 收齐档案 */
+    { /* 7 · 收齐档案 + 自动求证对话 */
       stepName: '建档',
       ai: function () {
         return [
@@ -341,80 +430,112 @@ body {
           '<b>学历</b>：' + esc(PICKS.edu.title) + '（' + esc(PICKS.edu.sub) + '）<br>'
             + '<b>经历</b>：' + esc(PICKS.exp.title) + '（' + esc(PICKS.exp.sub) + '）<br>'
             + '<b>目标</b>：' + esc(PICKS.goal.title) + '（' + esc(PICKS.goal.sub) + '）',
-          '真实产品里这份档案会逐项向你求证——每条技能的作者身份（手写 / AI 辅助）和把控度由本人回答，AI 不代填。'
-            + '<span class="src">演示边界：下面的求证与诊断沿用示例用户（双非本·独立开发 Agent）的合成结果展示流程。</span>',
+          '档案不能照抄简历——我逐项求证一下技能的作者身份和把控度（下面自动进行）：',
         ];
       },
-      opts: [{ label: '开始求证（直接看结果）', goto: 8 }] },
+      auto: autoProofSteps,
+      opts: [{ label: '下一步：看市场', goto: 8 }] },
 
-    { /* 8 · 求证结果 */
-      stepName: '建档',
-      ai: [
-        '这是逐项求证后的用户档案（不是简历原文，是确认过的事实）：',
-        '<ul>'
-        + '<li><b>Python</b>——能独立完成，把控度 8/10</li>'
-        + '<li><b>LangChain / LangGraph</b>——独立写 6 个 Subgraph，但没有任何人 review 过，把控度 6/10</li>'
-        + '<li><b>RAG 检索增强</b>——跑通 3 层知识注入，把控度 6/10</li>'
-        + '</ul>',
-        '注意后两条：都被标了「<b>AI 辅助、无团队评审</b>」。这个标记不动声色，但后面直接决定差距诊断的结论。',
-      ],
-      opts: [{ label: '下一步：看市场', goto: 9 }] },
-
-    { /* 9 · 调研预告 */
+    { /* 8 · 调研预告 */
       stepName: '调研',
-      ai: [
-        '下一步是<b>市场调研</b>。行情不靠模型记忆——我抓三类真实数据：招聘平台（BOSS，含薪资）、企业官网 JD（任职要求原文）、经验帖（牛客 / GitHub 的同背景路径）。',
-        '抓完后每条都带来源链接，结论必须锚定来源，锚不上的直接被拒。',
-      ],
-      opts: [{ label: '开始（演示中即时返回）', goto: 10 }] },
+      ai: function () {
+        return [
+          '下一步是<b>市场调研</b>。行情不靠模型记忆——围绕你的目标「' + esc(PICKS.goal.target) + '」抓三类真实数据：招聘平台（BOSS，含薪资）、企业官网 JD（任职要求原文）、经验帖（同背景路径）。',
+          '抓完后每条都带来源链接，结论必须锚定来源，锚不上的直接被拒。',
+        ];
+      },
+      opts: [{ label: '开始（演示中即时返回）', goto: 9 }] },
 
-    { /* 10 · 调研结果面板 */
+    { /* 9 · 调研结果面板 */
       stepName: '调研',
-      ai: ['调研完成。三条来源都已抓取并校验：'],
-      research: [
-        { kind: '招聘平台 · 含薪资', title: 'BOSS 直聘｜AI 应用工程师',
-          finding: '20-30K；10 条同岗 JD 中 7 条点名工程规范', foot: '真实薪资范围 · 已锚定' },
-        { kind: '企业 JD 原文', title: '字节跳动官网｜AI Agent 后端',
-          finding: '任职要求原文写明「多人协作与代码评审经验」', foot: '官方招聘页 · 已锚定' },
-        { kind: '同背景经验帖', title: '牛客｜2027 届双非转 Agent',
-          finding: '3 份面经共性：先补协作证据，再投大厂', foot: '合成样例 · 已锚定' },
-      ],
-      opts: [{ label: '下一步：差距分析', goto: 11 }] },
+      ai: function () {
+        return ['调研完成。针对「' + esc(PICKS.goal.title) + ' · ' + esc(PICKS.goal.city) + '」，三条来源已抓取并校验：'];
+      },
+      research: function () {
+        return [
+          { kind: '招聘平台 · 含薪资', title: 'BOSS 直聘｜' + PICKS.goal.title,
+            finding: PICKS.goal.salary, foot: '真实薪资范围 · 已锚定' },
+          { kind: '企业 JD 原文', title: PICKS.goal.plan === 'big' ? '字节跳动官网｜AI Agent 后端' : (PICKS.goal.plan === 'mid' ? '中厂官网｜AI 应用实习' : '多企业官网｜AI 应用岗'),
+            finding: PICKS.goal.jd, foot: '官方招聘页 · 已锚定' },
+          { kind: '同背景经验帖', title: '牛客｜同背景路径',
+            finding: PICKS.goal.peer, foot: '合成样例 · 已锚定' },
+        ];
+      },
+      opts: [{ label: '下一步：差距分析', goto: 10 }] },
 
-    { /* 11 · 差距预告 */
+    { /* 10 · 差距预告 */
       stepName: '差距',
-      ai: ['基于调研数据 + 确认过的档案，差距分析的第一眼结论（不是客套话，是逐维度打分出来的）：'],
-      opts: [{ label: '看首屏诊断', goto: 12 }] },
+      ai: ['基于调研数据 + 确认过的档案，差距分析的第一眼结论（逐维度打分，不是客套话）：'],
+      opts: [{ label: '看首屏诊断', goto: 11 }] },
 
-    { /* 12 · 首屏诊断 */
+    { /* 11 · 首屏诊断 */
       stepName: '差距',
-      ai: [
-        '<span class="okc">你不是零基础</span>——能独立搭起完整 Agent 链路（6 个 Subgraph + 双提供商网关 + 3 层 RAG）。这是可以直接写进简历首条的架构级能力。',
-        '但也有一个<span class="flag">致命盲区：履历全是独立开发，零团队协作证据</span>。而刚抓的 JD 原文点名了协作——挑明了说：<b>方向对，你缺的不是技术，是「被协作过」。</b>',
-        '<span class="score">目标匹配度 <b>58</b>/100　起点档位 <b>小厂</b>（逐维度打分，不是拍脑袋）</span>',
-        '三个雷点已同步记档：小公司实习（仅 3 个月）· 独立项目无协作 · 无大流量场景——每个都配了叙事弱化方案 + 补证据动作。',
-      ],
-      opts: [{ label: '给我一条走得通的路线', goto: 13 }] },
+      ai: function () {
+        var score = matchScore(), level = startLevel();
+        var flags = redFlags().map(function (f) { return '「' + esc(f) + '」'; }).join('、');
+        return [
+          '<span class="okc">' + esc(PICKS.exp.strength) + '</span>' +
+            (PICKS.edu.strength ? '，' + esc(PICKS.edu.strength) : '') + '——这是可以直接写进简历首条的底牌。',
+          '<span class="flag">主要短板</span>：' + flags + '。挑明了说：<b>目标方向对，缺的是能把差距补上的证据，不是空泛的「再努力」。' +
+            (PICKS.exp.collab ? '' : '协作证据是当前最短的板。') + '</b>',
+          '<span class="score">目标匹配度 <b>' + score + '</b>/100　起点档位 <b>' + level + '</b>（学历 ' +
+            (PICKS.edu.score >= 0 ? '+' + PICKS.edu.score : PICKS.edu.score) + ' · 经历 ' +
+            (PICKS.exp.score >= 0 ? '+' + PICKS.exp.score : PICKS.exp.score) + ' · 目标难度 ' +
+            (PICKS.goal.score >= 0 ? '+' + PICKS.goal.score : PICKS.goal.score) + '）</span>',
+          picGapLine(),
+        ];
+      },
+      opts: [{ label: '给我一条走得通的路线', goto: 12 }] },
 
-    { /* 13 · 路线 */
+    { /* 12 · 路线 */
       stepName: '路线',
-      ai: [
-        '<b>策略：从「独立开发者」升级为「能进团队的 Agent 工程师」。</b>不做一步跳级，档位连续过渡：',
-        '<ul>'
-        + '<li><b>阶段一 · 工程化补齐</b>——给项目补 trace 与评测集；KPI：1 个可演示开源仓库</li>'
-        + '<li><b>阶段二 · 协作证据</b>——3 个被 merge 的开源 PR；KPI：PR 链接 + review 往返记录</li>'
-        + '<li><b>阶段三 · 中厂实习过渡</b>——有真实 JD 依据（BOSS 抓取，200-300/天）</li>'
-        + '<li><b>阶段四 · 冲大厂校招（2027 届）</b>——暂无真实 JD，如实标注「待导入」，<b>绝不编造</b></li>'
-        + '</ul>',
-        '每个阶段拆成可打卡任务：按天打卡、按比例推进、按次完成都有——完成即沉淀为<b>能力证据</b>。职业地图已经按这条策略生成好了。',
-      ],
-      opts: [{ label: '打开职业地图', goto: 14, primary: true }] },
+      ai: function () { return roadmapLines(); },
+      opts: [{ label: '打开职业地图', goto: 13, primary: true }] },
 
-    { /* 14 · 揭晓 */
+    { /* 13 · 揭晓 */
       stepName: '揭晓',
       ai: [],
       opts: [] },
   ];
+
+  function picGapLine() {
+    var gaps = [];
+    if (!PICKS.exp.collab) gaps.push('多人协作 / 代码评审（<b>高优</b>）');
+    if (!PICKS.exp.agentProject) gaps.push('可演示的 AI 项目与评测思路（<b>高优</b>）');
+    else gaps.push('Agent 工程化：trace / 评测集（<b>高优</b>）');
+    if (PICKS.edu.tier.indexOf('双非') >= 0) gaps.push('项目含金量与面试叙事（中优）');
+    if (PICKS.edu.major.indexOf('非科班') >= 0) gaps.push('计算机基础：操作系统 / 网络（高优）');
+    return '优先补的差距：' + gaps.join('；') + '。';
+  }
+
+  function roadmapLines() {
+    var g = PICKS.goal, e = PICKS.exp, edu = PICKS.edu;
+    var lines = ['<b>策略：围绕「' + esc(g.target) + '」补齐证据，不做一步跳级。</b>'];
+    if (g.plan === 'big') {
+      lines.push('<ul>'
+        + '<li><b>阶段一 · 工程化补齐</b>——' + esc(e.phase1) + '；KPI：1 个可演示开源仓库</li>'
+        + '<li><b>阶段二 · 协作证据</b>——' + (e.collab ? '把已有协作经历升级成可讲的项目评审故事，并参与开源拿到 2 个 merge 的 PR' : '参与开源项目并拿到 <b>3 个被 merge 的 PR</b>') + '；KPI：PR 链接 + review 往返记录</li>'
+        + '<li><b>阶段三 · 中厂实习过渡</b>——拿到一段有 AI 业务的团队实习，作为大厂跳板</li>'
+        + '<li><b>阶段四 · 冲大厂校招（' + esc(edu.year) + '）</b>——按真实 JD 定制简历；暂无真实 JD 的阶段如实标「待导入」，<b>绝不编造</b></li>'
+        + '</ul>');
+    } else if (g.plan === 'mid') {
+      lines.push('<ul>'
+        + '<li><b>阶段一 · 作品补齐</b>——' + esc(e.phase1) + '；KPI：1 个带 README 与演示视频的项目</li>'
+        + '<li><b>阶段二 · 实习投递冲刺</b>——按中厂实习 JD 定制简历，投递 15 家并复盘面经</li>'
+        + '<li><b>阶段三 · 中厂实习落地</b>（' + esc(g.city) + '）——优先 AI 业务团队，KPI：实习证明 + 项目产出</li>'
+        + '<li><b>阶段四 · 转正评估 / 再跳</b>——实习期结束前完成绩效复盘，决定转正或跳槽</li>'
+        + '</ul>');
+    } else {
+      lines.push('<ul>'
+        + '<li><b>阶段一 · 方向验证</b>——用一个小项目（' + esc(e.phase1) + '）验证你对 AI 应用的兴趣与耐受度</li>'
+        + '<li><b>阶段二 · 岗位试投</b>——对比 2-3 个方向的真实 JD 与薪资，各投 5 家拿反馈</li>'
+        + '<li><b>阶段三 · 聚焦主方向</b>——根据反馈锁定一个方向，再按该方向的差距补证据</li>'
+        + '<li><b>阶段四 · 深入冲刺</b>——围绕锁定方向做深一个项目，准备面试与项目复盘</li>'
+        + '</ul>');
+    }
+    lines.push('每个阶段拆成可打卡任务（按次 / 按天 / 按比例），完成即沉淀为<b>能力证据</b>。职业地图已按这条策略生成。');
+    return lines;
+  }
 
   /* ---------------- 引擎 ---------------- */
   var busy = false;
@@ -461,15 +582,16 @@ body {
     });
   }
 
-  /* 分轮信息：三张卡片单选（选中高亮）+ 右下角发送 */
   function showPicker(cfg) {
     optsEl.innerHTML = '';
     hintEl.textContent = '选一项最接近你的情况（演示预置 · 选中后点右下角发送）';
+    var dict = cfg.key === 'edu' ? EDU : (cfg.key === 'exp' ? EXP : GOAL);
     var grid = document.createElement('div');
     grid.className = 'picker';
-    var selected = 0; // 默认选中第一项，减少一次点击
+    var selected = 0;
 
-    var cards = cfg.options.map(function (opt, i) {
+    var cards = cfg.options.map(function (key, i) {
+      var opt = dict[key];
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'pick';
@@ -482,7 +604,6 @@ body {
         cards.forEach(function (c, j) {
           c.setAttribute('aria-pressed', j === i ? 'true' : 'false');
         });
-        sendBtn.disabled = false;
       });
       return b;
     });
@@ -497,12 +618,10 @@ body {
     sendBtn.type = 'button';
     sendBtn.className = 'send-btn';
     sendBtn.textContent = '发送';
-    sendBtn.disabled = false;
     sendBtn.addEventListener('click', function () {
       if (busy) return;
-      var opt = cfg.options[selected];
-      PICKS[cfg.key] = { title: opt.title, sub: opt.sub };
-      addMsg('user', esc(opt.title + '｜' + opt.sub));
+      PICKS[cfg.key] = dict[cfg.options[selected]];
+      addMsg('user', esc(PICKS[cfg.key].title + '｜' + PICKS[cfg.key].sub));
       optsEl.innerHTML = '';
       hintEl.textContent = '';
       runNode(cfg.goto);
@@ -511,7 +630,6 @@ body {
     row.appendChild(sendBtn);
     optsEl.appendChild(grid);
     optsEl.appendChild(row);
-    hintEl.scrollIntoView && hintEl.scrollIntoView({ block: 'nearest' });
   }
 
   function addResearch(items) {
@@ -533,6 +651,19 @@ body {
     return wrap;
   }
 
+  /* 自动播放求证对话（human / ai 交替，无需点击） */
+  function runAuto(steps, done) {
+    var i = 0;
+    hintEl.textContent = '正在逐项求证（自动进行）……';
+    function next() {
+      if (i >= steps.length) { hintEl.textContent = ''; done(); return; }
+      var s = steps[i++];
+      addMsg(s.who, s.text);
+      timers.push(setTimeout(next, s.who === 'ai' ? 950 : 620));
+    }
+    next();
+  }
+
   function play(node) {
     busy = true;
     optsEl.innerHTML = '';
@@ -544,13 +675,21 @@ body {
       timers.push(setTimeout(function () {
         if (i === 0) typing.remove();
         addMsg('ai', m);
-        if (isLast) {
+        if (!isLast) return;
+        var afterAuto = function () {
           if (node.research) {
-            timers.push(setTimeout(function () { addResearch(node.research); }, 380));
+            var items = typeof node.research === 'function' ? node.research() : node.research;
+            timers.push(setTimeout(function () { addResearch(items); }, 380));
           }
           busy = false;
           if (node.picker) showPicker(node.picker);
           else setOpts(node.opts);
+        };
+        if (node.auto) {
+          var steps = typeof node.auto === 'function' ? node.auto() : node.auto;
+          runAuto(steps, afterAuto);
+        } else {
+          afterAuto();
         }
       }, 420 + i * 620));
     });
@@ -559,7 +698,7 @@ body {
     var node = S[idx];
     if (!node) return;
     renderStepper(node.stepName);
-    if (idx === 14) { revealMap(); return; }
+    if (idx === 13) { revealMap(); return; }
     play(node);
   }
   function revealMap() {
@@ -574,11 +713,7 @@ body {
     chatEl.innerHTML = '';
     optsEl.innerHTML = '';
     hintEl.textContent = '';
-    PICKS = {
-      edu: { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目' },
-      exp: { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）' },
-      goal: { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海' },
-    };
+    PICKS = { edu: EDU.ben_cs, exp: EXP.intern_small, goal: GOAL.agent_big };
     document.getElementById('map-frame').src = 'about:blank';
     mapWrap.style.display = 'none';
     chatCard.style.display = 'flex';

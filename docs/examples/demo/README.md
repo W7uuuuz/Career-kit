@@ -7,8 +7,9 @@
 走完方向 → 建档 → 调研 → 差距 → 路线全流程，结尾揭晓职业地图）；GitHub Pages 发布
 `index.html`、`chat-demo.html` 与 `career-map.html`，不上传原始档案 JSON。
 
-- `chat-demo.html` — 对话式体验页（手写静态页，不由 `build_demo.py` 重新生成；对话脚本取材于 `demo_profile.json`
-  的合成事实，嵌入展示 `career-map.html`）
+- `chat-demo.html` — 对话式体验页（手写静态页，不由 `build_demo.py` 重新生成）。三轮预置选项
+  决定后续全部内容：求证对话 / 档案 / 调研 / 差距 / 路线按所选组合实时生成；「逐项求证」
+  为自动播放的 human-AI 对话流；结尾嵌入展示 `career-map.html`。
 - `career-map.html` — 交互式职业地图（`export_dashboard(mode="roadmap")`）；安装后也可用 `career-kit-demo` 直接打开
 - `dashboard.html` — 进度仪表盘（`export_dashboard(mode="progress")`）
 - `career-map.png` / `dashboard.png` — 截图，供 README 使用
