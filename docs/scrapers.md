@@ -23,6 +23,14 @@
 | `bilibili` | 哔哩哔哩 | JD | 社招 | [guide](../src/scrapers/bilibili/guide.md) |
 | `xiaomi` | 小米 | JD | 社招 | [guide](../src/scrapers/xiaomi/guide.md) |
 | `alibaba_social` | 阿里巴巴（社招） | JD | 社招 | [guide](../src/scrapers/alibaba_social/guide.md) |
+| `boe` | 京东方 | JD | 社招 | [guide](../src/scrapers/boe/guide.md) |
+| `huawei` | 华为 | JD | 社招 | [guide](../src/scrapers/huawei/guide.md) |
+| `sany` | 三一集团 | JD | 社招 | [guide](../src/scrapers/sany/guide.md) |
+| `crrc` | 中国中车 | JD | 社招 | [guide](../src/scrapers/crrc/guide.md) |
+| `zhonglian` | 中联重科 | JD | 社招 | [guide](../src/scrapers/zhonglian/guide.md) |
+| `inovance` | 汇川技术 | JD | 社招 | [guide](../src/scrapers/inovance/guide.md) |
+| `tebian` | 特变电工 | JD | 社招 | [guide](../src/scrapers/tebian/guide.md) |
+| `sungrow` | 阳光电源 | JD | 社招 | [guide](../src/scrapers/sungrow/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 

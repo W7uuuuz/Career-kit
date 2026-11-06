@@ -5,28 +5,41 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import sys
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.padding import PKCS7
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import src.scrapers._platforms.beisen as beisen_platform
+import src.scrapers._platforms.dayee as dayee_platform
+import src.scrapers._platforms.moka as moka_platform
 import src.scrapers.alibaba.scraper as alibaba
 import src.scrapers.alibaba_social.scraper as alibaba_social
 import src.scrapers.ant.scraper as ant
 import src.scrapers.baidu.scraper as baidu
 import src.scrapers.bilibili.scraper as bilibili
+import src.scrapers.boe.scraper as boe
+import src.scrapers.crrc.scraper as crrc
 import src.scrapers.ctrip.scraper as ctrip
 import src.scrapers.didi.scraper as didi
+import src.scrapers.huawei.scraper as huawei
 import src.scrapers.jd.scraper as jd
 import src.scrapers.kuaishou.scraper as kuaishou
 import src.scrapers.meituan.scraper as meituan
 import src.scrapers.netease.scraper as netease
 import src.scrapers.pdd.scraper as pdd
+import src.scrapers.sungrow.scraper as sungrow
+import src.scrapers.tebian.scraper as tebian
 import src.scrapers.tencent.scraper as tencent
 import src.scrapers.xiaohongshu.scraper as xiaohongshu
 import src.scrapers.xiaomi.scraper as xiaomi
+import src.scrapers.zhonglian.scraper as zhonglian
 from src.scrapers import list_scrapers
 from src.scrapers.loader import get_scraper, get_scraper_for_url
 
@@ -660,6 +673,232 @@ def test_bilibili_parse_payload_and_detail():
 
 
 # ---------------------------------------------------------------------------
+# 北森平台（京东方 / 三一 / 汇川）
+# ---------------------------------------------------------------------------
+
+
+def test_beisen_search_and_detail(monkeypatch):
+    payload = {
+        "Code": 200,
+        "Count": 2,
+        "Data": [
+            {
+                "Id": "beisen-1",
+                "JobAdName": "算法工程师",
+                "LocNames": ["北京市·大兴区"],
+                "Org": "集团研发",
+                "Duty": "负责算法研发",
+                "Require": "熟悉 Python",
+                "Salary": None,
+            },
+            {
+                "Id": "beisen-2",
+                "JobAdName": "工艺工程师",
+                "LocNames": ["合肥市"],
+                "Org": "制造体系",
+                "Duty": "负责工艺设计",
+                "Require": "熟悉机械",
+                "Salary": None,
+            },
+        ],
+    }
+    monkeypatch.setattr(beisen_platform, "request_json", lambda *a, **k: payload)
+    scraper = boe.Scraper()
+
+    rows = scraper.search(keyword="算法", city="北京", limit=2)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "算法工程师"
+    assert rows[0]["location"] == "北京市·大兴区"
+    assert rows[0]["department"] == "集团研发"
+    assert "jobAdId=beisen-1" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责算法研发"
+    assert detail["requirements"] == "熟悉 Python"
+    assert detail["company"] == "京东方"
+
+
+# ---------------------------------------------------------------------------
+# 大易平台（中国中车 / 中联重科 / 特变电工）
+# ---------------------------------------------------------------------------
+
+
+def test_dayee_search_and_detail(monkeypatch):
+    def fake_request(client, method, url, **kwargs):
+        if "listPositionDetail" in url:
+            return {
+                "state": "200",
+                "data": {
+                    "postName": "电气工程师",
+                    "workPlaceStr": "南京市",
+                    "company": "中车南京浦镇车辆有限公司",
+                    "orgName": "中车南京浦镇车辆有限公司",
+                    "workContent": "负责电气系统设计",
+                    "serviceCondition": "熟悉电气原理",
+                    "education": "本科及以上",
+                    "postTypeName": "电气、自动化类",
+                    "publishDate": "2026-10-09",
+                },
+            }
+        return {
+            "state": "200",
+            "data": {
+                "pageForm": {
+                    "totalPage": 1,
+                    "pageData": [
+                        {
+                            "postId": "dayee-1",
+                            "postName": "电气工程师",
+                            "workPlaceStr": "南京市",
+                            "company": "中车南京浦镇车辆有限公司",
+                            "postType": "0/1227/103401",
+                            "postTypeName": "电气、自动化类",
+                            "educationStr": "本科及以上",
+                            "publishDate": "2026-10-09",
+                        }
+                    ],
+                }
+            },
+        }
+
+    monkeypatch.setattr(dayee_platform, "request_json", fake_request)
+    scraper = crrc.Scraper()
+
+    rows = scraper.search(keyword="电气", city="南京", limit=1)
+    assert rows[0]["title"] == "电气工程师"
+    assert rows[0]["location"] == "南京市"
+    assert "postId=dayee-1" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责电气系统设计"
+    assert detail["requirements"] == "熟悉电气原理"
+    assert detail["company"] == "中国中车"
+
+
+def test_dayee_suite_key_routing():
+    assert zhonglian.Scraper().supports_url(
+        "https://wecruit.hotjob.cn/SU60a6449a2f9d2430fdc11a19/pb/posDetail.html?postId=1"
+    )
+    assert not zhonglian.Scraper().supports_url(
+        "https://wecruit.hotjob.cn/SU612f55eebef57c0616450aa2/pb/posDetail.html?postId=1"
+    )
+    assert tebian.Scraper().supports_url(
+        "https://wecruit.hotjob.cn/SU612f55eebef57c0616450aa2/pb/posDetail.html?postId=1"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Moka 平台（阳光电源）
+# ---------------------------------------------------------------------------
+
+
+def _moka_encrypt(payload: dict, key: bytes, iv: bytes) -> dict:
+    plain = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    padder = PKCS7(128).padder()
+    padded = padder.update(plain) + padder.finalize()
+    encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    cipher = encryptor.update(padded) + encryptor.finalize()
+    return {
+        "necromancer": key.decode("utf-8"),
+        "data": base64.b64encode(cipher).decode("utf-8"),
+    }
+
+
+def test_moka_decrypt_and_search(monkeypatch):
+    key = b"0123456789abcdef"
+    iv = b"fedcba9876543210"
+
+    def fake_request(client, method, url, **kwargs):
+        if url.endswith("/website/job"):
+            return _moka_encrypt(
+                {
+                    "code": 0,
+                    "data": {
+                        "id": "moka-1",
+                        "title": "硬件工程师",
+                        "commitment": "全职",
+                        "locations": [{"cityName": "合肥市"}],
+                        "jobDescription": "<p>负责硬件设计</p><p>二、任职要求</p><p>熟悉电源拓扑</p>",
+                    },
+                },
+                key,
+                iv,
+            )
+        return _moka_encrypt(
+            {
+                "code": 0,
+                "data": {
+                    "jobStats": {"total": 1},
+                    "jobs": [
+                        {
+                            "id": "moka-1",
+                            "title": "硬件工程师",
+                            "locations": [{"cityName": "合肥市"}],
+                        }
+                    ],
+                },
+            },
+            key,
+            iv,
+        )
+
+    monkeypatch.setattr(moka_platform, "request_json", fake_request)
+    monkeypatch.setattr(
+        moka_platform.MokaScraper, "_fetch_aes_iv", lambda self, client: iv
+    )
+    scraper = sungrow.Scraper()
+
+    rows = scraper.search(keyword="硬件", city="合肥", limit=1)
+    assert rows[0]["title"] == "硬件工程师"
+    assert rows[0]["location"] == "合肥市"
+    assert rows[0]["url"].endswith("#/job/moka-1")
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责硬件设计"
+    assert detail["requirements"] == "熟悉电源拓扑"
+    assert detail["company"] == "阳光电源"
+
+
+# ---------------------------------------------------------------------------
+# 华为
+# ---------------------------------------------------------------------------
+
+
+def test_huawei_search_and_detail(monkeypatch):
+    payload = {
+        "status": "SUCCESS",
+        "data": {
+            "pageVO": {"totalPages": 1},
+            "result": [
+                {
+                    "jobId": 114740,
+                    "jobName": "IT平台首席AI架构师",
+                    "workPlace": "深圳",
+                    "deptName": "质量与流程IT部",
+                    "jobFamilyName": "质量与流程IT族",
+                    "workYear": "5",
+                    "lastUpdateDate": "2026-10-16",
+                    "mainBusiness": "负责 AI 架构设计",
+                    "jobRequire": "熟悉 AI 技术",
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(huawei, "request_json", lambda *a, **k: payload)
+    scraper = huawei.Scraper()
+
+    rows = scraper.search(keyword="AI", city="深圳", limit=1)
+    assert rows[0]["title"] == "IT平台首席AI架构师"
+    assert rows[0]["location"] == "深圳"
+    assert "jobId=114740" in rows[0]["url"]
+
+    detail = scraper.get_detail(rows[0]["url"])
+    assert detail["description"] == "负责 AI 架构设计"
+    assert detail["requirements"] == "熟悉 AI 技术"
+    assert detail["company"] == "华为"
+
+
+# ---------------------------------------------------------------------------
 # 注册与路由
 # ---------------------------------------------------------------------------
 
@@ -682,6 +921,14 @@ def test_new_scrapers_registered_with_params():
         "bilibili",
         "xiaomi",
         "alibaba_social",
+        "boe",
+        "huawei",
+        "sany",
+        "crrc",
+        "zhonglian",
+        "inovance",
+        "tebian",
+        "sungrow",
     ):
         assert cid in by_id
         assert by_id[cid]["params"]
@@ -706,6 +953,14 @@ def test_new_scraper_url_routing():
         "https://jobs.bilibili.com/social/positions/1": "bilibili",
         "https://hr.xiaomi.com/website/opportunities.html?jobId=1": "xiaomi",
         "https://talent.alibaba.com/off-campus/position-detail?positionId=1": "alibaba_social",
+        "https://boe.zhiye.com/social/jobs?jobAdId=1": "boe",
+        "https://career.huawei.com/cn/social-recruitment-job-list?jobId=1": "huawei",
+        "https://sany.zhiye.com/social/jobs?jobAdId=1": "sany",
+        "https://crrc.hotjob.cn/SU64d47c466202cc36e27a52d4/pb/posDetail.html?postId=1": "crrc",
+        "https://wecruit.hotjob.cn/SU60a6449a2f9d2430fdc11a19/pb/posDetail.html?postId=1": "zhonglian",
+        "https://inovance.zhiye.com/social/jobs?jobAdId=1": "inovance",
+        "https://wecruit.hotjob.cn/SU612f55eebef57c0616450aa2/pb/posDetail.html?postId=1": "tebian",
+        "https://app.mokahr.com/social-recruitment/sungrow/94415#/job/1": "sungrow",
     }
     for url, expected in cases.items():
         scraper = get_scraper_for_url(url)

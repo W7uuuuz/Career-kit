@@ -156,6 +156,70 @@ scrapers:
     url_patterns:
       - "talent.alibaba.com"
 
+  boe:
+    name: 京东方
+    module: boe.scraper
+    class: Scraper
+    description: 京东方社会招聘（boe.zhiye.com），北森公开接口，列表已含完整 JD，不公开薪资
+    url_patterns:
+      - "boe.zhiye.com"
+
+  huawei:
+    name: 华为
+    module: huawei.scraper
+    class: Scraper
+    description: 华为社会招聘（career.huawei.com），公开接口，列表已含完整 JD，不公开薪资
+    url_patterns:
+      - "career.huawei.com"
+
+  sany:
+    name: 三一集团
+    module: sany.scraper
+    class: Scraper
+    description: 三一集团社会招聘（sany.zhiye.com），北森公开接口，列表已含完整 JD，不公开薪资
+    url_patterns:
+      - "sany.zhiye.com"
+
+  crrc:
+    name: 中国中车
+    module: crrc.scraper
+    class: Scraper
+    description: 中国中车社会招聘（crrc.hotjob.cn），大易公开接口，列表+详情，不公开薪资
+    url_patterns:
+      - "crrc.hotjob.cn"
+
+  zhonglian:
+    name: 中联重科
+    module: zhonglian.scraper
+    class: Scraper
+    description: 中联重科社会招聘（wecruit.hotjob.cn），大易公开接口，列表+详情，不公开薪资
+    url_patterns:
+      - "wecruit.hotjob.cn"
+
+  inovance:
+    name: 汇川技术
+    module: inovance.scraper
+    class: Scraper
+    description: 汇川技术社会招聘（inovance.zhiye.com），北森公开接口，列表已含完整 JD，不公开薪资
+    url_patterns:
+      - "inovance.zhiye.com"
+
+  tebian:
+    name: 特变电工
+    module: tebian.scraper
+    class: Scraper
+    description: 特变电工社会招聘（wecruit.hotjob.cn），大易公开接口，列表+详情，不公开薪资
+    url_patterns:
+      - "wecruit.hotjob.cn"
+
+  sungrow:
+    name: 阳光电源
+    module: sungrow.scraper
+    class: Scraper
+    description: 阳光电源社会招聘（app.mokahr.com），Moka 加密公开接口，列表+详情，不公开薪资
+    url_patterns:
+      - "app.mokahr.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper
