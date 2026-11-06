@@ -23,7 +23,7 @@ Works with Claude Code, Cursor, opencode, and Codex. It helps you choose a direc
 
 ## Why it is different
 
-- **Real data, not guesses**: pulls live postings from BOSS, ByteDance, Tencent, Baidu, Alibaba, Nowcoder, and GitHub experience threads. Gap analysis must cite real sources or it is rejected.
+- **Real data, not guesses**: pulls live postings from 27 data sources and growing — BOSS (with salary ranges), 25 company career sites including ByteDance / Tencent / Alibaba / Baidu / Meituan / Huawei, plus Nowcoder interview reports and GitHub experience threads. Gap analysis must cite real sources or it is rejected. **[See all supported sources →](docs/scrapers.md)**
 - **Staged tasks**: phases, milestones, and check-in tasks (once / daily / percent). Ask "what should I do next" at any time.
 - **Application funnel**: track applied → screened → interview → offer with event-based accounting. A rejection after an interview still counts as an interview.
 - **Weekly review**: a factual recap of check-ins, phases, and funnel changes, so you can resume after a break.
