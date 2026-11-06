@@ -12,6 +12,7 @@
   --brand-soft: #eef1fe; --ok: #22a06b; --warn: #b26a00;
   --radius: 16px;
   --shadow: 0 1px 3px rgba(31,36,48,.06), 0 8px 24px rgba(31,36,48,.08);
+  --shadow-lift: 0 6px 22px rgba(74,108,247,.22);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -19,14 +20,14 @@ body {
   font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
   color: var(--ink); line-height: 1.6;
   background:
-    radial-gradient(1000px 420px at 12% -10%, #e3e8ff 0%, transparent 60%),
+    radial-gradient(1100px 460px at 10% -12%, #e3e8ff 0%, transparent 60%),
     radial-gradient(900px 420px at 100% -20%, #e0ecff 0%, transparent 55%),
     var(--bg);
 }
-.page { max-width: 720px; margin: 0 auto; padding: 0 14px; display: flex; flex-direction: column; height: 100%; }
+.page { max-width: 800px; margin: 0 auto; padding: 0 16px; display: flex; flex-direction: column; height: 100%; }
 
 /* ---------- 顶栏 ---------- */
-.top { display: flex; align-items: center; gap: 12px; padding: 14px 2px 10px; }
+.top { display: flex; align-items: center; gap: 12px; padding: 14px 2px 8px; }
 .logo { width: 38px; height: 38px; border-radius: 11px; flex: none;
   background: linear-gradient(135deg, var(--brand), var(--brand-2));
   display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px;
@@ -41,9 +42,11 @@ body {
   color: var(--muted); font-size: 12px; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .restart:hover { color: var(--brand); border-color: var(--brand); }
 
-/* ---------- 旅程刻度 ---------- */
-.stepper { display: flex; gap: 6px; padding: 0 2px 10px; flex-wrap: wrap; }
-.stepchip { display: inline-flex; align-items: center; gap: 5px;
+/* ---------- 旅程刻度（单行可横滑） ---------- */
+.stepper { display: flex; gap: 6px; padding: 0 2px 10px; overflow-x: auto;
+  scrollbar-width: none; -ms-overflow-style: none; }
+.stepper::-webkit-scrollbar { display: none; }
+.stepchip { flex: none; display: inline-flex; align-items: center; gap: 5px;
   font-size: 11.5px; color: var(--muted); background: rgba(255,255,255,.72);
   border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
   transition: all .3s; opacity: .55; }
@@ -76,7 +79,6 @@ body {
   color: #fff; border-top-right-radius: 5px; }
 .bubble b { color: inherit; }
 .ai .bubble b { color: #2b3674; }
-.bubble p + p { margin-top: 6px; }
 
 /* 气泡内的小结构 */
 .bubble .src { display: block; margin-top: 8px; padding-top: 8px;
@@ -90,21 +92,52 @@ body {
   padding: 6px 10px; font-size: 12px; color: var(--muted); }
 .score b { font-size: 17px; color: var(--brand); }
 
+/* ---------- 调研结果：通栏面板 + 入场动效 ---------- */
+.research { display: block; margin: -4px 0 16px; }
+.research .anchor { display: flex; align-items: center; gap: 8px; color: var(--brand);
+  font-size: 12px; margin: 0 0 8px 40px; white-space: nowrap; }
+.research .anchor .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand);
+  box-shadow: 0 0 0 0 rgba(74,108,247,.5); animation: pulse 1.8s infinite; }
+.research .anchor .line { flex: 1; max-width: 60px; height: 1px; background:
+  linear-gradient(90deg, rgba(74,108,247,.55), transparent); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(74,108,247,.45); }
+  70% { box-shadow: 0 0 0 9px rgba(74,108,247,0); } 100% { box-shadow: 0 0 0 0 rgba(74,108,247,0); } }
+.research .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin: 0 -2px; }
+.rcard { position: relative; background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
+  border: 1px solid #dde4ff; border-radius: 14px; padding: 13px 14px 12px;
+  box-shadow: var(--shadow); opacity: 0; transform: translateY(16px) scale(.97);
+  animation: cardIn .55s cubic-bezier(.22,.9,.28,1) both; }
+@keyframes cardIn { to { opacity: 1; transform: none; } }
+.rcard:hover { border-color: var(--brand); box-shadow: var(--shadow-lift); transition: .2s; }
+.rcard .kind { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+  color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 2px 8px; }
+.rcard h4 { font-size: 13.5px; margin: 8px 0 4px; }
+.rcard p { font-size: 12px; color: #5a6270; }
+.rcard .foot { display: flex; align-items: center; gap: 6px; margin-top: 9px;
+  font-size: 11px; color: var(--muted); }
+.rcard .foot .okdot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+@media (max-width: 680px) {
+  .research .cards { grid-template-columns: 1fr; }
+}
+
 /* ---------- 输入指示 ---------- */
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 14px; border-top-left-radius: 5px; }
 .typing i { width: 6px; height: 6px; border-radius: 50%; background: #b9c2d8;
   animation: blink 1.2s infinite; }
-.typing i:nth-child(2) { animation-delay: .2s; }
-.typing i:nth-child(3) { animation-delay: .4s; }
+.typing i:nth-child(2) { animation-delay: .18s; }
+.typing i:nth-child(3) { animation-delay: .36s; }
 @keyframes blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
 
-/* ---------- 选项与底部行动区 ---------- */
-.actionbar { border-top: 1px solid var(--line); background: rgba(255,255,255,.92);
-  padding: 12px 16px; min-height: 74px; display: flex; flex-direction: column;
+/* ---------- 行动区 ---------- */
+.actionbar { border-top: 1px solid var(--line); background: rgba(255,255,255,.94);
+  padding: 12px 16px 14px; min-height: 80px; display: flex; flex-direction: column;
   gap: 8px; justify-content: center; }
-.hint { font-size: 11.5px; color: var(--muted); min-height: 16px; }
-.opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.hint { font-size: 11.5px; color: var(--muted); min-height: 15px; text-align: center; }
+
+/* 普通选项：居中 */
+.opts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .opt { border: 1.4px solid #ccd6ff; background: #fff; color: var(--brand);
   font-size: 13.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
   transition: transform .12s, box-shadow .12s, opacity .2s;
@@ -115,14 +148,36 @@ body {
 .opt.primary { background: linear-gradient(135deg, var(--brand), var(--brand-2));
   border-color: transparent; color: #fff; }
 .opt:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+.opt:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-/* ---------- 分轮信息框（只读预填 + 发送） ---------- */
-.sendrow { display: flex; gap: 8px; align-items: flex-start; }
-.readbox { flex: 1; resize: none; width: 100%; font-family: inherit; font-size: 13.5px;
-  color: var(--ink); background: #fff; border: 1.4px solid #ccd6ff; border-radius: 11px;
-  padding: 8px 12px; line-height: 1.5; outline: none; }
-.readbox:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
-.readbox[readonly] { cursor: default; }
+/* 分轮信息：三张可选卡片（选中高亮） */
+.picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pick { position: relative; text-align: left; cursor: pointer; background: #fff;
+  border: 1.6px solid var(--line); border-radius: 13px; padding: 12px 13px 11px;
+  transition: border-color .15s, box-shadow .15s, transform .12s, background .15s; }
+.pick:hover { border-color: #b9c6ff; transform: translateY(-1px); }
+.pick:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pick .p-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.pick .p-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.pick .p-check { position: absolute; top: 10px; right: 10px; width: 18px; height: 18px;
+  border-radius: 50%; border: 1.6px solid #d3d9ea; background: #fff;
+  display: grid; place-items: center; font-size: 11px; color: transparent; transition: all .15s; }
+.pick[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft);
+  box-shadow: 0 4px 16px rgba(74,108,247,.18); }
+.pick[aria-pressed="true"] .p-check { background: var(--brand); border-color: var(--brand);
+  color: #fff; }
+.pick[aria-pressed="true"] .p-title { color: #2b3674; }
+@media (max-width: 680px) { .picker { grid-template-columns: 1fr; } }
+
+/* 发送行：右下角 */
+.sendrow { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+.sendrow .sel-note { font-size: 11.5px; color: var(--muted); margin-right: auto; }
+.send-btn { background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff; border: none; border-radius: 999px; padding: 9px 22px;
+  font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(74,108,247,.3);
+  transition: transform .12s, opacity .2s; }
+.send-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.send-btn:disabled { opacity: .4; cursor: default; box-shadow: none; }
 
 /* ---------- 职业地图揭晓 ---------- */
 .map-wrap { display: none; padding: 14px 2px 0; flex: 1; min-height: 0; }
@@ -142,6 +197,9 @@ body {
   .msg .bubble { max-width: 88%; }
   .demo-tag { display: none; }
 }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
@@ -159,7 +217,7 @@ body {
   <div class="stepper" id="stepper"></div>
 
   <div class="chat-card" id="chat-card">
-    <div class="chat" id="chat"></div>
+    <div class="chat" id="chat" aria-live="polite"></div>
     <div class="actionbar">
       <div class="hint" id="hint"></div>
       <div class="opts" id="opts"></div>
@@ -177,7 +235,7 @@ body {
     </div>
   </div>
 
-  <p class="footer">演示页不接入 LLM，对话是预制脚本，数据取自真实管线生成的合成样例；真实产品中由你的 Agent 实时驱动，数据存在本机。</p>
+  <p class="footer">演示页不接入 LLM，对话为预制脚本；数据取自真实管线生成的合成样例。</p>
 </div>
 
 <script>
@@ -191,11 +249,15 @@ body {
   var chatCard = document.getElementById('chat-card');
 
   var STEPS = ['方向', '建档', '调研', '差距', '路线', '揭晓'];
-  var stagePending = null; // { goto }——发送按钮当前指向的节点
 
-  /* ---------------- 对话脚本 ----------------
-     预制信息分轮给出：学历专业 → 实习/项目 → 目标 base 与方向，
-     2-3 轮收齐档案，体现 AI 的引导式收集。 */
+  /* 用户本轮选择的档案信息（分轮收集，初始为示例用户默认项） */
+  var PICKS = {
+    edu: { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目' },
+    exp: { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）' },
+    goal: { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海' },
+  };
+
+  /* ---------------- 对话脚本 ---------------- */
   var S = [
     { /* 0 */
       stepName: '方向',
@@ -210,7 +272,7 @@ body {
       ] },
     { /* 1 */
       stepName: '方向',
-      ai: ['没关系，不用现在就想清楚。真实产品里，AI 会像接下来这样，一步一步把你的情况问出来——不着急，也说不上来没关系。'],
+      ai: ['没关系，不用现在就想清楚。真实产品里，AI 会像接下来这样，一步一步把你的情况问出来。'],
       opts: [{ label: '开始', goto: 4 }] },
     { /* 2 */
       stepName: '方向',
@@ -222,32 +284,69 @@ body {
       ai: ['有明确目标是最高效的起点：我会先比你更清楚地讲出「这个目标对你意味着多少差距」。',
         '先把你的情况收进档案——两三轮就够。'],
       opts: [{ label: '开始收集', goto: 4 }] },
-    { /* 4 · 第一问：学历专业 */
+
+    { /* 4 · 第一问 */
       stepName: '建档',
       ai: ['第一问：学历与专业是？'],
-      stage: { text: '双非本科 · 计算机相关专业 · 2027 届在读', goto: 5 } },
-    { /* 5 · 确认 + 第二问：实习/项目 */
+      picker: {
+        key: 'edu',
+        options: [
+          { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目' },
+          { title: '211 硕士 · 软件工程', sub: '2028 届在读 · 有课程项目' },
+          { title: '双非本科 · 非科班', sub: '2027 届在读 · 机械背景自学' },
+        ],
+        goto: 5,
+      } },
+
+    { /* 5 · 第二问 */
       stepName: '建档',
-      ai: ['记下了：<b>双非本科 · 计算机 · 2027 届在读</b>。',
-        '第二问：有实习或项目经历吗？做过什么方向？'],
-      stage: { text: '一段 3 个月小公司实习；独立开发过一个 Agent 项目（LangGraph，AI 辅助）', goto: 6 } },
-    { /* 6 · 确认 + 第三问：base 与方向 */
+      ai: function () {
+        return ['记下了：<b>' + esc(PICKS.edu.title) + '</b>。',
+          '第二问：有实习或项目经历吗？做过什么方向？'];
+      },
+      picker: {
+        key: 'exp',
+        options: [
+          { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）' },
+          { title: '无实习经历', sub: '课程项目 + 一个 RAG demo' },
+          { title: '6 个月中大厂实习', sub: '参与过真实业务团队开发' },
+        ],
+        goto: 6,
+      } },
+
+    { /* 6 · 第三问 */
       stepName: '建档',
-      ai: [
-        '<b>小公司实习 + 独立 Agent 项目</b>——先记下，回头求证简历时我会重点看「AI 辅助、没有人 review」这两条。',
-        '第三问：目标方向和 base 城市，有想法吗？',
-      ],
-      stage: { text: '方向：AI Agent 工程师（想冲大厂校招）；base：一线城市，上海优先', goto: 7 } },
+      ai: function () {
+        var note = PICKS.exp.title.indexOf('无实习') >= 0
+          ? '没有实习不是死局——项目深度可以补位，但「无协作证据」会被 HR 直接打折。'
+          : '经历记下了——回头求证简历时，我会重点看「AI 辅助、没有人 review」的部分。';
+        return ['<b>' + esc(PICKS.exp.title) + '</b>：' + note,
+          '第三问：目标方向和 base 城市，有想法吗？'];
+      },
+      picker: {
+        key: 'goal',
+        options: [
+          { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海' },
+          { title: 'AI 应用开发', sub: '先中厂实习 · base 杭州' },
+          { title: '方向还没定', sub: 'base 不限 · 想先看看市场' },
+        ],
+        goto: 7,
+      } },
+
     { /* 7 · 收齐档案 */
       stepName: '建档',
-      ai: [
-        '信息收齐，档案成型：',
-        '<b>目标</b>：AI Agent 校招 · 大厂｜<b>base</b>：一线城市（上海优先）｜<b>2027 届双非本科 · 计算机</b>',
-        '背景：3 个月小公司实习 + 独立 Agent 项目。真实产品里这份档案会逐项向你求证——每条技能的作者身份（手写 / AI 辅助）和把控度由本人回答，AI 不代填。',
-      ],
-      opts: [
-        { label: '开始求证（直接看结果）', goto: 8 },
-      ] },
+      ai: function () {
+        return [
+          '信息收齐，档案成型：',
+          '<b>学历</b>：' + esc(PICKS.edu.title) + '（' + esc(PICKS.edu.sub) + '）<br>'
+            + '<b>经历</b>：' + esc(PICKS.exp.title) + '（' + esc(PICKS.exp.sub) + '）<br>'
+            + '<b>目标</b>：' + esc(PICKS.goal.title) + '（' + esc(PICKS.goal.sub) + '）',
+          '真实产品里这份档案会逐项向你求证——每条技能的作者身份（手写 / AI 辅助）和把控度由本人回答，AI 不代填。'
+            + '<span class="src">演示边界：下面的求证与诊断沿用示例用户（双非本·独立开发 Agent）的合成结果展示流程。</span>',
+        ];
+      },
+      opts: [{ label: '开始求证（直接看结果）', goto: 8 }] },
+
     { /* 8 · 求证结果 */
       stepName: '建档',
       ai: [
@@ -260,34 +359,33 @@ body {
         '注意后两条：都被标了「<b>AI 辅助、无团队评审</b>」。这个标记不动声色，但后面直接决定差距诊断的结论。',
       ],
       opts: [{ label: '下一步：看市场', goto: 9 }] },
+
     { /* 9 · 调研预告 */
       stepName: '调研',
       ai: [
-        '下一步是<b>市场调研</b>。行情不靠模型记忆——我抓三类真实数据：',
-        '<ul>'
-        + '<li><b>招聘平台</b>——BOSS 直聘：直接读真实薪资范围；</li>'
-        + '<li><b>企业官网 JD</b>——目标岗位的官方任职要求原文；</li>'
-        + '<li><b>经验帖</b>——牛客 / GitHub，找同背景的人怎么走通的。</li>'
-        + '</ul>',
-        '抓完后每条数据都带来源链接，分析结论必须锚定这些来源，锚不上的结论直接被拒。',
+        '下一步是<b>市场调研</b>。行情不靠模型记忆——我抓三类真实数据：招聘平台（BOSS，含薪资）、企业官网 JD（任职要求原文）、经验帖（牛客 / GitHub 的同背景路径）。',
+        '抓完后每条都带来源链接，结论必须锚定来源，锚不上的直接被拒。',
       ],
       opts: [{ label: '开始（演示中即时返回）', goto: 10 }] },
-    { /* 10 · 调研结论 */
+
+    { /* 10 · 调研结果面板 */
       stepName: '调研',
-      ai: [
-        '调研完成，结论都锚在真实页面上：',
-        '<ul>'
-        + '<li><b>BOSS 直聘｜AI 应用工程师</b>——20-30K，工种火但工程规范成为标配筛选项</li>'
-        + '<li><b>字节官网｜AI Agent 后端 JD</b>——原文点名「多人协作与代码评审经验」</li>'
-        + '<li><b>牛客｜2027 届双非转 Agent</b>——3 份同背景面经，共性是先补协作证据再投</li>'
-        + '</ul>',
-        '<span class="src">来源：BOSS 直聘 · 字节官方招聘站 · 牛客网（近一周抓取，JD 原文可点开）</span>',
+      ai: ['调研完成。三条来源都已抓取并校验：'],
+      research: [
+        { kind: '招聘平台 · 含薪资', title: 'BOSS 直聘｜AI 应用工程师',
+          finding: '20-30K；10 条同岗 JD 中 7 条点名工程规范', foot: '真实薪资范围 · 已锚定' },
+        { kind: '企业 JD 原文', title: '字节跳动官网｜AI Agent 后端',
+          finding: '任职要求原文写明「多人协作与代码评审经验」', foot: '官方招聘页 · 已锚定' },
+        { kind: '同背景经验帖', title: '牛客｜2027 届双非转 Agent',
+          finding: '3 份面经共性：先补协作证据，再投大厂', foot: '合成样例 · 已锚定' },
       ],
       opts: [{ label: '下一步：差距分析', goto: 11 }] },
+
     { /* 11 · 差距预告 */
       stepName: '差距',
       ai: ['基于调研数据 + 确认过的档案，差距分析的第一眼结论（不是客套话，是逐维度打分出来的）：'],
       opts: [{ label: '看首屏诊断', goto: 12 }] },
+
     { /* 12 · 首屏诊断 */
       stepName: '差距',
       ai: [
@@ -297,7 +395,8 @@ body {
         '三个雷点已同步记档：小公司实习（仅 3 个月）· 独立项目无协作 · 无大流量场景——每个都配了叙事弱化方案 + 补证据动作。',
       ],
       opts: [{ label: '给我一条走得通的路线', goto: 13 }] },
-    { /* 13 · 路线与揭晓 */
+
+    { /* 13 · 路线 */
       stepName: '路线',
       ai: [
         '<b>策略：从「独立开发者」升级为「能进团队的 Agent 工程师」。</b>不做一步跳级，档位连续过渡：',
@@ -310,6 +409,7 @@ body {
         '每个阶段拆成可打卡任务：按天打卡、按比例推进、按次完成都有——完成即沉淀为<b>能力证据</b>。职业地图已经按这条策略生成好了。',
       ],
       opts: [{ label: '打开职业地图', goto: 14, primary: true }] },
+
     { /* 14 · 揭晓 */
       stepName: '揭晓',
       ai: [],
@@ -360,39 +460,82 @@ body {
       optsEl.appendChild(b);
     });
   }
-  function showStage(stage) {
-    stagePending = stage;
+
+  /* 分轮信息：三张卡片单选（选中高亮）+ 右下角发送 */
+  function showPicker(cfg) {
     optsEl.innerHTML = '';
-    hintEl.textContent = '示例回答已预填（只读）——点发送即用这条信息回复';
+    hintEl.textContent = '选一项最接近你的情况（演示预置 · 选中后点右下角发送）';
+    var grid = document.createElement('div');
+    grid.className = 'picker';
+    var selected = 0; // 默认选中第一项，减少一次点击
+
+    var cards = cfg.options.map(function (opt, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pick';
+      b.setAttribute('aria-pressed', i === selected ? 'true' : 'false');
+      b.innerHTML = '<span class="p-check">✓</span>'
+        + '<div class="p-title">' + esc(opt.title) + '</div>'
+        + '<div class="p-sub">' + esc(opt.sub) + '</div>';
+      b.addEventListener('click', function () {
+        selected = i;
+        cards.forEach(function (c, j) {
+          c.setAttribute('aria-pressed', j === i ? 'true' : 'false');
+        });
+        sendBtn.disabled = false;
+      });
+      return b;
+    });
+    cards.forEach(function (c) { grid.appendChild(c); });
+
     var row = document.createElement('div');
     row.className = 'sendrow';
-    var ta = document.createElement('textarea');
-    ta.className = 'readbox';
-    ta.readOnly = true;
-    ta.rows = 2;
-    ta.value = stage.text;
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'opt primary';
-    btn.textContent = '发送';
-    btn.addEventListener('click', function () {
-      if (busy || !stagePending) return;
-      addMsg('user', esc(stagePending.text));
-      var next = stagePending.goto;
+    var note = document.createElement('span');
+    note.className = 'sel-note';
+    note.textContent = '演示数据 · 只读选项';
+    var sendBtn = document.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.className = 'send-btn';
+    sendBtn.textContent = '发送';
+    sendBtn.disabled = false;
+    sendBtn.addEventListener('click', function () {
+      if (busy) return;
+      var opt = cfg.options[selected];
+      PICKS[cfg.key] = { title: opt.title, sub: opt.sub };
+      addMsg('user', esc(opt.title + '｜' + opt.sub));
       optsEl.innerHTML = '';
       hintEl.textContent = '';
-      stagePending = null;
-      runNode(next);
+      runNode(cfg.goto);
     });
-    row.appendChild(ta);
-    row.appendChild(btn);
+    row.appendChild(note);
+    row.appendChild(sendBtn);
+    optsEl.appendChild(grid);
     optsEl.appendChild(row);
-    if (btn.scrollIntoView) btn.scrollIntoView({ block: 'nearest' });
+    hintEl.scrollIntoView && hintEl.scrollIntoView({ block: 'nearest' });
   }
+
+  function addResearch(items) {
+    var wrap = document.createElement('div');
+    wrap.className = 'msg research';
+    var cards = items.map(function (it, i) {
+      return '<div class="rcard" style="animation-delay:' + (120 + i * 140) + 'ms">'
+        + '<span class="kind">' + esc(it.kind) + '</span>'
+        + '<h4>' + esc(it.title) + '</h4>'
+        + '<p>' + esc(it.finding) + '</p>'
+        + '<div class="foot"><span class="okdot"></span>' + esc(it.foot) + '</div>'
+        + '</div>';
+    }).join('');
+    wrap.innerHTML = '<div class="anchor"><span class="dot"></span>'
+      + '已锚定 ' + items.length + ' 个真实来源<span class="line"></span></div>'
+      + '<div class="cards">' + cards + '</div>';
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return wrap;
+  }
+
   function play(node) {
     busy = true;
     optsEl.innerHTML = '';
-    stagePending = null;
     hintEl.textContent = 'Career Kit 正在回复……';
     var msgs = typeof node.ai === 'function' ? node.ai() : node.ai;
     var typing = addMsg('ai', '<div class="typing"><i></i><i></i><i></i></div>');
@@ -402,11 +545,14 @@ body {
         if (i === 0) typing.remove();
         addMsg('ai', m);
         if (isLast) {
+          if (node.research) {
+            timers.push(setTimeout(function () { addResearch(node.research); }, 380));
+          }
           busy = false;
-          if (node.stage) showStage(node.stage);
+          if (node.picker) showPicker(node.picker);
           else setOpts(node.opts);
         }
-      }, 650 + i * 950));
+      }, 420 + i * 620));
     });
   }
   function runNode(idx) {
@@ -428,7 +574,11 @@ body {
     chatEl.innerHTML = '';
     optsEl.innerHTML = '';
     hintEl.textContent = '';
-    stagePending = null;
+    PICKS = {
+      edu: { title: '双非本科 · 计算机', sub: '2027 届在读 · 有独立项目' },
+      exp: { title: '3 个月小公司实习', sub: '独立开发过 Agent 项目（AI 辅助）' },
+      goal: { title: 'AI Agent 工程师', sub: '冲大厂校招 · base 上海' },
+    };
     document.getElementById('map-frame').src = 'about:blank';
     mapWrap.style.display = 'none';
     chatCard.style.display = 'flex';
