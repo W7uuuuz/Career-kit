@@ -3,9 +3,12 @@
 这个目录是 **Career Kit 的真实产出**——一份**合成样例简历**（虚构的「示例用户」）经完整链路
 （差距分析 → 路线图 → 分阶段任务 → 打卡）生成的交付物。目录内不含任何真实用户简历或报告。
 
-**无需安装任何东西**，双击 `career-map.html` 即可在浏览器打开并交互（勾选任务、进度实时更新、
-本地持久化）。GitHub Pages 只发布 `index.html` 与 `career-map.html` 两个文件，不上传原始档案 JSON。
+**无需安装任何东西**，双击 `chat-demo.html` 即可在浏览器打开对话式演示（固定选项模拟与 AI 教练对话，
+走完方向 → 建档 → 调研 → 差距 → 路线全流程，结尾揭晓职业地图）；GitHub Pages 发布
+`index.html`、`chat-demo.html` 与 `career-map.html`，不上传原始档案 JSON。
 
+- `chat-demo.html` — 对话式体验页（手写静态页，不由 `build_demo.py` 重新生成；对话脚本取材于 `demo_profile.json`
+  的合成事实，嵌入展示 `career-map.html`）
 - `career-map.html` — 交互式职业地图（`export_dashboard(mode="roadmap")`）；安装后也可用 `career-kit-demo` 直接打开
 - `dashboard.html` — 进度仪表盘（`export_dashboard(mode="progress")`）
 - `career-map.png` / `dashboard.png` — 截图，供 README 使用

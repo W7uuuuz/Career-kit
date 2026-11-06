@@ -1,0 +1,401 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Career Kit · AI 职业陪练（在线演示）</title>
+<meta name="career-kit-demo" content="chat-first">
+<style>
+:root {
+  --bg: #f3f5fb; --chat-bg: #f8f9fd; --card: #ffffff; --ink: #1f2430;
+  --muted: #8a93a6; --line: #e6e9f0; --brand: #4a6cf7; --brand-2: #6f8bff;
+  --brand-soft: #eef1fe; --ok: #22a06b; --warn: #b26a00;
+  --radius: 16px;
+  --shadow: 0 1px 3px rgba(31,36,48,.06), 0 8px 24px rgba(31,36,48,.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: var(--ink); line-height: 1.6;
+  background:
+    radial-gradient(1000px 420px at 12% -10%, #e3e8ff 0%, transparent 60%),
+    radial-gradient(900px 420px at 100% -20%, #e0ecff 0%, transparent 55%),
+    var(--bg);
+}
+.page { max-width: 720px; margin: 0 auto; padding: 0 14px; display: flex; flex-direction: column; height: 100%; }
+
+/* ---------- 顶栏 ---------- */
+.top { display: flex; align-items: center; gap: 12px; padding: 14px 2px 10px; }
+.logo { width: 38px; height: 38px; border-radius: 11px; flex: none;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px;
+  box-shadow: 0 4px 12px rgba(74,108,247,.35); }
+.top-txt { min-width: 0; }
+.top-txt h1 { font-size: 16.5px; letter-spacing: .2px; }
+.top-txt p { font-size: 12px; color: var(--muted); }
+.demo-tag { margin-left: auto; font-size: 11px; color: var(--brand);
+  background: var(--brand-soft); border: 1px solid #dfe4ff;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.restart { white-space: nowrap; border: 1px solid var(--line); background: var(--card);
+  color: var(--muted); font-size: 12px; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.restart:hover { color: var(--brand); border-color: var(--brand); }
+
+/* ---------- 旅程刻度 ---------- */
+.stepper { display: flex; gap: 6px; padding: 0 2px 10px; flex-wrap: wrap; }
+.step { display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--muted); background: rgba(255,255,255,.72);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+  transition: all .3s; opacity: .55; }
+.step i { width: 7px; height: 7px; border-radius: 50%; background: #d3d8e6; transition: all .3s; }
+.step.pass { opacity: 1; }
+.step.pass i { background: var(--ok); }
+.step.now { opacity: 1; color: var(--brand); border-color: #c9d3ff;
+  background: #fff; box-shadow: 0 0 0 3px #eef1fe; }
+.step.now i { background: var(--brand); }
+
+/* ---------- 对话区 ---------- */
+.chat-card { background: var(--chat-bg); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+  overflow: hidden; }
+.chat { flex: 1; overflow-y: auto; padding: 18px 16px 8px; scroll-behavior: smooth; }
+.chat::-webkit-scrollbar { width: 8px; }
+.chat::-webkit-scrollbar-thumb { background: #dce0ec; border-radius: 4px; }
+
+.msg { display: flex; gap: 9px; margin-bottom: 14px; animation: rise .35s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.msg .ava { width: 30px; height: 30px; border-radius: 9px; flex: none; margin-top: 2px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; }
+.bubble { max-width: 82%; border-radius: 14px; padding: 10px 14px; font-size: 13.8px;
+  box-shadow: 0 1px 2px rgba(31,36,48,.05); }
+.ai .bubble { background: var(--card); border: 1px solid var(--line); border-top-left-radius: 5px; }
+.user { flex-direction: row-reverse; }
+.user .bubble { background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff; border-top-right-radius: 5px; }
+.bubble b { color: inherit; }
+.ai .bubble b { color: #2b3674; }
+.bubble p + p { margin-top: 6px; }
+
+/* 气泡内的小结构 */
+.bubble .src { display: block; margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--line); font-size: 11.8px; color: var(--muted); }
+.bubble ul { margin: 6px 0 0 18px; font-size: 13px; }
+.bubble li { margin: 3px 0; }
+.bubble .flag { color: var(--warn); font-weight: 600; }
+.bubble .okc { color: var(--ok); font-weight: 600; }
+.score { display: inline-flex; align-items: baseline; gap: 6px; margin-top: 8px;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.score b { font-size: 17px; color: var(--brand); }
+
+/* ---------- 输入指示 ---------- */
+.typing { display: inline-flex; gap: 4px; padding: 12px 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 14px; border-top-left-radius: 5px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: #b9c2d8;
+  animation: blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; }
+.typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+
+/* ---------- 选项与底部行动区 ---------- */
+.actionbar { border-top: 1px solid var(--line); background: rgba(255,255,255,.92);
+  padding: 12px 16px; min-height: 70px; display: flex; flex-direction: column;
+  gap: 8px; justify-content: center; }
+.hint { font-size: 11.5px; color: var(--muted); min-height: 16px; }
+.opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.opt { border: 1.4px solid #ccd6ff; background: #fff; color: var(--brand);
+  font-size: 13.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  transition: transform .12s, box-shadow .12s, opacity .2s;
+  animation: rise .3s ease both; }
+.opt:hover { border-color: var(--brand); transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(74,108,247,.25); }
+.opt:active { transform: translateY(0); box-shadow: none; }
+.opt.primary { background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  border-color: transparent; color: #fff; }
+.opt:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+.opt .use { font-size: 11px; opacity: .75; margin-left: 5px; }
+
+/* ---------- 职业地图揭晓 ---------- */
+.map-wrap { display: none; padding: 14px 2px 0; flex: 1; min-height: 0; }
+.map-card { background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  display: flex; flex-direction: column; height: 100%; }
+.map-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; flex-wrap: wrap; }
+.map-head .sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+.map-head .lnk { margin-left: auto; }
+.map-head a { color: var(--brand); font-size: 12.5px; text-decoration: none; font-weight: 500; }
+.map-head a:hover { text-decoration: underline; }
+.map-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+
+.footer { padding: 10px 2px 14px; text-align: center; color: var(--muted); font-size: 11.8px; }
+@media (max-width: 640px) {
+  .msg .bubble { max-width: 88%; }
+  .demo-tag { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <div class="logo">CK</div>
+    <div class="top-txt">
+      <h1>Career Kit · AI 职业陪练</h1>
+      <p>真实岗位数据 × 同背景案例 · 数据存本机</p>
+    </div>
+    <span class="demo-tag">演示 · 合成数据</span>
+    <button class="restart" id="restart-btn" type="button">重新开始</button>
+  </div>
+
+  <div class="stepper" id="stepper"></div>
+
+  <div class="chat-card" id="chat-card">
+    <div class="chat" id="chat"></div>
+    <div class="actionbar">
+      <div class="hint" id="hint"></div>
+      <div class="opts" id="opts"></div>
+    </div>
+  </div>
+
+  <div class="map-wrap" id="map-wrap">
+    <div class="map-card">
+      <div class="map-head">
+        AI 陪练生成的职业地图
+        <span class="sub">任务可勾选，进度实时变化</span>
+        <span class="lnk"><a href="#" id="restart-chat">重新走一遍对话 ↺</a> · <a href="career-map.html" target="_blank" rel="noopener">新窗口打开</a></span>
+      </div>
+      <iframe class="map-frame" id="map-frame" src="about:blank" title="职业地图"></iframe>
+    </div>
+  </div>
+
+  <p class="footer">演示页不接入 LLM、对话是预制脚本，数据取自真实管线生成的合成样例；真实产品中由你的 Agent 实时驱动，数据存在本机。</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var chatEl = document.getElementById('chat');
+  var optsEl = document.getElementById('opts');
+  var hintEl = document.getElementById('hint');
+  var stepEl = document.getElementById('stepper');
+  var mapWrap = document.getElementById('map-wrap');
+  var chatCard = document.getElementById('chat-card');
+
+  var STEPS = ['方向', '建档', '调研', '差距', '路线', '揭晓'];
+
+  /* ---------------- 对话脚本 ----------------
+     全部内容取自真实管线产物 demo_profile.json（合成示例用户：
+     2027 届双非本科 · 独立开发 Agent · 目标大厂校招）。 */
+  var S = [
+    { /* 0 */
+      stepName: '方向',
+      ai: [
+        '你好，我是 Career Kit 的职业陪练。和一般 AI 聊规划不一样——<b>我给出的每一条判断，都要能在真实招聘数据里点开验证</b>。',
+        '先了解你的情况。你对毕业后的方向了解多少？',
+      ],
+      opts: [
+        { label: '完全不了解，想先看看', goto: 1 },
+        { label: '有一些想法，想验证', goto: 2 },
+        { label: '已经有明确目标', goto: 3 },
+      ] },
+    { /* 1 */
+      stepName: '方向',
+      ai: ['没关系，不用现在就想清楚。演示里我用一位和你背景相近的示例用户继续——先看 TA 是怎么从模糊走到一份可执行路线的。'],
+      opts: [{ label: '继续，看 TA 的过程', goto: 4 }] },
+    { /* 2 */
+      stepName: '方向',
+      ai: ['有想法就很好。真实的 Career Kit 不需要你现在定死方向——会用真实岗位数据帮你验证它靠不靠谱。演示里用示例用户的档案继续。'],
+      opts: [{ label: '继续，看 TA 的过程', goto: 4 }] },
+    { /* 3 */
+      stepName: '方向',
+      ai: ['有明确目标是最高效的起点：我会先比你更清楚地讲出「这个目标对你意味着多少差距」。演示里用示例用户的档案继续。'],
+      opts: [{ label: '继续', goto: 4 }] },
+    { /* 4 */
+      stepName: '建档',
+      ai: [
+        '示例用户的档案，我复述一遍，你对齐或直接改（真实产品里这里轮到<b>你</b>的目标）：',
+        '<b>目标：</b>AI Agent 工程师（进大厂）｜<b>城市：</b>一线城市｜<b>届别：</b>2027 届',
+        '<b>现状：</b>双非本科·计算机相关，1 段 3 个月小公司实习，独立开发过 Agent 项目。',
+        '确认目标后也不是直接开跑——下一步我会逐项<b>向 TA 求证简历</b>：每条技能的作者身份（手写 / AI 辅助）和把控度，由本人回答，AI 不代填。',
+      ],
+      opts: [{ label: '怎么求证？（看已确认结果）', goto: 5 }, { label: '直接看求证结果', goto: 5 }] },
+    { /* 5 */
+      stepName: '建档',
+      ai: [
+        '这是示例用户逐项确认后的<b>用户档案</b>（不是简历原文，是确认过的事实）：',
+        '<ul>'
+        + '<li><b>Python</b>——能独立完成，把控度 8/10</li>'
+        + '<li><b>LangChain / LangGraph</b>——独立写 6 个 Subgraph，但没有任何人 review 过，把控度 6/10</li>'
+        + '<li><b>RAG 检索增强</b>——跑通 3 层知识注入，把控度 6/10</li>'
+        + '</ul>',
+        '注意后两条：都被标了「<b>AI 辅助、无团队评审</b>」。这个标记不动声色，但后面直接决定差距诊断的结论。',
+      ],
+      opts: [{ label: '下一步：看市场', goto: 6 }] },
+    { /* 6 */
+      stepName: '调研',
+      ai: [
+        '下一步是<b>市场调研</b>。行情不靠模型记忆——我抓三类真实数据：',
+        '<ul>'
+        + '<li><b>招聘平台</b>——BOSS 直聘：直接读真实薪资范围；</li>'
+        + '<li><b>企业官网 JD</b>——目标岗位的官方任职要求原文；</li>'
+        + '<li><b>经验帖</b>——牛客 / GitHub，找同背景的人怎么走通的。</li>'
+        + '</ul>',
+        '抓完后每条数据都带来源链接，分析结论必须锚定这些来源，锚不上的结论直接被拒。',
+      ],
+      opts: [{ label: '开始（演示中即时返回）', goto: 7 }] },
+    { /* 7 */
+      stepName: '调研',
+      ai: [
+        '调研完成，结论都锚在真实页面上：',
+        '<ul>'
+        + '<li><b>BOSS 直聘｜AI 应用工程师</b>——20-30K，工种火但工程规范成为标配筛选项</li>'
+        + '<li><b>字节官网｜AI Agent 后端 JD</b>——原文点名「多人协作与代码评审经验」</li>'
+        + '<li><b>牛客｜2027 届双非转 Agent</b>——3 份同背景面经，共性是先补协作证据再投</li>'
+        + '</ul>',
+        '<span class="src">来源：BOSS 直聘 · 字节官方招聘站 · 牛客网（近一周抓取，JD 原文可点开）</span>',
+      ],
+      opts: [{ label: '下一步：差距分析', goto: 8 }] },
+    { /* 8 */
+      stepName: '差距',
+      ai: ['基于调研数据 + 确认过的档案，差距分析的第一眼结论（不是客套话，是逐维度打分出来的）：'],
+      opts: [{ label: '看首屏诊断', goto: 9 }] },
+    { /* 9 */
+      stepName: '差距',
+      ai: [
+        '<span class="okc">你不是零基础</span>——能独立搭起完整 Agent 链路（6 个 Subgraph + 双提供商网关 + 3 层 RAG）。这是可以直接写进简历首条的架构级能力。',
+        '但也有一个<span class="flag">致命盲区：履历全是独立开发，零团队协作证据</span>。而刚抓的 JD 原文点名了协作——挑明了说：<b>方向对，你缺的不是技术，是「被协作过」。</b>',
+        '<span class="score">目标匹配度 <b>58</b>/100　起点档位 <b>小厂</b>（逐维度打分，不是拍脑袋）</span>',
+        '三个雷点已同步记档：小公司实习（仅 3 个月）· 独立项目无协作 · 无大流量场景——每个都配了叙事弱化方案 + 补证据动作。',
+      ],
+      opts: [{ label: '给我一条走得通的路线', goto: 10 }] },
+    { /* 10 */
+      stepName: '路线',
+      ai: [
+        '<b>策略：从「独立开发者」升级为「能进团队的 Agent 工程师」。</b>不做一步跳级，档位连续过渡：',
+        '<ul>'
+        + '<li><b>阶段一 · 工程化补齐</b>——给项目补 trace 与评测集；KPI：1 个可演示开源仓库</li>'
+        + '<li><b>阶段二 · 协作证据</b>——3 个被 merge 的开源 PR；KPI：PR 链接 + review 往返记录</li>'
+        + '<li><b>阶段三 · 中厂实习过渡</b>——有真实 JD 依据（BOSS 抓取，200-300/天）</li>'
+        + '<li><b>阶段四 · 冲大厂校招（2027 届）</b>——暂无真实 JD，如实标注「待导入」，<b>绝不编造</b></li>'
+        + '</ul>',
+        '每个阶段拆成可打卡任务：按天打卡、按比例推进、按次完成都有——完成即沉淀为<b>能力证据</b>。职业地图已经按这条策略生成好了。',
+      ],
+      opts: [{ label: '打开职业地图', goto: 11, primary: true }] },
+    { /* 11 · 揭晓 */
+      stepName: '揭晓',
+      ai: [],
+    },
+  ];
+
+  /* ---------------- 引擎 ---------------- */
+  var busy = false;
+  var timers = [];
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function bubbleHtml(m) {
+    // ai 文本允许受控的内联标记：<b> <span class="..."> <ul> <li>
+    return m;
+  }
+  function addMsg(cls, html) {
+    var div = document.createElement('div');
+    div.className = 'msg ' + cls;
+    div.innerHTML = (cls === 'ai' ? '<div class="ava">CK</div>' : '')
+      + '<div class="bubble">' + html + '</div>';
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return div;
+  }
+  function renderStepper(stepName) {
+    var curIdx = STEPS.indexOf(stepName);
+    stepEl.innerHTML = STEPS.map(function (name, i) {
+      var cls = 'step';
+      if (i < curIdx) cls += ' pass';
+      if (name === stepName) cls += ' now';
+      return '<span class="' + cls + '"><i></i>' + name + '</span>';
+    }).join('');
+  }
+  function stepIndexAt(node) {
+    var idx = STEPS.lastIndexOf(node.stepName);
+    return idx < 0 ? 0 : idx;
+  }
+  function setOpts(opts) {
+    optsEl.innerHTML = '';
+    if (!opts || !opts.length) { hintEl.textContent = ''; return; }
+    hintEl.textContent = '点击任意一项继续（预设对话 · 真实产品中由 Agent 实时回应）';
+    opts.forEach(function (o) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'opt' + (o.primary ? ' primary' : '');
+      b.innerHTML = esc(o.label) + (o.reveal ? '<span class="use">揭晓</span>' : '');
+      b.addEventListener('click', function () {
+        if (busy) return;
+        addMsg('user', esc(o.label));
+        Array.prototype.forEach.call(optsEl.children, function (x) { x.disabled = true; });
+        runNode(o.goto);
+      });
+      optsEl.appendChild(b);
+    });
+  }
+  function play(node) {
+    busy = true;
+    optsEl.innerHTML = '';
+    hintEl.textContent = 'Career Kit 正在回复……';
+    var typing = addMsg('ai', '<div class="typing"><i></i><i></i><i></i></div>');
+    node.ai.forEach(function (m, i) {
+      var isLast = i === node.ai.length - 1;
+      timers.push(setTimeout(function () {
+        if (i === 0) typing.remove();
+        addMsg('ai', bubbleHtml(m));
+        if (isLast) {
+          busy = false;
+          setOpts(node.opts);
+        }
+      }, 650 + i * 950));
+    });
+  }
+  function runNode(idx) {
+    var node = S[idx];
+    if (!node) return;
+    renderStepper(node.stepName);
+    if (idx === 11) { revealMap(); return; }
+    play(node);
+  }
+  function revealMap() {
+    busy = false;
+    chatCard.style.display = 'none';
+    mapWrap.style.display = 'block';
+    mapWrap.style.animation = 'none';
+    var f = document.getElementById('map-frame');
+    if (f.getAttribute('src') === 'about:blank') f.src = 'career-map.html';
+  }
+  function backToChat() {
+    chatCard.style.display = 'flex';
+    mapWrap.style.display = 'none';
+    resetAll();
+  }
+  function resetAll() {
+    timers.forEach(clearTimeout); timers = [];
+    chatEl.innerHTML = '';
+    optsEl.innerHTML = '';
+    hintEl.textContent = '';
+    document.getElementById('map-frame').src = 'about:blank';
+    mapWrap.style.display = 'none';
+    chatCard.style.display = 'flex';
+    busy = false;
+    renderStepper('');
+    runNode(0);
+  }
+  document.getElementById('restart-btn').addEventListener('click', resetAll);
+  document.getElementById('restart-chat').addEventListener('click', function (e) {
+    e.preventDefault(); backToChat();
+  });
+  runNode(0);
+})();
+</script>
+</body>
+</html>

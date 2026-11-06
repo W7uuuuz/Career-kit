@@ -16,8 +16,8 @@
 > **先看同背景的人去了哪，企业招聘需要什么 → 再看你差在哪 → 今天先做什么。**
 > 演示数据为合成，不含真实用户简历或报告。
 
-> **[点我 → 在线体验职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**  
-> 无需安装，可直接勾选任务、查看进度变化。
+> **[点我 → 在线体验对话式陪练](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)**  
+> 无需安装，像和 AI 教练对话一样走完整个流程；演示为固定选项对话与合成数据。
 
 [示例产物](docs/examples/demo/) · [完整文档](docs/README.md)
 
@@ -46,7 +46,7 @@
 
 ## 60 秒在线体验
 
-打开 [交互式职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)，勾选任务即可查看进度变化，无需安装。
+打开 [在线对话演示](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)，用固定选项模拟和 AI 教练对话，走完「方向 → 建档 → 调研 → 差距 → 路线」全流程，预制的职业地图在对话尽头揭晓；[也可直接查看职业地图](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)。
 
 ## 工作方式
 

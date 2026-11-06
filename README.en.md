@@ -14,8 +14,8 @@ English | [中文](README.md)
 > **See where people like you went and what employers require → your gap → one next step.**
 > Demo data is synthetic; the demo UI is in Chinese.
 
-> **[Try the interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html)**
-> No install needed; check a task and watch progress update.
+> **[Try the conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)**
+> Chat with the coach via fixed options and watch the flow unfold; scripted demo with synthetic data.
 
 [Sample output](docs/examples/demo/) · [Docs](docs/README.md)
 
@@ -44,7 +44,7 @@ Data comes from 27 collected sources, growing steadily, covering internet / manu
 
 ## Try it online in 60 seconds
 
-Open the [interactive career map](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html), check a task, and watch progress update — no install needed.
+Open the [conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html): fixed-option chat simulating the coach, walking direction → profiling → research → gap → roadmap, with the generated career map revealed at the end; [view the career map directly](https://w7uuuuz.github.io/Career-kit/examples/demo/career-map.html).
 
 ## How it works
 
