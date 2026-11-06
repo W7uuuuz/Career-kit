@@ -14,8 +14,13 @@ English | [中文](README.md)
 > **See where people like you went and what employers require → your gap → one next step.**
 > Demo data is synthetic; the demo UI is in Chinese.
 
-> **[Try the conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)**
-> Chat with the coach via fixed options and watch the flow unfold; scripted demo with synthetic data.
+<div align="center">
+
+### [Try the conversational demo](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)
+
+Chat with the coach via fixed options and walk the whole flow; scripted demo with synthetic data.
+
+</div>
 
 [Sample output](docs/examples/demo/) · [Docs](docs/README.md)
 
