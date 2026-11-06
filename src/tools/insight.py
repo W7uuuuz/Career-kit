@@ -162,9 +162,15 @@ def apply_adjustment(
 
         if change_type == "add_task":
             details = change.get("details", {})
+            name = str(
+                details.get("name") or change.get("description") or ""
+            ).strip()
+            if not name:
+                # 空名任务会污染进度展示与打卡，宁可不应用并如实留空
+                continue
             new_task = Task(
                 id=next_task_id(profile),
-                name=details.get("name", change.get("description", "")),
+                name=name,
                 description=details.get("description", ""),
                 phase_id=details.get("phase_id", ""),
                 milestone_id=details.get("milestone_id", ""),

@@ -14,7 +14,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# 层级（学位）归一：长词优先，短词兜底（标题里大量「双非本」「985硕」简写）
+# 层级（学位）归一：长词优先，短词兜底（标题里大量「双非本」「985硕」简写）。
+# 短词用否定前瞻挡常见误报：「本人/本人称谓」不当本科，「专业」不当专科。
 _DEGREE_PATTERNS: list[tuple[str, str]] = [
     ("博士", "博士"),
     ("研究生", "硕士"),
@@ -25,8 +26,8 @@ _DEGREE_PATTERNS: list[tuple[str, str]] = [
     ("高职", "专科"),
     ("硕", "硕士"),
     ("博", "博士"),
-    ("本", "本科"),
-    ("专", "专科"),
+    (r"本(?!人)", "本科"),
+    (r"专(?!业)", "专科"),
 ]
 
 # 档位（学校层次）归一：长词优先
@@ -161,7 +162,7 @@ def education_search_words(condition: dict[str, Any]) -> list[str]:
 def _extract_first(text: str, patterns: list[tuple[str, str]]) -> str:
     low = text.lower()
     for pattern, canonical in patterns:
-        if pattern in low:
+        if re.search(pattern, low):
             return canonical
     return ""
 

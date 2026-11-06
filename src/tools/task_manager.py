@@ -148,8 +148,14 @@ def create_tasks_from_roadmap(
             ms_name = milestone.get("name", f"里程碑 {ms_idx + 1}")
             ms_id = milestone.get("id") or f"{phase_id}_ms_{ms_idx + 1}"
 
+            # 只采信带名字的任务定义（LLM 产出的残缺条目不落空名任务）
+            valid_task_defs = [
+                d for d in milestone.get("tasks", [])
+                if isinstance(d, dict) and str(d.get("name", "")).strip()
+            ]
+
             # 从里程碑的 tasks 字段生成任务
-            for task_def in milestone.get("tasks", []):
+            for task_def in valid_task_defs:
                 tasks.append(_build(
                     name=str(task_def.get("name", "")),
                     description=str(task_def.get("description", "")),
@@ -163,8 +169,8 @@ def create_tasks_from_roadmap(
                     done_criteria=str(task_def.get("done_criteria") or ""),
                 ))
 
-            # 如果里程碑没有 tasks 字段，用里程碑本身作为任务
-            if not milestone.get("tasks"):
+            # 如果里程碑没有有效任务定义，用里程碑本身作为任务
+            if not valid_task_defs:
                 tasks.append(_build(
                     name=ms_name,
                     description=str(milestone.get("description", "")),

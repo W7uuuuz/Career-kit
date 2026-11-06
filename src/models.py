@@ -71,7 +71,9 @@ class Task(BaseModel):
         self.status = TaskStatus.SKIPPED
         self.completed_at = datetime.now().isoformat()
         if reason:
-            self.description = f"{self.description} [跳过原因: {reason}]".strip()
+            marker = f"[跳过原因: {reason}]"
+            if marker not in self.description:
+                self.description = f"{self.description} {marker}".strip()
 
 
 class CheckIn(BaseModel):
