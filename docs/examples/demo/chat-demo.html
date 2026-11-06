@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Career Kit · AI 职业陪练（在线演示）</title>
+<title>Career Kit · 产品模拟体验（在线演示）</title>
 <meta name="career-kit-demo" content="chat-first">
 <style>
 :root {
@@ -41,6 +41,14 @@ body {
 .restart { white-space: nowrap; border: 1px solid var(--line); background: var(--card);
   color: var(--muted); font-size: 12px; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .restart:hover { color: var(--brand); border-color: var(--brand); }
+
+/* 开屏差异提示 */
+.notice { display: flex; gap: 8px; align-items: flex-start; margin: 0 2px 10px;
+  font-size: 12px; line-height: 1.55; color: #6b5a2e; background: var(--warn-soft);
+  border: 1px solid #ffe2b0; border-radius: 10px; padding: 8px 12px; }
+.notice b { flex: none; color: var(--warn); }
+.notice a { color: var(--brand); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.notice a:hover { text-decoration: underline; }
 
 /* ---------- 旅程刻度 ---------- */
 .stepper { display: flex; gap: 6px; padding: 0 2px 10px; overflow-x: auto;
@@ -241,6 +249,9 @@ body {
 .map-head .lnk { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .map-head a { color: var(--brand); font-size: 12.5px; text-decoration: none; font-weight: 500; }
 .map-head a:hover { text-decoration: underline; }
+.map-head a.install { color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  border-radius: 999px; padding: 2px 11px; font-weight: 600; }
+.map-head a.install:hover { opacity: .9; text-decoration: none; }
 .map-head a.star { color: #b26a00; background: #fff8ea; border: 1px solid #ffe2b0;
   border-radius: 999px; padding: 2px 10px; font-weight: 600; }
 .map-head a.star:hover { background: #fff1d6; text-decoration: none; }
@@ -294,11 +305,17 @@ body {
   <div class="top">
     <div class="logo">CK</div>
     <div class="top-txt">
-      <h1>Career Kit · AI 职业陪练</h1>
+      <h1>Career Kit · 产品模拟体验</h1>
       <p>真实岗位数据 × 同背景案例 · 数据存本机</p>
     </div>
     <span class="demo-tag">演示 · 合成数据</span>
     <button class="restart" id="restart-btn" type="button">重新开始</button>
+  </div>
+
+  <div class="notice">
+    <b>网页模拟体验</b>
+    <span>固定选项 + 合成数据，只演示流程，与真实产品有差异；真实产品由 Agent 实时回应、抓取真实岗位并存在本机。
+    <a href="https://github.com/W7uuuuz/Career-kit#快速开始" target="_blank" rel="noopener">安装真实产品</a></span>
   </div>
 
   <div class="stepper" id="stepper"></div>
@@ -317,6 +334,7 @@ body {
         职业地图 · 按你的选择实时生成
         <span class="sub" id="map-sub"></span>
         <span class="lnk">
+          <a class="install" href="https://github.com/W7uuuuz/Career-kit#快速开始" target="_blank" rel="noopener">安装真实产品</a>
           <a href="https://github.com/W7uuuuz/Career-kit" target="_blank" rel="noopener">GitHub 主页</a>
           <a class="star" href="https://github.com/W7uuuuz/Career-kit" target="_blank" rel="noopener">★ 求个 Star</a>
           <a href="#" id="restart-chat">重新开始 ↺</a>
@@ -324,7 +342,9 @@ body {
       </div>
       <div class="map-body" id="map-body"></div>
       <div class="map-foot">
-        这份地图由 Career Kit 生成 · 如果对你有用，欢迎到
+        这份地图由 Career Kit 生成 · 在本地安装后，用你自己的简历与真实岗位再跑一遍 →
+        <a href="https://github.com/W7uuuuz/Career-kit#快速开始" target="_blank" rel="noopener">安装指引</a>
+        ·
         <a href="https://github.com/W7uuuuz/Career-kit" target="_blank" rel="noopener">GitHub 点个 Star ★</a>
       </div>
     </div>
@@ -768,7 +788,7 @@ body {
     { /* 0 */
       stepName: '方向',
       ai: [
-        '你好，我是 Career Kit 的职业陪练。和一般 AI 聊规划不一样——<b>我给出的每一条判断，都要能在真实招聘数据里点开验证</b>。',
+        '你好，这里是 Career Kit 的网页模拟体验——固定选项 + 合成数据，和真实产品有差异。真实产品里，我和一般 AI 聊规划不一样：<b>每一条判断都要能在真实招聘数据里点开验证</b>。',
         '先了解你的情况。你对毕业后的方向了解多少？',
       ],
       opts: [
@@ -886,7 +906,7 @@ body {
           '关键是：抓完不是贴链接，而是把它和<b>你的档案逐条对齐分析</b>。',
         ];
       },
-      opts: [{ label: '开始（演示中即时返回）', goto: 13 }] },
+      opts: [{ label: '开始', goto: 13 }] },
 
     { /* 13 · 调研卡片 + JD/面经分析 */
       stepName: '调研',
