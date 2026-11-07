@@ -99,6 +99,8 @@ packages = ["src"]
 "docs/install.md" = "docs/install.md"
 "docs/industry-outcomes.md" = "docs/industry-outcomes.md"
 "docs/examples/README.md" = "docs/examples/README.md"
+# career-kit-demo 需要这份自包含演示页
+"docs/examples/demo/chat-demo.html" = "docs/examples/demo/chat-demo.html"
 "docs/prompts" = "docs/prompts"
 
 [tool.hatch.build.targets.sdist]
@@ -110,7 +112,14 @@ exclude = [
     "artifacts/**",
     "screenshots/**",
     "site/**",
-    "docs/examples/demo/**",
+    # 保留 chat-demo.html（career-kit-demo 用），其余演示素材不进 sdist
+    "docs/examples/demo/README.md",
+    "docs/examples/demo/dashboard.html",
+    "docs/examples/demo/dashboard.png",
+    "docs/examples/demo/demo_profile.json",
+    "docs/examples/demo/readme-demo.gif",
+    "docs/examples/demo/social-preview.html",
+    "docs/examples/demo/story.html",
     "docs/examples/data/**",
     "docs/examples/scenarios/**",
     "docs/examples/build_demo.py",
