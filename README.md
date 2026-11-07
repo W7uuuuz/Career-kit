@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.W7uuuuz/career-kit -->
 
-[English](README.en.md) | 中文
+[English](https://github.com/W7uuuuz/Career-kit/blob/main/README.en.md) | 中文
 
 [![CI](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -11,7 +11,7 @@
 
 > 不知道做什么工作？Career Kit 是一个 AI 职业陪练 MCP 服务——以真实岗位数据和同背景案例为依据，帮你确定方向、看清差距、拆解出当下即可执行的一步。可接入 Claude Code / Cursor / opencode / Codex。
 
-![Career Kit 演示：不知道做什么工作 → 同背景的人怎么走 → 差距诊断 → 下一步](docs/examples/demo/readme-demo.gif)
+![Career Kit 演示：不知道做什么工作 → 同背景的人怎么走 → 差距诊断 → 下一步](https://raw.githubusercontent.com/W7uuuuz/Career-kit/main/docs/examples/demo/readme-demo.gif)
 
 > **先看同背景的人去了哪，企业招聘需要什么 → 再看你差在哪 → 今天先做什么。**
 > 演示数据为合成，不含真实用户简历或报告。
@@ -24,7 +24,7 @@
 
 </div>
 
-[示例产物](docs/examples/demo/) · [完整文档](docs/README.md)
+[示例产物](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [完整文档](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
 
 ## 30 秒看懂：从起步到上岸的 6 个阶段
 
@@ -47,7 +47,7 @@
 - **招聘平台**：BOSS 直聘，公开岗位薪资范围，薪酬行情以此为依据。
 - **经验帖**：来自牛客网面经与 GitHub 上岸经验库，用于佐证「同等背景的人如何走通」。
 
-**[查看全部数据源、数据类型与使用教程 →](docs/scrapers.md)** · 新数据源欢迎社区补充（[贡献指南](CONTRIBUTING.md)，参考 `src/scrapers/_template/`）；抓取仅读取公开页面。
+**[查看全部数据源、数据类型与使用教程 →](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)** · 新数据源欢迎社区补充（[贡献指南](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md)，参考 `src/scrapers/_template/`）；抓取仅读取公开页面。
 
 ## 工作方式
 
@@ -67,7 +67,7 @@ Career Kit：打卡记录 → 沉淀能力证据 → 阶段完成自动审计
 Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 ```
 
-底层是 41 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、任务与漏斗、洞察产出六大类。完整清单与调用时机见[工具总览](docs/tools.md)。
+底层是 41 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、任务与漏斗、洞察产出六大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
 
 ## 与其他求职工具的对比
 
@@ -83,7 +83,7 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 
 - 程序数据存储在本地 `~/.career-kit/`（档案主存储为 `career-kit.db`，JSON 为兼容镜像），报告与路线图存储在 `~/CareerKit/`，不会发送到任何外部服务器。
 - 知识库是用户自有资产，不随包升级丢失。
-- 抓取只读取公开岗位 / 面经页面，请遵守来源站点条款与频率限制；本项目不提供内推、保 offer 或任何就业承诺。详见 [DISCLAIMER.md](DISCLAIMER.md)。
+- 抓取只读取公开岗位 / 面经页面，请遵守来源站点条款与频率限制；本项目不提供内推、保 offer 或任何就业承诺。详见 [DISCLAIMER.md](https://github.com/W7uuuuz/Career-kit/blob/main/DISCLAIMER.md)。
 
 ## 适合谁
 
@@ -142,23 +142,23 @@ career-kit-doctor
 
 全部通过后，在新会话中对 Agent 说「调用 start_session」，收到「欢迎使用 Career Kit」即接入成功。
 
-> 源码安装 / 一键安装脚本 / 本地控制台 / 常见问题，见[安装指南](docs/install.md)。
+> 源码安装 / 一键安装脚本 / 本地控制台 / 常见问题，见[安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)。
 
 ## 文档
 
-- [文档地图](docs/README.md)：所有文档的唯一入口
-- [LLM 使用指南](docs/llms.txt)：工作流、规则、常见场景
-- [工作流详解](docs/workflow.md)：各阶段前置条件、输入输出
-- [安装指南](docs/install.md)：源码安装、一键脚本、本地控制台、常见问题
-- [工具总览](docs/tools.md)：41 个 MCP 工具的唯一事实源
-- [企业库](docs/scrapers.md)：已收录企业、数据源说明
-- [知识库](docs/knowledge.md)：目录结构、文件格式
-- [示例](docs/examples/README.md)：可交互职业地图与场景示例
-- [贡献指南](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) · [安全策略](SECURITY.md)
+- [文档地图](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)：所有文档的唯一入口
+- [LLM 使用指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)：工作流、规则、常见场景
+- [工作流详解](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)：各阶段前置条件、输入输出
+- [安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)：源码安装、一键脚本、本地控制台、常见问题
+- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：41 个 MCP 工具的唯一事实源
+- [企业库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)：已收录企业、数据源说明
+- [知识库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)：目录结构、文件格式
+- [示例](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)：可交互职业地图与场景示例
+- [贡献指南](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md) · [行为准则](https://github.com/W7uuuuz/Career-kit/blob/main/CODE_OF_CONDUCT.md) · [安全策略](https://github.com/W7uuuuz/Career-kit/blob/main/SECURITY.md)
 
 ## 贡献
 
-欢迎 issue、PR 与新的企业数据源。开始前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；新增企业源请参考 `src/scrapers/_template/`。
+欢迎 issue、PR 与新的企业数据源。开始前请先阅读 [CONTRIBUTING.md](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md)；新增企业源请参考 `src/scrapers/_template/`。
 
 如果这个项目帮你少走了弯路，一个 Star 会帮助更多求职者发现它。
 

@@ -82,7 +82,13 @@ def check_mcp_package() -> Check:
             f"无法导入 mcp：{exc}",
             f'用当前解释器安装："{sys.executable}" -m pip install -e .',
         )
-    return Check("mcp 依赖", OK, f"mcp 可导入（{getattr(mcp, '__version__', 'unknown')}）")
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        ver = version("mcp")
+    except PackageNotFoundError:
+        ver = getattr(mcp, "__version__", "unknown")
+    return Check("mcp 依赖", OK, f"mcp 可导入（{ver}）")
 
 
 def check_server() -> Check:
@@ -350,7 +356,12 @@ def run_checks(*, browser: bool = False, network: bool = False) -> list[Check]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Career Kit 安装体检")
-    parser.add_argument("--browser", action="store_true", help="检查 Playwright Chromium")
+    parser.add_argument(
+        "--browser", action="store_true", default=True, help="检查 Playwright Chromium（默认开启）"
+    )
+    parser.add_argument(
+        "--no-browser", dest="browser", action="store_false", help="跳过浏览器内核检查"
+    )
     parser.add_argument("--network", action="store_true", help="检查招聘站点连通性")
     args = parser.parse_args(argv)
 

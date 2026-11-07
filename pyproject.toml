@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "career-kit"
-version = "0.2.2"
+version = "0.2.3"
 description = "AI career coach MCP server: real job-market gap analysis, staged roadmap, check-in tasks, and an application funnel"
 readme = "README.md"
 license = "MIT"
@@ -39,7 +39,8 @@ dependencies = [
     "httpx>=0.25.0",
     "cryptography>=42.0",
     "playwright>=1.40.0",
-    "iv8",
+    # iv8 只存在于官方 PyPI（国内镜像常缺）；锁定版本避免上游静默变更
+    "iv8==0.1.4",
     # 反检测 fork，驱动层消除 Runtime.enable 泄漏（BOSS 登录必需）。
     # 必须锁死版本：上游重构可能导致静默失效
     "patchright==1.62.1",
@@ -82,11 +83,39 @@ markers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
-exclude = ["docs/internal/**"]
 
+# 运行期只读取这些文档（resources.py）；不要整目录 force-include docs，
+# 否则 4MB+ 的演示 GIF / png / demo html 会一起进包。
+# 注意：force-include 优先级高于 exclude，无法用 exclude 排除，只能逐项列出。
 [tool.hatch.build.targets.wheel.force-include]
 "sop" = "sop"
-"docs" = "docs"
+"docs/README.md" = "docs/README.md"
+"docs/llms.txt" = "docs/llms.txt"
+"docs/workflow.md" = "docs/workflow.md"
+"docs/scrapers.md" = "docs/scrapers.md"
+"docs/tools.md" = "docs/tools.md"
+"docs/knowledge.md" = "docs/knowledge.md"
+"docs/rules.md" = "docs/rules.md"
+"docs/install.md" = "docs/install.md"
+"docs/industry-outcomes.md" = "docs/industry-outcomes.md"
+"docs/examples/README.md" = "docs/examples/README.md"
+"docs/prompts" = "docs/prompts"
+
+[tool.hatch.build.targets.sdist]
+# 开发资产与大体积演示素材不随源码包分发；GitHub 仓库仍保留
+exclude = [
+    ".github/**",
+    ".claude/**",
+    ".opencode/**",
+    "artifacts/**",
+    "screenshots/**",
+    "site/**",
+    "docs/examples/demo/**",
+    "docs/examples/data/**",
+    "docs/examples/scenarios/**",
+    "docs/examples/build_demo.py",
+    "docs/examples/record_assets.py",
+]
 
 [tool.ruff]
 target-version = "py311"

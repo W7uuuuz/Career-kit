@@ -1,6 +1,6 @@
 # Career Kit
 
-English | [中文](README.md)
+English | [中文](https://github.com/W7uuuuz/Career-kit/blob/main/README.md)
 
 [![CI](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,7 +9,7 @@ English | [中文](README.md)
 
 > Not sure what job to pursue? Career Kit is an AI career coach as an MCP server — grounded in real postings and peer-path evidence, it helps you pick a direction, see your gap clearly, and break out one next step you can act on today. Works with Claude Code, Cursor, opencode, and Codex.
 
-![Career Kit demo: not sure what job to pursue → peer paths → gap diagnosis → next step](docs/examples/demo/readme-demo.gif)
+![Career Kit demo: not sure what job to pursue → peer paths → gap diagnosis → next step](https://raw.githubusercontent.com/W7uuuuz/Career-kit/main/docs/examples/demo/readme-demo.gif)
 
 > **See where people like you went and what employers require → your gap → one next step.**
 > Demo data is synthetic; the demo UI is in Chinese.
@@ -22,7 +22,7 @@ Chat with the coach via fixed options and walk the whole flow; scripted demo wit
 
 </div>
 
-[Sample output](docs/examples/demo/) · [Docs](docs/README.md)
+[Sample output](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [Docs](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
 
 ## Understand it in 30 seconds: six stages from start to landing
 
@@ -45,7 +45,7 @@ Data comes from 27 collected sources, growing steadily, covering internet / manu
 - **Recruiting platform**: BOSS Zhipin — public salary ranges for market-rate context.
 - **Experience posts**: Nowcoder interview reports and GitHub experience threads, as evidence of how people with the same background got through.
 
-**[All sources, data types, and usage guides →](docs/scrapers.md)** · community additions welcome ([CONTRIBUTING.md](CONTRIBUTING.md), see `src/scrapers/_template/`); scraping reads public pages only.
+**[All sources, data types, and usage guides →](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)** · community additions welcome ([CONTRIBUTING.md](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md), see `src/scrapers/_template/`); scraping reads public pages only.
 
 ## How it works
 
@@ -65,7 +65,7 @@ You: I got a big-tech interview.
 Career Kit: event-triggered insight → re-evaluate the plan → adjust tasks
 ```
 
-Under the hood: 41 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, tasks and funnel, and insight generation. Full list and call timing in [tools.md](docs/tools.md).
+Under the hood: 41 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
 
 ## Compared with other job-hunting tools
 
@@ -81,7 +81,7 @@ Under the hood: 41 MCP tools covering onboarding, profile management, data acqui
 
 - Data stays local: program data in `~/.career-kit/` (SQLite profile `career-kit.db`, JSON mirroring for compatibility), reports and roadmaps in `~/CareerKit/`. Nothing is sent to any external server.
 - The knowledge base is a user asset and survives package upgrades.
-- Scraping only reads public job and interview pages; respect each site's terms and rate limits. This project offers no referrals, guaranteed offers, or any employment promise. See [DISCLAIMER.md](DISCLAIMER.md).
+- Scraping only reads public job and interview pages; respect each site's terms and rate limits. This project offers no referrals, guaranteed offers, or any employment promise. See [DISCLAIMER.md](https://github.com/W7uuuuz/Career-kit/blob/main/DISCLAIMER.md).
 
 ## Who it is for
 
@@ -138,23 +138,23 @@ career-kit-doctor
 
 Then say "call start_session" to your agent in a new session; "Welcome to Career Kit" means the setup is done.
 
-> For source install, one-click scripts, the local console, and troubleshooting, see the [Install guide](docs/install.md).
+> For source install, one-click scripts, the local console, and troubleshooting, see the [Install guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md).
 
 ## Documentation
 
-- [Documentation map](docs/README.md)
-- [LLM usage guide](docs/llms.txt)
-- [Workflow](docs/workflow.md)
-- [Install guide](docs/install.md): source install, one-click script, local console, troubleshooting
-- [Tools](docs/tools.md): the single source of truth for the 41 MCP tools
-- [Data sources](docs/scrapers.md)
-- [Knowledge base](docs/knowledge.md)
-- [Examples](docs/examples/README.md)
-- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
+- [Documentation map](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
+- [LLM usage guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)
+- [Workflow](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)
+- [Install guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md): source install, one-click script, local console, troubleshooting
+- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 41 MCP tools
+- [Data sources](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)
+- [Knowledge base](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)
+- [Examples](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)
+- [Contributing](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md) · [Code of Conduct](https://github.com/W7uuuuz/Career-kit/blob/main/CODE_OF_CONDUCT.md) · [Security](https://github.com/W7uuuuz/Career-kit/blob/main/SECURITY.md)
 
 ## Contributing
 
-Issues, PRs, and new company data sources are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; new scrapers can start from `src/scrapers/_template/`.
+Issues, PRs, and new company data sources are welcome. Read [CONTRIBUTING.md](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md) first; new scrapers can start from `src/scrapers/_template/`.
 
 If this project saves you a wrong turn, a star helps more job seekers find it.
 

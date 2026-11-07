@@ -8,13 +8,13 @@
     "url": "https://github.com/W7uuuuz/Career-kit",
     "source": "github"
   },
-  "version": "0.2.2",
+      "version": "0.2.3",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "career-kit",
-      "version": "0.2.2",
+  "version": "0.2.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
