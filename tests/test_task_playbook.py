@@ -223,6 +223,32 @@ def test_detail_current_phase_exposes_resource_catalog(temp_profile):
     assert "how_to" in detail["instructions"]
 
 
+def test_completed_mainline_shows_maintenance_closing(temp_profile):
+    """全部任务完成后的结束语：主线完成，后续是持续维护。"""
+    from src.models import Task
+    from src.server import get_next_tasks, get_progress, get_workflow_status
+
+    profile = _profile_with_roadmap()
+    profile.tasks = [Task(
+        id="task_001",
+        name="刷 LeetCode 热题 100",
+        phase_id="phase_1",
+        milestone_id="phase_1_ms_1",
+        status="completed",
+    )]
+    profile_module.save_profile(profile)
+
+    next_tasks = get_next_tasks()
+    assert "主线任务已完成" in next_tasks
+    assert "持续维护" in next_tasks and "随时回来" in next_tasks
+
+    progress = get_progress()
+    assert "持续维护" in progress
+
+    status = get_workflow_status()
+    assert "持续维护" in status
+
+
 def test_dashboard_shows_milestone_preview_without_tasks(temp_profile):
     from src.tools.dashboard import render_roadmap_map
 

@@ -160,6 +160,73 @@ def test_unknown_level_and_graduation_are_advisories(temp_profile):
     assert "graduation_mismatch" in codes
 
 
+def test_graduation_mismatch_prompt_is_visible_and_non_blocking(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()  # who.graduation_year = 2028
+    roadmap = {"roadmap": {"start_level": "小厂", "phases": [
+        {"type": "intern", "name": "实习", "target_level": "小厂",
+         "graduation_year": "2029", "resume_value": "实习",
+         "kpi": {"metric": "入职", "target": "1个"}},
+    ]}}
+    out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+    assert not out.get("isError")
+    codes = {a["code"] for a in out["context"]["advisories"]}
+    assert "graduation_mismatch" in codes
+    assert "2029" in out["message"] and "2028" in out["message"]
+    assert "不一致" in out["message"]
+    assert "自动抓取" in out["message"]
+
+
+def test_three_and_five_phase_roadmaps_save_without_forced_four(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+
+    def _roadmap(count: int) -> dict:
+        phases = [
+            {
+                "type": "learn" if index == 0 else "project",
+                "name": f"阶段{index + 1}",
+                "goal": "阶段目标",
+                "resume_value": "" if index == 0 else "可写进简历的产出",
+                "kpi": {"metric": "产出", "target": "1个"},
+            }
+            for index in range(count)
+        ]
+        return {
+            "roadmap": {
+                "strategy_summary": "阶段数按差距决定",
+                "start_level": "小厂",
+                "phases": phases,
+            }
+        }
+
+    for count in (3, 5):
+        out = json.loads(save_roadmap(json.dumps(_roadmap(count), ensure_ascii=False)))
+        assert not out.get("isError")
+        assert out["context"]["phase"] == "roadmap_saved"
+        assert "必须 4 段" not in out["message"]
+        saved = profile_module.load_profile()
+        assert len(saved.plan["roadmap"]["phases"]) == count
+
+
+def test_pending_jd_prompt_mentions_auto_fetch(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    roadmap = {"roadmap": {"start_level": "小厂", "phases": [
+        {"type": "intern", "name": "实习", "company": "某厂", "target_level": "小厂",
+         "jd_status": "pending_user_import", "graduation_year": "2028",
+         "resume_value": "实习", "kpi": {"metric": "入职", "target": "1个"}},
+    ]}}
+    out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+    assert not out.get("isError")
+    assert "后续自动抓取" in out["message"]
+    assert "import_jd" in out["message"]
+
+
+
 # ============ 差距分析未知字段 / 响应瘦身 ============
 
 

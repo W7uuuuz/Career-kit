@@ -56,6 +56,30 @@ def _format_jd_text(jd) -> str:
     return str(jd)
 
 
+def _plan_mode_info(profile) -> tuple[str, str]:
+    """判断当前路线图是基线方案还是已按企业需求校准的执行版。"""
+    core_state = getattr(profile, "core_state", None)
+    if not isinstance(core_state, dict):
+        core_state = {}
+    execution_id = str(core_state.get("execution_plan_id") or "").strip()
+    requirement_id = str(core_state.get("requirement_profile_id") or "").strip()
+    stage = str(core_state.get("stage") or "").strip()
+    if execution_id or stage == "executing":
+        bits = []
+        if requirement_id:
+            bits.append(f"需求画像 {requirement_id}")
+        if execution_id:
+            bits.append(f"执行方案 {execution_id}")
+        note = "执行版：已按确认企业与 JD 需求校准"
+        if bits:
+            note += f"（{' · '.join(bits)}）"
+        return "execution", note
+    return (
+        "baseline",
+        "基线版：尚未按目标企业 JD 校准；完成企业适配后重新生成即为执行版。",
+    )
+
+
 def _research_card_html(profile) -> str:
     """「市场调研」卡片：样本数、来源状态与报告入口（无调研时给引导）。"""
     research = getattr(profile, "research", None) or {}
@@ -415,6 +439,7 @@ def render_roadmap_map(profile) -> str:
     summary = f"{len(data['phases'])} 个阶段 · {done_tasks}/{total_tasks} 个任务"
     if current_name:
         summary += f" · 当前：{current_name}"
+    plan_mode, plan_note = _plan_mode_info(profile)
 
     # 防御 `</script>` 提前闭合：JSON 中 `<\/` 与 `</` 等价，解析不受影响
     data_json = _json_lib.dumps(data, ensure_ascii=False).replace("</", "<\\/")
@@ -425,6 +450,7 @@ def render_roadmap_map(profile) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="career-kit-summary" content="{escape(summary)}">
+<meta name="career-kit-plan-mode" content="{escape(plan_mode)}">
 <script>
   window.__CK_API__ = "__CK_API_BASE__";
   window.__CK_TOKEN__ = "__CK_TOKEN__";
@@ -449,6 +475,9 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 .mode-banner {{ margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; }}
 .mode-banner.online {{ background: var(--ok-soft); color: #146c43; }}
 .mode-banner.offline {{ background: var(--warn-soft); color: var(--warn); }}
+.plan-mode {{ margin: 6px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; }}
+.plan-mode.execution {{ background: var(--ok-soft); color: #146c43; }}
+.plan-mode.baseline {{ background: var(--warn-soft); color: var(--warn); }}
 .meta {{ color: var(--muted); font-size: 12.5px; }}
 .start {{ margin: 6px 0 18px; color: var(--muted); font-size: 13.5px; }}
 .start b {{ color: var(--brand); }}
@@ -550,6 +579,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     <span class="meta">生成于 {datetime.now().strftime("%Y-%m-%d %H:%M")} · 路线图 v{profile.version}</span>
   </header>
   <div class="mode-banner" id="mode-banner"></div>
+  <div class="plan-mode {escape(plan_mode)}" id="plan-mode">{escape(plan_note)}</div>
 
   <p class="start">起点层级：<b id="start-level">—</b>（差距分析产出，路线图按此对齐）</p>
 

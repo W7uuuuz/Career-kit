@@ -241,6 +241,7 @@ def test_finalize_profile_probes_when_no_evidence(temp_profile):
     assert out.get("isError") is True
     assert out["code"] == "PROBING_REQUIRED"
     assert "user_verified" in out["message"]
+    assert "用自己的话" in out["message"], "摸排应先请用户介绍项目，而不是审问"
     assert "authorship" in out["message"], "BUG-021：阻塞文案应含作者身份自评指引"
 
     # BUG-001 收紧：confidence 自标不算证据，仍需 user_verified，仍阻塞
@@ -985,7 +986,8 @@ def test_parse_resume_requires_verification(tmp_path, temp_profile):
     out = parse_resume(str(resume))
     assert "候选素材" in out, "简历应定位为候选素材"
     assert "简历有美化成分" in out
-    assert "逐项向用户求证" in out or "求证" in out
+    assert "用自己的话" in out and "1-2 个项目" in out, \
+        "摸排应先请用户讲项目，而不是逐条审问简历"
     assert "user_verified" in out or "verified" in out
     assert "authorship" in out and "control_level" in out, \
         "BUG-021：应引导 per-skill 作者身份与把控度自评"

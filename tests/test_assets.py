@@ -45,6 +45,7 @@ def test_ensure_assets_root_creates_readme(tmp_path):
         assert readme.exists()
         text = readme.read_text(encoding="utf-8")
         assert "index.html" in text and "调研报告" in text
+        assert "规划链路" in text and "基线方案" in text and "执行版" in text
         import os
 
         monkeypatch_env = os.environ.get("CAREER_KIT_ASSETS_DIR")
@@ -110,6 +111,61 @@ def test_write_and_collect_index(tmp_path, monkeypatch):
     assets.write_asset_text("roadmap", "大厂冲刺", assets.ROADMAP_FILENAME, "<p>别的档案</p>")
     text = assets.rebuild_index().read_text(encoding="utf-8")
     assert "大厂冲刺" in text and "路线图" in text
+
+    import shutil
+
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def test_index_renders_plan_chain_and_next_steps(tmp_path, monkeypatch):
+    """index 按规划链路展示六步；缺失资产只给下一步，不造链接。"""
+    monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
+    root = assets.ensure_assets_root()
+
+    roadmap_html = (
+        '<html><head><meta name="career-kit-plan-mode" content="execution">'
+        "</head><body>路线图</body></html>"
+    )
+    assets.write_asset_text("roadmap", "默认档案", assets.ROADMAP_FILENAME, roadmap_html)
+    stem = "2026-11-08_AI_Agent"
+    assets.write_asset_text("evidence", "默认档案", f"{stem}.html", "<p>证据</p>")
+    assets.write_asset_text(
+        "evidence",
+        "默认档案",
+        f"{stem}.json",
+        '{"direction": "AI Agent", "counts": {"companies_requested": 6, '
+        '"jd_samples": 9, "cases": 4}}',
+    )
+
+    text = assets.rebuild_index().read_text(encoding="utf-8")
+
+    assert "规划链路" in text
+    for label in assets.PLAN_CHAIN_LABELS:
+        assert label in text
+    assert "执行版路线图：已按确认企业与 JD 需求校准" in text
+    assert "证据池覆盖目标企业 6 家" in text
+    assert "已采集 JD 9 条 · 面经 4 条" in text
+    assert "先做企业适配并生成投递清单" in text
+    # 投递清单缺失：只能提示下一步，不能凭空出现投递清单文件入口
+    assert "投递清单/" not in text
+
+
+    import shutil
+
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def test_index_marks_baseline_until_alignment(tmp_path, monkeypatch):
+    """没有执行标记的路线图按基线方案展示，并提示下一步校准。"""
+    monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
+    root = assets.ensure_assets_root()
+    assets.write_asset_text("roadmap", "默认档案", assets.ROADMAP_FILENAME, "<html></html>")
+
+    text = assets.rebuild_index().read_text(encoding="utf-8")
+
+    assert "路线图已生成" in text
+    assert "当前是基线方案，下一步按企业需求校准执行版" in text
+    assert "执行版路线图：已按确认企业与 JD 需求校准" not in text
 
     import shutil
 

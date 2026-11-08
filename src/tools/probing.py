@@ -23,13 +23,15 @@ AUTHORSHIP_VALUES = ("self_written", "ai_assisted", "ai_generated", "referenced"
 AI_AUTHORED = ("ai_assisted", "ai_generated")
 
 SELF_ASSESSMENT_INSTRUCTIONS = (
-    "**简历自评三问（与求证同轮一起问；authorship/control_level 必须"
-    "来自用户本人回答，AI 不得代填）：**\n"
-    "① 总问：简历有美化成分（包括 AI 写的代码——项目算你的，但作者身份要说清）。"
-    "诚实回答：简历里哪几条描述你面试现场站得住、哪些站不住？\n"
-    "② 每条技能标 authorship（四选一）：self_written=手写 | "
+    "**简历摸排：先请你讲，再请你自评（authorship / control_level 必须由你本人回答，"
+    "AI 不得代填）：**\n"
+    "① 项目自述：用自己的话介绍 1-2 个项目——做了什么、"
+    "你负责哪部分、最难的问题怎么解决的。不要照简历原文复述。\n"
+    "② 独立程度自评：重写核心部分你能独立完成多少？哪些要查资料或用 AI？"
+    "团队里有没有人 review 你的代码？有没有简历没写、但实际并不熟的部分？\n"
+    "③ 每条技能标 authorship（四选一）：self_written=手写 | "
     "ai_assisted=AI 生成+你验证迭代 | ai_generated=AI 生成未深查 | referenced=参考他人\n"
-    "③ 每条技能自评把控度 control_level（0-10）：能讲架构=3，能逐行讲清=6，"
+    "④ 每条技能自评把控度 control_level（0-10）：能讲架构=3，能逐行讲清=6，"
     "能手写重写=8+。整份简历落 have.self_assessment："
     '{"resume_trust": "high|medium|low", "notes": "哪几条站得住/站不住"}'
 )

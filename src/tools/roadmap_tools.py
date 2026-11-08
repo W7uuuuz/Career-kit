@@ -73,6 +73,9 @@ def generate_roadmap() -> str:
                 "step": 3,
                 "name": "阶段序列设计",
                 "action": "按「补齐证据 → 提高命中率」设计阶段序列（learn/project/intern/...）；"
+                          "阶段数由差距与目标决定（通常 3-6 段），不要为凑数强行 4 段——"
+                          "简单目标 3 段即可，多缺口可 5-6 段；每个阶段都要能说清补齐什么证据、"
+                          "提高哪种命中率；"
                           "层级不是准入许可，跨级不禁止，但请在阶段理由中说明依据（作品集/内推/前序交付）；"
                           "每阶段标注类型、目标、需要补齐的证据、投递通道",
                 "output": {"phases_sequence": [{"type": "", "name": "", "target_level": "", "evidence_gate": [], "access_path": "", "transition_reason": ""}]},
@@ -84,7 +87,8 @@ def generate_roadmap() -> str:
                 "name": "逐阶段深入细化",
                 "action": "对每个阶段深入展开：KPI（尽量可验证）、里程碑（带完成标准）、"
                           "任务（一次坐下可完成粒度）、jd 三件套（company/rationale 常识可写，jd/jd_status 真实数据才填——"
-                          "优先引用档案 research 里的调研 JD 样本与来源，不再重复抓取）",
+                          "优先引用档案 research 里的调研 JD 样本与来源，不再重复抓取；拿不到就占位 pending_user_import，"
+                          "并说明「后续自动抓取」会由企业适配阶段按目标企业和你的届别补齐，也可先用 import_jd 补充）",
                 "output": "完整 roadmap JSON（strategy_summary + phases，符合 roadmap.yaml output_schema）",
                 "checkpoint": False,
             },
@@ -126,7 +130,8 @@ def generate_roadmap() -> str:
             "再调用 career-roadmap-auditor 并用 save_roadmap_audit 落库；审计不阻断定稿，"
             "FAIL 只用于硬矛盾，优先处理最多 3 条 must_fix，其余作为建议\n"
             "5. 过程中需要真实岗位数据时用 search_cases / fetch_company_jobs / fetch_jd_detail 获取，"
-            "拿不到就 jd 占位（pending_user_import），绝不编造\n"
+            "拿不到就 jd 占位（pending_user_import）——告诉用户这只是占位，"
+            "后续自动抓取会由企业适配阶段按目标企业和届别补齐，也可先用 import_jd 补充；绝不编造\n"
             "6. 最终调用 save_roadmap(roadmap_json) 保存；保存后向用户复述质量建议与未解决项；"
             "定稿产物除结构化数据外还有一份路线图 HTML 活地图，交付时要向用户说明它的用途与用法"
         ),
@@ -187,7 +192,11 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
 
     running_rank = start_rank
     running_name = start_level
-    graduation_year = str((profile.who or {}).get("graduation_year", "") or "").strip()
+    graduation_year = str(
+        (profile.who or {}).get("graduation_year", "")
+        or (profile.want or {}).get("graduation_year", "")
+        or ""
+    ).strip()
 
     for phase in phases:
         phase_type = phase.get("type", "learn")
@@ -231,8 +240,9 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
                 if int(target_year) != int(graduation_year):
                     advisories.append(_advisory(
                         "graduation_mismatch",
-                        f"阶段「{name}」面向届 {target_year} 与用户毕业届 {graduation_year} 不一致，"
-                        "请确认该岗位用户是否可投。",
+                        f"阶段「{name}」面向届 {target_year} 与你的毕业届 {graduation_year} 不一致——"
+                        "后续自动抓取会由企业适配阶段按你的届别补齐匹配岗位；"
+                        "当前不阻断保存，请确认该岗位是否可投。",
                         "graduation_match",
                     ))
             except (TypeError, ValueError):
@@ -297,7 +307,9 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
             elif jd_status == "pending_user_import" and not phase.get("confirmed"):
                 advisories.append(_advisory(
                     "jd_pending_confirm",
-                    f"阶段「{name}」的 JD 是占位，尚未得到用户确认。",
+                    f"阶段「{name}」的 JD 是占位，尚未得到用户确认——当前只有目标公司与理由；"
+                    "后续自动抓取会由企业适配阶段按目标企业和你的届别补齐真实 JD，"
+                    "也可先用 import_jd 补充。",
                     "jd_discipline",
                 ))
 
@@ -422,9 +434,11 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
         }
 
     注意：
+    - 阶段数由差距与目标决定（通常 3-6 段），不要求固定 4 段。
     - 产品不规划时间：建议任务名不带时间节奏词（每周/每天等）；带时长描述会进建议清单，不阻断保存。
     - 知识光谱纪律：公司名是常识可自由写；JD 细节必须有真实数据，拿不到就 jd 置空 +
-      jd_status=pending_user_import，用户确认后 confirmed 置 true。
+      jd_status=pending_user_import（占位），并说明后续自动抓取会由企业适配阶段按目标企业与你的届别补齐，
+      也可先用 import_jd 补充；用户确认后 confirmed 置 true。
     - 层级是命中率参考，不是准入许可：跨级会给出建议，由 LLM 结合证据（作品集/内推/前序交付）
       与用户判断，不禁止投递；start_level_after 只影响后续阶段的建议，不写回差距分析。
     - 返回值的 advisories 会持久化到档案，请在向用户交付时如实复述未解决项。

@@ -440,6 +440,122 @@ def test_build_report_salary_gap_mentions_failed_boss(temp_profile):
     report = build_report(profile, gathered)
     reasons = [g["reason"] for g in report["gaps"]]
     assert any("BOSS" in reason or "未成功" in reason for reason in reasons)
+    suggestions = [g["suggestion"] for g in report["gaps"]]
+    assert any(
+        "BOSS" in text and "import_jd" in text and "接受" in text
+        for text in suggestions
+    )
+    assert report["salary"]["boss_included"] is True
+    assert report["salary"]["boss_status"] == "failed"
+    assert report["salary"]["with_salary"] == 0
+
+
+def test_salary_gap_when_boss_not_selected(temp_profile):
+    """未选择 BOSS 时不得承诺其他含薪来源，只给出真实可执行动作。"""
+    from src.research_report import build_report
+
+    profile = profile_module.load_profile()
+    gathered = {
+        "direction": "AI Agent 开发",
+        "city": "北京",
+        "education_tag": "双非本",
+        "jd_families": [
+            {
+                "slug": "bytedance",
+                "label": "字节跳动",
+                "rows": [
+                    {
+                        "company": "字节跳动",
+                        "title": "AI Agent 工程师",
+                        "location": "北京",
+                        "salary": "",
+                        "summary": "负责 Agent 产品",
+                        "source": "bytedance",
+                        "url": "https://example.com/byte/1",
+                        "description": "负责 Agent 产品",
+                        "requirements": "Python",
+                    }
+                ],
+                "status": "ok",
+                "error": "",
+                "elapsed": 0.2,
+                "dropped_no_detail": 0,
+                "dropped_titles": [],
+            }
+        ],
+        "cases_result": {"cases": [], "warnings": [], "sources": {}},
+    }
+    report = build_report(profile, gathered)
+    gap = next(g for g in report["gaps"] if "无薪资数据" in g["missing"])
+    assert "未选择 BOSS" in gap["reason"]
+    assert "import_jd" in gap["suggestion"] and "接受" in gap["suggestion"]
+    combined = gap["reason"] + gap["suggestion"]
+    assert "看准" not in combined
+    assert "职友集" not in combined
+    assert "OfferShow" not in combined
+    assert report["salary"]["boss_status"] == "not_included"
+    assert report["salary"]["with_salary"] == 0
+
+
+def test_salary_partial_coverage_reports_source(temp_profile):
+    """部分岗位含薪：缺口写清覆盖数与真实来源，并保留 salary_source。"""
+    from src.research_report import build_report
+
+    profile = profile_module.load_profile()
+    gathered = {
+        "direction": "AI Agent 开发",
+        "city": "北京",
+        "education_tag": "双非本",
+        "jd_families": [
+            {
+                "slug": "boss",
+                "label": "BOSS直聘",
+                "rows": [
+                    {
+                        "company": "某公司",
+                        "title": "AI Agent 工程师",
+                        "location": "北京",
+                        "salary": "25-45K·16薪",
+                        "salary_source": "api",
+                        "summary": "Python | RAG",
+                        "source": "boss",
+                        "url": "https://example.com/boss/1",
+                        "description": "",
+                        "requirements": "",
+                        "detail_status": "list_only",
+                    },
+                    {
+                        "company": "另一公司",
+                        "title": "AI Agent 后端",
+                        "location": "北京",
+                        "salary": "",
+                        "summary": "Python",
+                        "source": "boss",
+                        "url": "https://example.com/boss/2",
+                        "description": "",
+                        "requirements": "",
+                        "detail_status": "list_only",
+                    },
+                ],
+                "status": "ok",
+                "error": "",
+                "elapsed": 0.2,
+                "dropped_no_detail": 0,
+                "dropped_titles": [],
+            }
+        ],
+        "cases_result": {"cases": [], "warnings": [], "sources": {}},
+    }
+    report = build_report(profile, gathered)
+    assert report["salary"]["sample_count"] == 2
+    assert report["salary"]["with_salary"] == 1
+    assert report["salary"]["sources"] == ["boss"]
+    assert report["jd_samples"][0]["salary_source"] == "boss"
+    assert report["jd_samples"][0]["salary_provenance"] == "api"
+    assert report["jd_samples"][1]["salary_source"] == ""
+    gap = next(g for g in report["gaps"] if "含薪资" in g["missing"])
+    assert "1/2" in gap["missing"] and "boss" in gap["missing"]
+    assert "import_jd" in gap["suggestion"] and "接受" in gap["suggestion"]
 
 
 def test_save_report_reuses_same_fingerprint_and_merges(temp_profile):

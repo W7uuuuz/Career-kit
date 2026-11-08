@@ -125,14 +125,14 @@ def parse_resume(file_path: str) -> str:
     return (
         f"--- RESUME CONTENT ---\n{text}\n--- END ---\n\n"
         "以上是候选素材，不是已确认的事实。\n\n"
-        "**简历有美化成分——写入档案前必须先验证：**\n"
-        "1. 对关键技能/项目逐项向用户求证：这个项目是不是你独立完成的？\n"
-        "   团队里有没有人 review 你的代码？某个难点具体怎么解决的？\n"
-        "   实际掌握到什么程度？\n\n"
-        f"2. {SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
-        "3. 证据（evidence）必须来自用户确认，**不得照抄简历原文**；\n"
+        "**简历有美化成分——写入档案前，先请用户自己讲一遍：**\n"
+        "不要逐条审问简历。先请用户用自己的话介绍 1-2 个项目（挑最能代表水平的）："
+        "做了什么、负责哪部分、最难的问题怎么解决；再请用户自评独立完成程度、"
+        "哪些要查资料或用 AI、团队是否 review、有没有简历没写但实际不熟的部分。\n\n"
+        f"1. {SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
+        "2. 证据（evidence）必须来自用户确认，**不得照抄简历原文**；\n"
         "   未经用户确认的技能标 `verified: false`，确认过的标 `verified: true`。\n"
-        "4. 学历/城市/届别等身份信息直接可用；技能与项目必须验证后再写入 have。\n\n"
+        "3. 学历/城市/届别等身份信息直接可用；技能与项目必须验证后再写入 have。\n\n"
         "请调用 intake 工具填充：\n"
         '- "who" section：姓名、联系方式、教育背景、当前状态\n'
         '- "have" section：技能、工作经历、项目经验、证书——每个技能条目附 '
@@ -161,6 +161,8 @@ def intake(section: str, data: str) -> str:
             - want: 你想要什么（目标岗位、行业、薪资）
                 - 扫盲阶段可写 industry_id / awareness_level / scan_consent
                 - 深度规划确认行业后写 industry / industry_id
+                - expected_outcome: 最终想要的结果（大厂/平台、先上车再发展、
+                  稳定优先、薪资优先、成长/技术优先）
                 - 必须由用户本人确认方向/城市/届别后，带 `user_confirmed=true` 写入；
                   模型从简历推断的目标只能作为候选，不能直接进入分析
         data: 用户提供的信息，必须是 JSON 对象字符串
@@ -241,10 +243,11 @@ def finalize_profile(skip_probing: bool = False) -> str:
 
     Args:
         skip_probing: 是否跳过「简历技能摸排」（默认 False）。
-            摸排是硬性必选步骤：have 有技能但无用户确认证据
-            （user_verified）或缺 authorship/control_level/self_assessment 自评时，
-            本工具拒绝放行，除非用户明确表示跳过，此时 LLM 传 skip_probing=True
-            并记录留痕——不得以置信度高或简历字面为由自动跳过，
+            摸排是硬性必选步骤：先请用户用自己的话介绍 1-2 个项目并自评，
+            have 有技能但无用户确认证据（user_verified）或缺
+            authorship/control_level/self_assessment 自评时，本工具拒绝放行，
+            除非用户明确表示跳过，此时 LLM 传 skip_probing=True 并记录留痕——
+            不得以置信度高或简历字面为由自动跳过，
             也不得由 AI 代填 authorship/control_level。
 
     何时调用：当用户已经通过 intake 填充了 who/have/want 三个 section 后调用。
@@ -268,13 +271,11 @@ def finalize_profile(skip_probing: bool = False) -> str:
     if needs_probe and not skip_probing:
         return error_response(
             "PROBING_REQUIRED",
-            "档案中的技能没有用户确认过的证据，摸排是硬性必选步骤：\n"
-            "简历有美化成分——按简历字面水平做差距分析会系统性失真，"
-            "不能以 confidence=高 或 evidence 照抄简历来绕过。\n"
-            "请先对关键技能逐项向用户求证：\n"
-            "  1. 这个项目是不是你独立完成的？\n"
-            "  2. 团队里有没有人 review 你的代码？\n"
-            "  3. 某个难点具体怎么解决的？实际掌握到什么程度？\n\n"
+            "档案里的技能还没有你本人确认过的证据。先做一次简单摸排，"
+            "不是审问，也不用背简历：\n"
+            "简历常有美化——按字面水平做差距分析会系统性失真，"
+            "所以需要你讲清楚自己真实做到哪一步，"
+            "不能以 confidence=高 或 evidence 照抄简历来绕过。\n\n"
             f"{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
             "然后把确认过的证据（evidence）写入技能条目并标 user_verified=true，"
             "同时写入 authorship / control_level 与 have.self_assessment。\n\n"
@@ -290,9 +291,10 @@ def finalize_profile(skip_probing: bool = False) -> str:
     if needs_self_assessment and not skip_probing:
         return error_response(
             "PROBING_REQUIRED",
-            "技能证据已确认，但缺「作者身份与把控度自评」——"
+            "技能证据已确认，但还缺「作者身份与把控度自评」——"
             "AI 编程时代「独立完成」可能是「AI 生成+人工验证」，"
-            "按简历字面水平分析会系统性高估手写能力：\n"
+            "按简历字面水平分析会系统性高估手写能力。\n"
+            "先请用户用自己的话讲讲怎么做的、哪些独立完成、哪些要查资料或用 AI：\n"
             + "\n".join(f"- {i}" for i in self_issues)
             + f"\n\n{SELF_ASSESSMENT_INSTRUCTIONS}\n\n"
             "唯一跳过方式：用户明确表示不需要时 finalize_profile(skip_probing=True)（留痕）。",

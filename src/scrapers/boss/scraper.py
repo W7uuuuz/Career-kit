@@ -79,6 +79,7 @@ def _to_row(job: dict[str, Any]) -> dict[str, Any]:
         "company": job.get("boss_name") or "公司名未获取",
         "location": job.get("location", ""),
         "salary": job.get("salary", ""),
+        "salary_source": job.get("salary_source", ""),
         "summary": summary,
         "url": cdp.build_detail_url(job) or job.get("job_link", ""),
         "source": "boss",

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..guidance import phase_type_label
 from .tool_helpers import _json_candidates
 
 
@@ -103,7 +104,7 @@ def format_roadmap(roadmap_data: dict[str, Any]) -> str:
 
     phases = roadmap.get("phases", [])
     for phase in phases:
-        phase_type = phase.get("type", "")
+        phase_type = phase_type_label(phase.get("type", ""))
 
         lines.append(f"### {phase.get('name', '')} [{phase_type}]（{phase.get('id', '')}）")
         lines.append(f"**目标**：{phase.get('goal', '')}")
@@ -130,7 +131,11 @@ def format_roadmap(roadmap_data: dict[str, Any]) -> str:
                     lines.append(f" **JD 依据**：{str(jd)[:300]}")
         elif jd_status == "pending_user_import":
             mark = "（已确认占位）" if confirmed else "（待用户确认）"
-            lines.append(f"**待导入真实 JD 后细化**{mark}——当前只有公司名，无岗位要求细节")
+            lines.append(
+                f"**JD 占位**{mark}——当前只有公司名，无岗位要求细节。"
+                "后续自动抓取：企业适配阶段会按目标企业和你的届别补齐真实 JD；"
+                "也可先用 import_jd 补充"
+            )
         lines.append("")
 
         kpi = phase.get("kpi", {})

@@ -162,6 +162,15 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
                     "title": _clip(row.get("title"), 120),
                     "location": _clip(row.get("location"), 60),
                     "salary": _clip(row.get("salary"), 40),
+                    # 薪资来源说明：salary_source 记录实际返回薪资的数据源，
+                    # salary_provenance 保留抓取器原始标记（如 BOSS 的 api/api_empty）。
+                    # 只展示事实，不做估算或跨源补全。
+                    "salary_source": (
+                        _clip(row.get("source") or family.get("slug"), 20)
+                        if str(row.get("salary") or "").strip()
+                        else ""
+                    ),
+                    "salary_provenance": _clip(row.get("salary_source"), 20),
                     "snippet": str(row.get("summary") or "").strip(),
                     "description": str(row.get("description") or "").strip(),
                     "requirements": str(row.get("requirements") or "").strip(),
@@ -279,6 +288,8 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         "source_empty": sum(1 for s in source_status if s["status"] == "empty"),
     }
 
+    salary = _build_salary_summary(jd_samples, source_status)
+
     return {
         "type": "research_report",
         "direction": direction,
@@ -293,12 +304,134 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         "gaps": gaps,
         "digest": digest,
         "counts": counts,
+        "salary": salary,
     }
 
 
 def _norm_title(text: Any) -> str:
     """标题归一化（去空白/大小写）——本地 JD 与本次 JD 去重用。"""
     return "".join(str(text or "").lower().split())
+
+
+def _boss_status(source_status: list[dict[str, Any]]) -> str:
+    """BOSS 在本次抓取中的状态：not_included / failed / ok / empty。"""
+    entries = [
+        s
+        for s in source_status
+        if "boss" in f"{s.get('source', '')} {s.get('slug', '')}".lower()
+    ]
+    if not entries:
+        return "not_included"
+    if any(e.get("status") == "failed" for e in entries):
+        return "failed"
+    if any(e.get("status") == "ok" for e in entries):
+        return "ok"
+    return "empty"
+
+
+def _build_salary_summary(
+    jd_samples: list[dict[str, Any]],
+    source_status: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """薪资覆盖事实：多少条含薪、来自哪些源、BOSS 是否参与。
+
+    只统计抓取结果里真实返回的 salary 字段，不估算、不补全。
+    """
+    sources: list[str] = []
+    with_salary = 0
+    for sample in jd_samples:
+        if not str(sample.get("salary") or "").strip():
+            continue
+        with_salary += 1
+        label = str(
+            sample.get("salary_source") or sample.get("source") or ""
+        ).strip()
+        if label and label not in sources:
+            sources.append(label)
+    boss = _boss_status(source_status)
+    return {
+        "sample_count": len(jd_samples),
+        "with_salary": with_salary,
+        "sources": sources,
+        "boss_included": boss != "not_included",
+        "boss_status": boss,
+    }
+
+
+_SALARY_CHANNEL_NOTE = (
+    "当前可用含薪来源主要是 BOSS 直聘（列表明文薪资）；"
+    "企业官网多数不公开薪资，仅少数岗位可能带薪资"
+)
+_SALARY_OPTIONS = (
+    "可选动作：① 补充 BOSS 直聘（需先征得同意并扫码登录）后重跑；"
+    "② 导入手头含薪 JD（import_jd / import_jd_file）；"
+    "③ 接受本次薪资缺口，仅用岗位与要求做分析"
+)
+
+
+def _salary_gap(
+    jd_samples: list[dict[str, Any]],
+    source_status: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """薪资缺口：按真实覆盖情况说明原因，并给出可执行且真实存在的动作。"""
+    if not jd_samples:
+        return []
+    summary = _build_salary_summary(jd_samples, source_status)
+    total = int(summary["sample_count"])
+    with_salary = int(summary["with_salary"])
+    if with_salary >= total:
+        return []
+    if with_salary == 0:
+        boss_status = summary["boss_status"]
+        if boss_status == "failed":
+            reason = "BOSS 直聘本次未成功（见来源状态面板），其余已抓来源不公开薪资"
+        elif boss_status == "ok":
+            reason = "BOSS 直聘本次未返回明文薪资，其余已抓来源不公开薪资"
+        elif boss_status == "empty":
+            reason = "BOSS 直聘本次无可用结果，其余已抓来源不公开薪资"
+        else:
+            reason = "本次未选择 BOSS 直聘，已抓企业官网多数不公开薪资"
+        return [
+            {
+                "missing": f"全部 {total} 条岗位样本均无薪资数据",
+                "reason": f"{reason}。{_SALARY_CHANNEL_NOTE}",
+                "suggestion": _SALARY_OPTIONS,
+            }
+        ]
+    sources = "、".join(summary["sources"]) or "未标注来源"
+    return [
+        {
+            "missing": (
+                f"仅 {with_salary}/{total} 条岗位含薪资（来源：{sources}）"
+            ),
+            "reason": (
+                f"其余 {total - with_salary} 条来源未返回薪资字段；"
+                f"{_SALARY_CHANNEL_NOTE}"
+            ),
+            "suggestion": _SALARY_OPTIONS,
+        }
+    ]
+
+
+def _salary_render_line(info: dict[str, Any]) -> str:
+    """报告展示用的薪资覆盖说明（事实陈述，不承诺未接入来源）。"""
+    total = int(info.get("sample_count") or 0)
+    if not total:
+        return ""
+    with_salary = int(info.get("with_salary") or 0)
+    if not with_salary:
+        return (
+            f"薪资数据：0/{total} 条含明文薪资——原因与可选动作见「数据缺口」，"
+            "不估算、不编造。"
+        )
+    sources = "、".join(str(s) for s in (info.get("sources") or []) if s)
+    detail = f"{with_salary}/{total} 条含明文薪资"
+    if sources:
+        detail += f"（来源：{sources}）"
+    return (
+        f"薪资数据：{detail}。未含薪资仅表示该来源未返回薪资字段，"
+        "不代表岗位无薪资。"
+    )
 
 
 def _derive_gaps(
@@ -346,28 +479,7 @@ def _derive_gaps(
                     "suggestion": "需要 JD 全文时用 fetch_jd_detail(url) 交互式补抓单条",
                 }
             )
-    if jd_samples and not any(j.get("salary") for j in jd_samples):
-        boss_failed = any(
-            s.get("status") == "failed"
-            and "boss" in f"{s.get('source', '')} {s.get('slug', '')}".lower()
-            for s in source_status
-        )
-        gaps.append(
-            {
-                "missing": "全部岗位样本均无薪资数据",
-                "reason": (
-                    "BOSS 直聘本次未成功，其余可用来源不公开薪资"
-                    if boss_failed
-                    else "当前可用来源不公开薪资"
-                ),
-                "suggestion": (
-                    "BOSS 未成功时薪资缺口无法补齐；可稍后重试 BOSS，"
-                    "或补充其他含薪来源后重跑"
-                    if boss_failed
-                    else "可在对话中补充 BOSS直聘等含薪来源后重跑调研"
-                ),
-            }
-        )
+    gaps.extend(_salary_gap(jd_samples, source_status))
     if not cases:
         gaps.append(
             {
@@ -430,6 +542,10 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
                 f"| {source} | {j.get('fetched_at','')} |"
             )
         lines.append("")
+        salary_line = _salary_render_line(report.get("salary") or {})
+        if salary_line:
+            lines.append(salary_line)
+            lines.append("")
         lines.append("### 岗位详情（完整 JD，无需跳转）")
         lines.append("")
         for idx, j in enumerate(jds, 1):
@@ -617,6 +733,9 @@ def render_html(report: dict[str, Any]) -> str:
             "<table><tr><th>公司</th><th>岗位</th><th>地点</th><th>薪资</th>"
             f"<th>摘要（预览）</th><th>来源</th><th>抓取</th></tr>{''.join(rows)}</table>"
         )
+        salary_line = _salary_render_line(report.get("salary") or {})
+        if salary_line:
+            parts.append(f'<p class="compact">{escape(salary_line)}</p>')
         parts.append("<h2>岗位详情（完整 JD，点击展开）</h2>")
         for idx, j in enumerate(jds, 1):
             description = str(j.get("description") or "").strip()
@@ -867,6 +986,7 @@ def merge_reports(
             jd_samples, cases, dropped, raw_case_count=raw_cases
         ),
         "counts": counts,
+        "salary": _build_salary_summary(jd_samples, source_status),
     }
     merged["fingerprint"] = current.get("fingerprint") or previous.get("fingerprint") or ""
     merged["round_key"] = current.get("round_key") or previous.get("round_key") or ""

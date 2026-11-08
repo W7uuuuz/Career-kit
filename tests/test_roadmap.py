@@ -202,8 +202,10 @@ def test_format_roadmap():
     report = format_roadmap(roadmap_data)
 
     assert "基础补齐" in report
-    assert "learn" in report
-    assert "project" in report
+    assert "学习" in report
+    assert "项目" in report
+    assert "learn" not in report
+    assert "project" not in report
     assert "LeetCode" in report
     assert "简历价值" in report
     assert "LangChain" in report

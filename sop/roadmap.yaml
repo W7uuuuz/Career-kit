@@ -5,6 +5,8 @@ description: 从差距分析出发，生成可执行的分阶段职业路线图�
 methodology:
   principles:
     - "阶段类型决定产出：learn 打基础（通常无简历价值），project/intern/research 落简历（必须有 resume_value）"
+    - "阶段数由差距与目标决定：通常 3-6 段，按证据缺口与目标跨度自然伸缩；不要为凑数强行排 4 段，
+       简单目标 3 段即可，多缺口可 5-6 段；每个阶段都要能说清「补齐哪块证据 → 提高哪种命中率」，没有独立价值的阶段应合并"
     - "KPI 必须可量化——不能是「学会」这种模糊表述，要有数字、有证据；但不设定时限"
     - "不为任务标注天数或时长——用户的时间分配完全由用户自己决定，快慢都是正常的"
     - "里程碑必须有明确的完成标准（done_criteria），完成与否看标准不看日历"
@@ -27,8 +29,10 @@ methodology:
         按阶段类型决定取数范围，不为每个阶段都抓 JD：
         - learn / 自建 project / research：无需岗位数据（学什么由差距分析决定）
         - intern / 需要真实岗位依据的阶段：企业数据源有的用 fetch_company_jobs 抓同类岗位；
-          企业数据源没有的请用户导入（import_jd_file）；两者都拿不到时，该阶段 jd 保持空、
-          jd_status 置 pending_user_import，绝不凭记忆写岗位要求细节
+          企业数据源没有的先用 import_jd / import_jd_file 补充；两者都拿不到时，该阶段 jd 保持空、
+          jd_status 置 pending_user_import——这是占位，不是只能手动导入：请告诉用户
+          「后续自动抓取」会由企业适配阶段按目标企业和你的毕业届别补齐真实 JD；
+          绝不凭记忆写岗位要求细节
         同时读取 gap.start_level，确定用户当前可进入的企业层级档位。
       data_needs:
         - type: job_requirements
@@ -57,6 +61,8 @@ methodology:
 
         【步骤 3｜阶段序列】（用户确认）
         - 按「补齐证据 → 提高命中率」设计阶段序列（learn → project → intern → ...）
+        - 阶段数由差距与目标决定（通常 3-6 段），不要为凑数强行 4 段：简单目标 3 段即可，
+          多缺口可 5-6 段；每个阶段都要能说清补齐什么证据、提高哪种命中率，没有独立价值的阶段应合并
         - 层级不是准入许可：跨级不禁止，但请在阶段理由中说明依据（作品集/内推/前序交付）
         - 复评升级（start_level_after）只影响后续阶段的参考，不写回差距分析；
           请写清复评标准（evidence_gate）
@@ -91,7 +97,8 @@ methodology:
         - intern（实习）：公司实习、远程实习、兼职。必须有 resume_value。
           company 可直接写具体公司名，并附 rationale（推荐理由，如「对双非友好」）；
           有真实 JD 数据时 jd 填要求细节、jd_status = has_jd；
-          没有真实 JD 时 jd 保持空、jd_status = pending_user_import。
+          没有真实 JD 时 jd 保持空、jd_status = pending_user_import（占位）——
+          告诉用户后续自动抓取会由企业适配阶段按目标企业和届别补齐真实 JD，也可先用 import_jd 补充。
         - research（研究）：发论文、做课题、参与实验室项目。必须有 resume_value。
       data_needs:
         - type: gap_summary
@@ -248,13 +255,15 @@ methodology:
       - evidence_gate: 可选。进入该阶段前应具备的证据（项目/实习/开源/技能）——
         帮助 LLM 与审计员判断路径是否自洽，不要求逐项机器校验
       - start_level_after: 可选。本阶段复评达标后的参考起点（只影响后续阶段，不写回差距分析）
-      - graduation_year: 可选（校招/实习阶段建议填）。本阶段面向的毕业届（整数）
+      - graduation_year: 可选（校招/实习阶段建议填）。本阶段面向的毕业届（整数）；
+        若与用户毕业届不一致，给出可读提示即可，不阻断保存
       - condition: 可选。分支/备用路径说明（如「复评不达标则延长本阶段改投中厂」）——
         回退路径的表达方式，受审计支持
       - company: 实习/目标公司名（公开常识，可直接写）
       - rationale: 为什么推荐这家/这个方向（展示给用户的理由）
       - jd: 具体岗位要求细节——只有拿到真实 JD 数据（抓取/导入）才填
-      - jd_status: has_jd | pending_user_import | not_required
+      - jd_status: has_jd | pending_user_import | not_required；
+        pending_user_import 表示占位，后续自动抓取会由企业适配阶段按目标企业与届别补齐，也可用 import_jd 补充
       - confirmed: 用户已确认占位（占位阶段在用户确认后置 true）
       - milestones: { name, tasks[], deliverable, done_criteria }
       每个 task 包含：name, description, priority

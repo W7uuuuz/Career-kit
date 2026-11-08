@@ -45,10 +45,13 @@ _ALIGNMENT_METHODOLOGY: dict[str, Any] = {
     "goal": "把基线路线图升级为执行版：对齐企业真实需求，保留已完成历史，只重排未来任务。",
     "principles": [
         "每条变更必须引用 RequirementProfile 中的 evidence_ids；没有证据的变更不提。",
+        "阶段数由需求与基线差距决定（通常 3-6 段），不为凑数强行 4 段。",
         "completed/skipped 任务是历史，不能删除、改写或重新排进未来阶段。",
         "旧 pending/in_progress 任务不迁移，执行版按新 roadmap 重新生成任务。",
         "只设计 roadmap 与 changes，不抓取、不统计、不直接写档案。",
         "产品不规划时间：任务名不带周期词，保持一次坐下可完成的粒度。",
+        "拿不到真实 JD 时保持占位并如实说明：后续企业适配阶段会按目标企业与届别自动抓取，"
+        "也可先用 import_jd 补充；绝不编造岗位要求。",
     ],
     "steps": [
         {
@@ -884,10 +887,12 @@ def _alignment_prompt(requirement_profile_id: str, requirement_summary: dict[str
         "available_evidence_ids": sorted(known_ids),
         "rules": [
             "每条 change 必须引用 requirement 中出现过的 evidence_ids；没有证据的变更不要提。",
+            "阶段数由需求与基线差距决定（通常 3-6 段），不为凑数强行 4 段。",
             "completed/skipped 任务不迁移为新任务，也不删除；新 roadmap 只面向未来。",
             "旧 pending/in_progress 任务会被代码移除，执行版由新 roadmap 重新生成任务。",
             "roadmap 与基线同构：strategy_summary + phases（phase 有 name/goal，milestones 带 tasks）。",
             "任务名不写时间周期（每周/每天等），保持一次坐下可完成的粒度。",
+            "拿不到真实 JD 时保持占位并如实说明，后续自动抓取会按目标企业与届别补齐；也可用 import_jd 补充。",
             "只输出 JSON，不要直接修改档案；应用由代码在用户确认后执行。",
         ],
         "change_types": [

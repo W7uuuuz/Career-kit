@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
-from ..guidance import guide_for, is_legacy
+from ..guidance import MAINTENANCE_CLOSING, guide_for, is_legacy
 from ..mcp_app import mcp
 from .dashboard import (
     render_progress_html as _render_progress_html,
@@ -127,7 +127,7 @@ def generate_tasks() -> str:
         return _json({
             "message": (
                 "所有阶段的任务都已生成并完成——没有新的当前阶段可生成。\n"
-                "建议回顾目标，规划下一步方向。\n\n"
+                f"{MAINTENANCE_CLOSING}\n\n"
                 f"{guide_for(profile)}"
             ),
             "next_steps": ["get_progress", "get_weekly_review"],
@@ -256,8 +256,7 @@ def detail_current_phase() -> str:
     current = resolve_current_phase(profile)
     if current is None:
         return (
-            "所有阶段的任务都已完成——没有需要细化的当前阶段。\n"
-            "建议回顾目标，规划下一步方向。"
+            f"所有阶段的任务都已完成。\n{MAINTENANCE_CLOSING}"
         )
     view = {
         "phase_id": current["phase_id"],
@@ -487,7 +486,8 @@ def get_next_tasks() -> str:
         lines.append("")
 
     if view is None:
-        lines.append("所有阶段已完成！建议回顾目标，规划下一步方向。")
+        lines.append("所有阶段已完成！")
+        lines.append(MAINTENANCE_CLOSING)
     elif view["total"] == 0:
         lines.append(f"## 当前阶段：{view['phase_name']}（任务尚未生成）")
         lines.append("")
@@ -801,6 +801,13 @@ def get_progress() -> str:
         lines.append("## 调整历史")
         for adj in profile.adjustments[-5:]:
             lines.append(f"- {adj.timestamp[:10]}：{adj.reason}")
+        lines.append("")
+
+    all_finished = bool(profile.tasks) and all(
+        t.status in _FINISHED_TASK_STATUSES for t in profile.tasks
+    )
+    if all_finished:
+        lines.append(MAINTENANCE_CLOSING)
         lines.append("")
 
     lines.append("下一步：继续执行用 get_next_tasks；需要分享进度用 export_dashboard。")
@@ -1256,7 +1263,7 @@ def get_workflow_status() -> str:
                     next_step = "generate_tasks（core v2 需要为新阶段生成任务）"
             else:
                 phase = "completed"
-                next_step = "所有任务已完成——可回顾目标或规划下一步。"
+                next_step = "所有任务已完成——进入持续维护：继续投递、面试复盘与周期检视"
         elif stale_gap:
             next_step = stale_step
         else:
@@ -1348,6 +1355,9 @@ def get_workflow_status() -> str:
     lines.append("- 投递：build_application_list 批量生成投递清单；投递/面试/offer 进展用 record_application 登记")
     lines.append("- 复盘：get_weekly_review 做周检视；计划失配用 check_plan_fit")
     lines.append("")
+    if phase == "completed":
+        lines.append(MAINTENANCE_CLOSING)
+        lines.append("")
     lines.append("节奏原则：顺序归产品，时间归用户——不为任务设定时限。")
 
     return "\n".join(lines)

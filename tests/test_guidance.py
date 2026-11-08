@@ -500,6 +500,64 @@ def test_render_guide_has_one_question_and_no_internal_ids():
     assert "JD01" in text  # 只作为禁用示例出现，不代表允许展示
 
 
+def test_gap_guide_asks_expected_outcome_with_research_cases():
+    """目标与差距衔接处先问「最终想要什么结果」，并引用真实同背景去向。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+    profile.core_state["market_baseline_id"] = _save_market(store)
+    profile.research = {"cases": [{
+        "kind": "success_experience",
+        "title": "双非本 AI Agent 上岸复盘",
+        "company": "字节跳动",
+        "position": "AI Agent 开发",
+    }]}
+
+    guide = build_guide(profile)
+    assert guide.status == "gap"
+    assert "最终想要什么结果" in guide.ask
+    assert "字节跳动" in guide.ask, "应引用已有同背景案例的去向"
+    assert "大厂/平台" in guide.options and "先上车再发展" in guide.options
+    assert "稳定优先" in guide.options and "薪资优先" in guide.options
+    assert "成长/技术优先" in guide.options
+    assert "expected_outcome" in guide.next_action
+    assert "intake" in guide.next_action
+
+
+def test_gap_guide_marks_missing_case_samples_without_fabricating():
+    """没有同背景案例时说明后续调研会补，不编造去向。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+    profile.core_state["market_baseline_id"] = _save_market(store)
+    profile.research = {}
+
+    guide = build_guide(profile)
+    assert guide.status == "gap"
+    assert "最终想要什么结果" in guide.ask
+    assert "后续调研会补" in guide.ask
+    assert "去向包括" not in guide.ask
+
+
+def test_execution_guide_frames_stage_ten_as_maintenance():
+    """第 10 步执行期是持续推进与维护，保留打卡/投递/周检视入口。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state = _seed_chain(store)
+
+    guide = build_guide(profile)
+    assert guide.status == "execution"
+    assert "持续推进与维护" in guide.ask
+    assert "登记已投递" in guide.options
+    assert "做周检视/计划检查" in guide.options
+    assert "checkin_task" in guide.next_action
+
+
 def test_start_session_emits_brief_and_guide(temp_profile):
     """入口工具直接下发 [USER_BRIEF]/[GUIDE]，不要求模型自己拼开场白。"""
     from src.server import start_session

@@ -137,6 +137,21 @@ FAMILIARITY_OPTIONS: tuple[str, ...] = (
 
 BOSS_LOGIN_URL = "https://www.zhipin.com/web/user/?ka=header-login"
 
+EXPECTED_OUTCOME_OPTIONS: tuple[str, ...] = (
+    "大厂/平台",
+    "先上车再发展",
+    "稳定优先",
+    "薪资优先",
+    "成长/技术优先",
+)
+
+# 主线任务全部完成后的结束语：第 10/11 步之后是持续维护，不是新阶段
+MAINTENANCE_CLOSING = (
+    "主线任务已完成——后续是持续维护，不是新阶段："
+    "继续投递、记录面试反馈、做周期检视即可。"
+    "遇到目标变化、面试反馈或计划失配，随时回来重新校准。"
+)
+
 
 def login_action(login_command: str) -> dict[str, Any]:
     """BOSS 扫码登录的交互契约：优先由 Agent 用 harness 直接执行脚本。
@@ -287,6 +302,47 @@ def goal_question(profile: Any) -> str:
     )
 
 
+def _case_destinations(profile: Any, limit: int = 3) -> list[str]:
+    """从已有调研案例里提取同背景去向；只引用真实抓到的公司/岗位，不编造。"""
+    research = getattr(profile, "research", None) or {}
+    cases = research.get("cases") if isinstance(research, dict) else None
+    destinations: list[str] = []
+    for case in cases or []:
+        if not isinstance(case, dict):
+            continue
+        if str(case.get("kind") or "success_experience") != "success_experience":
+            continue
+        destination = "、".join(
+            str(value).strip()
+            for value in (case.get("company"), case.get("position"))
+            if str(value or "").strip()
+        )
+        if not destination:
+            destination = str(case.get("title") or "").strip()[:30]
+        if destination and destination not in destinations:
+            destinations.append(destination)
+        if len(destinations) >= limit:
+            break
+    return destinations
+
+
+def expected_outcome_question(profile: Any) -> str:
+    """目标与差距之间的最后一问：你最终想要什么结果？
+
+    有同背景案例时引用真实去向；没有就说明后续调研会补，不编造。
+    """
+    destinations = _case_destinations(profile)
+    if destinations:
+        lead = "调研里同背景的去向包括：" + "、".join(destinations) + "。"
+    else:
+        lead = "目前还没有同背景去向样本，后续调研会补上。"
+    return (
+        f"{lead}开始差距分析前先对齐目标：你最终想要什么结果？"
+        "是大厂/平台、先上车再发展、稳定优先、薪资优先，还是成长/技术优先？"
+        "这会决定差距按哪把尺子量。"
+    )
+
+
 def warnings(profile: Any) -> list[str]:
     """事实性提醒：数据缺口、过期分析。不催促、不评判。"""
     notes: list[str] = []
@@ -388,7 +444,7 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
         "没有证据的变更不会写入方案",
     ),
     "execution": (
-        "执行打卡：按当前阶段任务逐项推进",
+        "持续推进与维护：按当前阶段任务逐项推进，并把投递与复盘纳入日常",
         "完成一项就打卡；daily 记天数，percent 记比例",
         "进度是事实记录，不设时限；快了可以加深，慢了可以调顺序",
     ),
@@ -465,9 +521,13 @@ def _gap_guide(profile: Any) -> Guide:
     return _guide(
         "gap",
         "gap",
-        "下一步做差距分析：基于调研数据告诉你差在哪、先补什么。要现在开始吗？",
-        options=["开始分析", "先看看调研报告"],
-        next_action="开始后按 analyze_gaps → save_gap_analysis 执行",
+        expected_outcome_question(profile),
+        options=list(EXPECTED_OUTCOME_OPTIONS),
+        next_action=(
+            "用户回答后先 intake(section='want', data 带 expected_outcome=用户原话或选项，"
+            "user_confirmed=true)，再按 analyze_gaps → save_gap_analysis 执行；"
+            "不要替用户选择结果预期"
+        ),
         profile=profile,
     )
 
@@ -549,8 +609,9 @@ def _execution_guide(profile: Any, *, ready: bool) -> Guide:
     return _guide(
         "execution",
         "execution",
-        "下一步推进当前阶段的任务；完成一项就打卡，进度会沉淀为能力证据。"
-        "也可以生成投递清单、登记投递或做周期复盘。",
+        "当前是持续推进与维护：按当前阶段任务做，完成一项就打卡，"
+        "进度会沉淀为能力证据。也可以生成投递清单、登记投递或做周期复盘；"
+        "主线完成后同样是持续维护，不是新阶段。",
         options=["推荐：先看下一步任务", "生成投递清单", "登记已投递", "做周检视/计划检查"],
         next_action="get_next_tasks；完成后 checkin_task；"
                     "批量投递用 build_application_list；"
@@ -712,14 +773,17 @@ def opening_blocks(profile: Any) -> str:
 
 __all__ = [
     "BOSS_LOGIN_URL",
+    "EXPECTED_OUTCOME_OPTIONS",
     "FAMILIARITY_OPTIONS",
     "JOURNEY_STEPS",
+    "MAINTENANCE_CLOSING",
     "PHASE_TYPE_LABELS",
     "STEP_TOTAL",
     "Guide",
     "Step",
     "brief_shown",
     "build_guide",
+    "expected_outcome_question",
     "goal_confirmed",
     "goal_question",
     "guide_for",

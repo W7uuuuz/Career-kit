@@ -125,6 +125,7 @@ def test_search_returns_list_only_rows(monkeypatch):
     assert row["description"] == ""
     assert row["requirements"] == ""
     assert row["salary"] == "25-45K·16薪"
+    assert row["salary_source"] == "api"
     assert row["company"] == "某科技公司"
     assert row["source"] == "boss"
     assert row["url"].endswith("JOB123.html")

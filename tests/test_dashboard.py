@@ -231,3 +231,36 @@ def test_roadmap_jd_structured_and_current_phase_fallback(tmp_path, monkeypatch)
     assert data["phases"][0]["is_current"] is True  # 无任务时兜底第一段
     assert data["phases"][0]["type_label"] == "实习"  # intern 对外显示为「实习」
 
+
+def test_roadmap_map_marks_baseline_and_execution(tmp_path, monkeypatch):
+    """职业地图要能看出是基线方案，还是按确认企业/JD 校准过的执行版。"""
+    import json as jsonlib
+
+    import src.tools.profile as profile_module
+    from src.models import CareerProfile
+    from src.server import _render_roadmap_map
+    from src.tools.roadmap import parse_roadmap
+
+    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
+
+    profile = CareerProfile()
+    profile.plan = parse_roadmap(jsonlib.dumps({
+        "phases": [{"type": "learn", "name": "阶段一", "goal": "g",
+                    "milestones": [{"name": "M", "tasks": [{"name": "任务甲"}]}]}],
+    }, ensure_ascii=False))
+    profile.touch()
+
+    baseline = _render_roadmap_map(profile)
+    assert 'name="career-kit-plan-mode" content="baseline"' in baseline
+    assert "基线版：尚未按目标企业 JD 校准" in baseline
+
+    profile.core_state = {
+        "stage": "executing",
+        "requirement_profile_id": "rp_test",
+        "execution_plan_id": "ep_test",
+    }
+    execution = _render_roadmap_map(profile)
+    assert 'name="career-kit-plan-mode" content="execution"' in execution
+    assert "执行版：已按确认企业与 JD 需求校准" in execution
+    assert "rp_test" in execution and "ep_test" in execution
+

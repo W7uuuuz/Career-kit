@@ -501,6 +501,32 @@ def test_checkin_sync_failure_does_not_block(temp_profile, monkeypatch):
         thread.join(timeout=5)
 
 
+def test_roadmap_route_exposes_execution_plan_mode(temp_profile):
+    """控制台 /roadmap 应把已校准的执行版标记出来。"""
+    profile = _profile()
+    profile.core_state = {
+        "stage": "executing",
+        "requirement_profile_id": "rp_test",
+        "execution_plan_id": "ep_test",
+    }
+    profile_module.save_profile(profile)
+    server, token = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+    try:
+        with urllib.request.urlopen(f"{base}/roadmap?token={token}") as res:
+            html = res.read().decode("utf-8")
+        assert 'name="career-kit-plan-mode" content="execution"' in html
+        assert "执行版：已按确认企业与 JD 需求校准" in html
+        assert "rp_test" in html and "ep_test" in html
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_state_route_returns_readable_json_on_error(temp_profile, monkeypatch):
     import src.web as web
 
