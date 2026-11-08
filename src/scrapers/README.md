@@ -5,6 +5,7 @@
 
 企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
 查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
+企业目录收录 64 家，其中 42 家可自动抓取；其余标注为需手动投递。
 
 ## 已注册企业（46）
 
@@ -68,4 +69,5 @@ list_data_sources() → get_scraper_guide(company) → fetch_company_jobs(...) �
 ## 贡献新 Scraper
 
 复制 `_template/`，实现 `search()` / `get_detail()`，声明 `PARAMS`，填写 `guide.md`，
-并在 `config.yaml` 注册。详见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+在 `config.yaml` 注册，并在 `companies.yaml` 补充档位、行业、别名与 scraper 映射。
+详见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。

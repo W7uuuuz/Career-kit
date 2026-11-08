@@ -21,11 +21,18 @@
 
 ## 最短链路
 
+完整 12 步见 [工作流详解](../workflow.md)；企业适配阶段 6-9 为推荐分支。
+
 ```
 start_session → intake(who/have/want) → finalize_profile
-→ fetch_company_jobs → analyze_gaps → save_gap_analysis
+→ research_market → gather_research_data
+→ analyze_gaps → save_gap_analysis
 → generate_roadmap → save_roadmap
+→ select_target_companies → collect_company_evidence
+→ analyze_company_requirements → save_requirement_profile
+→ plan_execution_alignment → save_execution_alignment
 → detail_current_phase → save_current_detail → generate_tasks
 → get_next_tasks → checkin_task
-→ export_dashboard
+→ build_application_list → record_application
+→ export_dashboard / get_weekly_review
 ```

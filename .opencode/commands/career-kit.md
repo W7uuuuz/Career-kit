@@ -51,8 +51,8 @@ description: Career Kit 职业陪练——一键启动/继续你的职业规划
 - `alignment`：9 执行方案校准（`plan_execution_alignment` → `save_execution_alignment`）
 - `tasks` / `execute`：10 任务执行与打卡（`detail_current_phase` → `generate_tasks` →
   `get_next_tasks` → `checkin_task`）
-- `applications`：11 求职投递管理（`record_application` / `delete_application`，可选）
-- `review`：12 周期复盘与计划调整（`get_weekly_review` / `check_plan_fit`）
+- `applications`：11 求职投递管理（`build_application_list` / `record_application` / `delete_application`，可选）
+- `review`：12 周期复盘与计划调整（`get_weekly_review` / `check_plan_fit` / `trigger_insight` → `apply_insight`）
 
 每个工具返回的新 `[GUIDE]` 就是下一步；不要自己发明阶段或跳步。
 

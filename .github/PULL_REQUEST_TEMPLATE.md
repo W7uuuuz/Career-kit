@@ -18,4 +18,5 @@
 - [ ] 新增/修改了 `src/scrapers/<id>/`
 - [ ] 已更新 `src/scrapers/<id>/guide.md`
 - [ ] 已在 `src/scrapers/config.yaml` 注册
+- [ ] 已在 `src/scrapers/companies.yaml` 补充档位、行业、别名与 scraper 映射
 - [ ] 已在 `docs/scrapers.md` 补充说明

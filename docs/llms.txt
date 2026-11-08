@@ -43,7 +43,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 | 数据源 | 内容 | 获取方式 |
 |--------|------|----------|
-| 企业数据源（BOSS/字节/腾讯/百度/阿里/牛客） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
+| 企业数据源（46 个已收录源） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
 | 行业快照 | 行业地图、岗位卡、招聘样本与薪资、相关专业 | `get_industry_snapshot`（扫盲子流程，默认互联网/软件；支持能源动力、电子/半导体/通信） |
 | GitHub 经验帖 | 秋招成功经验/面经（学历自述） | `search_cases`（聚合）或 `fetch_company_jobs(company="github")` |
 | 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
@@ -51,6 +51,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 分析或规划前必须至少调用一次 `search_cases` 或 `fetch_company_jobs`。
 数据不可用时如实告知，并引导 `import_jd` / `import_jd_file` 导入用户手头 JD，不要编造。
+企业目录收录 64 家，其中 42 家可自动抓取；未接入源标为需手动投递。
 
 ## 工作流（唯一事实源：workflow.md）
 
@@ -60,10 +61,14 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 start_session → parse_resume? → intake(who/have/want) → finalize_profile
 → research_market → gather_research_data
 → analyze_gaps → save_gap_analysis
-→ generate_roadmap → save_roadmap
+→ generate_roadmap → save_roadmap → save_roadmap_audit?
+→ select_target_companies → collect_company_evidence
+→ analyze_company_requirements → save_requirement_profile
+→ plan_execution_alignment → save_execution_alignment
 → detail_current_phase → save_current_detail → generate_tasks
 → get_next_tasks → checkin_task
-→ trigger_insight / apply_insight / get_weekly_review
+→ build_application_list? → record_application?
+→ get_weekly_review → check_plan_fit / trigger_insight → apply_insight
 ```
 
 关键纪律：
@@ -92,7 +97,8 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
 ```
 
 常见错误码：`MISSING_DATA`、`INVALID_JSON`、`INVALID_SECTION`、`PROBING_REQUIRED`、
-`INCOMPLETE_ANALYSIS`、`ANALYSIS_FAILED`。
+`INCOMPLETE_ANALYSIS`、`ANALYSIS_FAILED`、`CONFIRMATION_REQUIRED`、`LOGIN_REQUIRED`、
+`PROFILE_IN_USE`、`INVALID_PARAM`。
 
 ## 用户资产目录
 

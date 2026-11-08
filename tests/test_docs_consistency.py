@@ -165,6 +165,89 @@ def test_scraper_config_matches_public_docs():
     assert not missing, f"docs/scrapers.md 缺少企业：{missing}"
 
 
+def _source_caliber() -> tuple[int, int, int, int]:
+    config = yaml.safe_load(
+        (REPO_ROOT / "src" / "scrapers" / "config.yaml").read_text(encoding="utf-8")
+    )
+    companies = yaml.safe_load(
+        (REPO_ROOT / "src" / "scrapers" / "companies.yaml").read_text(encoding="utf-8")
+    )["companies"]
+    total = len(config["scrapers"])
+    company_sources = total - 3
+    registered = set(config["scrapers"])
+    scrapable = sum(
+        1
+        for item in companies
+        if any(str(scraper) in registered for scraper in item.get("scrapers", []))
+    )
+    return total, company_sources, len(companies), scrapable
+
+
+def test_source_counts_match_registered_sources():
+    """README / README.en / docs/index / scrapers README 的数据源数量与配置一致。"""
+    total, company_sources, companies, scrapable = _source_caliber()
+
+    checks = [
+        (
+            ("README.md",),
+            [
+                f"{total} 个已收录数据源",
+                f"企业招聘源（{company_sources} 个）",
+                f"企业目录收录 {companies} 家",
+                f"{scrapable} 家可自动抓取",
+            ],
+        ),
+        (
+            ("README.en.md",),
+            [
+                f"{total} collected sources",
+                f"Company career sources ({company_sources})",
+                f"lists {companies} companies",
+                f"{scrapable} of which are auto-scrapable",
+            ],
+        ),
+        (
+            ("docs", "index.html"),
+            [
+                f"{total} 个已收录数据源",
+                f"{company_sources} 个企业招聘源",
+                f"企业目录 {companies} 家",
+                f"{scrapable} 家可自动抓取",
+            ],
+        ),
+        (
+            ("src", "scrapers", "README.md"),
+            [
+                f"已注册企业（{total}）",
+                f"企业目录收录 {companies} 家",
+                f"{scrapable} 家可自动抓取",
+            ],
+        ),
+    ]
+    for rel, anchors in checks:
+        text = _read(*rel)
+        missing = [anchor for anchor in anchors if anchor not in text]
+        assert not missing, f"{rel} 缺少最新数据源口径：{missing}"
+
+
+def test_companies_yaml_covers_registered_scrapers():
+    """每个非平台 scraper 都必须在 companies.yaml 有企业映射。"""
+    config = yaml.safe_load(
+        (REPO_ROOT / "src" / "scrapers" / "config.yaml").read_text(encoding="utf-8")
+    )
+    companies = yaml.safe_load(
+        (REPO_ROOT / "src" / "scrapers" / "companies.yaml").read_text(encoding="utf-8")
+    )["companies"]
+    mapped = {
+        str(scraper)
+        for item in companies
+        for scraper in item.get("scrapers", [])
+    }
+    platforms = {"boss", "nowcoder", "github"}
+    missing = sorted(set(config["scrapers"]) - platforms - mapped)
+    assert not missing, f"companies.yaml 缺少 scraper 映射：{missing}"
+
+
 # ---------------------------------------------------------------------------
 # 引导系统一致性
 # ---------------------------------------------------------------------------
@@ -214,6 +297,7 @@ def test_command_scripts_are_thin_and_guidance_driven():
         assert "1. 职业档案构建" not in text, f"{rel} 不应复制阶段清单"
         assert "第一条动作必须是调用" in text, f"{rel} 缺少先调 start_session 的硬规则"
         assert "detail_current_phase" in text, f"{rel} 执行阶段应先细化再生成任务"
+        assert "build_application_list" in text, f"{rel} 缺少投递清单工具"
 
 
 def test_user_brief_is_single_source_of_truth():

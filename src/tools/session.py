@@ -30,18 +30,23 @@ WELCOME_PROMPT = """\
 - 用户说「不知道做什么」→ `explore_goals`，不要直接分析。
 
 ## 数据与调研
-- 真实数据工具：`list_data_sources` / `fetch_company_jobs` / `fetch_jd_detail` /
-  `search_cases` / `search_knowledge`；抓不到就如实说「未获取」，必要时走
-  `import_jd` / `import_jd_file`。
+- 数据工具：`list_data_sources` / `get_scraper_guide` / `fetch_company_jobs` / `fetch_jd_detail` /
+  `get_industry_snapshot` / `search_cases` / `search_knowledge`；抓不到就如实说「未获取」，
+  必要时走 `import_jd` / `import_jd_file`。
+- 市场调研：`research_market` → `gather_research_data`；详情按需用 `read_research_details`。
 - BOSS 登录：先问用户是否抓取/登录；同意后用 harness 运行 `login_command`，
   用户只需扫码，不要把命令丢给用户手动执行。
 
 ## 分析、规划、执行
 - 分析：`analyze_gaps` → `save_gap_analysis`；给分前先说明口径（见 docs/rules）。
 - 规划：`generate_roadmap` → `save_roadmap`；起点 rubric 只作命中率参考，不是准入许可。
+- 企业适配：`select_target_companies` → `collect_company_evidence` →
+  `analyze_company_requirements` → `save_requirement_profile` →
+  `plan_execution_alignment` → `save_execution_alignment`；数字由代码计算，LLM 只写 interpretation。
 - 执行：`detail_current_phase` → `save_current_detail` → `generate_tasks` →
   `get_next_tasks` → `checkin_task`；任务必须带 `how_to` / `resources` / `done_criteria`。
-- 洞察：`trigger_insight` → `apply_insight`；周检视用 `get_weekly_review`。
+- 投递：`build_application_list` → `record_application`；面试/offer 用 `trigger_insight` → `apply_insight`。
+- 复盘：`get_weekly_review` / `check_plan_fit`；计划失配时先问用户，不自动改计划。
 
 ## 产出
 - 用户资产：`~/CareerKit`（`index.html` 总入口）；路线图/仪表盘固定名，

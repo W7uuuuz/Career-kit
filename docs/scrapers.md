@@ -1,6 +1,9 @@
 # 企业数据源
 
 > Career Kit 已收录的企业数据源。教程的唯一事实源是各 scraper 包内的 `guide.md`。
+>
+> 当前注册 46 个数据源（43 个企业招聘源 + BOSS 直聘 + 牛客 + GitHub），
+> 企业目录收录 64 家，其中 42 家可自动抓取。
 
 ## 已收录企业
 
@@ -110,6 +113,8 @@
 2. 实现 `search()` / `get_detail()`，声明 `PARAMS`
 3. 填写包内 `guide.md`（缺文件会挂测试）
 4. 在 `src/scrapers/config.yaml` 注册
-5. 提交 PR
+5. 在 `src/scrapers/companies.yaml` 补充企业名称、档位、行业、别名与 scraper 映射
+6. 在本文档补充数据源条目
+7. 提交 PR
 
 详见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
