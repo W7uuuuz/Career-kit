@@ -19,6 +19,72 @@ from .resource_catalog import select_resources, validate_resources
 from .session_tools import _has_goal, _summarize_dict
 from .tool_helpers import _json, _parse_json_param
 
+_FINISHED_TASK_STATUSES = ("completed", "skipped")
+
+
+def _roadmap_phase_id(phase: dict, index: int) -> str:
+    return str(phase.get("id") or f"phase_{index + 1}")
+
+
+def _expected_task_keys(profile, phase: dict, phase_id: str) -> list[tuple[str, str]]:
+    """列出该阶段应生成的任务身份（milestone_id, name），口径与任务重建一致。"""
+    current_detail = profile.plan.get("current_detail") or {}
+    detail_phase_id = str(current_detail.get("phase_id") or "")
+    detail_tasks = [
+        item
+        for item in (current_detail.get("tasks") or [])
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+    if detail_phase_id == phase_id and detail_tasks:
+        return [
+            (str(item.get("milestone_id") or ""), str(item["name"]).strip())
+            for item in detail_tasks
+        ]
+
+    keys: list[tuple[str, str]] = []
+    for ms_index, milestone in enumerate(phase.get("milestones") or []):
+        if not isinstance(milestone, dict):
+            continue
+        milestone_id = str(milestone.get("id") or f"{phase_id}_ms_{ms_index + 1}")
+        valid = [
+            item
+            for item in (milestone.get("tasks") or [])
+            if isinstance(item, dict) and str(item.get("name") or "").strip()
+        ]
+        if valid:
+            keys.extend((milestone_id, str(item["name"]).strip()) for item in valid)
+        else:
+            keys.append((milestone_id, str(milestone.get("name") or f"里程碑 {ms_index + 1}")))
+    return keys
+
+
+def _next_phase_to_generate(profile, phases: list[dict]) -> str:
+    """按路线图顺序找要生成任务的阶段。
+
+    与 resolve_current_phase 的差别：执行版路线图复用 phase_id 时，历史
+    completed/skipped 任务会让整段看起来「已完成」；这里把路线图里尚未生成的
+    任务定义也算作未完成，避免新执行版第一阶段被跳过。
+    """
+    phase_ids = [_roadmap_phase_id(phase, index) for index, phase in enumerate(phases)]
+    tasks_by_phase: dict[str, list] = {phase_id: [] for phase_id in phase_ids}
+    for task in profile.tasks:
+        if task.phase_id in tasks_by_phase:
+            tasks_by_phase[task.phase_id].append(task)
+
+    for phase_id in phase_ids:
+        if any(task.status not in _FINISHED_TASK_STATUSES for task in tasks_by_phase[phase_id]):
+            return phase_id
+
+    for phase_id, phase in zip(phase_ids, phases, strict=True):
+        generated = {(task.milestone_id, task.name) for task in tasks_by_phase[phase_id]}
+        if any(key not in generated for key in _expected_task_keys(profile, phase, phase_id)):
+            return phase_id
+
+    for phase_id in phase_ids:
+        if not tasks_by_phase[phase_id]:
+            return phase_id
+    return ""
+
 
 @mcp.tool()
 def generate_tasks() -> str:
@@ -35,7 +101,6 @@ def generate_tasks() -> str:
     from .task_manager import (
         create_tasks_from_roadmap,
         format_task_list,
-        resolve_current_phase,
     )
 
     profile = load_profile()
@@ -49,15 +114,9 @@ def generate_tasks() -> str:
             {"section": "plan"},
         )
 
-    phase_ids = [
-        p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases) if isinstance(p, dict)
-    ]
-    current = resolve_current_phase(profile)
-    target_phase_id = current["phase_id"] if current else ""
-    if not target_phase_id:
-        # 所有已有任务都完成了：找第一个还没有任务的阶段，继续推进
-        with_tasks = {t.phase_id for t in profile.tasks}
-        target_phase_id = next((pid for pid in phase_ids if pid not in with_tasks), "")
+    phase_rows = [phase for phase in phases if isinstance(phase, dict)]
+    phase_ids = [_roadmap_phase_id(phase, index) for index, phase in enumerate(phase_rows)]
+    target_phase_id = _next_phase_to_generate(profile, phase_rows)
 
     if not target_phase_id:
         return _json({
@@ -71,7 +130,12 @@ def generate_tasks() -> str:
         })
 
     target_phase = next(
-        (p for p in phases if (p.get("id") or "") == target_phase_id), {}
+        (
+            phase
+            for index, phase in enumerate(phase_rows)
+            if _roadmap_phase_id(phase, index) == target_phase_id
+        ),
+        {},
     )
     target_name = target_phase.get("name") or target_phase_id
 
@@ -84,16 +148,28 @@ def generate_tasks() -> str:
     ]
     tasks = create_tasks_from_roadmap(profile, only_phase_ids={target_phase_id})
     new_ids = {t.id for t in tasks}
-    preserved = sum(
-        1 for t in old_tasks
-        if t.id in new_ids and t.status in ("completed", "skipped", "in_progress")
-    )
+    # 执行版路线图会复用 phase_id：历史 completed/skipped 任务即使不在新任务定义里，
+    # 也必须保留，不能因为重建当前阶段而丢失。
+    kept_finished = [
+        t for t in old_tasks
+        if t.phase_id == target_phase_id
+        and t.status in _FINISHED_TASK_STATUSES
+        and t.id not in new_ids
+    ]
 
     profile.tasks = []
     for task in kept_other:
         profile.add_task(task)
+    for task in kept_finished:
+        profile.add_task(task)
     for task in tasks:
         profile.add_task(task)
+
+    final_ids = {t.id for t in profile.tasks}
+    preserved = sum(
+        1 for t in old_tasks
+        if t.id in final_ids and t.status in ("completed", "skipped", "in_progress")
+    )
 
     save_profile(profile)
 
@@ -749,6 +825,9 @@ def get_weekly_review(days: int = 7) -> str:
 
     facts = summarize_period(profile, days=days)
     review = format_weekly_review(profile, facts)
+    fit_lines = _plan_fit_lines(_plan_fit_result("weekly_review"))
+    if fit_lines:
+        review = review + "\n\n" + "\n".join(fit_lines)
 
     follow_up = (
         "认可就继续 get_next_tasks；想调整随时说，"
@@ -758,6 +837,40 @@ def get_weekly_review(days: int = 7) -> str:
     )
 
     return f"{review}\n\n下一步：{follow_up}"
+
+
+def _plan_fit_result(trigger: str) -> dict:
+    """只读计划失配检测；失败不拖垮状态/周检视。"""
+    try:
+        from ..core.plan_fit import check_plan_fit as _fit
+
+        return _fit(get_active_profile_name(), trigger)
+    except Exception:  # noqa: BLE001 - 检测失败只跳过，不影响主流程
+        return {}
+
+
+def _plan_fit_lines(fit: dict) -> list[str]:
+    """把检测结果渲染成用户可见事实 + 建议询问话术。"""
+    status = str(fit.get("status") or "").strip()
+    if status in ("", "aligned", "incomplete_chain"):
+        return []
+    lines = ["### 计划失配检测", f"- 状态：{status}"]
+    signals = fit.get("signals")
+    if isinstance(signals, list):
+        for item in signals:
+            if not isinstance(item, dict):
+                continue
+            severity = str(item.get("severity") or "info")
+            message = str(item.get("message") or "").strip()
+            if message:
+                lines.append(f"- [{severity}] {message}")
+    question = str(fit.get("question_for_user") or "").strip()
+    if question:
+        lines.append(f"- 建议询问用户：{question}")
+    next_tool = str(fit.get("next_tool") or "").strip()
+    if next_tool:
+        lines.append(f"- 用户同意后可调用：{next_tool}")
+    return lines
 
 
 def _review_nudge_hint() -> str:
@@ -916,6 +1029,31 @@ def get_workflow_status() -> str:
         else:
             next_step = "get_next_tasks"
 
+    # Core v2 企业适配：路线图已存在时，按 artifact 状态给出执行前的校准路径。
+    # 只做只读推导；不改变旧工作流，不自动改写档案。
+    core_v2: dict = {}
+    if profile.plan.get("roadmap"):
+        try:
+            from ..core.orchestrator.state_machine import next_action as _core_next
+
+            core_v2 = _core_next(get_active_profile_name())
+        except Exception:  # noqa: BLE001 - 状态推导失败不能拖垮整份状态报告
+            core_v2 = {}
+        if core_v2.get("next_tool") and not profile.tasks and not stale_gap:
+            next_step = (
+                f"{core_v2['next_tool']}（企业适配：{core_v2.get('reason', '')}）"
+            )
+
+    fit = _plan_fit_result("manual") if profile.plan.get("roadmap") else {}
+    if (
+        fit.get("status") in ("major_drift", "stale_evidence")
+        and fit.get("next_tool")
+        and not stale_gap
+    ):
+        next_step = (
+            f"{fit['next_tool']}（计划失配：{fit.get('recommended_action', '')}）"
+        )
+
     # 构建状态报告
     total_tasks = len(profile.tasks)
     completed_tasks = sum(1 for t in profile.tasks if t.status == "completed")
@@ -953,11 +1091,27 @@ def get_workflow_status() -> str:
         lines.append(f"- 报告：{report_html}")
         lines.append(f"- 资产总览：{research.get('index') or (get_assets_root() / INDEX_FILENAME)}")
         lines.append("")
+    if core_v2:
+        lines.append("### 企业适配（Core v2）")
+        lines.append(f"- 阶段：{core_v2.get('stage', '')}")
+        if core_v2.get("next_tool"):
+            lines.append(f"- 下一步：{core_v2['next_tool']}（{core_v2.get('reason', '')}）")
+        artifact_ids = core_v2.get("artifact_ids") or {}
+        stored = [f"{key}={value}" for key, value in artifact_ids.items() if value]
+        if stored:
+            lines.append("- 已落库：" + "、".join(stored))
+        lines.append("- 说明：企业适配是执行前的可选校准；不做也能按基线路线图继续执行。")
+        lines.append("")
+    fit_lines = _plan_fit_lines(fit)
+    if fit_lines:
+        lines.extend(fit_lines)
+        lines.append("")
     lines.append("### 工作流指南")
     lines.append("- 建档：start_session → intake(who/have/want) → finalize_profile；无目标用 explore_goals 选方向")
     lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
     lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
     lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap")
+    lines.append("- 企业适配（执行前可选校准）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
     lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
     lines.append("- 复盘：get_weekly_review 做周检视；投递/面试/offer 进展用 record_application 登记")

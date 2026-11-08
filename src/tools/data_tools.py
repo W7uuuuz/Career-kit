@@ -149,6 +149,9 @@ def list_data_sources() -> str:
     lines = ["【已注册企业招聘数据源】\n"]
     for s in scrapers:
         lines.append(f"## {s['name']}（ID: {s['id']}）")
+        tier = s.get("tier") or "未收录"
+        industry = s.get("industry") or ""
+        lines.append(f"  档位：{tier}" + (f" | 行业：{industry}" if industry else ""))
         if s.get("description"):
             lines.append(f"  {s['description']}")
 

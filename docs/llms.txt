@@ -14,7 +14,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 引导文案的唯一事实源是 `src/guidance.py`；工具返回两块用户可见内容：
 
-- `[USER_BRIEF]`：6 步简介（新用户首次进入时出现）
+- `[USER_BRIEF]`：7 步简介（新用户首次进入时出现）
 - `[GUIDE]`：位置 / 为什么做这一步 / 会拿到什么 / 本轮要做什么 / 怎么做 /
   结果怎么读 / 本轮唯一问题 / 选项 / 下一步动作
 
@@ -69,7 +69,12 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
 - 目标由用户确认：`intake(want)` 带 `user_confirmed=true`；推断目标只能候选。
 - BOSS：抓取/登录前先问；同意后用 harness 执行，用户只扫码。
 - 数据真实：没抓到就写「未获取」；失败源如实展示。
-- 路线图后先细化当前阶段，再生成任务；用户拒绝细化才走粗任务。
+- 企业适配（执行前可选校准）：select_target_companies → collect_company_evidence →
+  analyze_company_requirements → save_requirement_profile → plan_execution_alignment →
+  save_execution_alignment；数字由代码计算，LLM 只写 interpretation，每条变更必须带 evidence_ids。
+- 计划失配检测：证据刷新后、完成一个里程碑、周检视或用户主动问时调用 check_plan_fit；
+  status=major_drift 时把 question_for_user 原意转问用户，用户同意后才 refresh / 重新校准，不自动改计划。
+- 路线图后先做企业适配（推荐），再细化当前阶段、生成任务；用户拒绝企业适配时才按基线版执行。
 
 ## 返回值与错误
 
@@ -90,6 +95,7 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
 
 - `index.html`：总入口（按档案分组，双击直达）
 - `调研报告/<日期_方向>.md|.html|.json`：多次调研各自留档，逐条带来源链接
+- `证据池/<日期_方向>.md|.html|.json`：目标企业 JD + 面经证据（带来源、样本量与置信度）
 - `路线图/路线图.html` 与 `进度/进度仪表盘.html`：固定文件名（保浏览器打卡状态）
 - 首次使用会生成 `说明.md`
 
@@ -104,6 +110,8 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
 | 给我做个周报 / 最近怎么样 | `get_weekly_review(days=7 或 30)` |
 | 我拿到面试了 | `trigger_insight(event)` → `apply_insight` |
 | 我换了目标公司 | `import_jd` / `intake(want)` → `get_workflow_status` 提示变更 → 重新分析规划 |
+| 想按具体公司校准路线 / 大厂中厂有哪些 | `select_target_companies` → `collect_company_evidence` → `analyze_company_requirements` → `save_requirement_profile` → `plan_execution_alignment` → `save_execution_alignment` |
+| 计划还合适吗 / 数据变了 | `check_plan_fit(trigger="manual")`；有 major_drift 先问用户，再决定 refresh 或重新校准 |
 | 想看看进度 / 路线 | `export_dashboard("progress")` / `export_dashboard("roadmap")` |
 
 ## 反模式
@@ -120,7 +128,7 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：41 个工具的唯一事实源
+- [工具总览](tools.md)：48 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业数据源](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式

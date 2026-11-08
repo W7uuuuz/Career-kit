@@ -24,7 +24,7 @@ WARN = "WARN"
 FAIL = "FAIL"
 
 # 预期工具数：与 docs/tools.md、README 保持一致
-EXPECTED_TOOL_COUNT = 41
+EXPECTED_TOOL_COUNT = 48
 
 # 核心工具：缺失即判定注册损坏（比单纯计数更可诊断）
 CORE_TOOLS = (
@@ -43,6 +43,13 @@ CORE_TOOLS = (
     "record_application",
     "get_weekly_review",
     "export_dashboard",
+    "select_target_companies",
+    "collect_company_evidence",
+    "analyze_company_requirements",
+    "save_requirement_profile",
+    "plan_execution_alignment",
+    "save_execution_alignment",
+    "check_plan_fit",
 )
 
 

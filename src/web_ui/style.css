@@ -50,6 +50,10 @@ h1 { font-size: 24px; letter-spacing: .3px; }
 .fill { background: linear-gradient(90deg, var(--brand), #6f8bff); height: 100%; width: 0; transition: width .3s; }
 .goal { color: #4a5160; font-size: 13.5px; margin: 4px 0; }
 .company { margin: 6px 0 2px; font-size: 13px; font-weight: 600; }
+.align-grid { display: grid; gap: 6px; margin-top: 10px; }
+.align-row { display: flex; gap: 12px; align-items: baseline; font-size: 13px; color: #4a5160; }
+.align-label { flex: 0 0 62px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.align-row a { color: var(--brand); }
 .tasks { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 6px; }
 .ms { font-size: 12px; color: var(--muted); margin-top: 10px; font-weight: 600; }
 .task-wrap { margin: 6px 0; }

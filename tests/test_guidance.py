@@ -95,6 +95,9 @@ def test_guide_follows_pipeline():
     assert build_guide(profile).status == "roadmap"
 
     profile.plan = {"roadmap": {"phases": []}}
+    assert build_guide(profile).status == "align"
+
+    profile.core_state = {"stage": "executing"}
     assert build_guide(profile).status == "tasks"
 
     profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
@@ -116,11 +119,19 @@ def test_warnings_surface_failed_sources():
     assert build_guide(profile).warnings
 
 
-def test_user_brief_has_all_six_steps():
+def test_user_brief_has_all_seven_steps():
     brief = user_brief()
 
-    assert "从起步到上岸全流程 6 步" in brief
-    for name in ("建档摸底", "市场调研", "差距分析", "路线图规划", "执行打卡", "持续陪跑"):
+    assert "从起步到上岸全流程 7 步" in brief
+    for name in (
+        "职业档案构建",
+        "市场基线调研",
+        "能力差距诊断",
+        "培养方案规划",
+        "企业适配",
+        "任务执行与打卡",
+        "周期复盘与计划调整",
+    ):
         assert name in brief
     assert "顺序定、节奏自己掌握" in brief
 
@@ -153,7 +164,7 @@ def test_start_session_emits_brief_and_guide(temp_profile):
     out = start_session()
 
     assert "[USER_BRIEF]" in out and "[GUIDE]" in out
-    assert "从起步到上岸全流程 6 步" in out
+    assert "从起步到上岸全流程 7 步" in out
 
 
 def test_workflow_status_includes_brief_for_new_profile(temp_profile):
@@ -162,7 +173,7 @@ def test_workflow_status_includes_brief_for_new_profile(temp_profile):
 
     out = get_workflow_status()
 
-    assert "[USER_BRIEF]" in out and "从起步到上岸全流程 6 步" in out
+    assert "[USER_BRIEF]" in out and "从起步到上岸全流程 7 步" in out
     assert "[GUIDE]" in out
 
 

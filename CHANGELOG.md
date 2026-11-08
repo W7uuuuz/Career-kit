@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+## v0.3.0 (2026-11-08)
+
+- **Core v2 企业适配第一纵切（2026-11-08）**：
+  - 新增企业目录 `src/scrapers/companies.yaml` 与档位标签（大厂/中厂/小厂），
+    `list_data_sources` 显示档位与行业；先覆盖互联网，制造/能源企业只打标不进入默认适配。
+  - 新增 6 个企业适配工具：`select_target_companies`、`collect_company_evidence`、
+    `analyze_company_requirements`、`save_requirement_profile`、
+    `plan_execution_alignment`、`save_execution_alignment`（工具数 41 → 47）。
+  - 证据层：批量抓取目标企业 JD + 面经，城市硬筛、详情补抓、去重、来源状态与样本置信度；
+    报告落盘 `~/CareerKit/<档案>/证据池/`。
+  - 需求分析：频率、公司覆盖、Wilson 95% 区间与逐条硬门槛由代码计算；
+    LLM 只能写 `interpretation`，保存时重算并校验，不能再自评数字。
+  - 执行方案校准：预览/确认门禁；每条变更必须带 `evidence_ids`；已完成任务保留、
+    旧 pending/in_progress 不迁移；维护 `plan_history`、`adjustments` 与 `core_state`。
+  - 用户流程更新为 7 步（新增「企业适配」）；`get_workflow_status` 与 `save_roadmap`
+    给出企业适配的下一步提示。
+  - 新增 `check_plan_fit`：证据刷新 / 里程碑 / 周检视后检测计划失配，
+    返回给用户的询问话术；不自动改计划。`get_workflow_status` 与周检视已接入。
+  - 执行版下游打通：`generate_tasks` 能区分历史任务与新执行版阶段，
+    保留 completed/skipped、清理旧 pending；职业地图、进度、控制台可展示执行版与证据摘要。
+  - 旧档案兼容：旧 `plan/tasks/research` 可直接读取；首次使用自动建 artifacts 表；
+    应用执行版可保留完成历史、清理未完成任务。
+  - 本地控制台新增「企业适配」卡片：阶段、企业池、证据条数与置信度、需求画像、
+    执行版状态与报告链接。
+  - 新增测试：Core artifact 基座、阶段 6-9、企业适配全链路、执行版下游、
+    旧档案兼容、计划失配检测、控制台状态。
+  - 版本：`0.2.3` → `0.3.0`；工具数 41 → 48。
+
 ## v0.2.3 (2026-11-07)
 
 - **数据源扩容到 27 个**：新增美团 / 网易 / 京东 / 快手 / 拼多多 / 小红书 /

@@ -37,6 +37,10 @@
 > `get_scraper_guide(company)` 运行时读取同一份 guide.md。新增企业时在包内附
 > guide.md 即自动生效（模板见 `_template/guide.md`）。
 
+企业档位（大厂 / 中厂 / 小厂）、行业与别名由 `src/scrapers/companies.yaml` 维护；
+`list_data_sources` 会显示每个源的档位与行业。目录也收录暂未接入 scraper 的企业，
+用于「目标企业筛选」阶段，未接入的企业会标注为需手动投递。
+
 ## 使用流程
 
 ```

@@ -563,6 +563,11 @@ def test_step8_mcp_tools_registered():
         # 洞察与产出
         "trigger_insight", "apply_insight", "get_progress",
         "get_workflow_status", "export_dashboard",
+        # 企业适配
+        "select_target_companies", "collect_company_evidence",
+        "analyze_company_requirements", "save_requirement_profile",
+        "plan_execution_alignment", "save_execution_alignment",
+        "check_plan_fit",
         # 计划导入
         "import_plan",
     ]

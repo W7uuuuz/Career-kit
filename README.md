@@ -26,16 +26,17 @@
 
 [示例产物](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [完整文档](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
 
-## 30 秒看懂：从起步到上岸的 6 个阶段
+## 30 秒看懂：从起步到上岸的 7 个阶段
 
 每个阶段都会交付实际产物，顺序固定、节奏自定：
 
-1. **建档摸底**——通过简历和对话，弄清用户真实水平和目标，得到一份真实的用户档案。
-2. **市场调研**——抓取真实岗位与面经，得到一份带来源链接的市场报告，看看同层次的其他人是怎么做的。
-3. **差距分析**——对照市场要求与用户现状，得到一份可执行的差距清单。
-4. **路线图规划**——把用户的目标拆成有顺序的阶段和任务，得到一张可打卡的职业地图。
-5. **执行打卡**——逐项推进任务，完成即沉淀为能力证据。
-6. **持续陪跑**——周期复盘打卡 / 阶段 / 求职漏斗，目标变化时随时重新规划。
+1. **职业档案构建**——通过简历和对话，建立可核验的真实水平与目标，得到一份你确认过的职业档案。
+2. **市场基线调研**——抓取真实岗位与面经，得到一份带来源链接的市场基线报告，看看同层次的其他人是怎么做的。
+3. **能力差距诊断**——对照市场要求与用户现状，得到一份可执行的差距诊断。
+4. **培养方案规划**——把目标拆成有顺序的阶段和任务，得到一张可打卡的基线职业地图。
+5. **企业适配**——把目标从档位落到具体企业，批量采集 JD 与面经，得到一份执行版路线图与目标证据池。
+6. **任务执行与打卡**——逐项推进任务，完成即沉淀为能力证据。
+7. **周期复盘与计划调整**——复盘打卡 / 阶段 / 求职漏斗，目标变化或新数据显示计划不再适合时重新规划。
 
 > 如果这个项目对你有帮助，欢迎点一个 Star。
 
@@ -67,7 +68,7 @@ Career Kit：打卡记录 → 沉淀能力证据 → 阶段完成自动审计
 Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 ```
 
-底层是 41 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、任务与漏斗、洞察产出六大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
+底层是 48 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、企业适配、任务与漏斗、洞察产出七大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
 
 ## 与其他求职工具的对比
 
@@ -150,7 +151,7 @@ career-kit-doctor
 - [LLM 使用指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)：工作流、规则、常见场景
 - [工作流详解](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)：各阶段前置条件、输入输出
 - [安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)：源码安装、一键脚本、本地控制台、常见问题
-- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：41 个 MCP 工具的唯一事实源
+- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：48 个 MCP 工具的唯一事实源
 - [企业库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)：已收录企业、数据源说明
 - [知识库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)：目录结构、文件格式
 - [示例](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)：可交互职业地图与场景示例

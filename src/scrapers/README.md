@@ -3,6 +3,9 @@
 社区驱动的企业招聘数据源。企业清单、通用参数与贡献流程以
 [docs/scrapers.md](../../docs/scrapers.md) 为唯一事实源；本文件只保留源索引。
 
+企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
+查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
+
 ## 已注册企业（27）
 
 | ID | 名称 | 数据类型 | 支持渠道 |

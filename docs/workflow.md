@@ -7,7 +7,9 @@
 ## 工作流总览
 
 ```
-开场（可选扫盲）→ 建档 → 市场调研 → 分析 → 规划 → 任务执行 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
+开场（可选扫盲）→ 建档 → 市场调研 → 差距分析 → 培养方案基线
+→ 企业适配（企业筛选 → 岗位与面经采集 → 需求分析 → 执行方案校准）
+→ 任务执行 → 打卡/投递记录 → 阶段审计/事件洞察/周检视 → 循环
 ```
 
 ---
@@ -19,7 +21,7 @@
 **流程**：
 
 ```
-1. start_session() → 返回 [USER_BRIEF]（6 步简介）与 [GUIDE]（本轮唯一问题）
+1. start_session() → 返回 [USER_BRIEF]（7 步简介）与 [GUIDE]（本轮唯一问题）
 2. 先发 [USER_BRIEF]，再只问 [GUIDE].ask（完全不了解 / 有一些想法 / 已有明确目标）
 3. 完全不了解或没有规划：
    - 显式询问是否扫盲；拒绝则直接 explore_goals，不阻塞
@@ -232,6 +234,48 @@ KPI 完全缺失、届别硬冲突、任务不可打卡），最多 3 条 must_f
 5. 审计是第二意见：不阻断定稿；FAIL 只用于硬矛盾，最多 3 条 must_fix
 6. 换了目标 JD（`import_jd` / `import_jd_file`）后差距分析标记过期，
    必须先重新 `analyze_gaps` 再生成路线图
+
+---
+
+## 阶段 4.5：企业适配（Core v2，执行前可选校准）
+
+**目标**：把「方向基线」路线图升级为「执行版」——目标从档位落到具体企业，
+用真实 JD 与面经校准培养任务的优先级。不做也能按基线版执行，但推荐在生成任务前完成。
+
+**前置条件**：`profile.plan.roadmap` 已生成。
+
+**流程**：
+
+```
+1. select_target_companies(...)                 # 推荐企业池；用户确认后 confirmed=true
+2. collect_company_evidence(company_pool_id)    # 批量抓 JD + 面经（城市硬筛、详情补抓、去重）
+3. analyze_company_requirements(evidence_run_id) # 代码统计 + 受约束的分析提示
+4. save_requirement_profile(analysis_json)      # LLM 只写 interpretation；数字由代码复核
+5. plan_execution_alignment(requirement_profile_id)
+6. save_execution_alignment(alignment_json, confirmed=false)  # 预览 diff
+7. save_execution_alignment(alignment_json, confirmed=true)   # 应用执行版
+8. detail_current_phase() → generate_tasks()
+9. 证据刷新 / 里程碑 / 周检视后：check_plan_fit(trigger=...)
+   - major_drift：把 question_for_user 转问用户，同意后再 refresh 或重新校准
+   - aligned / incomplete_chain：不打断用户
+```
+
+**输出**：
+
+- `profile.core_state`：阶段状态与 artifact 指针
+- `~/CareerKit/<档案>/证据池/<日期_方向>.md|.html|.json`
+- `profile.plan`：替换为执行版路线图（旧版进 `plan_history`）
+- `profile.adjustments`：记录 `company_alignment` 调整
+- 已完成/已跳过任务保留为历史；旧 pending/in_progress 任务不迁移
+
+**关键规则**：
+
+1. 企业池未确认时不得进入采集；未接入抓取的企业保留在名单中并标「需手动投递」
+2. 证据采集只陈述事实：无详情 JD 剔除、失败源如实进来源状态、缺失内容不编造
+3. 需求分析的数字由代码计算（频率、公司覆盖、Wilson 区间、逐条硬门槛），
+   LLM 只能写 `summary / priorities / company_notes / risks / notes`
+4. 执行版每条 change 必须带 `evidence_ids`；没有证据的变更不允许落库
+5. 用户确认是硬门禁：未确认只返回 diff 预览，不改档案
 
 ---
 

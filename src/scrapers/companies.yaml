@@ -1,0 +1,430 @@
+# 企业目录——档位、行业与 scraper 映射的唯一事实源。
+#
+# 与 config.yaml 的分工：
+# - config.yaml：scraper 实现注册表（module/class/url_patterns/description）
+# - companies.yaml：企业元数据（名称、档位、行业、别名、可用的 scraper）
+#
+# 没有 scraper 的企业也保留在目录里：投递清单会标注「未接入自动抓取」，
+# 用户仍可手动投递；后续补充 scraper 时只需在本文件把 scrapers 填上。
+#
+# 档位口径（与 docs/rules.md 一致）：
+# - 大厂：一线互联网与大型科技/制造企业
+# - 中厂：垂直领域头部、上市中型公司、成熟独角兽
+# - 小厂：创业公司、中小型公司、外包与早期团队（当前不预置，可由用户补充）
+
+companies:
+  # ---------------- 互联网大厂 ----------------
+  - id: bytedance
+    name: 字节跳动
+    tier: 大厂
+    industry: 互联网
+    aliases: [字节, 字节跳动, ByteDance]
+    scrapers: [bytedance]
+
+  - id: tencent
+    name: 腾讯
+    tier: 大厂
+    industry: 互联网
+    aliases: [腾讯, Tencent]
+    scrapers: [tencent]
+
+  - id: alibaba
+    name: 阿里巴巴
+    tier: 大厂
+    industry: 互联网
+    aliases: [阿里, 阿里巴巴, Alibaba]
+    scrapers: [alibaba, alibaba_social]
+
+  - id: baidu
+    name: 百度
+    tier: 大厂
+    industry: 互联网
+    aliases: [百度, Baidu]
+    scrapers: [baidu]
+
+  - id: meituan
+    name: 美团
+    tier: 大厂
+    industry: 互联网
+    aliases: [美团, Meituan]
+    scrapers: [meituan]
+
+  - id: jd
+    name: 京东
+    tier: 大厂
+    industry: 互联网
+    aliases: [京东, JD]
+    scrapers: [jd]
+
+  - id: netease
+    name: 网易
+    tier: 大厂
+    industry: 互联网
+    aliases: [网易, NetEase]
+    scrapers: [netease]
+
+  - id: kuaishou
+    name: 快手
+    tier: 大厂
+    industry: 互联网
+    aliases: [快手, Kuaishou]
+    scrapers: [kuaishou]
+
+  - id: pdd
+    name: 拼多多
+    tier: 大厂
+    industry: 互联网
+    aliases: [拼多多, PDD]
+    scrapers: [pdd]
+
+  - id: didi
+    name: 滴滴
+    tier: 大厂
+    industry: 互联网
+    aliases: [滴滴, 滴滴出行, DiDi]
+    scrapers: [didi]
+
+  - id: ant
+    name: 蚂蚁集团
+    tier: 大厂
+    industry: 互联网
+    aliases: [蚂蚁, 蚂蚁集团, Ant]
+    scrapers: [ant]
+
+  - id: xiaomi
+    name: 小米
+    tier: 大厂
+    industry: 互联网
+    aliases: [小米, Xiaomi]
+    scrapers: [xiaomi]
+
+  # ---------------- 科技 / 制造 / 能源大厂（先打标，投递清单默认只跑互联网） ----------------
+  - id: huawei
+    name: 华为
+    tier: 大厂
+    industry: 硬件/科技
+    aliases: [华为, Huawei]
+    scrapers: [huawei]
+
+  - id: boe
+    name: 京东方
+    tier: 大厂
+    industry: 电子/半导体
+    aliases: [京东方, BOE]
+    scrapers: [boe]
+
+  - id: sany
+    name: 三一集团
+    tier: 大厂
+    industry: 机械/装备
+    aliases: [三一, 三一集团, SANY]
+    scrapers: [sany]
+
+  - id: crrc
+    name: 中国中车
+    tier: 大厂
+    industry: 机械/装备
+    aliases: [中国中车, 中车, CRRC]
+    scrapers: [crrc]
+
+  - id: zhonglian
+    name: 中联重科
+    tier: 大厂
+    industry: 机械/装备
+    aliases: [中联, 中联重科, Zoomlion]
+    scrapers: [zhonglian]
+
+  - id: inovance
+    name: 汇川技术
+    tier: 大厂
+    industry: 电气/自动化
+    aliases: [汇川, 汇川技术, Inovance]
+    scrapers: [inovance]
+
+  - id: tebian
+    name: 特变电工
+    tier: 大厂
+    industry: 电气/能源
+    aliases: [特变, 特变电工, TBEA]
+    scrapers: [tebian]
+
+  - id: sungrow
+    name: 阳光电源
+    tier: 大厂
+    industry: 能源/电力
+    aliases: [阳光电源, Sungrow]
+    scrapers: [sungrow]
+
+  # ---------------- 互联网中厂 ----------------
+  - id: xiaohongshu
+    name: 小红书
+    tier: 中厂
+    industry: 互联网
+    aliases: [小红书, RED]
+    scrapers: [xiaohongshu]
+
+  - id: ctrip
+    name: 携程
+    tier: 中厂
+    industry: 互联网
+    aliases: [携程, 携程旅行, Trip.com]
+    scrapers: [ctrip]
+
+  - id: bilibili
+    name: 哔哩哔哩
+    tier: 中厂
+    industry: 互联网
+    aliases: [B站, 哔哩哔哩, Bilibili]
+    scrapers: [bilibili]
+
+  - id: dewu
+    name: 得物
+    tier: 中厂
+    industry: 互联网
+    aliases: [得物, 毒]
+    scrapers: []
+
+  - id: mihoyo
+    name: 米哈游
+    tier: 中厂
+    industry: 互联网
+    aliases: [米哈游, miHoYo]
+    scrapers: []
+
+  - id: huolala
+    name: 货拉拉
+    tier: 中厂
+    industry: 互联网
+    aliases: [货拉拉, Lalamove]
+    scrapers: []
+
+  - id: beike
+    name: 贝壳找房
+    tier: 中厂
+    industry: 互联网
+    aliases: [贝壳, 贝壳找房]
+    scrapers: []
+
+  - id: 58
+    name: 58同城
+    tier: 中厂
+    industry: 互联网
+    aliases: [58, 58同城]
+    scrapers: []
+
+  - id: 360
+    name: 三六零
+    tier: 中厂
+    industry: 互联网
+    aliases: [360, 三六零, 奇虎]
+    scrapers: []
+
+  - id: weibo
+    name: 微博
+    tier: 中厂
+    industry: 互联网
+    aliases: [微博, 新浪微博, Weibo]
+    scrapers: []
+
+  - id: zhihu
+    name: 知乎
+    tier: 中厂
+    industry: 互联网
+    aliases: [知乎, Zhihu]
+    scrapers: []
+
+  - id: iqiyi
+    name: 爱奇艺
+    tier: 中厂
+    industry: 互联网
+    aliases: [爱奇艺, iQIYI]
+    scrapers: []
+
+  - id: mgtv
+    name: 芒果TV
+    tier: 中厂
+    industry: 互联网
+    aliases: [芒果TV, 芒果超媒]
+    scrapers: []
+
+  - id: qunar
+    name: 去哪儿
+    tier: 中厂
+    industry: 互联网
+    aliases: [去哪儿, 去哪儿网, Qunar]
+    scrapers: []
+
+  - id: tongcheng
+    name: 同程旅行
+    tier: 中厂
+    industry: 互联网
+    aliases: [同程, 同程旅行]
+    scrapers: []
+
+  - id: vip
+    name: 唯品会
+    tier: 中厂
+    industry: 互联网
+    aliases: [唯品会, Vipshop]
+    scrapers: []
+
+  - id: autohome
+    name: 汽车之家
+    tier: 中厂
+    industry: 互联网
+    aliases: [汽车之家, Autohome]
+    scrapers: []
+
+  - id: kingsoft
+    name: 金山办公
+    tier: 中厂
+    industry: 互联网
+    aliases: [金山, 金山办公, WPS]
+    scrapers: []
+
+  - id: youzan
+    name: 有赞
+    tier: 中厂
+    industry: 互联网
+    aliases: [有赞, Youzan]
+    scrapers: []
+
+  - id: weimeng
+    name: 微盟
+    tier: 中厂
+    industry: 互联网
+    aliases: [微盟, Weimob]
+    scrapers: []
+
+  - id: keep
+    name: Keep
+    tier: 中厂
+    industry: 互联网
+    aliases: [Keep, keep]
+    scrapers: []
+
+  - id: maimai
+    name: 脉脉
+    tier: 中厂
+    industry: 互联网
+    aliases: [脉脉, Maimai]
+    scrapers: []
+
+  - id: liepin
+    name: 猎聘
+    tier: 中厂
+    industry: 互联网
+    aliases: [猎聘, Liepin]
+    scrapers: []
+
+  - id: perfectworld
+    name: 完美世界
+    tier: 中厂
+    industry: 互联网
+    aliases: [完美世界, Perfect World]
+    scrapers: []
+
+  - id: lilith
+    name: 莉莉丝
+    tier: 中厂
+    industry: 互联网
+    aliases: [莉莉丝, Lilith]
+    scrapers: []
+
+  - id: papergames
+    name: 叠纸游戏
+    tier: 中厂
+    industry: 互联网
+    aliases: [叠纸, 叠纸游戏, Papergames]
+    scrapers: []
+
+  - id: hypergryph
+    name: 鹰角网络
+    tier: 中厂
+    industry: 互联网
+    aliases: [鹰角, 鹰角网络, Hypergryph]
+    scrapers: []
+
+  - id: sanqi
+    name: 三七互娱
+    tier: 中厂
+    industry: 互联网
+    aliases: [三七, 三七互娱]
+    scrapers: []
+
+  - id: giant
+    name: 巨人网络
+    tier: 中厂
+    industry: 互联网
+    aliases: [巨人, 巨人网络]
+    scrapers: []
+
+  - id: shengqu
+    name: 盛趣游戏
+    tier: 中厂
+    industry: 互联网
+    aliases: [盛趣, 盛趣游戏]
+    scrapers: []
+
+  - id: youzu
+    name: 游族网络
+    tier: 中厂
+    industry: 互联网
+    aliases: [游族, 游族网络]
+    scrapers: []
+
+  - id: sensetime
+    name: 商汤科技
+    tier: 中厂
+    industry: 互联网
+    aliases: [商汤, 商汤科技, SenseTime]
+    scrapers: []
+
+  - id: megvii
+    name: 旷视科技
+    tier: 中厂
+    industry: 互联网
+    aliases: [旷视, 旷视科技, Megvii]
+    scrapers: []
+
+  - id: horizon
+    name: 地平线
+    tier: 中厂
+    industry: 互联网
+    aliases: [地平线, Horizon Robotics]
+    scrapers: []
+
+  - id: shein
+    name: SHEIN
+    tier: 中厂
+    industry: 互联网
+    aliases: [SHEIN, 希音]
+    scrapers: []
+
+  - id: shopee
+    name: Shopee
+    tier: 中厂
+    industry: 互联网
+    aliases: [Shopee, 虾皮]
+    scrapers: []
+
+  - id: yuanfudao
+    name: 猿辅导
+    tier: 中厂
+    industry: 互联网
+    aliases: [猿辅导]
+    scrapers: []
+
+  - id: zuoyebang
+    name: 作业帮
+    tier: 中厂
+    industry: 互联网
+    aliases: [作业帮]
+    scrapers: []
+
+  - id: tal
+    name: 好未来
+    tier: 中厂
+    industry: 互联网
+    aliases: [好未来, 学而思, TAL]
+    scrapers: []

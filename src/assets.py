@@ -28,6 +28,7 @@ ASSETS_KIND_DIRS: dict[str, str] = {
     "analysis": "差距分析",
     "roadmap": "路线图",
     "progress": "进度",
+    "evidence": "证据池",
 }
 
 # 固定文件名（保 localStorage 打卡状态与「永远是最新」语义）
@@ -57,6 +58,7 @@ _KIND_LABELS: dict[str, str] = {
     "analysis": "差距分析",
     "roadmap": "路线图",
     "progress": "进度",
+    "evidence": "证据池",
 }
 
 # 固定名资产没有文件名主题，用可读标题替代主干
@@ -323,6 +325,7 @@ section.profile > h2 { font-size:16px; margin:18px 0 10px; color:var(--muted); }
 .card.kind-analysis .badge { background:#7c3aed; }
 .card.kind-roadmap .badge { background:#0891b2; }
 .card.kind-progress .badge { background:#65a30d; }
+.card.kind-evidence .badge { background:#b45309; }
 a.card-main { display:block; flex:1; padding:14px 16px 8px; text-decoration:none;
               color:inherit; border-radius:10px; }
 a.card-main:focus-visible, .card .extras a:focus-visible {
@@ -445,4 +448,5 @@ _KIND_DESC: dict[str, str] = {
     "analysis": "差距分析结论（带依据与来源）",
     "roadmap": "可交互打卡的职业地图（固定名，永远是最新版）",
     "progress": "进度仪表盘快照（固定名，永远是最新版）",
+    "evidence": "目标企业 JD 与面经证据池（带来源、样本量与置信度）",
 }

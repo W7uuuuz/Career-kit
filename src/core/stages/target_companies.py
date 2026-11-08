@@ -1,0 +1,383 @@
+"""阶段 6：目标企业筛选。
+
+只承担一个决策：确定目标企业池。目录筛选、include/exclude 匹配、计数与
+确认门禁由代码完成；不抓取、不统计需求。产物 CompanyPool 是下游唯一输入。
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel
+
+from ...scrapers import catalog
+from ...tools.profile import load_profile, save_profile
+from ..artifacts.models import ArtifactMeta, CompanyEntry, CompanyPool, TargetSpec
+from ..orchestrator import state_machine
+from .base import StageContext, StageResult
+
+STAGE_ID = state_machine.STAGE_COMPANY_POOL
+REQUIRES = ("target_spec",)
+PRODUCES = "company_pool"
+
+DEFAULT_TARGET_TIERS: tuple[str, ...] = ("大厂",)
+DEFAULT_BRIDGE_TIERS: tuple[str, ...] = ("中厂",)
+DEFAULT_INDUSTRY = "互联网"
+
+_TOKEN_SPLIT_RE = re.compile(r"[,，、;；\s]+")
+
+
+def parse_tokens(value: Any) -> list[str]:
+    """把 include/exclude 或档位参数解析为去重后的 token 列表。
+
+    支持 JSON 数组、逗号/顿号/分号/空白分隔；按小写去重并保留首次出现顺序。
+    """
+    raw_items: list[Any] = []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        parsed: Any = None
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+        raw_items = parsed if isinstance(parsed, list) else _TOKEN_SPLIT_RE.split(text)
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        return []
+
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        token = str(item).strip()
+        if not token:
+            continue
+        key = token.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        tokens.append(token)
+    return tokens
+
+
+def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
+    """执行阶段 6：生成并保存 CompanyPool，按确认状态决定是否推进。"""
+    spec = _target_spec_from_inputs(inputs)
+    industry = str(inputs.get("industry") or DEFAULT_INDUSTRY).strip()
+    companies, gaps = _build_entries(
+        spec,
+        industry,
+        parse_tokens(inputs.get("include")),
+        parse_tokens(inputs.get("exclude")),
+    )
+    selected = [entry for entry in companies if entry.status != "excluded"]
+    confirmed = _requested_confirmation(ctx, inputs)
+    effective_confirmed = confirmed and bool(selected)
+    if confirmed:
+        for entry in selected:
+            entry.status = "confirmed"
+
+    store = ctx.store
+    meta = ArtifactMeta(
+        id=store.new_id("cp_"),
+        stage=STAGE_ID,
+        profile_name=ctx.profile_name,
+        created_at=datetime.now().isoformat(),
+        inputs=_meta_inputs(inputs, spec, industry, confirmed),
+        validation={
+            "confirmed": effective_confirmed,
+            "requested_confirmed": confirmed,
+            "selected": len(selected),
+        },
+    )
+    pool = CompanyPool(
+        meta=meta,
+        target_spec=spec,
+        companies=companies,
+        counts=_counts(companies),
+        gaps=gaps,
+    )
+    artifact_id = store.save(pool)
+
+    if confirmed and not effective_confirmed:
+        return StageResult(
+            status="insufficient_data",
+            artifact_id=artifact_id,
+            message="没有可确认的目标企业：请调整档位、行业或 include/exclude 后重试。",
+            next_stage=STAGE_ID,
+            warnings=gaps,
+        )
+    if not confirmed:
+        return StageResult(
+            status="needs_confirmation",
+            artifact_id=artifact_id,
+            message=f"已生成 {len(selected)} 家推荐企业，等待用户确认后才能进入证据采集。",
+            next_stage=STAGE_ID,
+            warnings=gaps,
+        )
+
+    _update_core_state(ctx.profile_name, artifact_id)
+    return StageResult(
+        status="ok",
+        artifact_id=artifact_id,
+        message=f"已确认 {len(selected)} 家目标企业。",
+        next_stage=state_machine.STAGE_EVIDENCE,
+        warnings=gaps,
+    )
+
+
+def validate(artifact: BaseModel) -> list[str]:
+    """校验 CompanyPool：阶段一致、企业字段完整、确认状态自洽。"""
+    if not isinstance(artifact, CompanyPool):
+        return ["artifact 必须是 CompanyPool"]
+
+    problems: list[str] = []
+    if artifact.meta.stage != STAGE_ID:
+        problems.append(f"meta.stage 应为 {STAGE_ID}，实际为 {artifact.meta.stage}")
+
+    seen: set[str] = set()
+    for entry in artifact.companies:
+        key = entry.id.strip().lower()
+        if not key:
+            problems.append("存在空 id 的企业条目")
+            continue
+        if key in seen:
+            problems.append(f"企业 id 重复：{entry.id}")
+        seen.add(key)
+        if not entry.name.strip():
+            problems.append(f"企业 {entry.id} 缺少 name")
+        if entry.status != "excluded" and not entry.tier:
+            problems.append(f"企业 {entry.id} 缺少 tier")
+
+    confirmed = artifact.meta.validation.get("confirmed") is True
+    confirmed_entries = [entry for entry in artifact.companies if entry.status == "confirmed"]
+    if confirmed and not confirmed_entries:
+        problems.append("confirmed=true 但没有任何 confirmed 企业")
+    if not confirmed and confirmed_entries:
+        problems.append("confirmed=false 但存在 confirmed 企业")
+    if confirmed and any(entry.status == "recommended" for entry in artifact.companies):
+        problems.append("confirmed=true 但仍有企业状态为 recommended")
+    return problems
+
+
+def _target_spec_from_inputs(inputs: dict[str, Any]) -> TargetSpec:
+    raw = inputs.get("target_spec")
+    if isinstance(raw, TargetSpec):
+        spec = raw.model_copy(deep=True)
+    elif isinstance(raw, BaseModel):
+        spec = TargetSpec.model_validate(raw.model_dump())
+    elif isinstance(raw, dict):
+        spec = TargetSpec.model_validate(raw)
+    else:
+        spec = TargetSpec()
+
+    spec.target_tiers = (
+        parse_tokens(inputs.get("target_tiers")) or spec.target_tiers or list(DEFAULT_TARGET_TIERS)
+    )
+    spec.bridge_tiers = (
+        parse_tokens(inputs.get("bridge_tiers")) or spec.bridge_tiers or list(DEFAULT_BRIDGE_TIERS)
+    )
+    city = str(inputs.get("city") or "").strip()
+    role = str(inputs.get("role") or "").strip()
+    if city:
+        spec.city = city
+    if role:
+        spec.role = role
+    return spec
+
+
+def _requested_confirmation(ctx: StageContext, inputs: dict[str, Any]) -> bool:
+    if "confirmed" in inputs:
+        return _as_bool(inputs.get("confirmed"))
+    return bool(ctx.user_confirmed)
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "是", "确认"}
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
+def _build_entries(
+    spec: TargetSpec,
+    industry: str,
+    include_tokens: list[str],
+    exclude_tokens: list[str],
+) -> tuple[list[CompanyEntry], list[str]]:
+    tiers = _dedupe([*spec.target_tiers, *spec.bridge_tiers])
+    items = catalog.list_companies(tier=tiers, industry=industry)
+    entries: dict[str, CompanyEntry] = {
+        str(item["id"]).lower(): _entry(item, _tier_reason(str(item["tier"]), spec)) for item in items
+    }
+    gaps: list[str] = []
+
+    included, missing_include = _resolve_tokens(include_tokens)
+    for _token, item in included:
+        key = str(item["id"]).lower()
+        if key in entries:
+            entries[key].reason = "用户 include 指定"
+        else:
+            entries[key] = _entry(item, "用户 include 指定")
+    include_keys = {str(item["id"]).lower() for _token, item in included}
+
+    excluded, missing_exclude = _resolve_tokens(exclude_tokens)
+    for _token, item in excluded:
+        key = str(item["id"]).lower()
+        if key in include_keys:
+            continue
+        if key in entries:
+            entries[key].status = "excluded"
+            entries[key].reason = "用户 exclude 排除"
+
+    if missing_include:
+        gaps.append(f"include 未收录（目录中不存在）：{'、'.join(missing_include)}")
+    if missing_exclude:
+        gaps.append(f"exclude 未收录（目录中不存在）：{'、'.join(missing_exclude)}")
+
+    companies = sorted(entries.values(), key=lambda entry: (-catalog.tier_rank(entry.tier), entry.name))
+    selected = [entry for entry in companies if entry.status != "excluded"]
+    if not selected:
+        gap_tiers = "、".join(tiers) or "不限"
+        gaps.append(f"目录中没有匹配目标档位（{gap_tiers}）与行业「{industry}」的企业")
+
+    unscrapable = [entry.name for entry in selected if not entry.scrapable]
+    if unscrapable:
+        gaps.append(f"未接入自动抓取（需手动投递或后续补充 scraper）：{'、'.join(unscrapable)}")
+    return companies, gaps
+
+
+def _resolve_tokens(
+    tokens: list[str],
+) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
+    resolved: list[tuple[str, dict[str, Any]]] = []
+    missing: list[str] = []
+    for token in tokens:
+        item = catalog.get_company(token)
+        if item is None:
+            missing.append(token)
+        else:
+            resolved.append((token, item))
+    return resolved, missing
+
+
+def _entry(item: dict[str, Any], reason: str) -> CompanyEntry:
+    return CompanyEntry(
+        id=str(item.get("id") or ""),
+        name=str(item.get("name") or ""),
+        tier=str(item.get("tier") or "未收录"),
+        industry=str(item.get("industry") or ""),
+        scrapable=bool(item.get("scrapable")),
+        scrapers=[str(scraper) for scraper in item.get("available_scrapers") or []],
+        careers_url=str(item.get("careers_url") or ""),
+        reason=reason,
+    )
+
+
+def _tier_reason(tier: str, spec: TargetSpec) -> str:
+    in_target = tier in spec.target_tiers
+    in_bridge = tier in spec.bridge_tiers
+    if in_target and in_bridge:
+        return f"目标与桥接档位「{tier}」"
+    if in_target:
+        return f"目标档位「{tier}」"
+    if in_bridge:
+        return f"桥接档位「{tier}」"
+    return f"目录档位「{tier}」"
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _counts(companies: list[CompanyEntry]) -> dict[str, int]:
+    counts: dict[str, int] = {
+        "total": 0,
+        "confirmed": 0,
+        "recommended": 0,
+        "excluded": 0,
+        "scrapable": 0,
+        "not_scrapable": 0,
+    }
+    for entry in companies:
+        if entry.status == "excluded":
+            counts["excluded"] += 1
+            continue
+        counts["total"] += 1
+        counts[entry.status] = counts.get(entry.status, 0) + 1
+        counts["scrapable" if entry.scrapable else "not_scrapable"] += 1
+        tier_key = f"tier:{entry.tier or '未收录'}"
+        counts[tier_key] = counts.get(tier_key, 0) + 1
+    return counts
+
+
+def _meta_inputs(
+    inputs: dict[str, Any],
+    spec: TargetSpec,
+    industry: str,
+    confirmed: bool,
+) -> dict[str, str]:
+    return {
+        "target_tiers": "、".join(spec.target_tiers),
+        "bridge_tiers": "、".join(spec.bridge_tiers),
+        "city": spec.city,
+        "role": spec.role,
+        "industry": industry,
+        "include": _stringify(inputs.get("include")),
+        "exclude": _stringify(inputs.get("exclude")),
+        "confirmed": "true" if confirmed else "false",
+    }
+
+
+def _stringify(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        return "、".join(str(item) for item in value)
+    return str(value)
+
+
+def _update_core_state(profile_name: str, artifact_id: str) -> None:
+    profile = load_profile(profile_name)
+    core_state = dict(profile.core_state or {})
+    core_state.update(
+        {
+            "company_pool_id": artifact_id,
+            "stage": STAGE_ID,
+            "updated_at": datetime.now().isoformat(),
+        }
+    )
+    profile.core_state = core_state
+    save_profile(profile, profile_name)
+
+
+__all__ = [
+    "DEFAULT_BRIDGE_TIERS",
+    "DEFAULT_INDUSTRY",
+    "DEFAULT_TARGET_TIERS",
+    "PRODUCES",
+    "REQUIRES",
+    "STAGE_ID",
+    "parse_tokens",
+    "run",
+    "validate",
+]

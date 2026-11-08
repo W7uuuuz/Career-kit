@@ -554,8 +554,12 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             )
             + "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
-            "接下来建议先 detail_current_phase 细化当前阶段，再 generate_tasks；"
-            "用户不想细化时也可直接 generate_tasks 生成粗任务。\n\n"
+            "接下来建议先做企业适配，把基线路线图校准为执行版："
+            "select_target_companies → collect_company_evidence → analyze_company_requirements "
+            "→ save_requirement_profile → plan_execution_alignment → save_execution_alignment；"
+            "完成后再 detail_current_phase → generate_tasks。\n"
+            "用户暂时不想做企业适配时，也可以先 detail_current_phase 细化当前阶段，"
+            "再 generate_tasks 按基线版执行。\n\n"
             f"{guide_for(profile)}"
         ),
         "next_steps": ["detail_current_phase", "generate_tasks"],

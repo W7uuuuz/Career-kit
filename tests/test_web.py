@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
+import src.paths as paths_module  # noqa: E402
 import src.tools.profile as profile_module  # noqa: E402
 from src.models import Application, CareerProfile, Task  # noqa: E402
 from src.web import build_parser, build_state, create_server  # noqa: E402
@@ -22,6 +23,7 @@ from src.web import build_parser, build_state, create_server  # noqa: E402
 @pytest.fixture()
 def temp_profile(tmp_path, monkeypatch):
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
+    monkeypatch.setattr(paths_module, "PROFILE_DIR", tmp_path)
     return tmp_path
 
 
@@ -118,6 +120,165 @@ def test_build_state_exposes_roadmap_and_playbook(temp_profile):
     assert state["research"]["failed_sources"] == ["boss"]
     assert state["applications"][0]["company"] == "某公司"
     assert state["reports"][0]["direction"] == "AI Agent"
+
+
+def _save_alignment_artifacts(profile_name: str) -> dict[str, str]:
+    from src.assets import kind_assets_dir
+    from src.core.artifacts.models import (
+        ArtifactMeta,
+        CompanyEntry,
+        CompanyPool,
+        EvidenceRun,
+        ExecutionPlan,
+        HardRequirement,
+        RequirementItem,
+        RequirementProfile,
+        TargetSpec,
+    )
+    from src.core.artifacts.store import ArtifactStore
+
+    store = ArtifactStore()
+    report_dir = kind_assets_dir("evidence", profile_name)
+    html_path = report_dir / "evidence.html"
+    md_path = report_dir / "evidence.md"
+    json_path = report_dir / "evidence.json"
+    html_path.write_text("<html>证据</html>", encoding="utf-8")
+    md_path.write_text("# 证据", encoding="utf-8")
+    json_path.write_text("{}", encoding="utf-8")
+
+    target = TargetSpec(role="AI Agent", direction="AI Agent")
+    pool_id = store.save(CompanyPool(
+        meta=ArtifactMeta(
+            id="cp_test", stage="company_pool", profile_name=profile_name,
+            created_at="2026-11-08T00:00:00",
+        ),
+        target_spec=target,
+        companies=[
+            CompanyEntry(
+                id="c1", name="字节", tier="大厂", industry="互联网",
+                scrapable=True, status="confirmed",
+            ),
+            CompanyEntry(id="c2", name="某厂", tier="中厂", industry="互联网", scrapable=False),
+        ],
+        counts={"total": 2, "scrapable": 1, "not_scrapable": 1},
+    ))
+    evidence_id = store.save(EvidenceRun(
+        meta=ArtifactMeta(
+            id="ev_test", stage="evidence", profile_name=profile_name,
+            created_at="2026-11-08T00:00:01",
+        ),
+        target_spec=target,
+        company_pool_id=pool_id,
+        counts={"kept_jobs": 3, "interviews": 2},
+        confidence={"jd": "medium", "interview": "low"},
+        report_paths={"html": str(html_path), "md": str(md_path), "json": str(json_path)},
+    ))
+    requirement_id = store.save(RequirementProfile(
+        meta=ArtifactMeta(
+            id="rp_test", stage="requirement", profile_name=profile_name,
+            created_at="2026-11-08T00:00:02",
+        ),
+        evidence_run_id=evidence_id,
+        confidence_jd="medium",
+        confidence_interview="low",
+        high_frequency=[RequirementItem(
+            term="Python", category="技能", jd_count=3, jd_frequency=1.0,
+            company_count=2, company_frequency=1.0,
+        )],
+        hard_requirements=[HardRequirement(evidence_id="JD001", education="本科")],
+    ))
+    plan_id = store.save(ExecutionPlan(
+        meta=ArtifactMeta(
+            id="ep_test", stage="execution_plan", profile_name=profile_name,
+            created_at="2026-11-08T00:00:03",
+        ),
+        requirement_profile_id=requirement_id,
+        strategy_summary="先补基础",
+        roadmap={"phases": [{"name": "基础"}, {"name": "项目"}]},
+        applied=True,
+        diff_summary="新增 2 个任务",
+    ))
+    return {
+        "company_pool": pool_id,
+        "evidence": evidence_id,
+        "requirement": requirement_id,
+        "execution_plan": plan_id,
+    }
+
+
+def test_build_state_alignment_absent_for_legacy_profile(temp_profile):
+    """旧档案没有 core_state 时，alignment 也要存在且不崩。"""
+    profile_module.save_profile(_profile())
+
+    alignment = build_state()["alignment"]
+
+    assert alignment["stage"] == ""
+    assert alignment["company_pool"] is None
+    assert alignment["evidence"] is None
+    assert alignment["requirement"] is None
+    assert alignment["execution_plan"] is None
+    assert alignment["next_tool"] == "select_target_companies"
+
+
+def test_build_state_alignment_reads_artifacts(temp_profile):
+    from src.tools.profile import get_active_profile_name
+
+    profile = _profile()
+    profile_name = get_active_profile_name()
+    ids = _save_alignment_artifacts(profile_name)
+    profile.core_state = {
+        "stage": "executing",
+        "company_pool_id": ids["company_pool"],
+        "evidence_run_id": ids["evidence"],
+        "requirement_profile_id": ids["requirement"],
+        "execution_plan_id": ids["execution_plan"],
+    }
+    profile_module.save_profile(profile)
+
+    alignment = build_state()["alignment"]
+
+    assert alignment["stage"] == "executing"
+    assert alignment["company_pool"]["id"] == ids["company_pool"]
+    assert alignment["company_pool"]["counts"]["total"] == 2
+    assert alignment["company_pool"]["scrapable"] == ["字节"]
+    assert alignment["company_pool"]["not_scrapable"] == ["某厂"]
+    assert alignment["evidence"]["counts"]["kept_jobs"] == 3
+    assert alignment["evidence"]["confidence"]["jd"] == "medium"
+    assert alignment["evidence"]["report_html"].startswith("/api/asset?path=")
+    assert alignment["evidence"]["report_md"].startswith("/api/asset?path=")
+    assert alignment["evidence"]["index"].startswith("/api/asset?path=")
+    assert alignment["requirement"]["high_frequency_count"] == 1
+    assert alignment["requirement"]["hard_requirement_count"] == 1
+    assert alignment["requirement"]["confidence_jd"] == "medium"
+    assert alignment["execution_plan"]["applied"] is True
+    assert alignment["execution_plan"]["phase_count"] == 2
+    assert alignment["execution_plan"]["strategy_summary"] == "先补基础"
+    assert alignment["execution_plan"]["diff_summary"] == "新增 2 个任务"
+    assert alignment["next_tool"] == ""
+
+
+def test_build_state_alignment_falls_back_to_latest(temp_profile):
+    from src.tools.profile import get_active_profile_name
+
+    profile = _profile()
+    ids = _save_alignment_artifacts(get_active_profile_name())
+    profile.core_state = {"stage": "executing"}
+    profile_module.save_profile(profile)
+
+    alignment = build_state()["alignment"]
+
+    assert alignment["company_pool"]["id"] == ids["company_pool"]
+    assert alignment["evidence"]["id"] == ids["evidence"]
+    assert alignment["requirement"]["id"] == ids["requirement"]
+    assert alignment["execution_plan"]["id"] == ids["execution_plan"]
+
+
+def test_index_page_contains_alignment_card():
+    from src.web import INDEX_FILE
+
+    html = INDEX_FILE.read_text(encoding="utf-8")
+    assert "企业适配" in html
+    assert 'id="alignment"' in html
 
 
 def test_task_edit_and_application_entry(temp_profile):

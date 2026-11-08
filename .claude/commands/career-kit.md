@@ -22,7 +22,7 @@ argument-hint: [你的目标，如「转行 AI Agent 工程师」]
 
 工具会返回两块用户可见内容：
 
-- `[USER_BRIEF]`：6 步简介（只在需要时出现）
+- `[USER_BRIEF]`：7 步简介（只在需要时出现）
 - `[GUIDE]`：当前位置 + 本轮唯一问题 + 选项 + 下一步动作
 
 **硬规则**
@@ -39,10 +39,13 @@ argument-hint: [你的目标，如「转行 AI Agent 工程师」]
 
 ## 第 2 步：按 GUIDE 推进
 
-- `brief` / `goal` / `profile`：建档摸底
+- `brief` / `goal` / `profile`：职业档案构建
 - `research`：`research_market` → `gather_research_data`
 - `gap`：`analyze_gaps` → `save_gap_analysis`
 - `roadmap`：`generate_roadmap` → 先存雏形 → 审计 → 定稿
+- `align`：`select_target_companies` → `collect_company_evidence` →
+  `analyze_company_requirements` → `save_requirement_profile` →
+  `plan_execution_alignment` → `save_execution_alignment`
 - `tasks` / `execute`：`detail_current_phase` → `save_current_detail` →
   `generate_tasks` → `get_next_tasks` → `checkin_task`
 

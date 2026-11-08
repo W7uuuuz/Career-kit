@@ -5,6 +5,22 @@
   var state = null;
   var busy = false;
 
+  var ALIGNMENT_STAGES = {
+    company_pool: '企业池筛选',
+    evidence: '证据采集',
+    requirement: '需求分析',
+    execution_plan: '执行方案',
+    executing: '执行期',
+  };
+  var NEXT_TOOL_LABELS = {
+    select_target_companies: '筛选并确认目标企业池',
+    collect_company_evidence: '采集岗位与面经证据',
+    analyze_company_requirements: '分析企业需求',
+    save_requirement_profile: '保存需求分析',
+    plan_execution_alignment: '准备执行方案校准',
+    save_execution_alignment: '保存并应用执行方案',
+  };
+
   function withToken(url) {
     if (!url) return '';
     return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
@@ -155,6 +171,68 @@
       + '<div class="tasks">' + lines.join('') + '</div></div>';
   }
 
+  function renderAlignment() {
+    var el = document.getElementById('alignment');
+    if (!el) return;
+    var a = state.alignment;
+    if (!a) { el.innerHTML = ''; return; }
+    var started = a.stage || a.company_pool || a.evidence || a.requirement || a.execution_plan;
+    var stageLabel = a.stage ? (ALIGNMENT_STAGES[a.stage] || a.stage) : '';
+    var head = '<div class="card-head"><span class="card-title">企业适配'
+      + (stageLabel ? '<span class="type-pill">' + esc(stageLabel) + '</span>' : '')
+      + '</span>'
+      + (a.next_tool && NEXT_TOOL_LABELS[a.next_tool]
+        ? '<span class="muted">下一步：' + esc(NEXT_TOOL_LABELS[a.next_tool]) + '</span>' : '')
+      + '</div>';
+    if (!started) {
+      el.innerHTML = '<div class="card">' + head + '<div class="empty">尚未开始企业适配</div></div>';
+      return;
+    }
+    var rows = [];
+    var pool = a.company_pool;
+    if (pool) {
+      var pc = pool.counts || {};
+      var total = pc.total != null
+        ? pc.total : (pool.scrapable || []).length + (pool.not_scrapable || []).length;
+      rows.push('<div class="align-row"><span class="align-label">企业池</span><span>'
+        + total + ' 家 · 可抓 ' + (pool.scrapable || []).length
+        + ' / 未接入 ' + (pool.not_scrapable || []).length + '</span></div>');
+    }
+    var ev = a.evidence;
+    if (ev) {
+      var ec = ev.counts || {};
+      var cf = ev.confidence || {};
+      var links = [];
+      if (ev.report_html) links.push('<a href="' + esc(withToken(ev.report_html)) + '" target="_blank" rel="noopener">阅读版</a>');
+      if (ev.report_md) links.push('<a href="' + esc(withToken(ev.report_md)) + '" target="_blank" rel="noopener">全文</a>');
+      if (ev.index) links.push('<a href="' + esc(withToken(ev.index)) + '" target="_blank" rel="noopener">原始数据</a>');
+      rows.push('<div class="align-row"><span class="align-label">证据</span><span>'
+        + 'JD ' + (ec.kept_jobs != null ? ec.kept_jobs : 0)
+        + ' 条 · 面经 ' + (ec.interviews || 0) + ' 条 · 置信度 '
+        + esc(cf.jd || '未知') + ' / ' + esc(cf.interview || '未知')
+        + (links.length ? ' · ' + links.join(' · ') : '')
+        + '</span></div>');
+    }
+    var req = a.requirement;
+    if (req) {
+      rows.push('<div class="align-row"><span class="align-label">需求</span><span>'
+        + '高频项 ' + req.high_frequency_count + ' 条 · 硬门槛 ' + req.hard_requirement_count
+        + ' 条 · 置信度 ' + esc(req.confidence_jd || '未知') + ' / '
+        + esc(req.confidence_interview || '未知') + '</span></div>');
+    }
+    var plan = a.execution_plan;
+    if (plan) {
+      rows.push('<div class="align-row"><span class="align-label">执行版</span><span>'
+        + (plan.applied ? '已应用' : '待应用') + ' · ' + plan.phase_count + ' 个阶段'
+        + (plan.strategy_summary ? ' · ' + esc(plan.strategy_summary) : '')
+        + (plan.diff_summary ? ' · ' + esc(plan.diff_summary) : '')
+        + '</span></div>');
+    }
+    if (!rows.length) rows.push('<div class="empty">暂无适配产物</div>');
+    el.innerHTML = '<div class="card">' + head + '<div class="align-grid">'
+      + rows.join('') + '</div></div>';
+  }
+
   function renderResearch() {
     var el = document.getElementById('research');
     var r = state.research;
@@ -287,6 +365,7 @@
     }
 
     document.getElementById('phases').innerHTML = state.phases.map(renderPhase).join('');
+    renderAlignment();
     renderResearch();
     renderReports();
     renderApplications();

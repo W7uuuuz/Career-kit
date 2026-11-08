@@ -24,16 +24,17 @@ Chat with the coach via fixed options and walk the whole flow; scripted demo wit
 
 [Sample output](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [Docs](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
 
-## Understand it in 30 seconds: six stages from start to landing
+## Understand it in 30 seconds: seven stages from start to landing
 
 Each stage delivers something real; order is fixed, pace is yours:
 
-1. **Profile building** — verify the resume point by point to establish real level and goal; you get a profile you have confirmed.
-2. **Market research** — fetch real postings and interview reports to replace guesswork; you get a sourced market report showing how peers at your level got in.
-3. **Gap analysis** — compare market requirements against current state; you get an actionable gap list.
-4. **Roadmap planning** — break the goal into ordered phases and tasks; you get an interactive career map.
-5. **Execution check-ins** — work through tasks and turn completions into capability evidence.
-6. **Ongoing review** — periodic recaps of check-ins, phases, and the application funnel; replan whenever the goal changes.
+1. **Profile establishment** — verify the resume point by point to establish a real, auditable level and goal; you get a profile you have confirmed.
+2. **Market baseline research** — fetch real postings and interview reports to replace guesswork; you get a sourced market baseline showing how peers at your level got in.
+3. **Capability gap diagnosis** — compare market requirements against current state; you get an actionable gap diagnosis.
+4. **Training plan design** — break the goal into ordered phases and tasks; you get a baseline career map you can check in against.
+5. **Company alignment** — turn tiers into specific companies, collect real JDs and interview reports, and produce an execution roadmap plus a target evidence pool.
+6. **Task execution and check-ins** — work through tasks and turn completions into capability evidence.
+7. **Periodic review and plan adjustment** — review check-ins, phases, and the application funnel; replan when the goal changes or new data shows the plan no longer fits.
 
 > If this project helps you, a star is appreciated.
 
@@ -65,7 +66,7 @@ You: I got a big-tech interview.
 Career Kit: event-triggered insight → re-evaluate the plan → adjust tasks
 ```
 
-Under the hood: 41 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
+Under the hood: 48 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, company alignment, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
 
 ## Compared with other job-hunting tools
 
@@ -146,7 +147,7 @@ Then say "call start_session" to your agent in a new session; "Welcome to Career
 - [LLM usage guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)
 - [Workflow](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)
 - [Install guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md): source install, one-click script, local console, troubleshooting
-- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 41 MCP tools
+- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 48 MCP tools
 - [Data sources](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)
 - [Knowledge base](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)
 - [Examples](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)

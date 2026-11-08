@@ -27,6 +27,8 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .assets import INDEX_FILENAME, get_assets_root, kind_assets_dir
+from .core.artifacts.store import ArtifactStore
+from .core.orchestrator import state_machine
 from .guidance import warnings
 from .models import TaskStatus
 from .tools.application_tracker import (
@@ -202,6 +204,151 @@ def undo_task(task_id: str) -> None:
         save_profile(profile)
 
 
+def _matches_alignment_stage(data: Any, stage: str) -> bool:
+    if not isinstance(data, dict):
+        return False
+    meta = data.get("meta")
+    return isinstance(meta, dict) and meta.get("stage") == stage
+
+
+def _resolve_alignment_artifact(
+    store: ArtifactStore, profile_name: str, stage: str, artifact_id: str
+) -> dict[str, Any] | None:
+    """按 core_state 的 id 读取 artifact，缺失时回退 latest；阶段不符视为缺失。"""
+    if artifact_id:
+        try:
+            data = store.load(artifact_id)
+            if _matches_alignment_stage(data, stage):
+                return data
+        except Exception:
+            pass
+    try:
+        data = store.latest(profile_name, stage)
+    except Exception:
+        return None
+    return data if _matches_alignment_stage(data, stage) else None
+
+
+def _company_pool_alignment(artifact: dict[str, Any]) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact.get("meta"), dict) else {}
+    counts = artifact.get("counts") if isinstance(artifact.get("counts"), dict) else {}
+    companies = [c for c in artifact.get("companies") or [] if isinstance(c, dict)]
+    selected = [c for c in companies if c.get("status") != "excluded"]
+    return {
+        "id": str(meta.get("id") or ""),
+        "counts": dict(counts),
+        "scrapable": [
+            str(c.get("name") or c.get("id") or "") for c in selected if c.get("scrapable")
+        ],
+        "not_scrapable": [
+            str(c.get("name") or c.get("id") or "") for c in selected if not c.get("scrapable")
+        ],
+    }
+
+
+def _evidence_alignment(artifact: dict[str, Any]) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact.get("meta"), dict) else {}
+    counts = artifact.get("counts") if isinstance(artifact.get("counts"), dict) else {}
+    confidence = artifact.get("confidence") if isinstance(artifact.get("confidence"), dict) else {}
+    reports = artifact.get("report_paths") if isinstance(artifact.get("report_paths"), dict) else {}
+    return {
+        "id": str(meta.get("id") or ""),
+        "counts": dict(counts),
+        "confidence": dict(confidence),
+        "report_html": _asset_url(reports.get("html", "")),
+        "report_md": _asset_url(reports.get("md", "")),
+        "index": _asset_url(reports.get("json", "")),
+    }
+
+
+def _requirement_alignment(artifact: dict[str, Any]) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact.get("meta"), dict) else {}
+    high_frequency = artifact.get("high_frequency")
+    hard_requirements = artifact.get("hard_requirements")
+    return {
+        "id": str(meta.get("id") or ""),
+        "high_frequency_count": len(high_frequency) if isinstance(high_frequency, list) else 0,
+        "hard_requirement_count": (
+            len(hard_requirements) if isinstance(hard_requirements, list) else 0
+        ),
+        "confidence_jd": str(artifact.get("confidence_jd") or ""),
+        "confidence_interview": str(artifact.get("confidence_interview") or ""),
+    }
+
+
+def _execution_plan_alignment(artifact: dict[str, Any]) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact.get("meta"), dict) else {}
+    roadmap = artifact.get("roadmap") if isinstance(artifact.get("roadmap"), dict) else {}
+    phases = roadmap.get("phases")
+    return {
+        "id": str(meta.get("id") or ""),
+        "applied": bool(artifact.get("applied")),
+        "strategy_summary": str(artifact.get("strategy_summary") or ""),
+        "phase_count": len(phases) if isinstance(phases, list) else 0,
+        "diff_summary": str(artifact.get("diff_summary") or ""),
+    }
+
+
+def _empty_alignment(stage: str = "") -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "company_pool": None,
+        "evidence": None,
+        "requirement": None,
+        "execution_plan": None,
+        "next_tool": "",
+    }
+
+
+def _build_alignment(profile: Any) -> dict[str, Any]:
+    """汇总 Core v2 企业适配状态；任何一步失败都退化为空值，不拖垮整个 state。"""
+    core_state = getattr(profile, "core_state", {})
+    if not isinstance(core_state, dict):
+        core_state = {}
+    result = _empty_alignment(str(core_state.get("stage") or ""))
+    profile_name = get_active_profile_name()
+
+    try:
+        result["next_tool"] = str(state_machine.next_action(profile_name).get("next_tool") or "")
+    except Exception:
+        result["next_tool"] = ""
+
+    builders = (
+        (
+            "company_pool",
+            state_machine.STAGE_COMPANY_POOL,
+            "company_pool_id",
+            _company_pool_alignment,
+        ),
+        ("evidence", state_machine.STAGE_EVIDENCE, "evidence_run_id", _evidence_alignment),
+        (
+            "requirement",
+            state_machine.STAGE_REQUIREMENT,
+            "requirement_profile_id",
+            _requirement_alignment,
+        ),
+        (
+            "execution_plan",
+            state_machine.STAGE_EXECUTION_PLAN,
+            "execution_plan_id",
+            _execution_plan_alignment,
+        ),
+    )
+    try:
+        store = ArtifactStore()
+    except Exception:
+        return result
+    for key, stage, id_key, builder in builders:
+        try:
+            artifact = _resolve_alignment_artifact(
+                store, profile_name, stage, str(core_state.get(id_key) or "")
+            )
+            result[key] = builder(artifact) if artifact is not None else None
+        except Exception:
+            result[key] = None
+    return result
+
+
 def build_state(profile: Any | None = None) -> dict[str, Any]:
     """把档案整理成前端需要的只读快照。"""
     profile = profile or load_profile()
@@ -274,6 +421,11 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
 
     reports = _collect_reports(get_active_profile_name())
 
+    try:
+        alignment = _build_alignment(profile)
+    except Exception:
+        alignment = _empty_alignment()
+
     applications = []
     for app in (profile.applications or [])[-10:]:
         applications.append({
@@ -300,6 +452,7 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         "research": research_out,
         "reports": reports,
         "applications": applications,
+        "alignment": alignment,
     }
 
 

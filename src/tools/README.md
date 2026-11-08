@@ -1,6 +1,6 @@
 # MCP 工具
 
-41 个工具，分六类。完整清单、参数与调用时机以
+48 个工具，分七类。完整清单、参数与调用时机以
 [docs/tools.md](../../docs/tools.md) 为唯一事实源；本文件只保留模块索引，避免重复维护。
 
 | 分类 | 数量 | 模块 |
@@ -9,6 +9,7 @@
 | 档案管理 | 5 | `profile_tools.py`（领域层 `profile.py`） |
 | 数据获取 | 10 | `data_tools.py`、`knowledge_search.py`、`research_tools.py`、`case_tools.py`、`src/scrapers/` |
 | 分析规划 | 7 | `analysis_tools.py`、`roadmap_tools.py`（`import_plan` 在 `data_tools.py`） |
+| 企业适配 | 7 | `company_selection_tools.py`、`evidence_tools.py`、`requirement_tools.py`、`execution_plan_tools.py`、`plan_fit_tools.py`（领域层 `src/core/`） |
 | 任务执行与漏斗 | 7 | `task_tools.py`、`application_tools.py`（领域层 `task_manager.py`、`application_tracker.py`） |
 | 洞察与产出 | 6 | `insight.py`、`dashboard.py`、`industry_tools.py`（周检视领域层 `review.py`） |
 

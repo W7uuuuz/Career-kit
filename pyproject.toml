@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "career-kit"
-version = "0.2.3"
+version = "0.3.0"
 description = "AI career coach MCP server: real job-market gap analysis, staged roadmap, check-in tasks, and an application funnel"
 readme = "README.md"
 license = "MIT"

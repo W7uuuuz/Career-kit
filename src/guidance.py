@@ -37,39 +37,45 @@ class Step:
 JOURNEY_STEPS: tuple[Step, ...] = (
     Step(
         "profile",
-        "建档摸底",
-        "先弄清你的真实水平和目标，后面的判断才有依据",
-        "一份你确认过的档案",
+        "职业档案构建",
+        "先建立可核验的档案，后面的判断才有依据",
+        "一份你确认过的职业档案",
     ),
     Step(
         "research",
-        "市场调研",
-        "用真实岗位数据替代猜测，每条都能点开验证",
-        "一份带来源链接的市场报告",
+        "市场基线调研",
+        "用真实岗位与面经建立市场基线，每条都能点开验证",
+        "一份带来源的市场基线报告",
     ),
     Step(
         "gap",
-        "差距分析",
+        "能力差距诊断",
         "看清差在哪、差多大、先补什么",
-        "一份可执行的差距清单",
+        "一份可执行的差距诊断",
     ),
     Step(
         "roadmap",
-        "路线图规划",
+        "培养方案规划",
         "把目标拆成有顺序的阶段和任务，阶段顺序定、节奏自己掌握",
-        "一张可打卡的职业地图",
+        "一张可打卡的基线职业地图",
+    ),
+    Step(
+        "align",
+        "企业适配",
+        "把目标从档位落到具体企业，用真实 JD 与面经校准培养方案",
+        "一份执行版路线图与目标证据池",
     ),
     Step(
         "execute",
-        "执行打卡",
+        "任务执行与打卡",
         "按关卡推进，完成即沉淀为能力证据",
         "可验证的能力证据",
     ),
     Step(
         "review",
-        "持续陪跑",
+        "周期复盘与计划调整",
         "用事实复盘，目标变了随时重新规划",
-        "一份周期复盘",
+        "一份周期复盘与调整记录",
     ),
 )
 
@@ -264,9 +270,14 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
         "匹配度是参考，不是审判；每项差距都有依据",
     ),
     "roadmap": (
-        "路线图规划：先判定起点档位，再设计阶段序列",
+        "培养方案规划：先判定起点档位，再设计阶段序列",
         "起点按 5 个维度加权打分；档位是命中率参考，不是准入许可",
         "结果怎么读：档位不是能力上限，你可以改任何一维的依据",
+    ),
+    "align": (
+        "企业适配：把目标从档位落到具体企业",
+        "先确认目标企业池，再批量采集真实 JD 与面经，用它们校准培养方案",
+        "结果怎么读：数字与证据由代码生成；没有证据的要求不会被写成必做任务",
     ),
     "tasks": (
         "把当前阶段拆成可执行任务",
@@ -404,6 +415,22 @@ def build_guide(profile: Any) -> Guide:
         )
 
     tasks = getattr(profile, "tasks", None) or []
+    core_state = getattr(profile, "core_state", None) or {}
+    core_stage = str(core_state.get("stage") or "") if isinstance(core_state, dict) else ""
+    if not tasks and core_stage != "executing":
+        return _guide(
+            "align",
+            "align",
+            "路线图已就绪。下一步做企业适配：确认目标企业池，采集真实 JD 与面经，"
+            "把基线方案校准为执行版。要现在开始吗？",
+            options=["开始企业适配", "先按基线路线图执行"],
+            next_action="select_target_companies → collect_company_evidence → "
+                        "analyze_company_requirements → save_requirement_profile → "
+                        "plan_execution_alignment → save_execution_alignment；"
+                        "用户跳过时直接 detail_current_phase 或 generate_tasks",
+            profile=profile,
+        )
+
     if not tasks:
         return _guide(
             "execute",
@@ -461,7 +488,7 @@ def user_brief() -> str:
         "像聊天一样回答即可。每轮我只问一个问题；随时可以说「跳过」「改方向」「看进度」。",
         "你不用懂工具名或流程，我会在每一步告诉你拿到了什么、下一步做什么。",
         "",
-        "从起步到上岸全流程 6 步，每步你都能拿到实际的东西：",
+        "从起步到上岸全流程 7 步，每步你都能拿到实际的东西：",
         "",
     ]
     for i, step in enumerate(JOURNEY_STEPS, 1):

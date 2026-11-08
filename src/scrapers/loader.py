@@ -17,6 +17,7 @@ from typing import Any
 import yaml
 
 from .base import CompanyScraper
+from .catalog import company_for_scraper, tier_for_scraper
 from .knowledge_writer import write_to_knowledge
 
 logger = logging.getLogger(__name__)
@@ -122,12 +123,15 @@ def list_scrapers() -> list[dict[str, Any]]:
             params = cls.PARAMS
             source = "class"
 
+        company = company_for_scraper(company_id)
         result.append({
             "id": company_id,
             "name": info.get("name", company_id),
             "description": info.get("description", ""),
             "params": params,
             "params_source": source,
+            "tier": tier_for_scraper(company_id),
+            "industry": company["industry"] if company else "",
         })
     return result
 

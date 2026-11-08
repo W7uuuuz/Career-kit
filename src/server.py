@@ -5,6 +5,7 @@ from .mcp_app import mcp
 from .tools.analysis_tools import analyze_gaps, explore_goals, save_gap_analysis
 from .tools.application_tools import delete_application, record_application
 from .tools.case_tools import search_cases
+from .tools.company_selection_tools import select_target_companies
 from .tools.dashboard import (
     render_progress_html as _render_progress_html,
     render_roadmap_map as _render_roadmap_map,
@@ -18,7 +19,10 @@ from .tools.data_tools import (
     list_data_sources,
     search_knowledge,
 )
+from .tools.evidence_tools import collect_company_evidence
+from .tools.execution_plan_tools import plan_execution_alignment, save_execution_alignment
 from .tools.industry_tools import get_industry_snapshot
+from .tools.plan_fit_tools import check_plan_fit
 from .tools.profile_tools import (
     delete_profile,
     list_profiles,
@@ -26,6 +30,7 @@ from .tools.profile_tools import (
     restore_profile,
     switch_profile,
 )
+from .tools.requirement_tools import analyze_company_requirements, save_requirement_profile
 from .tools.research_tools import gather_research_data, read_research_details, research_market
 from .tools.roadmap_tools import generate_roadmap, save_roadmap, save_roadmap_audit
 from .tools.session_tools import (
