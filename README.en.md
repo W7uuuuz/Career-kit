@@ -24,22 +24,17 @@ Chat with the coach via fixed options and walk the whole flow; scripted demo wit
 
 [Sample output](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [Docs](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
 
-## Understand it in 30 seconds: twelve stages from start to landing
+## Understand it in 30 seconds: Position → Plan → Execute
 
-Each stage makes one decision and delivers one artifact; order is fixed, pace is yours:
+Twelve steps in three phases. Each phase answers one kind of question; key checkpoints need your confirmation.
 
-1. **Profile establishment** — verify the resume point by point to establish a real, auditable level and goal.
-2. **Target role positioning** — set direction, city, target tier, and bridge tier.
-3. **Market baseline research** — fetch real postings and interview reports into a sourced market baseline.
-4. **Capability gap diagnosis** — compare market requirements against current state.
-5. **Training plan design** — break the goal into ordered phases and tasks.
-6. **Target company selection** — turn tiers into a user-confirmed company pool.
-7. **Job and interview evidence collection** — collect real JDs and interview reports with sources and confidence; optionally add BOSS for salary and broader coverage.
-8. **Company requirement analysis** — extract high-frequency requirements, per-JD hard filters, and interview topics.
-9. **Execution plan calibration** — align the baseline plan with the requirement profile.
-10. **Task execution and check-ins** — work through tasks and turn completions into capability evidence.
-11. **Application management** — build a ranked application list from the evidence pool, then record applications, interviews, offers, and funnel conversion.
-12. **Periodic review and plan adjustment** — review facts and detect plan drift when data or goals change.
+| Phase | Steps | You get |
+|---|---|---|
+| **Position** | 1 Profile · 2 Target · 3 Market · 4 Gap | A verified profile, target role, and gap list |
+| **Plan** | 5 Baseline · 6 Companies · 7 JD/Interviews · 8 Requirements · 9 Calibration | An execution roadmap tied to specific companies and JDs |
+| **Execute** | 10 Check-ins · 11 Applications · 12 Review | Capability evidence, an application funnel, and ongoing maintenance |
+
+Order is fixed; pace is yours. One decision per phase, and unsupported conclusions never enter the plan.
 
 > If this project helps you, a star is appreciated.
 
