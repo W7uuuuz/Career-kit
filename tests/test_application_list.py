@@ -383,6 +383,37 @@ def test_sync_application_state_keeps_candidates_when_applications_empty(
     assert ArtifactStore().latest(PROFILE_NAME, sync.STAGE_APPLICATIONS)["candidates"]
 
 
+def test_record_and_delete_updates_candidate_status(data_dir: Path) -> None:
+    _seed()
+    payload = _build()
+    candidate = payload["candidates"][0]
+
+    from src.tools.application_tools import delete_application, record_application
+
+    recorded = json.loads(
+        record_application(company=candidate["company"], role=candidate["title"])
+    )
+    assert not recorded.get("isError"), recorded
+    app_id = recorded.get("next_app_id_hint") or recorded["application"]["id"]
+
+    state = ArtifactStore().latest(PROFILE_NAME, sync.STAGE_APPLICATIONS)
+    matched = [
+        item for item in state["candidates"]
+        if item["company"] == candidate["company"] and item["title"] == candidate["title"]
+    ]
+    assert matched and matched[0]["status"] == "applied"
+
+    deleted = json.loads(delete_application(application_id=app_id))
+    assert not deleted.get("isError"), deleted
+
+    state = ArtifactStore().latest(PROFILE_NAME, sync.STAGE_APPLICATIONS)
+    matched = [
+        item for item in state["candidates"]
+        if item["company"] == candidate["company"] and item["title"] == candidate["title"]
+    ]
+    assert matched and matched[0]["status"] == "pending"
+
+
 def test_missing_evidence_returns_error(data_dir: Path) -> None:
     profile_store.save_profile(_profile(), PROFILE_NAME)
 

@@ -121,6 +121,15 @@ def record_application(
             sync_application_state(get_active_profile_name())
         except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
             sync_warning = f"Core v2 同步失败（sync_application_state）：{exc}"
+        try:
+            from ..core.application_list import mark_candidate_status
+
+            mark_candidate_status(
+                get_active_profile_name(), app.company, app.role, "applied"
+            )
+        except Exception as exc:  # noqa: BLE001 - 清单更新失败不阻断投递登记
+            note = f"投递清单状态更新失败：{exc}"
+            sync_warning = f"{sync_warning}；{note}" if sync_warning else note
 
     # 事件联动（软提示）：面试/offer 是重大事件，建议触发洞察；拒绝提示复盘
     next_steps = ["get_progress"]
@@ -203,6 +212,15 @@ def delete_application(application_id: str) -> str:
         sync_application_state(get_active_profile_name())
     except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
         sync_warning = f"Core v2 同步失败（sync_application_state）：{exc}"
+    try:
+        from ..core.application_list import mark_candidate_status
+
+        mark_candidate_status(
+            get_active_profile_name(), app.company, app.role, "pending"
+        )
+    except Exception as exc:  # noqa: BLE001 - 清单更新失败不阻断删除
+        note = f"投递清单状态更新失败：{exc}"
+        sync_warning = f"{sync_warning}；{note}" if sync_warning else note
 
     message = (
         f"已删除投递记录：{app.company}·{app.role or '岗位未填'}（{application_id}）。\n"

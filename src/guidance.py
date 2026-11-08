@@ -461,9 +461,10 @@ def _evidence_guide(profile: Any) -> Guide:
         "evidence",
         "evidence",
         "目标企业已确认。下一步采集真实 JD 与面经，作为需求分析和方案校准的依据。"
-        "要现在开始吗？",
-        options=["开始采集", "先换一批企业"],
-        next_action="collect_company_evidence；只抓已确认名单里的企业",
+        "需要薪资行情时，可以顺手补充 BOSS 直聘。要现在开始吗？",
+        options=["开始采集", "补充 BOSS 薪资后采集", "先换一批企业"],
+        next_action="collect_company_evidence；只抓已确认名单里的企业；"
+                    "选 BOSS 时先问用户并传 include_boss=true, boss_confirmed=true",
         profile=profile,
     )
 

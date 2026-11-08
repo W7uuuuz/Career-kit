@@ -15,7 +15,7 @@
 | [knowledge.md](knowledge.md) | 本地知识库目录与文件格式 | 使用者 |
 | [rules.md](rules.md) | 档位含义、评分口径、打卡方式、数据边界 | 使用者 / LLM |
 | [industry-outcomes.md](industry-outcomes.md) | 同行业/相关专业去向数据接入格式 | 使用者 / 贡献者 |
-| [prompts/](prompts/onboarding.md) | 开场路由、扫盲子流程、grounding Prompt | LLM / 贡献者 |
+| [prompts/](prompts/onboarding.md) | 开场路由、扫盲子流程、grounding、计划失配检测 Prompt | LLM / 贡献者 |
 | [examples/](examples/README.md) | 可交互职业地图、场景示例、示例数据 | 使用者 |
 
 企业教程的唯一事实源是 `src/scrapers/<id>/guide.md`（`get_scraper_guide` 与

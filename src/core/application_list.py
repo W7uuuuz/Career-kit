@@ -646,6 +646,51 @@ def _save_state(
     return artifact_id
 
 
+def mark_candidate_status(
+    profile_name: str,
+    company: str,
+    role: str = "",
+    status: str = "applied",
+) -> bool:
+    """把投递清单里对应候选标记为 applied/pending；没有清单或未命中返回 False。"""
+    if status not in ("pending", "applied"):
+        return False
+    company_key = _norm_text(company)
+    role_key = _norm_text(role)
+    if not company_key:
+        return False
+    profile = load_profile(profile_name)
+    state = profile.core_state if isinstance(profile.core_state, dict) else {}
+    store = ArtifactStore()
+    artifact_id = str(state.get(KEY_APPLICATIONS) or "")
+    data = store.load(artifact_id) if artifact_id else None
+    if not isinstance(data, dict):
+        data = store.latest(profile_name, STAGE_APPLICATIONS)
+    if not isinstance(data, dict):
+        return False
+    try:
+        artifact = ApplicationState.model_validate(data)
+    except Exception:  # noqa: BLE001 - 损坏清单不阻断投递登记
+        return False
+
+    changed = False
+    for candidate in artifact.candidates:
+        if _norm_text(candidate.company) != company_key:
+            continue
+        if role_key and role_key not in _norm_text(candidate.title):
+            continue
+        if candidate.status != status:
+            candidate.status = status
+            changed = True
+    if not changed:
+        return False
+
+    artifact.meta.created_at = datetime.now().isoformat()
+    store.save(artifact)
+    merge_core_state(profile_name, {KEY_APPLICATIONS: artifact.meta.id}, advance_stage=False)
+    return True
+
+
 def _rank_ge(value: str, required: str, ranks: dict[str, int]) -> bool:
     return ranks.get(value, -1) >= ranks.get(required, 0)
 

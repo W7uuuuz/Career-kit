@@ -37,7 +37,9 @@
     - `check_plan_fit` 增加技能别名与泛化软技能降级，修复执行版刚应用后误报 `major_drift`；
     - `gather_research_data` 单源 20 秒 / 总预算 60 秒，源较多时提示拆批；
     - doctor 新增包版本检查，暴露 editable 元数据陈旧；
-    - `collect_company_evidence` 新增 `fresh_jobs`，文案区分「新抓 / 复用 / 保留」。
+    - `collect_company_evidence` 新增 `fresh_jobs`，文案区分「新抓 / 复用 / 保留」；
+    - `record_application` / `delete_application` 同步更新投递清单候选状态（applied / pending）；
+    - 阶段 7 引导增加「补充 BOSS 薪资后采集」选项。
   - 版本：`0.2.3` → `0.3.0`；工具数 41 → 49。
 
 ## v0.2.3 (2026-11-07)
