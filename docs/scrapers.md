@@ -49,6 +49,7 @@
 | `lilith` | 莉莉丝 | JD | 社招 | [guide](../src/scrapers/lilith/guide.md) |
 | `dewu` | 得物 | JD | 社招 | [guide](../src/scrapers/dewu/guide.md) |
 | `sensetime` | 商汤科技 | JD | 社招 | [guide](../src/scrapers/sensetime/guide.md) |
+| `vip` | 唯品会 | JD | 社招 | [guide](../src/scrapers/vip/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 

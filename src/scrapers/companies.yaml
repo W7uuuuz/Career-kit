@@ -290,7 +290,8 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [唯品会, Vipshop]
-    scrapers: []
+    scrapers: [vip]
+    careers_url: https://job.vip.com/
 
   - id: autohome
     name: 汽车之家
@@ -425,6 +426,14 @@ companies:
     aliases: [MiniMax, 稀宇科技]
     scrapers: [minimax]
     careers_url: https://www.minimax.cn/careers
+
+  - id: zhipu
+    name: 智谱AI
+    tier: 中厂
+    industry: 互联网/AI
+    aliases: [智谱, 智谱AI, Zhipu, Z.ai]
+    scrapers: []
+    careers_url: https://www.zhipuai.cn/careers
 
   - id: shein
     name: SHEIN

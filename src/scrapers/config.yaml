@@ -365,6 +365,14 @@ scrapers:
     url_patterns:
       - "hr-jobs.sensetime.com"
 
+  vip:
+    name: 唯品会
+    module: vip.scraper
+    class: Scraper
+    description: 唯品会社会招聘（Moka 独立租户），列表明文+详情加密，社招，不公开薪资
+    url_patterns:
+      - "app-tc.mokahr.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper

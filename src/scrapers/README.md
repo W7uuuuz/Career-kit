@@ -6,7 +6,7 @@
 企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
 查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
 
-## 已注册企业（45）
+## 已注册企业（46）
 
 | ID | 名称 | 数据类型 | 支持渠道 |
 |----|------|----------|----------|
@@ -53,6 +53,7 @@
 | `lilith` | 莉莉丝 | JD | 社招 |
 | `dewu` | 得物 | JD | 社招 |
 | `sensetime` | 商汤科技 | JD | 社招 |
+| `vip` | 唯品会 | JD | 社招 |
 | `nowcoder` | 牛客网 | 面经 | — |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — |
 
