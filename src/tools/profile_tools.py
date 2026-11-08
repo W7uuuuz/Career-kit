@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..assets import profile_display_name
 from ..mcp_app import mcp
 from .errors import error_response
 from .profile import (
@@ -43,8 +44,10 @@ def list_profiles() -> str:
         person = p.get("person") or "（未填身份）"
         target = p.get("target") or "（未设目标）"
         has_plan = "有路线图" if p.get("has_plan") else ""
+        display = profile_display_name(p["name"])
+        name_note = f"（档案名：{p['name']}）" if display != p["name"] else ""
         lines.append(
-            f"- **{p['name']}** {mark}\n"
+            f"- **{display}**{name_note} {mark}\n"
             f"  身份：{person}\n"
             f"  目标：{target}\n"
             f"  版本 v{p.get('version', 0)} · 更新于 {p.get('updated_at', '?')[:10]} {has_plan}"
@@ -52,7 +55,7 @@ def list_profiles() -> str:
         lines.append("")
 
     lines.append("---")
-    lines.append(f"当前使用：{active}")
+    lines.append(f"当前使用：{profile_display_name(active)}")
     lines.append("切换档案：switch_profile(profile_name=\"<档案名>\")")
     lines.append("删除档案：delete_profile(profile_name=\"<档案名>\")（当前使用的档案不可删除）")
     return "\n".join(lines)

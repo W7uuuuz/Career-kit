@@ -334,7 +334,39 @@ def test_mcp_workflow_status_marks_active(temp_profile):
 
     profile_module.set_active_profile_name("default")
     out2 = get_workflow_status()
-    assert "default" in out2
+    assert "默认档案" in out2
+    assert "**当前档案**：default" not in out2
+
+
+def test_profile_display_name_maps_default():
+    """BUG #18：default/空档案名统一展示为「默认档案」。"""
+    from src.assets import profile_display_name
+
+    assert profile_display_name("default") == "默认档案"
+    assert profile_display_name("") == "默认档案"
+    assert profile_display_name(None) == "默认档案"
+    assert profile_display_name("alice") == "alice"
+
+
+def test_mcp_workflow_status_never_shows_bare_default(temp_profile):
+    """BUG #18：状态报告不把裸 default 当作当前档案展示。"""
+    from src.server import get_workflow_status
+
+    out = get_workflow_status()
+    assert "**当前档案**：默认档案" in out
+    assert "**当前档案**：default" not in out
+
+
+def test_mcp_list_profiles_default_display_name(temp_profile):
+    """BUG #18：多档案列表里 default 也展示为「默认档案」。"""
+    profile_module.merge_section("who", '{"name": "默认用户"}')
+
+    from src.server import list_profiles
+
+    out = list_profiles()
+    assert "**默认档案**" in out
+    assert "当前使用：默认档案" in out
+    assert "**default**" not in out
 
 
 def test_mcp_start_session_marks_active(temp_profile):

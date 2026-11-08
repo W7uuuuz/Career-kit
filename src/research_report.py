@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from html import escape
+from pathlib import Path
 from typing import Any
 
 from .assets import (
@@ -109,6 +110,8 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     jd_samples: list[dict[str, Any]] = []
     source_status: list[dict[str, Any]] = []
     dropped_no_detail = 0
+    filtered_irrelevant = 0
+    list_only_total = 0
     dropped_gaps: list[dict[str, str]] = []
     for family in gathered.get("jd_families") or []:
         rows = family.get("rows") or []
@@ -117,16 +120,23 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
             status = "failed"
         dropped = int(family.get("dropped_no_detail") or 0)
         dropped_no_detail += dropped
+        filtered = int(family.get("filtered_irrelevant") or 0)
+        filtered_irrelevant += filtered
+        list_only = int(family.get("list_only") or 0)
+        list_only_total += list_only
         label = family.get("label") or family.get("slug") or "未知来源"
         source_status.append(
             {
                 "source": label,
+                "slug": str(family.get("slug") or ""),
                 "scope": "jd",
                 "status": status,
                 "count": len(rows),
                 "elapsed": round(float(family.get("elapsed") or 0), 1),
                 "error": _one_line(family.get("error") or ""),
                 "dropped_no_detail": dropped,
+                "filtered_irrelevant": filtered,
+                "list_only": list_only,
             }
         )
         if dropped:
@@ -239,6 +249,7 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         source_status.append(
             {
                 "source": f"案例·{slug}",
+                "slug": str(slug),
                 "scope": "cases",
                 "status": status,
                 "count": kept,
@@ -261,6 +272,8 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         "cases_raw": len(raw_cases),
         "cases_filtered": max(0, len(raw_cases) - len(cases)),
         "dropped_no_detail": dropped_no_detail,
+        "filtered_irrelevant": filtered_irrelevant,
+        "list_only": list_only_total,
         "source_ok": sum(1 for s in source_status if s["status"] == "ok"),
         "source_fail": sum(1 for s in source_status if s["status"] == "failed"),
         "source_empty": sum(1 for s in source_status if s["status"] == "empty"),
@@ -312,12 +325,47 @@ def _derive_gaps(
                     "suggestion": "换关键词重跑，或补充手头 JD",
                 }
             )
+        filtered = int(s.get("filtered_irrelevant") or 0)
+        if filtered:
+            gaps.append(
+                {
+                    "missing": f"来源「{s['source']}」有 {filtered} 条岗位因方向不匹配被过滤",
+                    "reason": "搜索结果混入与本轮方向无关的岗位（如 AI-HR 培训生）",
+                    "suggestion": "换更精确的关键词重跑，或放宽条件后人工筛选",
+                }
+            )
+        list_only = int(s.get("list_only") or 0)
+        if list_only:
+            gaps.append(
+                {
+                    "missing": (
+                        f"来源「{s['source']}」BOSS 仅列表数据，未抓 JD 详情"
+                        f"（{list_only} 条）"
+                    ),
+                    "reason": "研究阶段 BOSS 默认 list-only，保留薪资与公司/地点/技能标签",
+                    "suggestion": "需要 JD 全文时用 fetch_jd_detail(url) 交互式补抓单条",
+                }
+            )
     if jd_samples and not any(j.get("salary") for j in jd_samples):
+        boss_failed = any(
+            s.get("status") == "failed"
+            and "boss" in f"{s.get('source', '')} {s.get('slug', '')}".lower()
+            for s in source_status
+        )
         gaps.append(
             {
                 "missing": "全部岗位样本均无薪资数据",
-                "reason": "当前可用来源不公开薪资",
-                "suggestion": "可在对话中补充 BOSS直聘等含薪来源后重跑调研",
+                "reason": (
+                    "BOSS 直聘本次未成功，其余可用来源不公开薪资"
+                    if boss_failed
+                    else "当前可用来源不公开薪资"
+                ),
+                "suggestion": (
+                    "BOSS 未成功时薪资缺口无法补齐；可稍后重试 BOSS，"
+                    "或补充其他含薪来源后重跑"
+                    if boss_failed
+                    else "可在对话中补充 BOSS直聘等含薪来源后重跑调研"
+                ),
             }
         )
     if not cases:
@@ -473,6 +521,8 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
         note_bits = [_md_escape_md(s.get("error", "") or "—")]
         if s.get("dropped_no_detail"):
             note_bits.append(f"（剔除 {s['dropped_no_detail']} 条无详情岗位）")
+        if s.get("list_only"):
+            note_bits.append(f"（{s['list_only']} 条仅列表数据，未抓 JD 详情）")
         lines.append(
             f"| {s.get('source','')} | {status_text} | {s.get('count',0)} "
             f"| {s.get('elapsed',0)} | {' '.join(note_bits)} |"
@@ -649,6 +699,8 @@ def render_html(report: dict[str, Any]) -> str:
         note = escape(str(s.get("error") or "—"))
         if s.get("dropped_no_detail"):
             note += f"（剔除 {escape(str(s['dropped_no_detail']))} 条无详情岗位）"
+        if s.get("list_only"):
+            note += f"（{escape(str(s['list_only']))} 条仅列表数据，未抓 JD 详情）"
         srows.append(
             "<tr>"
             f"<td>{escape(str(s.get('source','')))}</td>"
@@ -689,6 +741,163 @@ def render_html(report: dict[str, Any]) -> str:
     )
 
 
+def _sample_key(item: dict[str, Any]) -> tuple[str, ...]:
+    url = str(item.get("url") or "").strip()
+    if url:
+        return ("url", url)
+    return (
+        "title",
+        str(item.get("company") or ""),
+        _norm_title(item.get("title")),
+    )
+
+
+def _dedupe_samples(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, ...]] = set()
+    kept: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = _sample_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(item)
+    return kept
+
+
+def _merge_source_status(
+    previous: list[dict[str, Any]], current: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """按 scope + slug/source 合并来源状态，避免分批抓取重复计数。"""
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    for status in [*previous, *current]:
+        if not isinstance(status, dict):
+            continue
+        scope = str(status.get("scope") or "jd")
+        ident = str(status.get("slug") or status.get("source") or "")
+        key = (scope, ident)
+        old = merged.get(key)
+        if old is None:
+            merged[key] = dict(status)
+            continue
+        old_ok = old.get("status") == "ok"
+        new_ok = status.get("status") == "ok"
+        if old_ok and not new_ok:
+            continue
+        if old_ok and new_ok:
+            combined = dict(status)
+            for field in (
+                "count", "raw_count", "dropped_no_detail", "filtered_irrelevant",
+                "list_only",
+            ):
+                if field in old or field in status:
+                    combined[field] = max(
+                        int(old.get(field) or 0), int(status.get(field) or 0)
+                    )
+            merged[key] = combined
+            continue
+        merged[key] = dict(status)
+    return list(merged.values())
+
+
+def merge_reports(
+    previous: dict[str, Any], current: dict[str, Any]
+) -> dict[str, Any]:
+    """同 fingerprint 的续抓结果合并成一份报告，避免同轮生成多份文件。"""
+    jd_samples = _dedupe_samples(
+        list(previous.get("jd_samples") or []) + list(current.get("jd_samples") or [])
+    )
+    cases = _dedupe_samples(
+        list(previous.get("cases") or []) + list(current.get("cases") or [])
+    )
+    for idx, sample in enumerate(jd_samples, 1):
+        sample["id"] = f"JD{idx:02d}"
+    for idx, case in enumerate(cases, 1):
+        case["id"] = f"CS{idx:02d}"
+
+    source_status = _merge_source_status(
+        list(previous.get("source_status") or []),
+        list(current.get("source_status") or []),
+    )
+    # 不要把两批的数字直接相加：按合并后的来源状态重算，避免同一来源重复计数。
+    dropped = sum(
+        int(s.get("dropped_no_detail") or 0)
+        for s in source_status
+        if str(s.get("scope") or "jd") == "jd"
+    )
+    filtered_irrelevant = sum(
+        int(s.get("filtered_irrelevant") or 0) for s in source_status
+    )
+    list_only = sum(int(s.get("list_only") or 0) for s in source_status)
+    raw_cases = sum(
+        int(s.get("raw_count") or 0)
+        for s in source_status
+        if str(s.get("scope") or "") == "cases"
+    ) or len(cases)
+    counts = {
+        "jd_samples": len(jd_samples),
+        "cases": len(cases),
+        "cases_raw": raw_cases,
+        "cases_filtered": max(0, raw_cases - len(cases)),
+        "dropped_no_detail": dropped,
+        "filtered_irrelevant": filtered_irrelevant,
+        "list_only": list_only,
+        "source_ok": sum(1 for s in source_status if s.get("status") == "ok"),
+        "source_fail": sum(1 for s in source_status if s.get("status") == "failed"),
+        "source_empty": sum(1 for s in source_status if s.get("status") == "empty"),
+    }
+    warnings = list(
+        dict.fromkeys(
+            [
+                *(previous.get("case_warnings") or []),
+                *(current.get("case_warnings") or []),
+            ]
+        )
+    )
+    merged = {
+        **current,
+        "generated_at": current.get("generated_at"),
+        "jd_samples": jd_samples,
+        "cases": cases,
+        "source_status": source_status,
+        "case_warnings": warnings[:10],
+        "gaps": _derive_gaps(jd_samples, cases, source_status),
+        "digest": build_digest(
+            jd_samples, cases, dropped, raw_case_count=raw_cases
+        ),
+        "counts": counts,
+    }
+    merged["fingerprint"] = current.get("fingerprint") or previous.get("fingerprint") or ""
+    merged["round_key"] = current.get("round_key") or previous.get("round_key") or ""
+    return merged
+
+
+def _read_report_json(path: str) -> dict[str, Any]:
+    if not path:
+        return {}
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _recent_report(previous: dict[str, Any], max_age_seconds: int = 7200) -> bool:
+    path = str(previous.get("report_json") or "")
+    try:
+        saved = datetime.strptime(
+            str(previous.get("generated_at") or ""), "%Y-%m-%d %H:%M"
+        )
+        age = (datetime.now() - saved).total_seconds()
+    except (TypeError, ValueError):
+        try:
+            age = datetime.now().timestamp() - Path(path).stat().st_mtime
+        except OSError:
+            return False
+    return 0 <= age <= max_age_seconds
+
+
 def save_report(
     profile: Any,
     report: dict[str, Any],
@@ -702,7 +911,28 @@ def save_report(
      jd_samples, cases, source_status, gaps, counts}
     """
     name = profile_name if profile_name is not None else get_active_profile_name()
-    stem = next_asset_stem(
+    current_profile = load_profile(name)
+    previous = current_profile.research or {}
+    fingerprint = str(report.get("fingerprint") or "")
+    round_key = str(report.get("round_key") or "")
+    previous_fingerprint = str(previous.get("fingerprint") or "")
+    previous_round_key = str(previous.get("round_key") or "")
+    # 同一轮判定：双方都有 round_key 时优先比 round_key（分批 specs 不同也能合并）；
+    # 否则回退 fingerprint。两种判定都受 2 小时窗口约束。
+    if round_key and previous_round_key:
+        same_round = round_key == previous_round_key
+    else:
+        same_round = bool(fingerprint and fingerprint == previous_fingerprint)
+    reuse_stem = ""
+    if same_round and _recent_report(previous):
+        previous_report = _read_report_json(str(previous.get("report_json") or ""))
+        if previous_report:
+            report = merge_reports(previous_report, report)
+            reuse_stem = Path(str(previous["report_json"])).stem
+            report["fingerprint"] = fingerprint or previous_fingerprint
+            report["round_key"] = round_key or previous_round_key
+
+    stem = reuse_stem or next_asset_stem(
         report.get("direction") or report.get("context", {}).get("goal") or "调研",
         kind="research",
         profile_name=name,
@@ -719,6 +949,8 @@ def save_report(
     payload = {
         "generated_at": report.get("generated_at"),
         "direction": report.get("direction"),
+        "fingerprint": report.get("fingerprint") or "",
+        "round_key": report.get("round_key") or "",
         "report_md": str(md_path),
         "report_html": str(html_path),
         "report_json": str(json_path),

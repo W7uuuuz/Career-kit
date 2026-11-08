@@ -61,6 +61,17 @@ _DISTRICT_TO_CITY = {
     "福田区": "深圳", "宝安区": "深圳", "余杭区": "杭州", "西湖区": "杭州",
 }
 
+_CITY_NAMES: tuple[str, ...] = (
+    "北京", "上海", "深圳", "广州", "杭州", "成都", "南京", "武汉", "西安",
+    "苏州", "长沙", "重庆", "天津", "合肥", "厦门", "青岛", "郑州", "济南",
+    "东莞", "佛山", "珠海", "宁波", "无锡", "福州", "大连", "沈阳", "长春",
+    "哈尔滨", "昆明", "南昌", "贵阳", "南宁", "海口", "石家庄", "太原",
+    "兰州", "乌鲁木齐", "呼和浩特", "银川", "西宁", "拉萨", "香港", "澳门",
+    "台北",
+)
+
+_CITY_SUFFIXES = ("总部", "分公司", "研发中心", "办事处", "中心", "基地", "园区")
+
 
 def _normalize_city(raw: str) -> str:
     city = str(raw or "").strip()
@@ -68,7 +79,17 @@ def _normalize_city(raw: str) -> str:
         return ""
     city = _CITY_ALIASES.get(city, city)
     city = _DISTRICT_TO_CITY.get(city, city)
-    return _CITY_ALIASES.get(city, city)
+    city = _CITY_ALIASES.get(city, city)
+    # 「深圳总部」「上海分公司」这类地点原文先归到城市，避免主城市统计
+    # 出现「深圳总部 4」而岗位地点原文是「深圳总部 上海」的不一致（复测 BUG #7）。
+    for suffix in _CITY_SUFFIXES:
+        if city.endswith(suffix):
+            city = city[: -len(suffix)].strip()
+            break
+    for name in _CITY_NAMES:
+        if city.startswith(name):
+            return name
+    return city
 
 
 def _jd_text(sample: dict[str, Any]) -> str:

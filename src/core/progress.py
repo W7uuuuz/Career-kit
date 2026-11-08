@@ -105,15 +105,22 @@ def resolve_progress(
         resolved[stage] is not None for stage in REQUIRED_STAGES
     )
     legacy = legacy_flags(profile)
+    # 新流程档案（有 guidance）即使还没 finalize，也不能按「旧档案已有 section」
+    # 跳阶段，否则 GUIDE 会在 finalize 前跳到市场调研（复测 BUG #12-13）。
+    legacy_mode = _is_legacy_mode(profile)
 
     for stage in _CORE_PREFIX_STAGES:
         artifact = resolved[stage]
         if artifact is not None:
             artifact_ids[STAGE_KEYS[stage]] = _artifact_id(artifact)
             continue
-        if downstream_exists(resolved, stage):
+        # 新流程档案在 finalize 前可能已经同步出 TargetSpec（intake 确认目标时）：
+        # 此时缺 ProfileSnapshot 不能因为下游 artifact 存在就跳过建档（BUG #12-13）。
+        if downstream_exists(resolved, stage) and (
+            stage != STAGE_PROFILE or legacy_mode
+        ):
             continue
-        if not has_required_artifact and legacy_stage_done(profile, stage):
+        if legacy_mode and not has_required_artifact and legacy_stage_done(profile, stage):
             continue
         return _result(
             stage,
@@ -277,6 +284,21 @@ def legacy_flags(profile: Any) -> dict[str, bool]:
         "tasks": bool(tasks),
         "applications": bool(applications),
     }
+
+
+def _is_legacy_mode(profile: Any) -> bool:
+    """是否允许用 section 兜底推断阶段。
+
+    - 有 guidance 且没有下游产物：新流程，必须按 artifact 走（finalize 前不能跳步）。
+    - 有调研/差距/路线图/任务/投递：旧档案，允许兜底。
+    - 完全没有 guidance：旧档案，允许兜底。
+    """
+    guidance = getattr(profile, "guidance", None) or {}
+    flags = legacy_flags(profile)
+    has_downstream = any(
+        flags[key] for key in ("research", "gap", "plan", "tasks", "applications")
+    )
+    return has_downstream or not guidance
 
 
 def legacy_stage_done(profile: Any, stage: str) -> bool:

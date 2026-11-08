@@ -9,7 +9,7 @@
 
 | ID | 名称 | 数据类型 | 支持渠道 | 使用教程 |
 |----|------|----------|----------|----------|
-| `boss` | BOSS直聘 | JD（含薪资） | 社招 | [guide](../src/scrapers/boss/guide.md) |
+| `boss` | BOSS直聘 | JD（含 CDP 明文薪资） | 社招 | [guide](../src/scrapers/boss/guide.md) |
 | `bytedance` | 字节跳动 | JD | 社招 / 校招 | [guide](../src/scrapers/bytedance/guide.md) |
 | `tencent` | 腾讯 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/tencent/guide.md) |
 | `baidu` | 百度 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/baidu/guide.md) |
@@ -75,6 +75,14 @@
 > `sensetime`）通过页面前端签名捕获接口响应，优先使用系统默认 Chrome / Edge；
 > 未检测到 Chrome / Edge 时回退 Playwright Chromium，需执行
 > `playwright install chromium`。
+>
+> BOSS 直聘通过 CDP 连接本地已登录的 Chrome / Edge，旁听页面自身的搜索接口，
+> 返回**明文薪资**；不注入 XHR、不回退 Chromium。登录命令为
+> `python -m src.scrapers.boss.login`（专用 profile：
+> `~/.career-kit/cache/boss/cdp-profile`，CDP 端口默认 9222，可用
+> `CAREER_KIT_BOSS_CDP_PORT` 覆盖）。研究阶段 BOSS 默认 **list-only**：保留薪资、
+> 公司、地点、技能标签与福利，不逐条补 JD；需要全文时用 `fetch_jd_detail(url)`
+> 交互式补抓。失败原因会如实写入报告来源状态与数据缺口。
 
 企业档位（大厂 / 中厂 / 小厂）、行业与别名由 `src/scrapers/companies.yaml` 维护；
 `list_data_sources` 会显示每个源的档位与行业。目录也收录暂未接入 scraper 的企业，

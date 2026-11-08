@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ..assets import profile_display_name
 from ..guidance import (
     guide_for,
     mark_brief_shown,
@@ -50,7 +51,8 @@ def start_session() -> str:
         )
         return (
             "—— 继续模式：检测到已有进行中的档案，不展示全量手册 ——\n\n"
-            f"当前档案 {get_active_profile_name()}：{len(profile.tasks)} 个任务、"
+            f"当前档案 {profile_display_name(get_active_profile_name())}："
+            f"{len(profile.tasks)} 个任务、"
             f"{len(pending)} 个未完成（已完成 {completed}）"
             + (f"；差距分析已存在（match {profile.gap.get('match_score', '?')}）" if has_gap else "")
             + stale_note
@@ -77,7 +79,7 @@ def start_session() -> str:
         summary_lines = "\n".join(f"- {item}" for item in scan_summary[:5])
         return (
             "—— 扫盲继续模式：已生成行业快照，不重复抓取 ——\n\n"
-            f"当前档案：{get_active_profile_name()}\n"
+            f"当前档案：{profile_display_name(get_active_profile_name())}\n"
             f"{summary_note}"
             f"{summary_lines}\n\n"
             "下一步：先问用户「看完这些，有没有哪个方向想进一步了解？」\n"
@@ -98,7 +100,7 @@ def start_session() -> str:
         "---\n"
         "[执行手册 · 仅模型可见，不要复述给用户]\n"
         f"{get_welcome_message()}\n\n"
-        f"当前档案：{get_active_profile_name()}\n"
+        f"当前档案：{profile_display_name(get_active_profile_name())}\n"
         f"{summary_note}"
         f"\n[服务自检] {server_fingerprint_line()}\n"
         "\n下一步：先把 [USER_BRIEF] 原样发给用户（若存在），再只问 [GUIDE] 里的问题；"
@@ -183,6 +185,11 @@ def intake(section: str, data: str) -> str:
     if section == "want":
         old_industry = industry_of(before.want)
     profile = merge_section(section, data)
+    # 直接调用 intake（未走 start_session）时也要初始化 guidance：
+    # 否则 progress 会按旧档案兜底，finalize 前跳到市场调研（复测 BUG #12-14）。
+    if not profile.guidance:
+        mark_brief_shown(profile)
+        save_profile(profile)
     if section == "want":
         # 只有用户本人确认过才点亮「目标已确认」；模型推断写入的 want 不算。
         if payload.get("user_confirmed") is True:

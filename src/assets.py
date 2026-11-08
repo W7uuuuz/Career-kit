@@ -107,6 +107,14 @@ def sanitize_name(raw: str | None) -> str:
     return name
 
 
+def profile_display_name(name: str | None) -> str:
+    """档案显示名：default/空 → 默认档案，与资产目录命名保持一致。"""
+    raw = str(name or "").strip()
+    if not raw or raw.lower() == "default":
+        return DEFAULT_SANITIZED
+    return raw
+
+
 def ensure_assets_root() -> Path:
     """确保资产根目录存在；首次创建时写说明.md。"""
     root = get_assets_root()

@@ -68,7 +68,7 @@ def test_gather_partial_cache_resumes_finished_source(temp_profile, monkeypatch)
         calls.append(slug)
         if slug == "tencent" and fail["baidu"]:
             return {"error": "模拟失败", "results": []}
-        return {"company": slug, "count": 1, "results": [_job(title=f"{slug} 岗")]}
+        return {"company": slug, "count": 1, "results": [_job(title=f"AI Agent {slug} 岗")]}
 
     monkeypatch.setattr(rt, "search_company_jobs", fake_search)
     monkeypatch.setattr(rt, "get_job_detail", lambda url, company=None: {
@@ -101,7 +101,7 @@ def test_gather_source_timeout_returns_partial(temp_profile, monkeypatch):
     def fake_search(slug, **kwargs):
         if slug == "bytedance":
             time.sleep(0.6)
-        return {"company": slug, "count": 1, "results": [_job(title=f"{slug} 岗")]}
+        return {"company": slug, "count": 1, "results": [_job(title=f"AI Agent {slug} 岗")]}
 
     monkeypatch.setattr(rt, "search_company_jobs", fake_search)
     monkeypatch.setattr(rt, "get_job_detail", lambda url, company=None: {

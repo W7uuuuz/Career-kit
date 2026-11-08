@@ -293,7 +293,7 @@ def test_command_scripts_are_thin_and_guidance_driven():
         text = _read(*rel)
         missing = [a for a in GUIDANCE_ANCHORS if a not in text]
         assert not missing, f"{rel} 缺少引导锚点：{missing}"
-        assert "从起步到上岸全流程 12 步" not in text, f"{rel} 不应复制首屏模板"
+        assert "全流程共 12 步" not in text, f"{rel} 不应复制首屏模板"
         assert "1. 职业档案构建" not in text, f"{rel} 不应复制阶段清单"
         assert "第一条动作必须是调用" in text, f"{rel} 缺少先调 start_session 的硬规则"
         assert "detail_current_phase" in text, f"{rel} 执行阶段应先细化再生成任务"
@@ -301,19 +301,21 @@ def test_command_scripts_are_thin_and_guidance_driven():
 
 
 def test_user_brief_is_single_source_of_truth():
-    """12 步简介只由 guidance 定义；session.py 与命令剧本只引用。"""
-    from src.guidance import JOURNEY_STEPS, user_brief
+    """首屏简介只由 guidance 定义；session.py 与命令剧本只引用。"""
+    from src.guidance import user_brief
 
     brief = user_brief()
     assert "Career Kit 是你的 AI 职业陪练" in brief
-    assert "从起步到上岸全流程 12 步" in brief
+    assert "全流程共 12 步" in brief
+    assert "归为三段" in brief
+    for phase_name in ("定位", "规划", "执行"):
+        assert phase_name in brief
     assert "现在从第 1 步开始" in brief
-    for step in JOURNEY_STEPS:
-        assert step.name in brief, f"首屏简介缺阶段 {step.name}"
+    assert "职业档案构建" not in brief, "首屏简介不应再逐条罗列 12 步"
 
     session_text = _read("src", "tools", "session.py")
     assert "[USER_BRIEF]" in session_text
-    assert "从起步到上岸全流程 12 步" not in session_text, "session.py 不应复制首屏模板"
+    assert "全流程共 12 步" not in session_text, "session.py 不应复制首屏模板"
 
 
 def test_entry_tools_emit_guidance_blocks():

@@ -113,6 +113,8 @@ def test_build_state_exposes_roadmap_and_playbook(temp_profile):
 
     assert state["profile"]
     assert state["start_level"] == "小厂"
+    assert state["phases"][0]["type"] == "learn"
+    assert state["phases"][0]["type_label"] == "学习"
     assert state["phases"][0]["tasks"][0]["how_to"] == ["先想 10 分钟"]
     assert state["phases"][0]["tasks"][0]["done_criteria"] == "独立写出 5 题"
     assert state["total_tasks"] == 1

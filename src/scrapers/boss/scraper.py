@@ -1,190 +1,106 @@
-"""BOSS 直聘 Scraper——requests + iv8 计算 stoken。
+"""BOSS 直聘 Scraper——CDP 接入（复用本地已登录 Chrome/Edge）。
 
 核心思路：
-1. python -m src.scrapers.boss.login 扫码登录 → 保存 cookies（一次性）
-2. requests + cookies → 搜索/详情
-3. iv8 计算 __zp_stoken__（处理 code=37）
+1. 用户运行 ``python -m src.scrapers.boss.login`` 在专用浏览器扫码登录；
+2. Scraper 通过 CDP 连接专用浏览器，旁听页面自身的搜索接口，拿明文薪资；
+3. 详情按需交互式补抓，列表阶段只返回 list_only 行，不拖垮整批调研。
+
+纪律：只返回真实抓到的岗位与薪资；失败如实上报，不编造。
 """
 
 from __future__ import annotations
 
-import json
-import re
 import sys
-from pathlib import Path
 from typing import Any
 
-import httpx
-
 from ..base import CompanyScraper
-from .auth import has_valid_cookies, invalidate_auth, is_env_anomaly_message, load_cookies
-from .stoken import get_stoken, handle_code37
+from . import cdp
+from .auth import has_valid_cookies, invalidate_auth
 
-# 常量
 BASE_URL = "https://www.zhipin.com"
-SEARCH_URL = f"{BASE_URL}/wapi/zpgeek/search/joblist.json"
-DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
-
-# 城市码表
-_CITY_CODES_PATH = Path(__file__).parent / "city_codes.json"
-_CITY_MAP: dict[str, str] | None = None
-
-
-def _load_city_map() -> dict[str, str]:
-    """加载城市码表。"""
-    global _CITY_MAP
-    if _CITY_MAP is None:
-        try:
-            _CITY_MAP = json.loads(_CITY_CODES_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            _CITY_MAP = {"全国": "100010000"}
-    return _CITY_MAP
-
-
-def _resolve_city(city: str) -> str:
-    """解析城市名/代码。"""
-    city_map = _load_city_map()
-    code = city_map.get(city, city)
-    if not code.isdigit():
-        code = city_map.get("全国", "100010000")
-    return code
-
-
-def _build_headers(cookies: dict[str, str], stoken: str | None = None) -> dict:
-    """构建请求头。"""
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-    if stoken:
-        cookie_str += f"; __zp_stoken__={stoken}"
-
-    return {
-        "User-Agent": DEFAULT_UA,
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Referer": "https://www.zhipin.com/web/geek/job",
-        "Origin": "https://www.zhipin.com",
-        "Cookie": cookie_str,
-    }
 
 
 def _login_required_message() -> str:
     return (
-        "需要登录 BOSS 直聘（登录态不存在、已超过 2 小时或已被风控销毁）。"
+        "需要登录 BOSS 直聘（登录标记不存在、已超过 6 小时或专用浏览器不可用）。"
         "请在 career-kit 项目目录运行：\n"
         f'    "{sys.executable}" -m src.scrapers.boss.login\n'
         "使用当前 MCP 服务的解释器（绝对路径），避免裸 python 指向错误环境。\n"
-        "注意：如果这个路径不是你开发 Career Kit 的仓库，说明 MCP 服务连了旧实例"
-        "——重启 Agent 会话（opencode）即可切到当前代码。\n"
-        "扫码成功后登录态按 2 小时有效期管理，过期需重新登录。"
+        "扫码成功后登录标记按 6 小时有效期管理，过期需重新登录；"
+        "若浏览器已关闭，抓取时会在后台自动拉起专用 profile。"
     )
 
 
 def _env_anomaly_error(message: str) -> str:
     return (
         f"API 错误: {message}\n"
-        "BOSS 登录态已被判定异常并销毁。请重新扫码登录后再试：\n"
+        "BOSS 登录态已被判定异常并销毁。环境异常通常是 BOSS 对当前网络/浏览器"
+        "环境的判定：先关闭代理/VPN 或换网络，稍后再扫码；单纯重复扫码可能继续失败。\n"
+        "重新登录：\n"
         f'    "{sys.executable}" -m src.scrapers.boss.login'
     )
 
 
-def _response_has_env_anomaly(resp: Any) -> bool:
-    """HTTP 层（如 403/风控页）也可能返回环境异常文案。"""
-    return is_env_anomaly_message(str(getattr(resp, "text", "") or ""))
+def _resolve_city(city: str) -> str:
+    """解析城市名/代码，返回 9 位城市码。"""
+    _name, code = cdp.resolve_city(city)
+    return code
 
 
-def _map_job(raw: dict) -> dict:
-    """映射 API 返回的职位数据。"""
-    encrypt_job_id = str(raw.get("encryptJobId") or "")
-    location_parts = [
-        raw.get("cityName") or "",
-        raw.get("areaDistrict") or "",
-        raw.get("businessDistrict") or "",
-    ]
-    location = "·".join(p for p in location_parts if p)
-
-    company = (
-        raw.get("brandName")
-        or raw.get("companyName")
-        or raw.get("brandNameTrans")
-        or ""
-    )
+def _map_job(raw: dict[str, Any]) -> dict[str, Any]:
+    """兼容旧接口：把 API 原始条目映射为标题/公司/薪资等基础字段。"""
+    job = cdp.map_api_job(raw) or {}
     return {
-        "title": raw.get("jobName") or "",
-        "salary": raw.get("salaryDesc") or "",
-        "location": location,
-        "company": company or "公司名未获取",
-        "experience": raw.get("jobExperience") or "",
-        "degree": raw.get("jobDegree") or "",
-        "url": f"{BASE_URL}/job_detail/{encrypt_job_id}.html" if encrypt_job_id else "",
-        "job_id": encrypt_job_id,
+        "title": job.get("title", ""),
+        "salary": job.get("salary", ""),
+        "location": job.get("location", ""),
+        "company": job.get("boss_name") or "公司名未获取",
+        "experience": job.get("experience", ""),
+        "degree": job.get("degree", ""),
+        "url": job.get("job_link", ""),
+        "job_id": job.get("encrypt_job_id", ""),
         "source": "boss",
     }
 
 
-def _parse_detail_html(html: str) -> dict:
-    """从 HTML 解析岗位详情。"""
-    # 提取 JD（核心）
-    description = ""
-    for pattern in [
-        r'<div[^>]*class="job-sec-text"[^>]*>(.*?)</div>',
-        r'<div[^>]*class="job-detail-section"[^>]*>.*?<div[^>]*class="job-sec-text"[^>]*>(.*?)</div>',
-    ]:
-        match = re.search(pattern, html, re.DOTALL)
-        if match:
-            description = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-            description = re.sub(r'\s+', ' ', description)
-            break
-
-    # 如果正则失败，尝试 JSON-LD
-    if not description:
-        json_ld_match = re.search(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
-        if json_ld_match:
-            try:
-                json_ld = json.loads(json_ld_match.group(1))
-                description = json_ld.get("description", "")
-            except Exception:
-                pass
-
-    # 提取其他字段
-    title = ""
-    for pattern in [r'<h1[^>]*class="job-name"[^>]*>(.*?)</h1>', r'<title>(.*?)招聘']:
-        match = re.search(pattern, html, re.DOTALL)
-        if match:
-            title = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-            break
-
-    salary = ""
-    match = re.search(r'<span[^>]*class="salary"[^>]*>(.*?)</span>', html, re.DOTALL)
-    if match:
-        salary = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-
-    location = ""
-    match = re.search(r'<span[^>]*class="job-area"[^>]*>(.*?)</span>', html, re.DOTALL)
-    if match:
-        location = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-
-    company = ""
-    match = re.search(r'<a[^>]*class="company-name"[^>]*>(.*?)</a>', html, re.DOTALL)
-    if match:
-        company = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-
+def _to_row(job: dict[str, Any]) -> dict[str, Any]:
+    """列表 API → 统一行（研究阶段只保留列表数据）。"""
+    summary = " | ".join(
+        part
+        for part in (
+            job.get("skills"),
+            job.get("job_labels"),
+            job.get("welfare"),
+        )
+        if part
+    )
     return {
-        "title": title,
-        "company": company,
-        "location": location,
-        "salary": salary,
-        "description": description,
+        "title": job.get("title", ""),
+        "company": job.get("boss_name") or "公司名未获取",
+        "location": job.get("location", ""),
+        "salary": job.get("salary", ""),
+        "summary": summary,
+        "url": cdp.build_detail_url(job) or job.get("job_link", ""),
         "source": "boss",
+        "description": "",
+        "requirements": "",
+        "detail_status": "list_only",
+        "skills": job.get("skills", ""),
+        "job_labels": job.get("job_labels", ""),
+        "welfare": job.get("welfare", ""),
+        "boss_active_status": job.get("boss_active_status", ""),
+        "experience": job.get("experience", ""),
+        "degree": job.get("degree", ""),
     }
 
 
 class Scraper(CompanyScraper):
-    """BOSS 直聘 Scraper。"""
+    """BOSS 直聘 Scraper（CDP）。"""
 
     COMPANY_SLUG = "boss"
     search_cache_ttl = 3600
     detail_cache_ttl = 86400
 
-    # 搜索参数定义（唯一事实源，list_data_sources 渲染给 LLM）
     PARAMS: dict[str, dict[str, Any]] = {
         "keyword": {"required": True, "description": "搜索关键词（如 \"Python\"、\"前端\"、\"AI\"）"},
         "city": {"required": False, "description": "城市名（如 \"北京\"、\"上海\"、\"全国\"）或城市代码"},
@@ -198,157 +114,87 @@ class Scraper(CompanyScraper):
         return "zhipin.com" in url
 
     def search(self, **kwargs: Any) -> list[dict[str, Any]]:
-        """搜索岗位。"""
-        keyword = kwargs.get("keyword", "")
-        city = kwargs.get("city", "全国")
-        limit = kwargs.get("limit", 20)
+        """搜索岗位（CDP 列表，薪资为接口明文）。"""
+        keyword = str(kwargs.get("keyword", "") or "").strip()
+        city = str(kwargs.get("city", "全国") or "全国")
+        limit = int(kwargs.get("limit", 20) or 20)
 
         if not keyword:
             return [{"error": "搜索关键词不能为空"}]
 
-        # 登录态必须先于缓存校验：过期登录态不允许继续吃旧缓存
         if not has_valid_cookies():
             return [{"error": _login_required_message()}]
 
-        # 查缓存
+        try:
+            _city_name, city_code = cdp.resolve_city(city)
+        except cdp.CityResolutionError as exc:
+            return [{"error": str(exc)}]
+
         search_cache = self._make_cache("search")
-        city_code = _resolve_city(city)
-        key = self._cache_key(keyword=keyword, city=city_code)
+        key = self._cache_key(keyword=keyword, city=city_code, limit=limit)
         cached = search_cache.get(key)
         if cached is not None:
             return cached[:limit]
 
-        # 抓取
-        results = self._search_api(keyword, city_code, limit)
+        try:
+            jobs = cdp.scrape_list(keyword, city, limit=limit)
+        except cdp.LoginGateError as exc:
+            message = str(exc)
+            if "登录态" in message or "限制状态" in message:
+                invalidate_auth("cdp_login_gate")
+            return [{"error": f"{message}\n\n{_login_required_message()}"}]
+        except cdp.BossCDPError as exc:
+            return [{"error": f"BOSS 抓取失败: {exc}"}]
 
-        # 缓存成功结果
-        if results and not (len(results) == 1 and results[0].get("error")):
+        results = [_to_row(job) for job in jobs[:limit]]
+        if results:
             search_cache.set(key, results)
-
         return results[:limit]
 
     def get_detail(self, url: str) -> dict[str, Any]:
-        """获取岗位详情。"""
+        """获取岗位详情（CDP 打开详情页并提取 JD）。"""
         if "zhipin.com" not in url:
             return {"error": f"非 BOSS 直聘 URL: {url}"}
 
-        # 登录态必须先于缓存校验
         if not has_valid_cookies():
             return {"error": _login_required_message()}
 
-        # 查缓存
         detail_cache = self._make_cache("detail")
         key = self._cache_key(url=url)
         cached = detail_cache.get(key)
         if cached is not None:
             return cached
 
-        # 抓取
-        result = self._fetch_detail(url)
+        try:
+            detail = cdp.scrape_detail(url)
+        except cdp.BossCDPError as exc:
+            message = str(exc)
+            if "登录墙" in message or "登录" in message:
+                invalidate_auth("cdp_detail_login_required")
+                return {"error": f"{message}\n\n{_login_required_message()}", "url": url}
+            return {"error": message, "url": url}
 
-        # 缓存成功结果
-        if result and not result.get("error"):
+        result = {
+            "title": "",
+            "company": "",
+            "location": "",
+            "salary": "",
+            "description": detail.get("description", ""),
+            "requirements": detail.get("requirements", ""),
+            "benefits": "",
+            "skills": detail.get("skills", ""),
+            "boss_active_status": detail.get("boss_active_status", ""),
+            "detail_status": "ok",
+            "source": "boss",
+            "url": url,
+        }
+        if result["description"]:
             detail_cache.set(key, result)
-
         return result
 
+    # 兼容旧调用名（已切换为 CDP 实现）
     def _search_api(self, keyword: str, city: str, limit: int) -> list[dict[str, Any]]:
-        """通过 API 搜索岗位。"""
-        if not has_valid_cookies():
-            return [{"error": _login_required_message()}]
-
-        cookies = load_cookies()
-        stoken = get_stoken()
-        headers = _build_headers(cookies, stoken)
-
-        params = {
-            "scene": "1",
-            "query": keyword,
-            "city": city,
-            "page": "1",
-            "pageSize": str(min(limit, 30)),
-        }
-
-        try:
-            resp = httpx.get(SEARCH_URL, params=params, headers=headers, timeout=15)
-        except Exception as e:
-            return [{"error": f"请求失败: {e}"}]
-        if _response_has_env_anomaly(resp):
-            invalidate_auth("http_env_anomaly")
-            return [{"error": _env_anomaly_error("您的环境存在异常")}]
-        try:
-            data = resp.json()
-        except Exception as e:
-            return [{"error": f"请求失败: {e}"}]
-
-        # 环境异常优先于 code=37：登录态已不可用，先销毁再谈 stoken
-        message = str(data.get("message") or "")
-        if is_env_anomaly_message(message):
-            invalidate_auth("api_env_anomaly")
-            return [{"error": _env_anomaly_error(message)}]
-
-        # 处理 code=37（需要计算 stoken）
-        if data.get("code") == 37:
-            new_stoken = handle_code37(data)
-            if new_stoken:
-                headers = _build_headers(cookies, new_stoken)
-                try:
-                    resp = httpx.get(SEARCH_URL, params=params, headers=headers, timeout=15)
-                except Exception as e:
-                    return [{"error": f"重试失败: {e}"}]
-                if _response_has_env_anomaly(resp):
-                    invalidate_auth("http_env_anomaly")
-                    return [{"error": _env_anomaly_error("您的环境存在异常")}]
-                try:
-                    data = resp.json()
-                except Exception as e:
-                    return [{"error": f"重试失败: {e}"}]
-            else:
-                return [{"error": "stoken 计算失败，请安装 iv8: pip install iv8"}]
-
-        # 环境异常是登录态失效的真实信号：立即销毁，不继续用旧 cookies 试
-        message = str(data.get("message") or "")
-        if is_env_anomaly_message(message):
-            invalidate_auth("api_env_anomaly")
-            return [{"error": _env_anomaly_error(message)}]
-
-        # 处理其他错误码
-        code = data.get("code")
-        if code in (32, 35, 36):
-            return [{"error": f"BOSS 风控限制 (code={code})，请稍后重试"}]
-        if code != 0:
-            return [{"error": f"API 错误: {data.get('message', '')}"}]
-
-        # 提取职位列表
-        job_list = (data.get("zpData") or {}).get("jobList", [])
-        if not job_list:
-            return [{"error": "未找到相关岗位", "keyword": keyword}]
-
-        return [_map_job(job) for job in job_list[:limit]]
+        return self.search(keyword=keyword, city=city, limit=limit)
 
     def _fetch_detail(self, url: str) -> dict[str, Any]:
-        """获取岗位详情。"""
-        if not has_valid_cookies():
-            return {"error": _login_required_message()}
-
-        cookies = load_cookies()
-        stoken = get_stoken()
-        headers = _build_headers(cookies, stoken)
-
-        try:
-            resp = httpx.get(url, headers=headers, timeout=15)
-            html = resp.text
-        except Exception as e:
-            return {"error": f"请求失败: {e}"}
-
-        if is_env_anomaly_message(html):
-            invalidate_auth("detail_env_anomaly")
-            return {"error": _env_anomaly_error("您的环境存在异常")}
-
-        result = _parse_detail_html(html)
-        result["url"] = url
-
-        if not result.get("description"):
-            return {"error": "未找到岗位详情", "url": url}
-
-        return result
+        return self.get_detail(url)

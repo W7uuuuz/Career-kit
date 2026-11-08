@@ -135,22 +135,47 @@ FAMILIARITY_OPTIONS: tuple[str, ...] = (
     "已经有明确目标",
 )
 
+BOSS_LOGIN_URL = "https://www.zhipin.com/web/user/?ka=header-login"
+
+
 def login_action(login_command: str) -> dict[str, Any]:
     """BOSS 扫码登录的交互契约：优先由 Agent 用 harness 直接执行脚本。
 
     用户只需要在浏览器里扫码，不需要自己复制命令、开终端。
     仅当 harness 不能执行命令时，才退化为把命令交给用户。
+    同一会话只提示一次登录；失败时给恢复建议，不反复追问。
     """
     return {
         "harness_can_run": True,
-        "user_instruction": "我可以直接帮你打开登录窗口，你只需要在浏览器里扫码；完成后告诉我继续。",
+        "login_url": BOSS_LOGIN_URL,
+        "user_instruction": (
+            "我可以直接帮你打开登录窗口，你只需要在浏览器里扫码。"
+            "会弹出一个专用浏览器，请忽略可能出现的默认新标签页；"
+            "打开后如果不在登录页，请点右上角「登录/扫码」；"
+            "扫码后稍等，浏览器会自动关闭；完成后告诉我继续。"
+            "若登录后迟迟没有反应，可以打断这次会话，直接告诉我。"
+        ),
         "agent_action": (
-            "先问用户是否现在登录；同意后直接用终端/Bash 工具运行 login_command。"
-            "脚本会打开系统浏览器并等待扫码——请用户扫码，扫码成功后重试原操作。"
+            "同一会话只提示一次，不要反复问「要不要登录」；用户同意后直接用终端/Bash 工具运行 "
+            "login_command。脚本会打开系统浏览器并等待扫码——请用户扫码，扫码成功后重试原操作。"
             "不要把命令丢给用户手动执行；只有当前 harness 无法运行命令时才让用户自己执行。"
+            "若登录后迟迟无响应，请用户打断本次会话并直接告诉 Agent，再按失败原因给恢复建议。"
         ),
         "login_command": login_command,
     }
+
+
+PHASE_TYPE_LABELS: dict[str, str] = {
+    "learn": "学习",
+    "project": "项目",
+    "intern": "实习",
+    "research": "调研",
+}
+
+
+def phase_type_label(phase_type: str) -> str:
+    """把内部阶段类型翻成用户能懂的中文，英文只在内部使用。"""
+    return PHASE_TYPE_LABELS.get(str(phase_type or "").strip().lower(), "阶段")
 
 
 VERDICT_LABELS: dict[str, str] = {
@@ -187,8 +212,22 @@ def is_legacy(profile: Any) -> bool:
     )
 
 
+def _has_sections(profile: Any) -> bool:
+    return bool(
+        getattr(profile, "who", None)
+        or getattr(profile, "have", None)
+        or getattr(profile, "want", None)
+        or getattr(profile, "summary", "")
+    )
+
+
 def brief_shown(profile: Any) -> bool:
-    return bool(_guidance(profile).get("brief_shown_at")) or is_legacy(profile)
+    """简介只发一次：已经填过任何 section 的档案不再重复首屏。"""
+    return (
+        bool(_guidance(profile).get("brief_shown_at"))
+        or is_legacy(profile)
+        or _has_sections(profile)
+    )
 
 
 def goal_confirmed(profile: Any) -> bool:
@@ -315,7 +354,7 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
     ),
     "market": (
         "市场调研：用真实岗位和同背景经历替代猜测",
-        "抓真实 JD，逐条补详情；来源会标在报告里",
+        "4 步：范围宣告 → 批量抓取 → 报告落地 → 衔接分析；抓真实 JD 并逐条补详情",
         "每条数据带来源链接；失败源会如实标注",
     ),
     "gap": (
@@ -414,10 +453,10 @@ def _market_guide(profile: Any) -> Guide:
     return _guide(
         "market",
         "market",
-        "下一步做市场调研：抓真实岗位和同背景经历。按来源数量约 30-90 秒，"
-        "超过 90 秒建议拆批。要现在开始吗？",
-        options=["开始调研", "先跳过，直接分析"],
-        next_action="同意后走 research_market → gather_research_data",
+        "我现在按档案里的目标和城市开始调研：抓真实岗位和同背景经历。"
+        "大约 30-50 秒；有要增减的公司直接说。",
+        next_action="直接走 research_market → gather_research_data，不要问是否开始；"
+                    "用户提出增减公司时先调整范围再抓取",
         profile=profile,
     )
 
@@ -460,11 +499,12 @@ def _evidence_guide(profile: Any) -> Guide:
     return _guide(
         "evidence",
         "evidence",
-        "目标企业已确认。下一步采集真实 JD 与面经，作为需求分析和方案校准的依据。"
-        "需要薪资行情时，可以顺手补充 BOSS 直聘。要现在开始吗？",
-        options=["开始采集", "补充 BOSS 薪资后采集", "先换一批企业"],
-        next_action="collect_company_evidence；只抓已确认名单里的企业；"
-                    "选 BOSS 时先问用户并传 include_boss=true, boss_confirmed=true",
+        "名单已确认，我现在直接抓名单企业的真实 JD 与面经，每批约 30-90 秒。"
+        "需要薪资行情就说一声，我补充 BOSS 直聘；名单要改也可以直接说。",
+        options=["补充 BOSS 薪资", "名单要改"],
+        next_action="直接调用 collect_company_evidence，不要问是否开始；"
+                    "用户选补充 BOSS 时先问是否登录并传 include_boss=true, boss_confirmed=true；"
+                    "名单要改则回到 select_target_companies",
         profile=profile,
     )
 
@@ -473,9 +513,11 @@ def _requirement_guide(profile: Any) -> Guide:
     return _guide(
         "requirement",
         "requirement",
-        "证据已就绪。下一步统计企业高频要求与硬门槛，并解释优先级。要现在分析吗？",
-        options=["开始分析", "先看证据池"],
-        next_action="analyze_company_requirements → save_requirement_profile",
+        "证据已就绪，我现在直接统计企业高频要求与硬门槛，并解释优先级。"
+        "想先看证据池明细随时说。",
+        options=["先看证据池"],
+        next_action="直接调用 analyze_company_requirements → save_requirement_profile，"
+                    "不要问是否开始",
         profile=profile,
     )
 
@@ -498,8 +540,8 @@ def _execution_guide(profile: Any, *, ready: bool) -> Guide:
             "execution",
             "execution",
             "下一步把当前阶段拆成可执行任务：每个任务会给出怎么做、用什么资源、"
-            "怎么算完成。要现在细化吗？",
-            options=["开始细化", "先按里程碑生成粗任务", "先看职业地图"],
+            "怎么算完成。推荐现在细化；也可以先按里程碑生成粗任务，或先看职业地图。",
+            options=["推荐：细化当前阶段", "先按里程碑生成粗任务", "先看职业地图"],
             next_action="detail_current_phase → save_current_detail → generate_tasks；"
                         "用户拒绝细化时可直接 generate_tasks",
             profile=profile,
@@ -509,7 +551,7 @@ def _execution_guide(profile: Any, *, ready: bool) -> Guide:
         "execution",
         "下一步推进当前阶段的任务；完成一项就打卡，进度会沉淀为能力证据。"
         "也可以生成投递清单、登记投递或做周期复盘。",
-        options=["看下一步任务", "生成投递清单", "登记投递", "做周检视/计划检查"],
+        options=["推荐：先看下一步任务", "生成投递清单", "登记已投递", "做周检视/计划检查"],
         next_action="get_next_tasks；完成后 checkin_task；"
                     "批量投递用 build_application_list；"
                     "投递进展用 record_application / delete_application；"
@@ -562,7 +604,7 @@ def build_guide(profile: Any) -> Guide:
     if not goal_confirmed(profile):
         want = getattr(profile, "want", None) or {}
         scan_done = bool(isinstance(want, dict) and want.get("scan_completed_at"))
-        if not want and not scan_done:
+        if not want and not scan_done and not _has_sections(profile):
             return _guide(
                 "profile",
                 "familiarity",
@@ -597,27 +639,22 @@ def user_brief() -> str:
         "Career Kit 是你的 AI 职业陪练。先用一分钟说清楚它是什么、能帮你做什么：",
         "",
         "**这是什么**",
-        "Career Kit 是运行在你电脑上的职业规划服务。我通过 MCP（让 AI 能调用本地工具的协议）",
-        "调用它：抓真实招聘数据、保存你的档案和进度、把目标拆成可执行任务。",
-        "档案在 ~/.career-kit，报告和路线图在 ~/CareerKit，都在本机，不上传。",
+        "Career Kit 是运行在你电脑上的职业规划服务。我通过本地工具抓真实招聘数据、",
+        "保存你的档案和进度、把目标拆成可执行任务。档案和报告都在本机，不上传。",
         "",
         "**能帮你做什么**",
         "1. 用真实岗位和面经，告诉你市场要什么；",
         "2. 对照你的真实水平，告诉你差在哪、先补什么；",
         "3. 把目标拆成有顺序的阶段和任务，并记录执行进度。",
         "",
-        "**怎么用**",
-        "像聊天一样回答即可。每轮我只问一个问题；随时可以说「跳过」「改方向」「看进度」。",
-        "你不用懂工具名或流程，我会在每一步告诉你拿到了什么、下一步做什么。",
+        "**怎么走**",
+        "全流程共 12 步，归为三段：",
+        "1. 定位——建立你确认过的档案，定下目标岗位、城市和届别；",
+        "2. 规划——用真实市场数据看清差距，排出培养方案与目标企业；",
+        "3. 执行——按任务推进、记录投递与复盘，随时按事实调整计划。",
         "",
-        "从起步到上岸全流程 12 步，每步你都能拿到实际的东西：",
-        "",
-    ]
-    for i, step in enumerate(JOURNEY_STEPS, 1):
-        lines.append(f"{i}. {step.name}——{step.why}；你会拿到：{step.deliverable}")
-    lines += [
-        "",
-        "顺序定、节奏自己掌握。规则不清楚随时问我；现在从第 1 步开始——",
+        "像聊天一样回答即可，每轮我只问一个真正需要你决定的问题。",
+        "顺序定、节奏自己掌握；规则不清楚随时问我；现在从第 1 步开始——",
     ]
     return "\n".join(lines)
 
@@ -636,9 +673,11 @@ def render_guide(guide: Guide) -> str:
         lines.append(f"怎么做：{guide.method}")
     if guide.how_to_read:
         lines.append(f"结果怎么读：{guide.how_to_read}")
-    lines.append(f"本轮只问一个问题：{guide.ask}")
     if guide.options:
+        lines.append(f"本轮只问一个问题：{guide.ask}")
         lines.append("可选回答：" + " / ".join(guide.options))
+    else:
+        lines.append(f"本轮不用等确认，直接说明并继续：{guide.ask}")
     for note in guide.warnings:
         lines.append(f"事实提醒：{note}")
     lines.append("[GUIDE_MODEL]")
@@ -672,8 +711,10 @@ def opening_blocks(profile: Any) -> str:
 
 
 __all__ = [
+    "BOSS_LOGIN_URL",
     "FAMILIARITY_OPTIONS",
     "JOURNEY_STEPS",
+    "PHASE_TYPE_LABELS",
     "STEP_TOTAL",
     "Guide",
     "Step",
@@ -687,6 +728,7 @@ __all__ = [
     "mark_brief_shown",
     "mark_goal_confirmed",
     "opening_blocks",
+    "phase_type_label",
     "render_guide",
     "reset_goal_confirmation",
     "user_brief",

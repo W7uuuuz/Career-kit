@@ -163,7 +163,7 @@
       lines.push('<div class="empty">还没有细化任务。回到对话里让 AI 细化当前阶段。</div>');
     }
     return '<div class="card"><div class="card-head"><span class="card-title">'
-      + esc(ph.name) + '<span class="type-pill">' + esc(ph.type) + '</span>' + badge + '</span>'
+      + esc(ph.name) + '<span class="type-pill">' + esc(ph.type_label || ph.type) + '</span>' + badge + '</span>'
       + '<span class="muted">' + ph.done + '/' + ph.total + ' · ' + pct + '%</span></div>'
       + '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>'
       + (ph.company ? '<div class="company">' + esc(ph.company) + '</div>' : '')

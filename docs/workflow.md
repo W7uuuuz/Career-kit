@@ -72,7 +72,7 @@
 4. gather_research_data(jd_specs, case_query, boss_confirmed)
    - 目标公司 1 家 + 同方向对照 2-4 家
    - 逐条补抓岗位详情；无详情岗位剔除并计入缺口
-   - 单源 20 秒 / 总预算 60 秒；超过 2 个源建议拆批；失败不拖垮整批，已完成来源写断点缓存
+   - 单源 25 秒 / 总预算 50 秒；超过 2 个源建议拆批；失败不拖垮整批，已完成来源写断点缓存
 5. 报告三件套自动落盘（代码渲染，不经 LLM）
 6. 按需读取全文：read_research_details(ids=..., kind="jd"/"case")
 ```
@@ -83,7 +83,9 @@
 - 报告 100% 代码渲染自抓取数据，每条带来源链接、平台、抓取时间。
 - 任一源失败不中断，失败原因进来源状态面板；未获取内容写「未获取」，不编造。
 - 全部失败时返回 `MISSING_DATA`，引导 `import_jd` / `import_jd_file`。
-- BOSS 登录缺失时先问用户；用户同意后用 harness 运行登录脚本，用户只需扫码。
+- BOSS 登录缺失时先问用户；用户同意后用 harness 运行 `python -m src.scrapers.boss.login`。
+  登录页为 `https://www.zhipin.com/web/user/?ka=header-login`；扫码后稍等，浏览器会自动关闭。
+  研究阶段 BOSS 为 list-only（公司/地点/明文薪资/技能），详情在交互式 `fetch_jd_detail` 中补抓。
 
 ---
 

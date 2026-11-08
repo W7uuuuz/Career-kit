@@ -39,6 +39,8 @@ dependencies = [
     "httpx>=0.25.0",
     "cryptography>=42.0",
     "playwright>=1.40.0",
+    # BOSS CDP 接入：WebSocket 客户端（连接本地 Chrome/Edge 的 DevTools）
+    "websocket-client>=1.6.0,<2.0.0",
     # iv8 只存在于官方 PyPI（国内镜像常缺）；锁定版本避免上游静默变更
     "iv8==0.1.4",
     # 反检测 fork，驱动层消除 Runtime.enable 泄漏（BOSS 登录必需）。

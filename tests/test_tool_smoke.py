@@ -116,19 +116,23 @@ def test_import_plan_rejects_binary_garbage(temp_profile):
 
 
 def test_boss_login_navigates_and_zero_param():
-    """BUG-009/OBS-004 回归：登录工具必须导航到 zhipin.com，且不接受参数拉起浏览器。"""
+    """BUG-009/OBS-004 回归：登录工具必须打开 zhipin.com 登录页，且不接受参数拉起浏览器。"""
     login_src = (Path(__file__).parent.parent / "src" / "scrapers" / "boss" / "login.py").read_text(
         encoding="utf-8"
     )
-    # 探针验证过 60 秒存活的 goto 必须存在于工具主流程（曾因丢失导致永久白屏）
-    assert "page.goto(ZHIPIN_URL" in login_src
+    cdp_src = (Path(__file__).parent.parent / "src" / "scrapers" / "boss" / "cdp.py").read_text(
+        encoding="utf-8"
+    )
+    # CDP 登录主流程必须导航到 BOSS 登录页（曾因丢失导致永久白屏）
+    assert "cdp.LOGIN_URL" in login_src
+    assert "Page.navigate" in login_src
+    assert "https://www.zhipin.com/web/user/" in cdp_src
     # 带参即打印用法退出，绝不带参拉起浏览器
     assert "len(sys.argv) > 1" in login_src
-    # 窗口尺寸由浏览器自适应用户屏幕：必须最大化、不得代码规定分辨率
-    # （教训：硬编码小视口看不全，硬编码满屏分辨率又超出可视区）
-    assert "--start-maximized" in login_src
-    assert "--window-size=" not in login_src
-    assert "viewport={" not in login_src  # 允许 no_viewport=True，禁止显式视口尺寸
+    # 窗口尺寸由浏览器自适应：必须最大化、不得代码规定分辨率
+    assert "--start-maximized" in cdp_src
+    assert "--window-size=" not in login_src and "--window-size=" not in cdp_src
+    assert "viewport={" not in login_src and "viewport={" not in cdp_src
 
 
 def test_nowcoder_playwright_cleanup_in_finally():
@@ -280,7 +284,7 @@ def test_analyze_gaps_blocked_without_probing(temp_profile):
     from src.server import analyze_gaps, finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake("have", '{"core_skills": [{"skill": "LangGraph", "confidence": "高"}]}')
 
     # finalize 未跳过 → analyze_gaps 也拒绝
@@ -681,8 +685,8 @@ def test_analyze_gaps_rejects_without_goal(temp_profile):
     assert "explore_goals" in result["details"].get("suggestion", "")
     assert not profile_module.load_profile().gap, "不应产生差距分析"
 
-    # 补上实质目标后放行
-    intake("want", '{"target_role": "AI 应用开发"}')
+    # 补上实质目标并经用户确认后放行
+    intake("want", '{"target_role": "AI 应用开发", "user_confirmed": true}')
     out = analyze_gaps()
     assert "差距分析" in out or "methodologies" in out
 

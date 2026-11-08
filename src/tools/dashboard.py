@@ -13,6 +13,7 @@ from datetime import datetime
 from html import escape
 from pathlib import Path
 
+from ..guidance import phase_type_label
 from .profile import get_active_profile_name
 from .task_manager import resolve_current_phase
 
@@ -386,6 +387,7 @@ def render_roadmap_map(profile) -> str:
             "id": phase_id,
             "name": phase.get("name", phase_id),
             "type": phase.get("type", "learn"),
+            "type_label": phase_type_label(phase.get("type", "learn")),
             "goal": phase.get("goal", ""),
             "company": phase.get("company", ""),
             "rationale": phase.get("rationale", ""),
@@ -643,7 +645,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
                  done_criteria: t.done_criteria || '' }};
     }});
     return {{
-      id: ph.id, name: ph.name, type: ph.type, goal: ph.goal,
+      id: ph.id, name: ph.name, type: ph.type, type_label: ph.type_label, goal: ph.goal,
       company: ph.company, rationale: ph.rationale, badge: ph.badge, badge_cls: ph.badge_cls,
       kpi_metric: ph.kpi_metric, kpi_target: ph.kpi_target, kpi_evidence: ph.kpi_evidence,
       resume_value: ph.resume_value, jd_text: ph.jd_text,
@@ -781,7 +783,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       card.dataset.id = ph.id;
       card.innerHTML =
         '<div class="card-head"><span class="card-title">' + esc(ph.name)
-          + '<span class="type-pill">' + esc(ph.type) + '</span>' + badge + cur + '</span>'
+          + '<span class="type-pill">' + esc(ph.type_label || ph.type) + '</span>' + badge + cur + '</span>'
           + '<span class="done-txt">' + done + '/' + ph.total + ' · ' + pct + '%</span></div>'
         + '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>'
         + company

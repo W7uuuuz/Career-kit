@@ -1,4 +1,4 @@
-"""BOSS 登录态 TTL 与环境异常销毁回归。"""
+"""BOSS 登录态（CDP marker）与环境异常销毁回归。"""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import src.scrapers.boss.auth as auth
+import src.scrapers.boss.cdp as cdp
 import src.scrapers.boss.scraper as scraper
 
 
@@ -20,6 +21,19 @@ def auth_path(tmp_path, monkeypatch):
     path = tmp_path / "state.json"
     monkeypatch.setattr(auth, "AUTH_STATE_PATH", path)
     return path
+
+
+class FakeCache:
+    def __init__(self):
+        self.get_calls = 0
+        self.set_calls = 0
+
+    def get(self, key):
+        self.get_calls += 1
+        return None
+
+    def set(self, key, value):
+        self.set_calls += 1
 
 
 def test_login_state_has_timestamp_and_is_valid(auth_path):
@@ -31,7 +45,7 @@ def test_login_state_has_timestamp_and_is_valid(auth_path):
     assert auth.load_cookies()["wt2"] == "token"
 
 
-def test_login_state_expires_after_two_hours(auth_path):
+def test_login_state_expires_after_ttl(auth_path):
     auth.save_cookies({"wt2": "token"})
     state = json.loads(auth_path.read_text(encoding="utf-8"))
     state["saved_at_ts"] = time.time() - auth.LOGIN_TTL_SECONDS - 1
@@ -50,36 +64,26 @@ def test_legacy_state_without_timestamp_is_invalidated(auth_path):
     assert not auth_path.exists()
 
 
-def test_env_anomaly_destroys_login_state(auth_path, monkeypatch):
-    auth.save_cookies({"wt2": "token"})
-    assert auth_path.exists()
+def test_cdp_login_marker_requires_cdp_backend(auth_path, monkeypatch):
+    auth.save_login_marker()
+    assert json.loads(auth_path.read_text(encoding="utf-8"))["mode"] == "cdp"
 
-    class FakeResponse:
-        def json(self):
-            return {"code": 1, "message": "您的环境存在异常"}
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: True)
+    assert auth.has_valid_cookies() is True
 
-    monkeypatch.setattr(scraper.httpx, "get", lambda *args, **kwargs: FakeResponse())
-    monkeypatch.setattr(scraper, "get_stoken", lambda: None)
-
-    result = scraper.Scraper()._search_api("后端", "100010000", 10)
-
-    assert "环境存在异常" in result[0]["error"]
-    assert "登录" in result[0]["error"]
-    assert not auth_path.exists(), "环境异常必须销毁登录态"
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: False)
+    assert auth.has_valid_cookies() is False
+    assert auth_path.exists(), "浏览器暂不可用不应销毁登录标记"
 
 
-def test_detail_env_anomaly_destroys_login_state(auth_path, monkeypatch):
-    auth.save_cookies({"wt2": "token"})
+def test_cdp_login_marker_expires(auth_path, monkeypatch):
+    auth.save_login_marker()
+    state = json.loads(auth_path.read_text(encoding="utf-8"))
+    state["saved_at_ts"] = time.time() - auth.LOGIN_TTL_SECONDS - 1
+    auth_path.write_text(json.dumps(state), encoding="utf-8")
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: True)
 
-    class FakeResponse:
-        text = "<html>API 错误: 您的环境存在异常</html>"
-
-    monkeypatch.setattr(scraper.httpx, "get", lambda *args, **kwargs: FakeResponse())
-    monkeypatch.setattr(scraper, "get_stoken", lambda: None)
-
-    result = scraper.Scraper()._fetch_detail("https://www.zhipin.com/job_detail/x.html")
-
-    assert "环境存在异常" in result["error"]
+    assert auth.has_valid_cookies() is False
     assert not auth_path.exists()
 
 
@@ -89,16 +93,40 @@ def test_search_rejects_cache_when_login_expired(auth_path, monkeypatch):
     state["saved_at_ts"] = time.time() - auth.LOGIN_TTL_SECONDS - 1
     auth_path.write_text(json.dumps(state), encoding="utf-8")
 
-    called = {"cache": False}
-
-    class FakeCache:
-        def get(self, key):
-            called["cache"] = True
-            return [{"title": "cached"}]
-
-    monkeypatch.setattr(scraper.Scraper, "_make_cache", lambda self, namespace: FakeCache())
+    cache = FakeCache()
+    monkeypatch.setattr(scraper.Scraper, "_make_cache", lambda self, namespace: cache)
 
     result = scraper.Scraper().search(keyword="后端")
 
     assert "登录" in result[0]["error"]
-    assert called["cache"] is False, "登录态过期时不得继续使用旧缓存"
+    assert cache.get_calls == 0, "登录态过期时不得继续使用旧缓存"
+
+
+def test_search_login_gate_destroys_marker(auth_path, monkeypatch):
+    auth.save_login_marker()
+    monkeypatch.setattr(scraper, "has_valid_cookies", lambda: True)
+    monkeypatch.setattr(scraper.Scraper, "_make_cache", lambda self, namespace: FakeCache())
+
+    def _raise(*args, **kwargs):
+        raise cdp.LoginGateError("未检测到 BOSS 直聘登录态")
+
+    monkeypatch.setattr(scraper.cdp, "scrape_list", _raise)
+
+    result = scraper.Scraper().search(keyword="后端")
+
+    assert "登录" in result[0]["error"]
+    assert not auth_path.exists(), "登录 gate 失败必须销毁旧标记"
+
+
+def test_detail_cdp_error_returns_error(auth_path, monkeypatch):
+    monkeypatch.setattr(scraper, "has_valid_cookies", lambda: True)
+    monkeypatch.setattr(scraper.Scraper, "_make_cache", lambda self, namespace: FakeCache())
+    monkeypatch.setattr(
+        scraper.cdp,
+        "scrape_detail",
+        lambda *a, **k: (_ for _ in ()).throw(cdp.BossCDPError("页面未渲染出 JD")),
+    )
+
+    result = scraper.Scraper().get_detail("https://www.zhipin.com/job_detail/x.html")
+
+    assert result["error"] == "页面未渲染出 JD"

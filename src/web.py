@@ -29,7 +29,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from .assets import INDEX_FILENAME, get_assets_root, kind_assets_dir
 from .core.artifacts.store import ArtifactStore
 from .core.orchestrator import state_machine
-from .guidance import warnings
+from .guidance import phase_type_label, warnings
 from .models import TaskStatus
 from .tools.application_tracker import (
     add_application,
@@ -428,6 +428,7 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
             "id": phase_id,
             "name": phase.get("name", phase_id),
             "type": phase.get("type", "learn"),
+            "type_label": phase_type_label(phase.get("type", "learn")),
             "goal": phase.get("goal", ""),
             "company": phase.get("company", ""),
             "rationale": phase.get("rationale", ""),

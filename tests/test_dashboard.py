@@ -73,6 +73,7 @@ def test_roadmap_map_renders_start_strategy_milestones(tmp_path, monkeypatch):
     assert '"start_level": "小厂"' in html            # 起点层级进入数据
     assert "先补协作再冲大厂" in html                   # 策略进入数据
     assert "里程碑甲" in html                          # 里程碑名称进入数据
+    assert '"type_label": "学习"' in html              # learn 对外显示为「学习」
     assert "milestone_names" in html                   # 前端按名称渲染
     assert "getElementById('start-level')" in html     # 前端真的写入起点层级
     assert "getElementById('strategy')" in html        # 前端真的写入策略
@@ -150,6 +151,7 @@ def test_roadmap_map_js_escapes_interpolation(tmp_path, monkeypatch):
     assert "esc(t.name)" in html         # 任务名拼接走转义
     assert "esc(ph.name)" in html        # 阶段名拼接走转义
     assert "esc(ph.jd_text" in html      # JD 文本拼接走转义
+    assert "esc(ph.type_label" in html   # 阶段类型显示中文标签
 
 
 def test_progress_html_renders_funnel_and_weekly_cards(tmp_path, monkeypatch):
@@ -227,4 +229,5 @@ def test_roadmap_jd_structured_and_current_phase_fallback(tmp_path, monkeypatch)
     block = html.split('id="career-data">')[1].split("</script>")[0]
     data = jsonlib.loads(block)
     assert data["phases"][0]["is_current"] is True  # 无任务时兜底第一段
+    assert data["phases"][0]["type_label"] == "实习"  # intern 对外显示为「实习」
 

@@ -232,8 +232,8 @@ def test_gather_surfaces_dropped_no_detail(temp_profile, monkeypatch):
     monkeypatch.setattr(rt, "search_company_jobs", lambda slug, **kwargs: {
         "company": slug, "count": 2,
         "results": [
-            {"title": "有详情岗位", "url": "https://x/ok", "company": "百度"},
-            {"title": "无详情岗位", "url": "https://x/bad", "company": "百度"},
+            {"title": "AI Agent 有详情岗位", "url": "https://x/ok", "company": "百度"},
+            {"title": "AI Agent 无详情岗位", "url": "https://x/bad", "company": "百度"},
         ],
     })
     monkeypatch.setattr(rt, "collect_cases", lambda **kwargs: {
@@ -268,9 +268,9 @@ def _gather_two_jobs(temp_profile, monkeypatch):
     monkeypatch.setattr(rt, "search_company_jobs", lambda slug, **kwargs: {
         "company": slug, "count": 2,
         "results": [
-            {"title": "岗位甲", "url": "https://x/1", "company": "百度",
+            {"title": "AI Agent 岗位甲", "url": "https://x/1", "company": "百度",
              "location": "上海", "salary": "20-30K"},
-            {"title": "岗位乙", "url": "https://x/2", "company": "百度",
+            {"title": "AI Agent 岗位乙", "url": "https://x/2", "company": "百度",
              "location": "北京", "salary": "25-40K"},
         ],
     })

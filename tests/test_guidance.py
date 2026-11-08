@@ -326,11 +326,13 @@ def test_guide_follows_twelve_core_stages():
     guide = build_guide(profile)
     assert guide.status == "execution"
     assert "细化" in guide.ask
+    assert guide.options[0].startswith("推荐：")
 
     profile.core_state["execution_state_id"] = _save_execution(store, plan_id)
     guide = build_guide(profile)
     assert guide.status == "execution"
-    assert "登记投递" in guide.options
+    assert guide.options[0] == "推荐：先看下一步任务"
+    assert "登记已投递" in guide.options
     assert "做周检视/计划检查" in guide.options
 
 
@@ -447,38 +449,46 @@ def test_warnings_surface_failed_sources():
     assert build_guide(profile).warnings
 
 
-def test_user_brief_has_all_twelve_steps():
+def test_user_brief_summarizes_three_phases():
     brief = user_brief()
 
-    assert "从起步到上岸全流程 12 步" in brief
-    for name in (
-        "职业档案构建",
-        "目标岗位定位",
-        "市场基线调研",
-        "能力差距诊断",
-        "培养方案规划",
-        "目标企业筛选",
-        "岗位与面经采集",
-        "企业需求分析",
-        "执行方案校准",
-        "任务执行与打卡",
-        "求职投递管理",
-        "周期复盘与计划调整",
-    ):
-        assert name in brief
+    assert "全流程共 12 步" in brief
+    assert "归为三段" in brief
+    for phase_name in ("定位", "规划", "执行"):
+        assert phase_name in brief
     assert "顺序定、节奏自己掌握" in brief
+    # 不再逐条列出 12 步
+    assert "职业档案构建" not in brief
+    assert "周期复盘与计划调整" not in brief
+    assert "每步你都能拿到实际的东西" not in brief
 
 
 def test_login_action_points_to_harness():
     """BOSS 登录询问必须说明 Agent 会直接运行脚本，用户只需扫码。"""
-    from src.guidance import login_action
+    from src.guidance import BOSS_LOGIN_URL, login_action
 
     data = login_action("python -m src.scrapers.boss.login")
 
     assert data["harness_can_run"] is True
+    assert data["login_url"] == BOSS_LOGIN_URL == "https://www.zhipin.com/web/user/?ka=header-login"
     assert "harness" in data["agent_action"]
     assert "不要把命令丢给用户" in data["agent_action"]
+    assert "同一会话只提示一次" in data["agent_action"]
     assert "扫码" in data["user_instruction"]
+    assert "右上角" in data["user_instruction"]
+    assert "浏览器会自动关闭" in data["user_instruction"]
+    assert "打断这次会话" in data["user_instruction"]
+
+
+def test_phase_type_label_maps_internal_types_to_chinese():
+    """learn/project/intern/research 只在内部使用，对外必须显示中文。"""
+    from src.guidance import phase_type_label
+
+    assert phase_type_label("learn") == "学习"
+    assert phase_type_label("project") == "项目"
+    assert phase_type_label("intern") == "实习"
+    assert phase_type_label("research") == "调研"
+    assert phase_type_label("") == "阶段"
 
 
 def test_render_guide_has_one_question_and_no_internal_ids():
@@ -497,7 +507,7 @@ def test_start_session_emits_brief_and_guide(temp_profile):
     out = start_session()
 
     assert "[USER_BRIEF]" in out and "[GUIDE]" in out
-    assert "从起步到上岸全流程 12 步" in out
+    assert "全流程共 12 步" in out
 
 
 def test_workflow_status_includes_brief_for_new_profile(temp_profile):
@@ -506,7 +516,7 @@ def test_workflow_status_includes_brief_for_new_profile(temp_profile):
 
     out = get_workflow_status()
 
-    assert "[USER_BRIEF]" in out and "从起步到上岸全流程 12 步" in out
+    assert "[USER_BRIEF]" in out and "全流程共 12 步" in out
     assert "[GUIDE]" in out
 
 
@@ -544,3 +554,119 @@ def test_analyze_blocks_unconfirmed_goal_in_guided_flow(temp_profile):
         '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
     )
     assert "methodologies" in analyze_gaps()
+
+
+def test_intake_want_before_finalize_does_not_jump_to_market(temp_profile):
+    """BUG #12-13：目标写入/确认后仍未 finalize，引导不能跳到市场调研（第 3 步）。"""
+    from src.server import get_workflow_status, intake, start_session
+
+    start_session()
+    intake("want", '{"target_role": "AI Agent", "city": "上海"}')
+
+    guide = build_guide(profile_module.load_profile())
+    assert guide.status in ("profile", "goal")
+    assert guide.index < 3
+    assert "finalize_profile" in get_workflow_status()
+
+    intake(
+        "want",
+        '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
+    )
+
+    guide = build_guide(profile_module.load_profile())
+    assert guide.status == "profile"
+    assert guide.index == 1
+    # 状态报告读档时也不能因为已有 want/下游 artifact 而补出已 finalize 的假象
+    status = get_workflow_status()
+    assert "**下一步**：finalize_profile" in status
+
+
+@pytest.mark.parametrize(
+    ("section", "payload"),
+    [
+        ("who", '{"name": "张三"}'),
+        ("have", '{"skills": ["Python"]}'),
+    ],
+)
+def test_intake_section_never_repeats_familiarity_question(
+    temp_profile, section, payload
+):
+    """BUG #14：填过任意 section 后，GUIDE 不再重复首屏「了解多少」。"""
+    from src.server import intake, start_session
+
+    start_session()
+    intake(section, payload)
+
+    guide = build_guide(profile_module.load_profile())
+    assert guide.status not in ("brief", "familiarity")
+    assert "你对毕业后的方向了解多少" not in guide.ask
+
+
+def test_intake_want_unconfirmed_enters_goal_confirmation(temp_profile):
+    """BUG #14：已有 want 且未确认时进入目标确认，而不是重复首屏。"""
+    from src.server import intake, start_session
+
+    start_session()
+    intake("want", '{"target_role": "AI Agent", "city": "上海"}')
+
+    guide = build_guide(profile_module.load_profile())
+    assert guide.status == "goal"
+    assert "我先确认目标" in guide.ask
+    assert "你对毕业后的方向了解多少" not in guide.ask
+
+
+def test_market_guide_matches_research_market_four_step_template():
+    """BUG #15：市场引导按 4 步模板播报，耗时口径与 research_market 一致。"""
+    from src.server import research_market
+
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+
+    guide = build_guide(profile)
+    assert guide.status == "market"
+    assert "要现在开始吗" not in guide.ask
+    assert "先跳过" not in " ".join(guide.options)
+    text = render_guide(guide)
+    assert "4 步" in text
+    assert "30-50 秒" in text
+    assert "本轮不用等确认" in text
+    assert "本轮只问一个问题" not in text
+
+    steps = ("范围宣告", "批量抓取", "报告落地", "衔接分析")
+    assert all(name in text for name in steps)
+
+    profile_module.save_profile(profile, PROFILE_NAME)
+    market_context = research_market()
+    assert all(name in market_context for name in steps)
+
+
+def test_evidence_and_requirement_guides_start_without_confirmation_pause():
+    """名单确认后直接采集、证据就绪后直接分析，不再问「要现在开始吗」。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+    profile.core_state["market_baseline_id"] = _save_market(store)
+    profile.core_state["gap_report_id"] = _save_gap(store)
+    profile.core_state["baseline_plan_id"] = _save_baseline(store)
+    pool_id = _save_pool(store)
+    profile.core_state["company_pool_id"] = pool_id
+
+    guide = build_guide(profile)
+    assert guide.status == "evidence"
+    assert "现在直接" in guide.ask
+    assert "要现在开始吗" not in guide.ask
+    assert "开始采集" not in guide.options
+    assert "补充 BOSS 薪资" in guide.options
+    assert "不要问是否开始" in guide.next_action
+
+    profile.core_state["evidence_run_id"] = _save_evidence(store, pool_id)
+    guide = build_guide(profile)
+    assert guide.status == "requirement"
+    assert "现在直接" in guide.ask
+    assert "要现在分析吗" not in guide.ask
+    assert guide.next_action.startswith("直接调用 analyze_company_requirements")

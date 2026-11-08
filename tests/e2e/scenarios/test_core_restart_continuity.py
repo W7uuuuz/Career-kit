@@ -43,7 +43,7 @@ async def test_restart_keeps_progress_and_detects_goal_change(sandbox):
 
         status = await driver.status()
         status.assert_contains("execution")
-        assert "当前档案" in status.text and "default" in status.text
+        assert "当前档案" in status.text and "默认档案" in status.text
 
         # 目标变更检测：路线图之后改 want
         await driver.intake("want", {"target_role": "AI 应用工程师", "city": "上海"})

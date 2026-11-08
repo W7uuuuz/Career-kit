@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..assets import INDEX_FILENAME, get_assets_root
+from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
 from ..guidance import guide_for, is_legacy
 from ..mcp_app import mcp
 from .dashboard import (
@@ -998,10 +998,18 @@ def _backfill_core_state(profile):
     research = profile.research if isinstance(profile.research, dict) else {}
     plan = profile.plan if isinstance(profile.plan, dict) else {}
     roadmap = plan.get("roadmap")
+    # 新流程档案（有 guidance）在 finalize 前不能补 ProfileSnapshot，
+    # 否则状态报告会把「未 finalize」误判为阶段 1 已完成（BUG #12-13）。
+    profile_ready = (
+        bool(profile.summary)
+        or is_legacy(profile)
+        or not (profile.guidance or {})
+    )
     checks = (
         (
             core_sync.KEY_PROFILE,
-            bool(profile.who or profile.have or profile.want or profile.summary),
+            bool(profile.who or profile.have or profile.want or profile.summary)
+            and profile_ready,
             core_sync.sync_profile,
         ),
         (
@@ -1283,7 +1291,7 @@ def get_workflow_status() -> str:
     if stage_next:
         lines.append(f"- 该阶段下一步：{stage_next}")
     lines.append(f"## 当前状态：{phase}（内部状态，不给用户复述）")
-    lines.append(f"**当前档案**：{get_active_profile_name()}")
+    lines.append(f"**当前档案**：{profile_display_name(get_active_profile_name())}")
     lines.append("")
     if goal_change_alert:
         lines.append(goal_change_alert.rstrip())
