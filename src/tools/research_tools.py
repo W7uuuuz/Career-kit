@@ -659,6 +659,13 @@ async def gather_research_data(
         )
 
     paths = await asyncio.to_thread(save_report, profile, report)
+    # Core v2 同步：调研报告落盘后写 MarketBaseline artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_market_baseline
+
+        sync_market_baseline(profile_store.get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
     message = _render_report_message(report, paths)
     partial_info = gathered.get("partial") or {}
     if partial_info.get("incomplete"):

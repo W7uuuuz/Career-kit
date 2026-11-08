@@ -216,6 +216,15 @@ def intake(section: str, data: str) -> str:
                 "不补充也不影响流程，届别校验会自动跳过。"
             )
 
+    # Core v2 同步：用户本人确认目标后落 TargetSpec artifact（失败不阻断）
+    if section == "want" and payload.get("user_confirmed") is True:
+        try:
+            from ..core.sync import sync_target
+
+            sync_target(get_active_profile_name())
+        except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+            pass
+
     return result + "\n\n" + guide_for(load_profile())
 
 
@@ -308,6 +317,15 @@ def finalize_profile(skip_probing: bool = False) -> str:
     if _has_goal(profile):
         mark_goal_confirmed(profile)
     save_profile(profile)
+
+    # Core v2 同步：档案快照落 artifact（失败不影响建档主流程）
+    if profile.summary or profile.who or profile.have or profile.want:
+        try:
+            from ..core.sync import sync_profile
+
+            sync_profile(get_active_profile_name())
+        except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+            pass
 
     # 跳过留痕提示
     skip_note = ""

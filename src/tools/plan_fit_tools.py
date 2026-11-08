@@ -39,10 +39,20 @@ def check_plan_fit(trigger: str = "manual") -> str:
     - 用户同意后才调用 next_tool 指向的采集/校准工具；
     - 不要根据 signals 自行改写计划，也不要制造焦虑；只陈述事实与证据。
     """
+    profile_name = get_active_profile_name()
     try:
-        result = _plan_fit.check_plan_fit(get_active_profile_name(), trigger)
+        result = _plan_fit.check_plan_fit(profile_name, trigger)
     except Exception as exc:  # noqa: BLE001 —— 只读检测失败要转成可读错误
         return error_response("PLAN_FIT_FAILED", f"计划失配检测失败：{exc}")
+
+    # Core v2 同步：计划失配检测结果落 ReviewReport artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_review
+
+        sync_review(profile_name, plan_fit=result)
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
+
     return _json(result)
 
 

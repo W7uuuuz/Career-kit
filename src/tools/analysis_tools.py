@@ -16,7 +16,7 @@ from .probing import (
     is_verified_skill,
     skill_display_name,
 )
-from .profile import load_profile, save_profile
+from .profile import get_active_profile_name, load_profile, save_profile
 from .session_tools import _has_goal, _summarize_dict
 from .tool_helpers import _json, _parse_json_param
 
@@ -571,6 +571,14 @@ def save_gap_analysis(gap_json: str) -> str:
         decision="用户确认差距分析",
     ))
     save_profile(profile)
+
+    # Core v2 同步：差距分析落 artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_gap
+
+        sync_gap(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
 
     advisory_text = ""
     if advisories:

@@ -254,7 +254,7 @@ def test_build_state_alignment_reads_artifacts(temp_profile):
     assert alignment["execution_plan"]["phase_count"] == 2
     assert alignment["execution_plan"]["strategy_summary"] == "先补基础"
     assert alignment["execution_plan"]["diff_summary"] == "新增 2 个任务"
-    assert alignment["next_tool"] == ""
+    assert alignment["next_tool"] == "get_next_tasks"
 
 
 def test_build_state_alignment_falls_back_to_latest(temp_profile):

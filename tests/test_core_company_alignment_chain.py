@@ -466,7 +466,8 @@ def test_company_alignment_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     action = state_machine.next_action(PROFILE_NAME)
     assert action["stage"] == state_machine.STAGE_EXECUTING
-    assert action["next_tool"] == ""
+    assert action["next_tool"] == "get_next_tasks"
+    assert "record_application" in action["optional_next_tools"]
     assert action["artifact_ids"]["execution_plan_id"] == applied_id
 
     for kind in ("md", "html"):

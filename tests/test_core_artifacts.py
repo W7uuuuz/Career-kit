@@ -301,14 +301,10 @@ def test_legacy_adapter_defaults_for_empty_profile() -> None:
 
 def test_state_machine_without_artifacts(store: ArtifactStore, core_state: dict[str, Any]) -> None:
     result = state_machine.next_action("alice")
-    assert result["stage"] == state_machine.STAGE_COMPANY_POOL
-    assert result["next_tool"] == "select_target_companies"
-    assert result["artifact_ids"] == {
-        "company_pool_id": "",
-        "evidence_run_id": "",
-        "requirement_profile_id": "",
-        "execution_plan_id": "",
-    }
+    assert result["stage"] == state_machine.STAGE_PROFILE
+    assert result["next_tool"] == "finalize_profile"
+    assert all(value == "" for value in result["artifact_ids"].values())
+    assert result["optional_next_tools"] == []
 
 
 def test_state_machine_unconfirmed_pool_requires_selection(
@@ -375,8 +371,8 @@ def test_state_machine_applied_plan_enters_execution(
     requirement_id = store.save(_requirement(store, evidence_id))
     store.save(_plan(store, requirement_id, applied=True))
     result = state_machine.next_action("alice")
-    assert result["stage"] == state_machine.STAGE_EXECUTING
-    assert result["next_tool"] == ""
+    assert result["stage"] == state_machine.STAGE_EXECUTION
+    assert result["next_tool"] == "generate_tasks"
     assert result["artifact_ids"]["execution_plan_id"] != ""
 
 

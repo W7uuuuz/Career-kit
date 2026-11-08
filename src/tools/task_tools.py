@@ -173,6 +173,14 @@ def generate_tasks() -> str:
 
     save_profile(profile)
 
+    # Core v2 同步：任务/打卡状态落 ExecutionState artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_execution_state
+
+        sync_execution_state(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
+
     # 任务生成后自动刷新路线图 HTML：避免用户打开旧快照看到「没有可打卡任务」（P1-4）
     map_path = ""
     map_error = ""
@@ -572,6 +580,14 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
 
     save_profile(profile)
 
+    # Core v2 同步：打卡后刷新 ExecutionState artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_execution_state
+
+        sync_execution_state(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
+
     lines.append("")
     lines.append(format_progress_overview(profile))
 
@@ -825,9 +841,18 @@ def get_weekly_review(days: int = 7) -> str:
 
     facts = summarize_period(profile, days=days)
     review = format_weekly_review(profile, facts)
-    fit_lines = _plan_fit_lines(_plan_fit_result("weekly_review"))
+    fit = _plan_fit_result("weekly_review")
+    fit_lines = _plan_fit_lines(fit)
     if fit_lines:
         review = review + "\n\n" + "\n".join(fit_lines)
+
+    # Core v2 同步：周检视事实 + 计划失配结果落 ReviewReport artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_review
+
+        sync_review(get_active_profile_name(), plan_fit=fit, weekly_facts=facts)
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
 
     follow_up = (
         "认可就继续 get_next_tasks；想调整随时说，"
@@ -900,6 +925,133 @@ def _review_nudge_hint() -> str:
     return ""
 
 
+_STAGE_NAMES = (
+    "职业档案构建",
+    "目标岗位定位",
+    "市场基线调研",
+    "能力差距诊断",
+    "培养方案规划",
+    "目标企业筛选",
+    "岗位与面经采集",
+    "企业需求分析",
+    "执行方案校准",
+    "任务执行与打卡",
+    "求职投递管理",
+    "周期复盘与计划调整",
+)
+
+_STAGE_NEXT_TOOLS = (
+    "finalize_profile",
+    "explore_goals / intake(section=\"want\")",
+    "gather_research_data",
+    "save_gap_analysis",
+    "save_roadmap",
+)
+
+_CORE_STAGE_INDEX = {
+    "profile": 1,
+    "target": 2,
+    "market_baseline": 3,
+    "gap": 4,
+    "baseline_plan": 5,
+    "company_pool": 6,
+    "evidence": 7,
+    "requirement": 8,
+    "execution_plan": 9,
+    "execution": 10,
+    "executing": 10,
+    "applications": 11,
+    "review": 12,
+}
+
+
+def _backfill_core_state(profile):
+    """旧档案补齐：core_state 缺 key 且档案已有对应数据时补一次 sync。
+
+    只补缺失 key，已有 key 不重建；任何 sync 失败都静默跳过，不影响状态报告。
+    返回补齐后重新加载的档案（无补齐时返回原对象）。
+    """
+    try:
+        from ..core import sync as core_sync
+    except Exception:  # noqa: BLE001 - 导入失败视为无旧档案可补
+        return profile
+
+    state = profile.core_state if isinstance(profile.core_state, dict) else {}
+    research = profile.research if isinstance(profile.research, dict) else {}
+    plan = profile.plan if isinstance(profile.plan, dict) else {}
+    roadmap = plan.get("roadmap")
+    checks = (
+        (
+            core_sync.KEY_PROFILE,
+            bool(profile.who or profile.have or profile.want or profile.summary),
+            core_sync.sync_profile,
+        ),
+        (core_sync.KEY_TARGET, bool(profile.want), core_sync.sync_target),
+        (
+            core_sync.KEY_MARKET_BASELINE,
+            bool(
+                research.get("report_md")
+                or research.get("jd_samples")
+                or research.get("cases")
+            ),
+            core_sync.sync_market_baseline,
+        ),
+        (core_sync.KEY_GAP, bool(profile.gap), core_sync.sync_gap),
+        (
+            core_sync.KEY_BASELINE_PLAN,
+            bool(isinstance(roadmap, dict) and roadmap),
+            core_sync.sync_baseline_plan,
+        ),
+        (core_sync.KEY_EXECUTION, bool(profile.tasks), core_sync.sync_execution_state),
+        (
+            core_sync.KEY_APPLICATIONS,
+            bool(profile.applications),
+            core_sync.sync_application_state,
+        ),
+    )
+
+    changed = False
+    for key, has_data, sync_fn in checks:
+        if not has_data or state.get(key):
+            continue
+        try:
+            sync_fn(get_active_profile_name())
+            changed = True
+        except Exception:  # noqa: BLE001 - 补齐失败不影响主流程
+            continue
+    return load_profile() if changed else profile
+
+
+def _stage_position(profile, core_action: dict) -> tuple[int, str, str]:
+    """根据状态机输出（缺失时回退 core_state）给出 12 阶段位置与下一步。"""
+    stage = str((core_action or {}).get("stage") or "")
+    index = _CORE_STAGE_INDEX.get(stage)
+    next_tool = str((core_action or {}).get("next_tool") or "")
+
+    if index is None:
+        # 状态机不可用时按 core_state 指针退化推导，避免整份报告缺阶段信息
+        try:
+            from ..core import sync as core_sync
+        except Exception:  # noqa: BLE001 - 无核心模块时按建档起点处理
+            return 1, _STAGE_NAMES[0], _STAGE_NEXT_TOOLS[0]
+        state = profile.core_state if isinstance(profile.core_state, dict) else {}
+        keys = (
+            core_sync.KEY_PROFILE,
+            core_sync.KEY_TARGET,
+            core_sync.KEY_MARKET_BASELINE,
+            core_sync.KEY_GAP,
+            core_sync.KEY_BASELINE_PLAN,
+        )
+        for position, key in enumerate(keys, start=1):
+            if not state.get(key):
+                return position, _STAGE_NAMES[position - 1], _STAGE_NEXT_TOOLS[position - 1]
+        index = 10
+
+    if not next_tool and index == 10:
+        next_tool = "get_next_tasks"
+    return index, _STAGE_NAMES[index - 1], next_tool
+
+
 @mcp.tool()
 def get_workflow_status() -> str:
     """获取当前工作流状态和下一步建议。
@@ -912,7 +1064,17 @@ def get_workflow_status() -> str:
     Returns:
         包含当前阶段、已完成步骤、下一步建议的字典
     """
-    profile = load_profile()
+    # 旧档案补齐：缺 key 且已有数据时补一次 sync（只补缺失，不重建）
+    profile = _backfill_core_state(load_profile())
+
+    # Core v2 状态机（只读）：12 阶段位置与企业适配建议
+    core_v2: dict = {}
+    try:
+        from ..core.orchestrator.state_machine import next_action as _core_next
+
+        core_v2 = _core_next(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - 状态推导失败不能拖垮整份状态报告
+        core_v2 = {}
 
     # 目标变更检测（BUG-010）：want 是用户真实目标，变更要强告警；
     # target_jd 可能被示例/误导入污染，降级为「可核查提示」并附摘要，不再逼用户重分析
@@ -1031,18 +1193,10 @@ def get_workflow_status() -> str:
 
     # Core v2 企业适配：路线图已存在时，按 artifact 状态给出执行前的校准路径。
     # 只做只读推导；不改变旧工作流，不自动改写档案。
-    core_v2: dict = {}
-    if profile.plan.get("roadmap"):
-        try:
-            from ..core.orchestrator.state_machine import next_action as _core_next
-
-            core_v2 = _core_next(get_active_profile_name())
-        except Exception:  # noqa: BLE001 - 状态推导失败不能拖垮整份状态报告
-            core_v2 = {}
-        if core_v2.get("next_tool") and not profile.tasks and not stale_gap:
-            next_step = (
-                f"{core_v2['next_tool']}（企业适配：{core_v2.get('reason', '')}）"
-            )
+    if profile.plan.get("roadmap") and core_v2.get("next_tool") and not profile.tasks and not stale_gap:
+        next_step = (
+            f"{core_v2['next_tool']}（企业适配：{core_v2.get('reason', '')}）"
+        )
 
     fit = _plan_fit_result("manual") if profile.plan.get("roadmap") else {}
     if (
@@ -1057,8 +1211,12 @@ def get_workflow_status() -> str:
     # 构建状态报告
     total_tasks = len(profile.tasks)
     completed_tasks = sum(1 for t in profile.tasks if t.status == "completed")
+    stage_index, stage_name, stage_next = _stage_position(profile, core_v2)
 
     lines = [guide_for(profile), ""]
+    lines.append(f"## 当前阶段（12 步）：{stage_index}/12 {stage_name}")
+    if stage_next:
+        lines.append(f"- 该阶段下一步：{stage_next}")
     lines.append(f"## 当前状态：{phase}（内部状态，不给用户复述）")
     lines.append(f"**当前档案**：{get_active_profile_name()}")
     lines.append("")
@@ -1091,7 +1249,7 @@ def get_workflow_status() -> str:
         lines.append(f"- 报告：{report_html}")
         lines.append(f"- 资产总览：{research.get('index') or (get_assets_root() / INDEX_FILENAME)}")
         lines.append("")
-    if core_v2:
+    if profile.plan.get("roadmap") and core_v2:
         lines.append("### 企业适配（Core v2）")
         lines.append(f"- 阶段：{core_v2.get('stage', '')}")
         if core_v2.get("next_tool"):

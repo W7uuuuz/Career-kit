@@ -218,7 +218,9 @@ def test_legacy_plan_supports_workflow_progress_and_generate_tasks(compat_env: P
     assert reloaded.plan["roadmap"]["phases"][0]["name"] == "旧阶段一"
     assert reloaded.tasks
     assert any(task.phase_id == "phase_1" for task in reloaded.tasks)
-    assert reloaded.core_state == {}
+    # 全 12 阶段迁移后，旧档案会在 get_workflow_status / generate_tasks 时补齐 core_state。
+    assert reloaded.core_state["profile_id"]
+    assert reloaded.core_state["execution_state_id"]
 
 
 def test_applying_execution_plan_preserves_legacy_progress(compat_env: Path) -> None:

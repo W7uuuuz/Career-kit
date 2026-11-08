@@ -24,17 +24,22 @@ Chat with the coach via fixed options and walk the whole flow; scripted demo wit
 
 [Sample output](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [Docs](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
 
-## Understand it in 30 seconds: seven stages from start to landing
+## Understand it in 30 seconds: twelve stages from start to landing
 
-Each stage delivers something real; order is fixed, pace is yours:
+Each stage makes one decision and delivers one artifact; order is fixed, pace is yours:
 
-1. **Profile establishment** — verify the resume point by point to establish a real, auditable level and goal; you get a profile you have confirmed.
-2. **Market baseline research** — fetch real postings and interview reports to replace guesswork; you get a sourced market baseline showing how peers at your level got in.
-3. **Capability gap diagnosis** — compare market requirements against current state; you get an actionable gap diagnosis.
-4. **Training plan design** — break the goal into ordered phases and tasks; you get a baseline career map you can check in against.
-5. **Company alignment** — turn tiers into specific companies, collect real JDs and interview reports, and produce an execution roadmap plus a target evidence pool.
-6. **Task execution and check-ins** — work through tasks and turn completions into capability evidence.
-7. **Periodic review and plan adjustment** — review check-ins, phases, and the application funnel; replan when the goal changes or new data shows the plan no longer fits.
+1. **Profile establishment** — verify the resume point by point to establish a real, auditable level and goal.
+2. **Target role positioning** — set direction, city, target tier, and bridge tier.
+3. **Market baseline research** — fetch real postings and interview reports into a sourced market baseline.
+4. **Capability gap diagnosis** — compare market requirements against current state.
+5. **Training plan design** — break the goal into ordered phases and tasks.
+6. **Target company selection** — turn tiers into a user-confirmed company pool.
+7. **Job and interview evidence collection** — collect real JDs and interview reports with sources and confidence.
+8. **Company requirement analysis** — extract high-frequency requirements, per-JD hard filters, and interview topics.
+9. **Execution plan calibration** — align the baseline plan with the requirement profile.
+10. **Task execution and check-ins** — work through tasks and turn completions into capability evidence.
+11. **Application management** — record applications, interviews, offers, and funnel conversion.
+12. **Periodic review and plan adjustment** — review facts and detect plan drift when data or goals change.
 
 > If this project helps you, a star is appreciated.
 

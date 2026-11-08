@@ -203,18 +203,95 @@ class ExecutionPlan(BaseModel):
     applied: bool = False
 
 
+class MarketBaseline(BaseModel):
+    """阶段 3 产物：市场基线调研（岗位样本、案例与报告路径）。"""
+
+    meta: ArtifactMeta
+    target_spec: TargetSpec = Field(default_factory=TargetSpec)
+    jd_samples: list[dict[str, Any]] = Field(default_factory=list)
+    case_samples: list[dict[str, Any]] = Field(default_factory=list)
+    digest: dict[str, Any] = Field(default_factory=dict)
+    source_status: list[dict[str, Any]] = Field(default_factory=list)
+    counts: dict[str, int] = Field(default_factory=dict)
+    gaps: list[str] = Field(default_factory=list)
+    report_paths: dict[str, str] = Field(default_factory=dict)
+
+
+class GapReport(BaseModel):
+    """阶段 4 产物：能力差距诊断。"""
+
+    meta: ArtifactMeta
+    profile_snapshot_id: str = ""
+    market_baseline_id: str = ""
+    match_score: int = 0
+    match_level: str = ""
+    start_level: str = ""
+    strengths: list[dict[str, Any]] = Field(default_factory=list)
+    resume_red_flags: list[dict[str, Any]] = Field(default_factory=list)
+    resume_optimization: dict[str, Any] = Field(default_factory=dict)
+    interview_preparation: dict[str, Any] = Field(default_factory=dict)
+    skill_gaps: list[dict[str, Any]] = Field(default_factory=list)
+    priority_actions: list[dict[str, Any]] = Field(default_factory=list)
+    market_context: str = ""
+
+
+class BaselinePlan(BaseModel):
+    """阶段 5 产物：基线培养方案。"""
+
+    meta: ArtifactMeta
+    gap_report_id: str = ""
+    strategy_summary: str = ""
+    roadmap: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecutionState(BaseModel):
+    """阶段 10 产物：任务执行与打卡状态。"""
+
+    meta: ArtifactMeta
+    execution_plan_id: str = ""
+    current_phase_id: str = ""
+    task_counts: dict[str, int] = Field(default_factory=dict)
+    checkin_counts: dict[str, int] = Field(default_factory=dict)
+    capability_evidence: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ApplicationState(BaseModel):
+    """阶段 11 产物：求职投递与漏斗状态。"""
+
+    meta: ArtifactMeta
+    evidence_run_id: str = ""
+    applications: list[dict[str, Any]] = Field(default_factory=list)
+    funnel: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewReport(BaseModel):
+    """阶段 12 产物：周期复盘与计划失配信号。"""
+
+    meta: ArtifactMeta
+    execution_state_id: str = ""
+    plan_fit: dict[str, Any] = Field(default_factory=dict)
+    weekly_facts: dict[str, Any] = Field(default_factory=dict)
+    recommendations: list[str] = Field(default_factory=list)
+
+
 __all__ = [
+    "ApplicationState",
     "ArtifactMeta",
+    "BaselinePlan",
     "CompanyEntry",
     "CompanyPool",
     "EvidenceRun",
     "ExecutionPlan",
+    "ExecutionState",
+    "GapReport",
     "HardRequirement",
     "InterviewEvidence",
     "JDEvidence",
+    "MarketBaseline",
     "PlanChange",
     "ProfileSnapshot",
     "RequirementItem",
     "RequirementProfile",
+    "ReviewReport",
     "TargetSpec",
 ]

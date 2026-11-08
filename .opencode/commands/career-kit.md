@@ -23,7 +23,7 @@ description: Career Kit 职业陪练——一键启动/继续你的职业规划
 
 工具会返回两块用户可见内容：
 
-- `[USER_BRIEF]`：7 步简介（只在需要时出现）
+- `[USER_BRIEF]`：12 步简介（只在需要时出现）
 - `[GUIDE]`：当前位置 + 本轮唯一问题 + 选项 + 下一步动作
 
 **硬规则**
@@ -40,15 +40,19 @@ description: Career Kit 职业陪练——一键启动/继续你的职业规划
 
 ## 第 2 步：按 GUIDE 推进
 
-- `brief` / `goal` / `profile`：职业档案构建
-- `research`：`research_market` → `gather_research_data`
-- `gap`：`analyze_gaps` → `save_gap_analysis`
-- `roadmap`：`generate_roadmap` → 先存雏形 → 审计 → 定稿
-- `align`：`select_target_companies` → `collect_company_evidence` →
-  `analyze_company_requirements` → `save_requirement_profile` →
-  `plan_execution_alignment` → `save_execution_alignment`
-- `tasks` / `execute`：`detail_current_phase` → `save_current_detail` →
-  `generate_tasks` → `get_next_tasks` → `checkin_task`
+- `brief` / `goal` / `profile`：1 职业档案构建
+- `target`：2 目标岗位定位（`explore_goals` / `intake(want, user_confirmed=true)`）
+- `research` / `market`：3 市场基线调研（`research_market` → `gather_research_data`）
+- `gap`：4 能力差距诊断（`analyze_gaps` → `save_gap_analysis`）
+- `roadmap` / `plan`：5 培养方案规划（`generate_roadmap` → 审计 → `save_roadmap`）
+- `company`：6 目标企业筛选（`select_target_companies`）
+- `evidence`：7 岗位与面经采集（`collect_company_evidence`）
+- `requirement`：8 企业需求分析（`analyze_company_requirements` → `save_requirement_profile`）
+- `alignment`：9 执行方案校准（`plan_execution_alignment` → `save_execution_alignment`）
+- `tasks` / `execute`：10 任务执行与打卡（`detail_current_phase` → `generate_tasks` →
+  `get_next_tasks` → `checkin_task`）
+- `applications`：11 求职投递管理（`record_application` / `delete_application`，可选）
+- `review`：12 周期复盘与计划调整（`get_weekly_review` / `check_plan_fit`）
 
 每个工具返回的新 `[GUIDE]` 就是下一步；不要自己发明阶段或跳步。
 

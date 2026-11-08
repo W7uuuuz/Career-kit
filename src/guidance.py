@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# 旅程：6 个阶段，顺序固定，节奏由用户掌握
+# 旅程：12 个阶段，顺序固定，节奏由用户掌握
 # ---------------------------------------------------------------------------
 
 
@@ -42,7 +42,13 @@ JOURNEY_STEPS: tuple[Step, ...] = (
         "一份你确认过的职业档案",
     ),
     Step(
-        "research",
+        "target",
+        "目标岗位定位",
+        "先定方向和城市，后面所有分析才有坐标",
+        "一个你确认过的目标岗位",
+    ),
+    Step(
+        "market",
         "市场基线调研",
         "用真实岗位与面经建立市场基线，每条都能点开验证",
         "一份带来源的市场基线报告",
@@ -54,22 +60,46 @@ JOURNEY_STEPS: tuple[Step, ...] = (
         "一份可执行的差距诊断",
     ),
     Step(
-        "roadmap",
+        "plan",
         "培养方案规划",
         "把目标拆成有顺序的阶段和任务，阶段顺序定、节奏自己掌握",
         "一张可打卡的基线职业地图",
     ),
     Step(
-        "align",
-        "企业适配",
-        "把目标从档位落到具体企业，用真实 JD 与面经校准培养方案",
-        "一份执行版路线图与目标证据池",
+        "company",
+        "目标企业筛选",
+        "把目标从档位落到具体企业，确认要盯的名单",
+        "一份已确认的目标企业池",
     ),
     Step(
-        "execute",
+        "evidence",
+        "岗位与面经采集",
+        "用目标企业的真实 JD 与面经替代想象",
+        "一份带来源的岗位与面经证据池",
+    ),
+    Step(
+        "requirement",
+        "企业需求分析",
+        "从证据里提炼企业真正高频要求的技能与门槛",
+        "一份有样本支撑的企业需求画像",
+    ),
+    Step(
+        "alignment",
+        "执行方案校准",
+        "用企业需求校准培养方案，明确每条调整的证据",
+        "一份执行版路线图与变更清单",
+    ),
+    Step(
+        "execution",
         "任务执行与打卡",
         "按关卡推进，完成即沉淀为能力证据",
-        "可验证的能力证据",
+        "可验证的能力证据与打卡记录",
+    ),
+    Step(
+        "applications",
+        "求职投递管理",
+        "记录真实投递与状态变化，看清转化漏斗",
+        "一份投递漏斗记录",
     ),
     Step(
         "review",
@@ -241,7 +271,7 @@ class Guide:
 _STATUS_META: dict[str, tuple[str, str, str]] = {
     "brief": (
         "介绍 Career Kit，并确认你对毕业方向的了解程度",
-        "先带你看完整 6 步，再只问一个问题；不需要准备材料",
+        "先带你看完整 12 步，再只问一个问题；不需要准备材料",
         "按真实想法回答即可，没有标准答案",
     ),
     "familiarity": (
@@ -259,7 +289,12 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
         "简历 + 逐项求证；技能要由你说明作者身份和把控度",
         "这里记录的是你确认过的事实，不是简历原文",
     ),
-    "research": (
+    "target": (
+        "目标岗位定位：确认方向、城市与届别",
+        "我复述推断值，你确认或直接改",
+        "目标是所有分析和计划的坐标；有出入直接改",
+    ),
+    "market": (
         "市场调研：用真实岗位和同背景经历替代猜测",
         "抓真实 JD，逐条补详情；来源会标在报告里",
         "每条数据带来源链接；失败源会如实标注",
@@ -269,30 +304,70 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
         "结合调研数据与你的自评，给出差距清单和优先顺序",
         "匹配度是参考，不是审判；每项差距都有依据",
     ),
-    "roadmap": (
+    "plan": (
         "培养方案规划：先判定起点档位，再设计阶段序列",
         "起点按 5 个维度加权打分；档位是命中率参考，不是准入许可",
         "结果怎么读：档位不是能力上限，你可以改任何一维的依据",
     ),
-    "align": (
-        "企业适配：把目标从档位落到具体企业",
-        "先确认目标企业池，再批量采集真实 JD 与面经，用它们校准培养方案",
-        "结果怎么读：数字与证据由代码生成；没有证据的要求不会被写成必做任务",
+    "company": (
+        "目标企业筛选：把方向落到具体企业名单",
+        "先按档位和行业推荐，再让你增删确认",
+        "企业名单只决定采集范围，不是投递承诺",
+    ),
+    "evidence": (
+        "岗位与面经采集：抓目标企业的真实 JD 与面经",
+        "只抓已确认名单里的企业；每批约 30-90 秒",
+        "没有详情的岗位不会进入证据池；失败源会如实标注",
+    ),
+    "requirement": (
+        "企业需求分析：从证据里统计高频要求与硬门槛",
+        "数字由代码统计，我只解释优先级与公司差异",
+        "样本少时会标低置信度，不把个别 JD 当全局结论",
+    ),
+    "alignment": (
+        "执行方案校准：用企业需求调整培养方案",
+        "每条调整都要引用证据；确认后才替换路线图",
+        "没有证据的变更不会写入方案",
     ),
     "tasks": (
         "把当前阶段拆成可执行任务",
         "每个任务会给出怎么做、用什么资源、怎么算完成",
         "任务按「一次坐下可完成」设计；打卡方式随任务给出",
     ),
-    "execute": (
+    "execution": (
         "执行打卡：按当前阶段任务逐项推进",
         "完成一项就打卡；daily 记天数，percent 记比例",
         "进度是事实记录，不设时限；快了可以加深，慢了可以调顺序",
+    ),
+    "applications": (
+        "求职投递管理：记录真实投递与状态变化",
+        "只记录你亲口说的事实，不估计状态",
+        "漏斗基于事件历史，面试后被拒仍计入面试",
     ),
     "review": (
         "周期复盘：用事实看这一段发生了什么",
         "汇总打卡、阶段和求职漏斗，给规则化建议",
         "复盘不催促；下一步由你决定",
+    ),
+    "research": (
+        "市场调研：用真实岗位和同背景经历替代猜测",
+        "抓真实 JD，逐条补详情；来源会标在报告里",
+        "每条数据带来源链接；失败源会如实标注",
+    ),
+    "roadmap": (
+        "培养方案规划：先判定起点档位，再设计阶段序列",
+        "起点按 5 个维度加权打分；档位是命中率参考，不是准入许可",
+        "结果怎么读：档位不是能力上限，你可以改任何一维的依据",
+    ),
+    "align": (
+        "执行方案校准：用企业需求调整培养方案",
+        "每条调整都要引用证据；确认后才替换路线图",
+        "没有证据的变更不会写入方案",
+    ),
+    "execute": (
+        "执行打卡：按当前阶段任务逐项推进",
+        "完成一项就打卡；daily 记天数，percent 记比例",
+        "进度是事实记录，不设时限；快了可以加深，慢了可以调顺序",
     ),
 }
 
@@ -310,7 +385,7 @@ def _guide(
     step = JOURNEY_STEPS[_STEP_INDEX[step_id] - 1]
     what, method, how_to_read = _STATUS_META.get(status, ("", "", ""))
     rules_hint = ""
-    if status in ("gap", "roadmap"):
+    if status in ("gap", "plan", "roadmap"):
         rules_hint = "规则或口径不清楚时，读 career-kit://docs/rules 或直接问我"
     return Guide(
         step=step,
@@ -327,6 +402,243 @@ def _guide(
         how_to_read=how_to_read,
         rules_hint=rules_hint,
     )
+
+
+_CORE_STAGE_KEYS: tuple[tuple[str, str], ...] = (
+    ("profile", "profile_id"),
+    ("target", "target_spec_id"),
+    ("market", "market_baseline_id"),
+    ("gap", "gap_report_id"),
+    ("plan", "baseline_plan_id"),
+    ("company", "company_pool_id"),
+    ("evidence", "evidence_run_id"),
+    ("requirement", "requirement_profile_id"),
+    ("alignment", "execution_plan_id"),
+    ("execution", "execution_state_id"),
+    ("applications", "application_state_id"),
+    ("review", "review_report_id"),
+)
+
+
+def _core_state(profile: Any) -> dict[str, Any]:
+    value = getattr(profile, "core_state", None)
+    return value if isinstance(value, dict) else {}
+
+
+def _legacy_flags(profile: Any) -> dict[str, bool]:
+    plan = getattr(profile, "plan", None) or {}
+    research = getattr(profile, "research", None) or {}
+    want = getattr(profile, "want", None) or {}
+    tasks = getattr(profile, "tasks", None) or []
+    applications = getattr(profile, "applications", None) or []
+    has_plan = isinstance(plan, dict) and bool(plan.get("roadmap"))
+    has_gap = bool(getattr(profile, "gap", None))
+    has_research = isinstance(research, dict) and bool(
+        research.get("report_md") or research.get("jd_samples") or research.get("cases")
+    )
+    return {
+        "profile": bool(
+            getattr(profile, "summary", "")
+            or getattr(profile, "who", None)
+            or getattr(profile, "have", None)
+        ),
+        "target": isinstance(want, dict) and bool(want),
+        "research": has_research,
+        "gap": has_gap,
+        "plan": has_plan,
+        "tasks": bool(tasks),
+        "applications": bool(applications),
+    }
+
+
+def _profile_guide(profile: Any) -> Guide:
+    return _guide(
+        "profile",
+        "profile",
+        "有简历文件吗？有的话给我路径；没有就简单说说你的经历，我会逐项向你求证。",
+        options=["我有简历，给路径", "我口述经历", "先不补，直接看市场"],
+        next_action="收齐 who/have 后调用 finalize_profile；技能必须由你确认，不能照抄简历",
+        profile=profile,
+    )
+
+
+def _target_guide(profile: Any) -> Guide:
+    return _guide(
+        "target",
+        "target",
+        goal_question(profile),
+        options=["对，就是这样", "方向要改", "城市/届别要改"],
+        next_action="目标缺失时先用 explore_goals 选定方向；确认后写入目标，再继续调研",
+        profile=profile,
+    )
+
+
+def _market_guide(profile: Any) -> Guide:
+    return _guide(
+        "market",
+        "market",
+        "下一步做市场调研：抓真实岗位和同背景经历。按来源数量约 30-90 秒，"
+        "超过 90 秒建议拆批。要现在开始吗？",
+        options=["开始调研", "先跳过，直接分析"],
+        next_action="同意后走 research_market → gather_research_data",
+        profile=profile,
+    )
+
+
+def _gap_guide(profile: Any) -> Guide:
+    return _guide(
+        "gap",
+        "gap",
+        "下一步做差距分析：基于调研数据告诉你差在哪、先补什么。要现在开始吗？",
+        options=["开始分析", "先看看调研报告"],
+        next_action="开始后按 analyze_gaps → save_gap_analysis 执行",
+        profile=profile,
+    )
+
+
+def _plan_guide(profile: Any) -> Guide:
+    return _guide(
+        "plan",
+        "plan",
+        "下一步定路线图：把目标拆成有顺序的阶段。要先看阶段序列吗？",
+        options=["开始规划", "先改分析结论"],
+        next_action="按 generate_roadmap 的 step_template 分步执行",
+        profile=profile,
+    )
+
+
+def _company_guide(profile: Any) -> Guide:
+    return _guide(
+        "company",
+        "company",
+        "路线图已就绪。下一步筛选目标企业：先按档位和行业给你一份名单，你再增删确认。"
+        "要先看名单吗？",
+        options=["推荐目标企业", "先跳过，按基线执行"],
+        next_action="select_target_companies；用户确认名单后才进入岗位与面经采集",
+        profile=profile,
+    )
+
+
+def _evidence_guide(profile: Any) -> Guide:
+    return _guide(
+        "evidence",
+        "evidence",
+        "目标企业已确认。下一步采集真实 JD 与面经，作为需求分析和方案校准的依据。"
+        "要现在开始吗？",
+        options=["开始采集", "先换一批企业"],
+        next_action="collect_company_evidence；只抓已确认名单里的企业",
+        profile=profile,
+    )
+
+
+def _requirement_guide(profile: Any) -> Guide:
+    return _guide(
+        "requirement",
+        "requirement",
+        "证据已就绪。下一步统计企业高频要求与硬门槛，并解释优先级。要现在分析吗？",
+        options=["开始分析", "先看证据池"],
+        next_action="analyze_company_requirements → save_requirement_profile",
+        profile=profile,
+    )
+
+
+def _alignment_guide(profile: Any) -> Guide:
+    return _guide(
+        "alignment",
+        "alignment",
+        "企业需求已分析。下一步用真实要求校准培养方案，生成执行版路线图。要现在校准吗？",
+        options=["开始校准", "先按基线路线图执行"],
+        next_action="plan_execution_alignment → save_execution_alignment；"
+                    "用户跳过时直接 detail_current_phase 或 generate_tasks",
+        profile=profile,
+    )
+
+
+def _execution_guide(profile: Any, *, ready: bool) -> Guide:
+    if not ready:
+        return _guide(
+            "execution",
+            "execution",
+            "下一步把当前阶段拆成可执行任务：每个任务会给出怎么做、用什么资源、"
+            "怎么算完成。要现在细化吗？",
+            options=["开始细化", "先按里程碑生成粗任务", "先看职业地图"],
+            next_action="detail_current_phase → save_current_detail → generate_tasks；"
+                        "用户拒绝细化时可直接 generate_tasks",
+            profile=profile,
+        )
+    return _guide(
+        "execution",
+        "execution",
+        "下一步推进当前阶段的任务；完成一项就打卡，进度会沉淀为能力证据。"
+        "也可以顺手登记投递或做周期复盘。",
+        options=["看下一步任务", "登记投递", "做周检视/计划检查"],
+        next_action="get_next_tasks；完成后 checkin_task；"
+                    "投递进展用 record_application / delete_application；"
+                    "周期复盘用 get_weekly_review / check_plan_fit",
+        profile=profile,
+    )
+
+
+def _review_guide(profile: Any) -> Guide:
+    return _guide(
+        "review",
+        "review",
+        "当前阶段任务已完成。要不要做一次周期复盘，看看下一步往哪走？",
+        options=["做复盘", "登记投递", "直接定新目标"],
+        next_action="get_weekly_review / check_plan_fit；目标变了先 analyze_gaps 重新分析",
+        profile=profile,
+    )
+
+
+def _guide_from_core_state(profile: Any, state: dict[str, Any]) -> Guide:
+    if not state.get("profile_id"):
+        return _profile_guide(profile)
+    if not state.get("target_spec_id"):
+        return _target_guide(profile)
+    if not state.get("market_baseline_id"):
+        return _market_guide(profile)
+    if not state.get("gap_report_id"):
+        return _gap_guide(profile)
+    if not state.get("baseline_plan_id"):
+        return _plan_guide(profile)
+    if not state.get("company_pool_id"):
+        return _company_guide(profile)
+    if not state.get("evidence_run_id"):
+        return _evidence_guide(profile)
+    if not state.get("requirement_profile_id"):
+        return _requirement_guide(profile)
+
+    stage = str(state.get("stage") or "")
+    applied = bool(state.get("execution_plan_id")) and (
+        stage in ("executing", "execution") or bool(state.get("execution_state_id"))
+    )
+    if not applied:
+        return _alignment_guide(profile)
+    return _execution_guide(profile, ready=bool(state.get("execution_state_id")))
+
+
+def _guide_from_legacy_fields(profile: Any) -> Guide:
+    flags = _legacy_flags(profile)
+    if not flags["profile"]:
+        return _profile_guide(profile)
+    if not flags["target"]:
+        return _target_guide(profile)
+
+    downstream = flags["gap"] or flags["plan"] or flags["tasks"]
+    if not (flags["research"] or downstream):
+        return _market_guide(profile)
+    if not (flags["gap"] or flags["plan"] or flags["tasks"]):
+        return _gap_guide(profile)
+    if not (flags["plan"] or flags["tasks"]):
+        return _plan_guide(profile)
+
+    if flags["tasks"] or flags["applications"]:
+        tasks = list(getattr(profile, "tasks", None) or [])
+        finished = ("completed", "skipped")
+        if tasks and all(getattr(task, "status", "") in finished for task in tasks):
+            return _review_guide(profile)
+        return _execution_guide(profile, ready=True)
+    return _company_guide(profile)
 
 
 def build_guide(profile: Any) -> Guide:
@@ -366,102 +678,10 @@ def build_guide(profile: Any) -> Guide:
             profile=profile,
         )
 
-    summary = getattr(profile, "summary", "") or ""
-    who = getattr(profile, "who", None) or {}
-    have = getattr(profile, "have", None) or {}
-    if not summary or not who or not have:
-        return _guide(
-            "profile",
-            "profile",
-            "有简历文件吗？有的话给我路径；没有就简单说说你的经历，我会逐项向你求证。",
-            options=["我有简历，给路径", "我口述经历", "先不补，直接看市场"],
-            next_action="收齐 who/have 后调用 finalize_profile；技能必须由你确认，不能照抄简历",
-            profile=profile,
-        )
-
-    research = getattr(profile, "research", None) or {}
-    if not (isinstance(research, dict) and research.get("report_md")):
-        return _guide(
-            "research",
-            "research",
-            "下一步做市场调研：抓真实岗位和同背景经历。按来源数量约 30-90 秒，"
-            "超过 90 秒建议拆批。要现在开始吗？",
-            options=["开始调研", "先跳过，直接分析"],
-            next_action="同意后走 research_market → gather_research_data",
-            profile=profile,
-        )
-
-    gap = getattr(profile, "gap", None) or {}
-    if not gap:
-        return _guide(
-            "gap",
-            "gap",
-            "下一步做差距分析：基于调研数据告诉你差在哪、先补什么。要现在开始吗？",
-            options=["开始分析", "先看看调研报告"],
-            next_action="开始后按 analyze_gaps → save_gap_analysis 执行",
-            profile=profile,
-        )
-
-    plan = getattr(profile, "plan", None) or {}
-    roadmap = plan.get("roadmap") if isinstance(plan, dict) else None
-    if not roadmap:
-        return _guide(
-            "roadmap",
-            "roadmap",
-            "下一步定路线图：把目标拆成有顺序的阶段。要先看阶段序列吗？",
-            options=["开始规划", "先改分析结论"],
-            next_action="按 generate_roadmap 的 step_template 分步执行",
-            profile=profile,
-        )
-
-    tasks = getattr(profile, "tasks", None) or []
-    core_state = getattr(profile, "core_state", None) or {}
-    core_stage = str(core_state.get("stage") or "") if isinstance(core_state, dict) else ""
-    if not tasks and core_stage != "executing":
-        return _guide(
-            "align",
-            "align",
-            "路线图已就绪。下一步做企业适配：确认目标企业池，采集真实 JD 与面经，"
-            "把基线方案校准为执行版。要现在开始吗？",
-            options=["开始企业适配", "先按基线路线图执行"],
-            next_action="select_target_companies → collect_company_evidence → "
-                        "analyze_company_requirements → save_requirement_profile → "
-                        "plan_execution_alignment → save_execution_alignment；"
-                        "用户跳过时直接 detail_current_phase 或 generate_tasks",
-            profile=profile,
-        )
-
-    if not tasks:
-        return _guide(
-            "execute",
-            "tasks",
-            "路线图已就绪。下一步把当前阶段拆成可执行任务：每个任务会给出怎么做、"
-            "用什么资源、怎么算完成。要现在细化吗？",
-            options=["开始细化", "先按里程碑生成粗任务", "先看职业地图"],
-            next_action="detail_current_phase → save_current_detail → generate_tasks；"
-                        "用户拒绝细化时可直接 generate_tasks",
-            profile=profile,
-        )
-
-    finished = ("completed", "skipped")
-    if all(getattr(t, "status", "") in finished for t in tasks):
-        return _guide(
-            "review",
-            "review",
-            "所有任务已完成。要不要做一次周期复盘，看看下一步往哪走？",
-            options=["做复盘", "直接定新目标"],
-            next_action="get_weekly_review；目标变了先 analyze_gaps 重新分析",
-            profile=profile,
-        )
-
-    return _guide(
-        "execute",
-        "execute",
-        "下一步推进当前阶段的任务；完成一项就打卡，进度会沉淀为能力证据。",
-        options=["看下一步任务", "看整体进度", "复盘最近进展"],
-        next_action="get_next_tasks；完成后 checkin_task",
-        profile=profile,
-    )
+    state = _core_state(profile)
+    if state:
+        return _guide_from_core_state(profile, state)
+    return _guide_from_legacy_fields(profile)
 
 
 # ---------------------------------------------------------------------------
@@ -488,7 +708,7 @@ def user_brief() -> str:
         "像聊天一样回答即可。每轮我只问一个问题；随时可以说「跳过」「改方向」「看进度」。",
         "你不用懂工具名或流程，我会在每一步告诉你拿到了什么、下一步做什么。",
         "",
-        "从起步到上岸全流程 7 步，每步你都能拿到实际的东西：",
+        "从起步到上岸全流程 12 步，每步你都能拿到实际的东西：",
         "",
     ]
     for i, step in enumerate(JOURNEY_STEPS, 1):

@@ -433,7 +433,7 @@ def test_confirm_applies_plan_and_enters_executing(
 
     action = state_machine.next_action(PROFILE_NAME)
     assert action["stage"] == state_machine.STAGE_EXECUTING
-    assert action["next_tool"] == ""
+    assert action["next_tool"] == "get_next_tasks"
     assert action["artifact_ids"]["execution_plan_id"] == result["execution_plan_id"]
 
 

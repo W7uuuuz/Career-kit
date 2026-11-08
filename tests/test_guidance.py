@@ -1,4 +1,4 @@
-"""引导状态机回归：位置推导、目标确认、单一文案源。"""
+﻿"""引导状态机回归：位置推导、目标确认、单一文案源。"""
 
 from __future__ import annotations
 
@@ -84,27 +84,95 @@ def test_legacy_profile_skips_brief_and_goal():
     assert guide.status not in ("brief", "goal")
 
 
-def test_guide_follows_pipeline():
+def test_guide_follows_twelve_core_stages():
     profile = _confirmed_profile()
-    assert build_guide(profile).status == "research"
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
 
-    profile.research = {"report_md": "report.md"}
+    profile.core_state = {"stage": "profile"}
+    assert build_guide(profile).status == "profile"
+
+    profile.core_state["profile_id"] = "pf_1"
+    assert build_guide(profile).status == "target"
+
+    profile.core_state["target_spec_id"] = "ts_1"
+    assert build_guide(profile).status == "market"
+
+    profile.core_state["market_baseline_id"] = "mb_1"
     assert build_guide(profile).status == "gap"
 
+    profile.core_state["gap_report_id"] = "gr_1"
+    assert build_guide(profile).status == "plan"
+
+    profile.core_state["baseline_plan_id"] = "bp_1"
+    assert build_guide(profile).status == "company"
+
+    profile.core_state["company_pool_id"] = "cp_1"
+    assert build_guide(profile).status == "evidence"
+
+    profile.core_state["evidence_run_id"] = "ev_1"
+    assert build_guide(profile).status == "requirement"
+
+    profile.core_state["requirement_profile_id"] = "rp_1"
+    assert build_guide(profile).status == "alignment"
+
+    profile.core_state["execution_plan_id"] = "ep_1"
+    profile.core_state["stage"] = "executing"
+    guide = build_guide(profile)
+    assert guide.status == "execution"
+    assert "细化" in guide.ask
+
+    profile.core_state["execution_state_id"] = "es_1"
+    profile.core_state["stage"] = "execution"
+    guide = build_guide(profile)
+    assert guide.status == "execution"
+    assert "登记投递" in guide.options
+    assert "做周检视/计划检查" in guide.options
+
+
+def test_optional_application_and_review_do_not_block_execution():
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.core_state = {
+        "profile_id": "pf_1",
+        "target_spec_id": "ts_1",
+        "market_baseline_id": "mb_1",
+        "gap_report_id": "gr_1",
+        "baseline_plan_id": "bp_1",
+        "company_pool_id": "cp_1",
+        "evidence_run_id": "ev_1",
+        "requirement_profile_id": "rp_1",
+        "execution_plan_id": "ep_1",
+        "execution_state_id": "es_1",
+        "stage": "execution",
+    }
+
+    guide = build_guide(profile)
+    assert guide.status == "execution"
+    assert "application_state_id" not in guide.next_action
+    assert "review_report_id" not in guide.next_action
+
+
+def test_legacy_fields_do_not_force_redo():
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.research = {"report_md": "report.md"}
     profile.gap = {"match_score": 65}
-    assert build_guide(profile).status == "roadmap"
-
     profile.plan = {"roadmap": {"phases": []}}
-    assert build_guide(profile).status == "align"
-
-    profile.core_state = {"stage": "executing"}
-    assert build_guide(profile).status == "tasks"
+    assert build_guide(profile).status == "company"
 
     profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
-    assert build_guide(profile).status == "execute"
+    assert build_guide(profile).status == "execution"
 
     profile.tasks[0].status = "completed"
     assert build_guide(profile).status == "review"
+
+
+def test_legacy_gap_without_research_counts_market_done():
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.gap = {"match_score": 60}
+
+    assert build_guide(profile).status == "plan"
 
 
 def test_warnings_surface_failed_sources():
@@ -119,17 +187,22 @@ def test_warnings_surface_failed_sources():
     assert build_guide(profile).warnings
 
 
-def test_user_brief_has_all_seven_steps():
+def test_user_brief_has_all_twelve_steps():
     brief = user_brief()
 
-    assert "从起步到上岸全流程 7 步" in brief
+    assert "从起步到上岸全流程 12 步" in brief
     for name in (
         "职业档案构建",
+        "目标岗位定位",
         "市场基线调研",
         "能力差距诊断",
         "培养方案规划",
-        "企业适配",
+        "目标企业筛选",
+        "岗位与面经采集",
+        "企业需求分析",
+        "执行方案校准",
         "任务执行与打卡",
+        "求职投递管理",
         "周期复盘与计划调整",
     ):
         assert name in brief
@@ -164,7 +237,7 @@ def test_start_session_emits_brief_and_guide(temp_profile):
     out = start_session()
 
     assert "[USER_BRIEF]" in out and "[GUIDE]" in out
-    assert "从起步到上岸全流程 7 步" in out
+    assert "从起步到上岸全流程 12 步" in out
 
 
 def test_workflow_status_includes_brief_for_new_profile(temp_profile):
@@ -173,7 +246,7 @@ def test_workflow_status_includes_brief_for_new_profile(temp_profile):
 
     out = get_workflow_status()
 
-    assert "[USER_BRIEF]" in out and "从起步到上岸全流程 7 步" in out
+    assert "[USER_BRIEF]" in out and "从起步到上岸全流程 12 步" in out
     assert "[GUIDE]" in out
 
 

@@ -14,7 +14,7 @@ from .application_tracker import (
     update_application_status,
 )
 from .errors import error_response
-from .profile import load_profile, save_profile
+from .profile import get_active_profile_name, load_profile, save_profile
 from .tool_helpers import _json
 
 
@@ -109,6 +109,14 @@ def record_application(
 
     save_profile(profile)
 
+    # Core v2 同步：投递记录落 ApplicationState artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_application_state
+
+        sync_application_state(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
+
     # 事件联动（软提示）：面试/offer 是重大事件，建议触发洞察；拒绝提示复盘
     next_steps = ["get_progress"]
     lines = [msg, ""]
@@ -175,6 +183,14 @@ def delete_application(application_id: str) -> str:
     profile.applications = [a for a in profile.applications if a.id != application_id]
     profile.touch()
     save_profile(profile)
+
+    # Core v2 同步：删除后刷新 ApplicationState artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_application_state
+
+        sync_application_state(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
 
     return _json({
         "message": (

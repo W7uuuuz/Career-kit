@@ -12,7 +12,12 @@ from ..mcp_app import mcp
 from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
-from .profile import load_profile, save_plan_snapshot, save_profile
+from .profile import (
+    get_active_profile_name,
+    load_profile,
+    save_plan_snapshot,
+    save_profile,
+)
 from .roadmap import format_roadmap, parse_roadmap
 from .tool_helpers import _json, _parse_json_param
 
@@ -503,6 +508,14 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
 
     # 保存新版本快照
     save_plan_snapshot(source="roadmap_generated")
+
+    # Core v2 同步：基线路线图落 artifact（失败不阻断）
+    try:
+        from ..core.sync import sync_baseline_plan
+
+        sync_baseline_plan(get_active_profile_name())
+    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+        pass
 
     # 格式化报告
     report = format_roadmap(parsed)
