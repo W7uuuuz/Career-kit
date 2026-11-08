@@ -373,6 +373,106 @@ scrapers:
     url_patterns:
       - "app-tc.mokahr.com"
 
+  sanqi:
+    name: 三七互娱
+    module: sanqi.scraper
+    class: Scraper
+    description: 三七互娱社会招聘（自研接口），公开 JSON/HTML，社招，不公开薪资
+    url_patterns:
+      - "zhaopin.37.com"
+
+  tal:
+    name: 好未来
+    module: tal.scraper
+    class: Scraper
+    description: 好未来校园招聘（自研接口），公开 JSON，校招/实习，不公开薪资
+    url_patterns:
+      - "job.tal.com"
+      - "job-api.100tal.com"
+
+  mihoyo:
+    name: 米哈游
+    module: mihoyo.scraper
+    class: Scraper
+    description: 米哈游社会招聘（自研 ATS），公开 JSON，社招，不公开薪资
+    url_patterns:
+      - "jobs.mihoyo.com"
+      - "ats.openout.mihoyo.com"
+
+  tongcheng:
+    name: 同程旅行
+    module: tongcheng.scraper
+    class: Scraper
+    description: 同程旅行社会招聘（自研接口），公开 JSON，社招，部分岗位公开薪资
+    url_patterns:
+      - "mhr.ly.com"
+
+  youzan:
+    name: 有赞
+    module: youzan.scraper
+    class: Scraper
+    description: 有赞社会招聘（Supabase 公开接口），公开 JSON，社招，不公开薪资
+    url_patterns:
+      - "job.youzan.com"
+
+  megvii:
+    name: 旷视科技
+    module: megvii.scraper
+    class: Scraper
+    description: 旷视科技社会招聘（Moka 独立租户），公开接口，社招，不公开薪资
+    url_patterns:
+      - "app.mokahr.com"
+
+  shein:
+    name: SHEIN
+    module: shein.scraper
+    class: Scraper
+    description: SHEIN 社会招聘（官方公开接口），公开 JSON，社招，不公开薪资
+    url_patterns:
+      - "careers.shein.com"
+
+  shopee:
+    name: Shopee
+    module: shopee.scraper
+    class: Scraper
+    description: Shopee 社会招聘（Workatsea ATS），公开 JSON，社招，不公开薪资
+    url_patterns:
+      - "careers.shopee.cn"
+      - "ats.workatsea.com"
+
+  oppo:
+    name: OPPO
+    module: oppo.scraper
+    class: Scraper
+    description: OPPO 招聘（官方公开接口），校招/国际化/博士项目，部分岗位公开薪资
+    url_patterns:
+      - "careers.oppo.com"
+
+  vivo:
+    name: vivo
+    module: vivo.scraper
+    class: Scraper
+    description: vivo 社会招聘（官方公开接口），公开 JSON，社招，不公开薪资
+    url_patterns:
+      - "hr.vivo.com"
+
+  douban:
+    name: 豆瓣
+    module: douban.scraper
+    class: Scraper
+    description: 豆瓣社会招聘/校招/实习（官方 HTML），公开页面，不公开薪资
+    url_patterns:
+      - "jobs.douban.com"
+
+  momo:
+    name: 陌陌
+    module: momo.scraper
+    class: Scraper
+    description: 陌陌社会招聘（官方 HTML），公开页面，社招，不公开薪资
+    url_patterns:
+      - "immomo.com"
+      - "www.immomo.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper

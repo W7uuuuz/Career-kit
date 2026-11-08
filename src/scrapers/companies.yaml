@@ -98,6 +98,22 @@ companies:
     aliases: [小米, Xiaomi]
     scrapers: [xiaomi]
 
+  - id: oppo
+    name: OPPO
+    tier: 大厂
+    industry: 互联网/硬件
+    aliases: [OPPO, oppo]
+    scrapers: [oppo]
+    careers_url: https://careers.oppo.com/
+
+  - id: vivo
+    name: vivo
+    tier: 大厂
+    industry: 互联网/硬件
+    aliases: [vivo, VIVO]
+    scrapers: [vivo]
+    careers_url: https://hr.vivo.com/
+
   # ---------------- 科技 / 制造 / 能源大厂（先打标，投递清单默认只跑互联网） ----------------
   - id: huawei
     name: 华为
@@ -197,7 +213,7 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [米哈游, miHoYo]
-    scrapers: []
+    scrapers: [mihoyo]
 
   - id: huolala
     name: 货拉拉
@@ -257,6 +273,22 @@ companies:
     aliases: [知乎, Zhihu]
     scrapers: [zhihu]
 
+  - id: douban
+    name: 豆瓣
+    tier: 中厂
+    industry: 互联网
+    aliases: [豆瓣, Douban]
+    scrapers: [douban]
+    careers_url: https://jobs.douban.com/
+
+  - id: momo
+    name: 陌陌
+    tier: 中厂
+    industry: 互联网
+    aliases: [陌陌, Momo, Hello Group]
+    scrapers: [momo]
+    careers_url: https://www.immomo.com/jobs/join/index
+
   - id: iqiyi
     name: 爱奇艺
     tier: 中厂
@@ -283,7 +315,7 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [同程, 同程旅行]
-    scrapers: []
+    scrapers: [tongcheng]
 
   - id: vip
     name: 唯品会
@@ -312,7 +344,7 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [有赞, Youzan]
-    scrapers: []
+    scrapers: [youzan]
 
   - id: weimeng
     name: 微盟
@@ -375,7 +407,7 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [三七, 三七互娱]
-    scrapers: []
+    scrapers: [sanqi]
 
   - id: giant
     name: 巨人网络
@@ -410,7 +442,7 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [旷视, 旷视科技, Megvii]
-    scrapers: []
+    scrapers: [megvii]
 
   - id: horizon
     name: 地平线
@@ -440,14 +472,14 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [SHEIN, 希音]
-    scrapers: []
+    scrapers: [shein]
 
   - id: shopee
     name: Shopee
     tier: 中厂
     industry: 互联网
     aliases: [Shopee, 虾皮]
-    scrapers: []
+    scrapers: [shopee]
 
   - id: yuanfudao
     name: 猿辅导
@@ -468,4 +500,4 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [好未来, 学而思, TAL]
-    scrapers: []
+    scrapers: [tal]

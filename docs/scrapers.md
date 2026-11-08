@@ -53,6 +53,18 @@
 | `dewu` | 得物 | JD | 社招 | [guide](../src/scrapers/dewu/guide.md) |
 | `sensetime` | 商汤科技 | JD | 社招 | [guide](../src/scrapers/sensetime/guide.md) |
 | `vip` | 唯品会 | JD | 社招 | [guide](../src/scrapers/vip/guide.md) |
+| `sanqi` | 三七互娱 | JD | 社招 | [guide](../src/scrapers/sanqi/guide.md) |
+| `tal` | 好未来 | JD | 校招/实习 | [guide](../src/scrapers/tal/guide.md) |
+| `mihoyo` | 米哈游 | JD | 社招 | [guide](../src/scrapers/mihoyo/guide.md) |
+| `tongcheng` | 同程旅行 | JD | 社招 | [guide](../src/scrapers/tongcheng/guide.md) |
+| `youzan` | 有赞 | JD | 社招 | [guide](../src/scrapers/youzan/guide.md) |
+| `megvii` | 旷视科技 | JD | 社招 | [guide](../src/scrapers/megvii/guide.md) |
+| `shein` | SHEIN | JD | 社招 | [guide](../src/scrapers/shein/guide.md) |
+| `shopee` | Shopee | JD | 社招 | [guide](../src/scrapers/shopee/guide.md) |
+| `oppo` | OPPO | JD | 校招/国际化/博士 | [guide](../src/scrapers/oppo/guide.md) |
+| `vivo` | vivo | JD | 社招 | [guide](../src/scrapers/vivo/guide.md) |
+| `douban` | 豆瓣 | JD | 社招/校招/实习 | [guide](../src/scrapers/douban/guide.md) |
+| `momo` | 陌陌 | JD | 社招 | [guide](../src/scrapers/momo/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 

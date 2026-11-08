@@ -5,9 +5,9 @@
 
 企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
 查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
-企业目录收录 64 家，其中 42 家可自动抓取；其余标注为需手动投递。
+企业目录收录 68 家，其中 54 家可自动抓取；其余标注为需手动投递。
 
-## 已注册企业（46）
+## 已注册企业（58）
 
 | ID | 名称 | 数据类型 | 支持渠道 |
 |----|------|----------|----------|
@@ -55,6 +55,18 @@
 | `dewu` | 得物 | JD | 社招 |
 | `sensetime` | 商汤科技 | JD | 社招 |
 | `vip` | 唯品会 | JD | 社招 |
+| `sanqi` | 三七互娱 | JD | 社招 |
+| `tal` | 好未来 | JD | 校招/实习 |
+| `mihoyo` | 米哈游 | JD | 社招 |
+| `tongcheng` | 同程旅行 | JD | 社招 |
+| `youzan` | 有赞 | JD | 社招 |
+| `megvii` | 旷视科技 | JD | 社招 |
+| `shein` | SHEIN | JD | 社招 |
+| `shopee` | Shopee | JD | 社招 |
+| `oppo` | OPPO | JD | 校招/国际化/博士 |
+| `vivo` | vivo | JD | 社招 |
+| `douban` | 豆瓣 | JD | 社招/校招/实习 |
+| `momo` | 陌陌 | JD | 社招 |
 | `nowcoder` | 牛客网 | 面经 | — |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — |
 
