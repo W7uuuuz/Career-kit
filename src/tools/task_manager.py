@@ -61,9 +61,21 @@ def create_tasks_from_roadmap(
 
     # 稳定身份：同 phase + milestone + name 的任务在重建时复用旧 ID 与进度，
     # 避免 checkin / localStorage / 能力证据串到新任务上。
+    # 旧档案的 milestone_id 可能缺失或不规范：精确身份匹配不到时，
+    # 退回 phase + name 兜底，避免同一任务因 milestone_id 变化被判为新任务。
     existing = {
         (t.phase_id, t.milestone_id, t.name): t for t in profile.tasks
     }
+    existing_by_phase_name: dict[tuple[str, str], Task] = {}
+    finished_status = (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
+    for t in profile.tasks:
+        key = (t.phase_id, t.name)
+        current = existing_by_phase_name.get(key)
+        # 同名任务有多个时优先复用已完成的那个，避免把完成状态判成新任务
+        if current is None or (
+            current.status not in finished_status and t.status in finished_status
+        ):
+            existing_by_phase_name[key] = t
     max_num = 0
     for task in profile.tasks:
         if task.id.startswith("task_"):
@@ -87,6 +99,8 @@ def create_tasks_from_roadmap(
         done_criteria: str = "",
     ) -> Task:
         old = existing.get((phase_id, milestone_id, name))
+        if old is None:
+            old = existing_by_phase_name.get((phase_id, name))
         if old is not None:
             return Task(
                 id=old.id,

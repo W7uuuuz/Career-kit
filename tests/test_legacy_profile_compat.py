@@ -6,7 +6,7 @@
 3. 应用执行版后 completed 保留、pending 删除、plan_history/adjustments 写入、进入 executing；
 4. ArtifactStore 在只有 profiles 表的旧库上自动建 artifacts 表且不破坏 profiles；
 5. 无 artifact 时 state_machine.next_action 给出 select_target_companies；
-6. check_plan_fit 模块不存在时跳过；
+6. 旧档案调用 check_plan_fit 返回 incomplete_chain，不被跳过；
 7. 旧 research 报告字段不影响新流程。
 
 全部用例使用 tmp_path 隔离数据目录，不联网，不写真实 ~/.career-kit。
@@ -374,37 +374,24 @@ def test_state_machine_handles_legacy_profile_without_artifacts(compat_env: Path
     assert all(value == "" for value in action["artifact_ids"].values())
 
 
-def test_check_plan_fit_reports_reasonable_status_when_available(compat_env: Path) -> None:
-    module = pytest.importorskip(
-        "src.core.stages.plan_fit",
-        reason="check_plan_fit 模块尚未实现，兼容点 6 跳过",
-    )
+def test_check_plan_fit_reports_reasonable_status_for_legacy_profile(compat_env: Path) -> None:
+    from src.core import plan_fit
+
     _write_legacy(compat_env)
 
-    candidates = ("check_plan_fit", "check_fit", "plan_fit", "run")
-    func = next(
-        (
-            getattr(module, name)
-            for name in candidates
-            if callable(getattr(module, name, None))
-        ),
-        None,
+    result = plan_fit.check_plan_fit(PROFILE_NAME)
+
+    assert isinstance(result, dict)
+    assert result["status"] == "incomplete_chain", (
+        f"旧档案应判为 incomplete_chain，实际为 {result['status']!r}"
     )
-    assert func is not None, "plan_fit 模块存在但未找到可调用入口"
-
-    try:
-        result = func(PROFILE_NAME)
-    except TypeError:
-        result = func()
-
-    status = result.get("status") if isinstance(result, dict) else getattr(result, "status", "")
-    assert status in {
-        "incomplete_chain",
-        "aligned",
-        "misaligned",
-        "needs_execution_plan",
-        "pending",
-    }, f"check_plan_fit 返回了未预期状态：{status!r}"
+    assert result["signals"], "incomplete_chain 应带至少一条信号"
+    assert result["artifact_ids"] == {
+        "company_pool_id": "",
+        "evidence_run_id": "",
+        "requirement_profile_id": "",
+        "execution_plan_id": "",
+    }
 
 
 def test_legacy_research_report_does_not_break_core_flow(compat_env: Path) -> None:

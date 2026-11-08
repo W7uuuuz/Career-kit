@@ -9,14 +9,14 @@
     `list_data_sources` 显示档位与行业；先覆盖互联网，制造/能源企业只打标不进入默认适配。
   - 新增 6 个企业适配工具：`select_target_companies`、`collect_company_evidence`、
     `analyze_company_requirements`、`save_requirement_profile`、
-    `plan_execution_alignment`、`save_execution_alignment`（工具数 41 → 47）。
+    `plan_execution_alignment`、`save_execution_alignment`（工具数 41 → 48）。
   - 证据层：批量抓取目标企业 JD + 面经，城市硬筛、详情补抓、去重、来源状态与样本置信度；
     报告落盘 `~/CareerKit/<档案>/证据池/`。
   - 需求分析：频率、公司覆盖、Wilson 95% 区间与逐条硬门槛由代码计算；
     LLM 只能写 `interpretation`，保存时重算并校验，不能再自评数字。
   - 执行方案校准：预览/确认门禁；每条变更必须带 `evidence_ids`；已完成任务保留、
     旧 pending/in_progress 不迁移；维护 `plan_history`、`adjustments` 与 `core_state`。
-  - 用户流程更新为 7 步（新增「企业适配」）；`get_workflow_status` 与 `save_roadmap`
+  - 用户流程新增「企业适配」阶段（阶段 6-9）；`get_workflow_status` 与 `save_roadmap`
     给出企业适配的下一步提示。
   - 新增 `check_plan_fit`：证据刷新 / 里程碑 / 周检视后检测计划失配，
     返回给用户的询问话术；不自动改计划。`get_workflow_status` 与周检视已接入。
@@ -28,7 +28,7 @@
     执行版状态与报告链接。
   - 新增测试：Core artifact 基座、阶段 6-9、企业适配全链路、执行版下游、
     旧档案兼容、计划失配检测、控制台状态。
-  - **12 阶段新流程**：用户可见流程从 7 步扩展为 12 步（职业档案构建 → 目标岗位定位 →
+  - **12 阶段新流程**：用户可见流程统一为 12 步（职业档案构建 → 目标岗位定位 →
     市场基线调研 → 能力差距诊断 → 培养方案规划 → 目标企业筛选 → 岗位与面经采集 →
     企业需求分析 → 执行方案校准 → 任务执行与打卡 → 求职投递管理 → 周期复盘与计划调整）。
   - 新增 sync 层，把阶段 1-5、10-12 的既有档案数据写入新 artifact 与 `core_state`；

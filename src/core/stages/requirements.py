@@ -358,6 +358,8 @@ def _resolve_evidence(
         meta = data.get("meta")
         if not isinstance(meta, dict) or meta.get("stage") != state_machine.STAGE_EVIDENCE:
             return None, "", f"artifact「{evidence_run_id}」不是 EvidenceRun"
+        if str(meta.get("profile_name") or "") != profile_name:
+            return None, "", f"EvidenceRun「{evidence_run_id}」不属于当前档案"
         return data, evidence_run_id, ""
     data = store.latest(profile_name, state_machine.STAGE_EVIDENCE)
     if not isinstance(data, dict):

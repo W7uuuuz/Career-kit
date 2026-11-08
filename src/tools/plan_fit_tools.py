@@ -45,14 +45,6 @@ def check_plan_fit(trigger: str = "manual") -> str:
     except Exception as exc:  # noqa: BLE001 —— 只读检测失败要转成可读错误
         return error_response("PLAN_FIT_FAILED", f"计划失配检测失败：{exc}")
 
-    # Core v2 同步：计划失配检测结果落 ReviewReport artifact（失败不阻断）
-    try:
-        from ..core.sync import sync_review
-
-        sync_review(profile_name, plan_fit=result)
-    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
-        pass
-
     return _json(result)
 
 

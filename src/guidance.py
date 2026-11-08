@@ -21,6 +21,23 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from .core.artifacts.store import ArtifactStore
+from .core.progress import (
+    STAGE_BASELINE_PLAN,
+    STAGE_COMPANY_POOL,
+    STAGE_EVIDENCE,
+    STAGE_EXECUTING,
+    STAGE_EXECUTION,
+    STAGE_EXECUTION_PLAN,
+    STAGE_GAP,
+    STAGE_MARKET,
+    STAGE_PROFILE,
+    STAGE_REQUIREMENT,
+    STAGE_TARGET,
+    legacy_flags,
+    resolve_progress,
+)
+
 # ---------------------------------------------------------------------------
 # 旅程：12 个阶段，顺序固定，节奏由用户掌握
 # ---------------------------------------------------------------------------
@@ -159,12 +176,14 @@ def _guidance(profile: Any) -> dict[str, Any]:
 
 
 def is_legacy(profile: Any) -> bool:
-    """已有分析/规划/任务的档案不补首屏引导，避免打断续跑用户。"""
-    plan = getattr(profile, "plan", None) or {}
+    """已有调研/分析/规划/任务/投递的档案不补首屏引导，避免打断续跑用户。"""
+    flags = legacy_flags(profile)
     return bool(
-        getattr(profile, "gap", None)
-        or (isinstance(plan, dict) and plan.get("roadmap"))
-        or getattr(profile, "tasks", None)
+        flags["research"]
+        or flags["gap"]
+        or flags["plan"]
+        or flags["tasks"]
+        or flags["applications"]
     )
 
 
@@ -329,42 +348,7 @@ _STATUS_META: dict[str, tuple[str, str, str]] = {
         "每条调整都要引用证据；确认后才替换路线图",
         "没有证据的变更不会写入方案",
     ),
-    "tasks": (
-        "把当前阶段拆成可执行任务",
-        "每个任务会给出怎么做、用什么资源、怎么算完成",
-        "任务按「一次坐下可完成」设计；打卡方式随任务给出",
-    ),
     "execution": (
-        "执行打卡：按当前阶段任务逐项推进",
-        "完成一项就打卡；daily 记天数，percent 记比例",
-        "进度是事实记录，不设时限；快了可以加深，慢了可以调顺序",
-    ),
-    "applications": (
-        "求职投递管理：记录真实投递与状态变化",
-        "只记录你亲口说的事实，不估计状态",
-        "漏斗基于事件历史，面试后被拒仍计入面试",
-    ),
-    "review": (
-        "周期复盘：用事实看这一段发生了什么",
-        "汇总打卡、阶段和求职漏斗，给规则化建议",
-        "复盘不催促；下一步由你决定",
-    ),
-    "research": (
-        "市场调研：用真实岗位和同背景经历替代猜测",
-        "抓真实 JD，逐条补详情；来源会标在报告里",
-        "每条数据带来源链接；失败源会如实标注",
-    ),
-    "roadmap": (
-        "培养方案规划：先判定起点档位，再设计阶段序列",
-        "起点按 5 个维度加权打分；档位是命中率参考，不是准入许可",
-        "结果怎么读：档位不是能力上限，你可以改任何一维的依据",
-    ),
-    "align": (
-        "执行方案校准：用企业需求调整培养方案",
-        "每条调整都要引用证据；确认后才替换路线图",
-        "没有证据的变更不会写入方案",
-    ),
-    "execute": (
         "执行打卡：按当前阶段任务逐项推进",
         "完成一项就打卡；daily 记天数，percent 记比例",
         "进度是事实记录，不设时限；快了可以加深，慢了可以调顺序",
@@ -402,53 +386,6 @@ def _guide(
         how_to_read=how_to_read,
         rules_hint=rules_hint,
     )
-
-
-_CORE_STAGE_KEYS: tuple[tuple[str, str], ...] = (
-    ("profile", "profile_id"),
-    ("target", "target_spec_id"),
-    ("market", "market_baseline_id"),
-    ("gap", "gap_report_id"),
-    ("plan", "baseline_plan_id"),
-    ("company", "company_pool_id"),
-    ("evidence", "evidence_run_id"),
-    ("requirement", "requirement_profile_id"),
-    ("alignment", "execution_plan_id"),
-    ("execution", "execution_state_id"),
-    ("applications", "application_state_id"),
-    ("review", "review_report_id"),
-)
-
-
-def _core_state(profile: Any) -> dict[str, Any]:
-    value = getattr(profile, "core_state", None)
-    return value if isinstance(value, dict) else {}
-
-
-def _legacy_flags(profile: Any) -> dict[str, bool]:
-    plan = getattr(profile, "plan", None) or {}
-    research = getattr(profile, "research", None) or {}
-    want = getattr(profile, "want", None) or {}
-    tasks = getattr(profile, "tasks", None) or []
-    applications = getattr(profile, "applications", None) or []
-    has_plan = isinstance(plan, dict) and bool(plan.get("roadmap"))
-    has_gap = bool(getattr(profile, "gap", None))
-    has_research = isinstance(research, dict) and bool(
-        research.get("report_md") or research.get("jd_samples") or research.get("cases")
-    )
-    return {
-        "profile": bool(
-            getattr(profile, "summary", "")
-            or getattr(profile, "who", None)
-            or getattr(profile, "have", None)
-        ),
-        "target": isinstance(want, dict) and bool(want),
-        "research": has_research,
-        "gap": has_gap,
-        "plan": has_plan,
-        "tasks": bool(tasks),
-        "applications": bool(applications),
-    }
 
 
 def _profile_guide(profile: Any) -> Guide:
@@ -579,66 +516,32 @@ def _execution_guide(profile: Any, *, ready: bool) -> Guide:
     )
 
 
-def _review_guide(profile: Any) -> Guide:
-    return _guide(
-        "review",
-        "review",
-        "当前阶段任务已完成。要不要做一次周期复盘，看看下一步往哪走？",
-        options=["做复盘", "登记投递", "直接定新目标"],
-        next_action="get_weekly_review / check_plan_fit；目标变了先 analyze_gaps 重新分析",
-        profile=profile,
-    )
+_STAGE_GUIDES = {
+    STAGE_PROFILE: _profile_guide,
+    STAGE_TARGET: _target_guide,
+    STAGE_MARKET: _market_guide,
+    STAGE_GAP: _gap_guide,
+    STAGE_BASELINE_PLAN: _plan_guide,
+    STAGE_COMPANY_POOL: _company_guide,
+    STAGE_EVIDENCE: _evidence_guide,
+    STAGE_REQUIREMENT: _requirement_guide,
+    STAGE_EXECUTION_PLAN: _alignment_guide,
+}
 
 
-def _guide_from_core_state(profile: Any, state: dict[str, Any]) -> Guide:
-    if not state.get("profile_id"):
-        return _profile_guide(profile)
-    if not state.get("target_spec_id"):
-        return _target_guide(profile)
-    if not state.get("market_baseline_id"):
-        return _market_guide(profile)
-    if not state.get("gap_report_id"):
-        return _gap_guide(profile)
-    if not state.get("baseline_plan_id"):
-        return _plan_guide(profile)
-    if not state.get("company_pool_id"):
-        return _company_guide(profile)
-    if not state.get("evidence_run_id"):
-        return _evidence_guide(profile)
-    if not state.get("requirement_profile_id"):
-        return _requirement_guide(profile)
-
-    stage = str(state.get("stage") or "")
-    applied = bool(state.get("execution_plan_id")) and (
-        stage in ("executing", "execution") or bool(state.get("execution_state_id"))
-    )
-    if not applied:
-        return _alignment_guide(profile)
-    return _execution_guide(profile, ready=bool(state.get("execution_state_id")))
-
-
-def _guide_from_legacy_fields(profile: Any) -> Guide:
-    flags = _legacy_flags(profile)
-    if not flags["profile"]:
-        return _profile_guide(profile)
-    if not flags["target"]:
-        return _target_guide(profile)
-
-    downstream = flags["gap"] or flags["plan"] or flags["tasks"]
-    if not (flags["research"] or downstream):
-        return _market_guide(profile)
-    if not (flags["gap"] or flags["plan"] or flags["tasks"]):
-        return _gap_guide(profile)
-    if not (flags["plan"] or flags["tasks"]):
-        return _plan_guide(profile)
-
-    if flags["tasks"] or flags["applications"]:
-        tasks = list(getattr(profile, "tasks", None) or [])
-        finished = ("completed", "skipped")
-        if tasks and all(getattr(task, "status", "") in finished for task in tasks):
-            return _review_guide(profile)
+def _guide_from_progress(profile: Any) -> Guide:
+    """与状态机共用同一份解析结果，避免「引导看 key、状态机看引用链」。"""
+    progress = resolve_progress(profile, ArtifactStore())
+    stage = str(progress.get("stage") or "")
+    if stage == STAGE_EXECUTING:
         return _execution_guide(profile, ready=True)
-    return _company_guide(profile)
+    if stage == STAGE_EXECUTION:
+        ready = bool(progress.get("has_execution_state") or progress.get("has_tasks"))
+        return _execution_guide(profile, ready=ready)
+    builder = _STAGE_GUIDES.get(stage)
+    if builder is not None:
+        return builder(profile)
+    return _profile_guide(profile)
 
 
 def build_guide(profile: Any) -> Guide:
@@ -678,10 +581,7 @@ def build_guide(profile: Any) -> Guide:
             profile=profile,
         )
 
-    state = _core_state(profile)
-    if state:
-        return _guide_from_core_state(profile, state)
-    return _guide_from_legacy_fields(profile)
+    return _guide_from_progress(profile)
 
 
 # ---------------------------------------------------------------------------

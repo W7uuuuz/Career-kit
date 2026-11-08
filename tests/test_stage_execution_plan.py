@@ -20,6 +20,7 @@ import src.tools.profile as profile_module
 from src import paths
 from src.core.artifacts.models import (
     ArtifactMeta,
+    BaselinePlan,
     CompanyEntry,
     CompanyPool,
     EvidenceRun,
@@ -523,3 +524,141 @@ def test_requirement_chain_mismatch_is_rejected(workspace: SimpleNamespace) -> N
 
     assert exc_info.value.code == "REQUIREMENT_MISMATCH"
     assert workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN) is None
+
+
+def test_change_with_unknown_evidence_id_is_rejected(workspace: SimpleNamespace) -> None:
+    before = profile_module.load_profile(PROFILE_NAME).model_dump()
+    alignment = _alignment(
+        workspace.requirement_id,
+        changes=[
+            {
+                "type": "add_task",
+                "phase_id": "phase_1",
+                "details": {"name": "未知证据任务"},
+                "reason": "引用不存在的证据",
+                "evidence_ids": ["JD999"],
+            }
+        ],
+    )
+
+    with pytest.raises(stage.ExecutionPlanError) as exc_info:
+        stage.save_execution_alignment(json.dumps(alignment, ensure_ascii=False), confirmed=False)
+
+    assert exc_info.value.code == "UNKNOWN_EVIDENCE_ID"
+    assert "JD999" in exc_info.value.details["unknown_evidence_ids"]
+    assert workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN) is None
+    assert profile_module.load_profile(PROFILE_NAME).model_dump() == before
+
+
+def test_baseline_plan_id_prefers_core_state(workspace: SimpleNamespace) -> None:
+    first_id = workspace.store.save(
+        BaselinePlan(
+            meta=_meta(workspace.store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            strategy_summary="档案里的基线",
+            roadmap=_baseline_plan()["roadmap"],
+        )
+    )
+    second_id = workspace.store.save(
+        BaselinePlan(
+            meta=_meta(workspace.store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            strategy_summary="最新基线",
+            roadmap=_baseline_plan()["roadmap"],
+        )
+    )
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.core_state["baseline_plan_id"] = first_id
+    profile_module.save_profile(profile, PROFILE_NAME)
+
+    result = stage.save_execution_alignment(
+        json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
+        confirmed=False,
+    )
+
+    artifact = workspace.store.load(result["execution_plan_id"])
+    assert artifact is not None
+    assert artifact["baseline_plan_id"] == first_id
+    assert artifact["baseline_plan_id"] != second_id
+    assert artifact["meta"]["inputs"]["baseline_plan_id"] == first_id
+
+
+def test_apply_preserves_non_roadmap_plan_keys(
+    workspace: SimpleNamespace,
+    state_machine_profiles: None,
+) -> None:
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.plan["strategy_summary"] = "旧策略摘要"
+    profile.plan["current_detail"] = {
+        "phase_id": "phase_1",
+        "tasks": [{"name": "旧细化任务"}],
+    }
+    profile_module.save_profile(profile, PROFILE_NAME)
+
+    result = stage.save_execution_alignment(
+        json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
+        confirmed=True,
+    )
+
+    updated = profile_module.load_profile(PROFILE_NAME)
+    assert updated.plan["strategy_summary"] == "旧策略摘要"
+    assert updated.plan["current_detail"]["phase_id"] == "phase_1"
+    artifact = workspace.store.load(result["execution_plan_id"])
+    assert artifact is not None
+    assert "dropped_plan_keys" not in artifact["meta"]["validation"]
+
+
+def test_apply_marks_dropped_current_detail(
+    workspace: SimpleNamespace,
+    state_machine_profiles: None,
+) -> None:
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.plan["current_detail"] = {"phase_id": "phase_99"}
+    profile_module.save_profile(profile, PROFILE_NAME)
+
+    result = stage.save_execution_alignment(
+        json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
+        confirmed=True,
+    )
+
+    updated = profile_module.load_profile(PROFILE_NAME)
+    assert "current_detail" not in updated.plan
+    artifact = workspace.store.load(result["execution_plan_id"])
+    assert artifact is not None
+    assert artifact["meta"]["validation"]["dropped_plan_keys"] == ["current_detail"]
+
+
+def test_reconfirm_same_alignment_is_idempotent(
+    workspace: SimpleNamespace,
+    state_machine_profiles: None,
+) -> None:
+    alignment = _alignment(workspace.requirement_id)
+    first = stage.save_execution_alignment(
+        json.dumps(alignment, ensure_ascii=False), confirmed=True
+    )
+
+    profile = profile_module.load_profile(PROFILE_NAME)
+    history_before = len(profile.plan_history)
+    adjustments_before = len(profile.adjustments)
+    tasks_before = [task.model_dump() for task in profile.tasks]
+    latest_before = workspace.store.latest(
+        PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN
+    )
+    assert latest_before is not None
+
+    second = stage.save_execution_alignment(
+        json.dumps(alignment, ensure_ascii=False), confirmed=True
+    )
+
+    assert second["status"] == "ok"
+    assert second["applied"] is True
+    assert second.get("idempotent") is True
+    assert second["execution_plan_id"] == first["execution_plan_id"]
+
+    after = profile_module.load_profile(PROFILE_NAME)
+    assert len(after.plan_history) == history_before
+    assert len(after.adjustments) == adjustments_before
+    assert [task.model_dump() for task in after.tasks] == tasks_before
+    latest_after = workspace.store.latest(
+        PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN
+    )
+    assert latest_after is not None
+    assert latest_after["meta"]["id"] == latest_before["meta"]["id"]

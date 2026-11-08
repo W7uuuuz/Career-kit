@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import src.tools.profile as profile_module
 from src import paths
 from src.core.artifacts.models import (
+    ApplicationState,
     ArtifactMeta,
     CompanyEntry,
     CompanyPool,
@@ -27,6 +28,7 @@ from src.core.artifacts.models import (
     JDEvidence,
     RequirementItem,
     RequirementProfile,
+    ReviewReport,
     TargetSpec,
 )
 from src.core.artifacts.store import ArtifactStore
@@ -163,6 +165,7 @@ def _save_plan(
     requirement_id: str,
     *,
     created_at: str | None = None,
+    applied: bool = True,
 ) -> str:
     return store.save(
         ExecutionPlan(
@@ -192,7 +195,7 @@ def _save_plan(
                 ],
             },
             diff_summary="按企业需求校准",
-            applied=True,
+            applied=applied,
         )
     )
 
@@ -501,3 +504,63 @@ def test_tool_returns_json_string(workspace: SimpleNamespace) -> None:
     data = json.loads(raw)
     assert data["status"] == "aligned"
     assert data["trigger"] == "milestone"
+
+
+def test_tool_is_read_only(workspace: SimpleNamespace) -> None:
+    _seed_aligned(workspace)
+    before_profile = profile_module.load_profile(PROFILE_NAME).model_dump()
+    before_reviews = workspace.store.list(PROFILE_NAME, state_machine.STAGE_REVIEW)
+
+    raw = check_plan_fit_tool(trigger="manual")
+
+    assert json.loads(raw)["status"] == "aligned"
+    assert profile_module.load_profile(PROFILE_NAME).model_dump() == before_profile
+    assert workspace.store.list(PROFILE_NAME, state_machine.STAGE_REVIEW) == before_reviews
+
+
+def test_tool_does_not_advance_empty_profile(workspace: SimpleNamespace) -> None:
+    profile_module.save_profile(CareerProfile(), PROFILE_NAME)
+
+    raw = check_plan_fit_tool(trigger="manual")
+
+    assert json.loads(raw)["status"] == "incomplete_chain"
+    action = state_machine.next_action(PROFILE_NAME)
+    assert action["stage"] == state_machine.STAGE_PROFILE
+    assert action["next_tool"] == "finalize_profile"
+
+
+def test_unapplied_execution_plan_is_not_aligned(workspace: SimpleNamespace) -> None:
+    store = workspace.store
+    pool_id = _save_pool(store, created_at=_iso(-3))
+    evidence_id = _save_evidence(store, pool_id, created_at=_iso(-2))
+    requirement_id = _save_requirement(store, evidence_id, created_at=_iso(-1))
+    plan_id = _save_plan(store, requirement_id, created_at=_iso(), applied=False)
+    _save_profile(
+        tasks=[_rag_task()],
+        core_state=_core_state(pool_id, evidence_id, requirement_id, plan_id),
+    )
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    assert result["status"] != "aligned"
+    signals = {signal["code"]: signal for signal in result["signals"]}
+    assert signals["plan_not_applied"]["severity"] == "high"
+    assert result["recommended_action"] == "rerun_alignment"
+    assert result["next_tool"] == "save_execution_alignment"
+
+
+def test_optional_artifacts_do_not_complete_chain(workspace: SimpleNamespace) -> None:
+    store = workspace.store
+    store.save(
+        ApplicationState(
+            meta=_meta(store, state_machine.STAGE_APPLICATIONS, "as")
+        )
+    )
+    store.save(
+        ReviewReport(meta=_meta(store, state_machine.STAGE_REVIEW, "rr"))
+    )
+    _save_profile(tasks=[])
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    assert result["status"] == "incomplete_chain"

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from ..models import CareerProfile
 from ..tools.application_tracker import funnel_stats
-from ..tools.profile import load_profile, save_profile
+from ..tools.profile import load_profile, profile_lock, save_profile
 from ..tools.task_manager import resolve_current_phase
 from .adapters.legacy_profile import profile_snapshot, target_spec
 from .artifacts.models import (
@@ -38,6 +38,7 @@ STAGE_TARGET = "target"
 STAGE_MARKET_BASELINE = "market_baseline"
 STAGE_GAP = "gap"
 STAGE_BASELINE_PLAN = "baseline_plan"
+STAGE_EXECUTION_PLAN = "execution_plan"
 STAGE_EXECUTION = "execution"
 STAGE_APPLICATIONS = "applications"
 STAGE_REVIEW = "review"
@@ -238,12 +239,15 @@ def sync_execution_state(profile_name: str) -> str:
 
 
 def sync_application_state(profile_name: str) -> str:
-    """投递记录 → ApplicationState artifact（`as_`）。"""
+    """投递记录 → ApplicationState artifact（`as_`，可选阶段，不推进 stage）。"""
     try:
         profile = load_profile(profile_name)
-        if not profile.applications:
-            return ""
         state = _core_state(profile)
+        if not profile.applications:
+            # 投递被删空时清掉旧指针，避免 core_state 指向已失效的 artifact。
+            if state.get(KEY_APPLICATIONS):
+                merge_core_state(profile_name, {KEY_APPLICATIONS: None})
+            return ""
         store = ArtifactStore()
         artifact = ApplicationState(
             meta=_meta(
@@ -260,7 +264,14 @@ def sync_application_state(profile_name: str) -> str:
             applications=[app.model_dump() for app in profile.applications],
             funnel=funnel_stats(profile),
         )
-        return _persist(profile, profile_name, artifact, KEY_APPLICATIONS, STAGE_APPLICATIONS)
+        return _persist(
+            profile,
+            profile_name,
+            artifact,
+            KEY_APPLICATIONS,
+            STAGE_APPLICATIONS,
+            advance_stage=False,
+        )
     except Exception:
         return ""
 
@@ -270,13 +281,30 @@ def sync_review(
     plan_fit: dict | None = None,
     weekly_facts: dict | None = None,
 ) -> str:
-    """周期复盘 → ReviewReport artifact（`rr_`）。"""
+    """周期复盘 → ReviewReport artifact（`rr_`，可选阶段，不推进 stage）。
+
+    前置链路不完整（无 applied ExecutionPlan / 无 ExecutionState）时返回空字符串，
+    不写孤儿 ReviewReport。
+    """
     try:
         if not plan_fit and not weekly_facts:
             return ""
         profile = load_profile(profile_name)
         state = _core_state(profile)
         store = ArtifactStore()
+
+        plan_id = str(state.get("execution_plan_id") or "")
+        plan = store.load(plan_id) if plan_id else None
+        if not _matches_stage(plan, STAGE_EXECUTION_PLAN, profile_name):
+            return ""
+        if not bool(plan.get("applied")):
+            return ""
+
+        execution_id = str(state.get(KEY_EXECUTION) or "")
+        execution = store.load(execution_id) if execution_id else None
+        if not _matches_stage(execution, STAGE_EXECUTION, profile_name):
+            return ""
+
         fit = _jsonable(plan_fit) if isinstance(plan_fit, dict) else {}
         facts = _jsonable(weekly_facts) if isinstance(weekly_facts, dict) else {}
         artifact = ReviewReport(
@@ -287,15 +315,22 @@ def sync_review(
                 profile_name,
                 {
                     "profile_id": state.get(KEY_PROFILE, ""),
-                    "execution_state_id": state.get(KEY_EXECUTION, ""),
+                    "execution_state_id": execution_id,
                 },
             ),
-            execution_state_id=str(state.get(KEY_EXECUTION, "")),
+            execution_state_id=execution_id,
             plan_fit=fit if isinstance(fit, dict) else {},
             weekly_facts=facts if isinstance(facts, dict) else {},
             recommendations=_recommendations(fit, facts),
         )
-        return _persist(profile, profile_name, artifact, KEY_REVIEW, STAGE_REVIEW)
+        return _persist(
+            profile,
+            profile_name,
+            artifact,
+            KEY_REVIEW,
+            STAGE_REVIEW,
+            advance_stage=False,
+        )
     except Exception:
         return ""
 
@@ -316,22 +351,60 @@ def _meta(
     )
 
 
+def merge_core_state(
+    profile_name: str,
+    updates: dict[str, Any],
+    advance_stage: bool = False,
+) -> dict[str, Any]:
+    """原子更新 core_state：load → 合并 → save 全程持档案锁，避免并发丢 key。
+
+    - ``updates`` 中值为 None 表示删除该 key；
+    - ``advance_stage=False`` 时不接受 ``stage`` 变更（可选阶段不推进）；
+    - 始终刷新 ``updated_at``。
+    """
+    with profile_lock(profile_name):
+        profile = load_profile(profile_name)
+        state = _core_state(profile)
+        for key, value in updates.items():
+            if key == "stage" and not advance_stage:
+                continue
+            if value is None:
+                state.pop(key, None)
+            else:
+                state[key] = value
+        state["updated_at"] = datetime.now().isoformat()
+        profile.core_state = state
+        save_profile(profile, profile_name)
+        return dict(state)
+
+
 def _persist(
     profile: CareerProfile,
     profile_name: str,
     artifact: BaseModel,
     key: str,
     stage: str,
+    *,
+    advance_stage: bool = True,
 ) -> str:
     store = ArtifactStore()
     artifact_id = store.save(artifact)
-    core_state = _core_state(profile)
-    core_state[key] = artifact_id
-    core_state["stage"] = stage
-    core_state["updated_at"] = datetime.now().isoformat()
-    profile.core_state = core_state
-    save_profile(profile, profile_name)
+    updates: dict[str, Any] = {key: artifact_id}
+    if advance_stage:
+        updates["stage"] = stage
+    merge_core_state(profile_name, updates, advance_stage=advance_stage)
     return artifact_id
+
+
+def _matches_stage(
+    data: dict[str, Any] | None, stage: str, profile_name: str
+) -> bool:
+    if not isinstance(data, dict):
+        return False
+    meta = data.get("meta")
+    if not isinstance(meta, dict) or meta.get("stage") != stage:
+        return False
+    return str(meta.get("profile_name") or "") == profile_name
 
 
 def _core_state(profile: CareerProfile) -> dict[str, Any]:
@@ -448,11 +521,13 @@ __all__ = [
     "STAGE_APPLICATIONS",
     "STAGE_BASELINE_PLAN",
     "STAGE_EXECUTION",
+    "STAGE_EXECUTION_PLAN",
     "STAGE_GAP",
     "STAGE_MARKET_BASELINE",
     "STAGE_PROFILE",
     "STAGE_REVIEW",
     "STAGE_TARGET",
+    "merge_core_state",
     "sync_application_state",
     "sync_baseline_plan",
     "sync_execution_state",

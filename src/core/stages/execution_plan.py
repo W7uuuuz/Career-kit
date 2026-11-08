@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from datetime import datetime
 from typing import Any
@@ -241,9 +242,25 @@ def _save(
     roadmap = _normalize_roadmap(roadmap_raw, strategy_summary)
 
     changes = _parse_changes(data.get("changes"))
+    _assert_known_evidence(changes, requirement)
     diff_summary = str(data.get("diff_summary") or "").strip()
     if not diff_summary:
         raise ExecutionPlanError("INVALID_PARAM", "diff_summary 不能为空——请说明本次校准改了什么。")
+
+    roadmap_hash = _hash_value(roadmap)
+    changes_hash = _hash_value([change.model_dump() for change in changes])
+    if confirmed:
+        existing = _find_applied_alignment(
+            store,
+            profile_name,
+            requirement_profile_id,
+            roadmap_hash,
+            changes_hash,
+        )
+        if existing is not None:
+            return _applied_alignment_payload(
+                existing, profile, requirement_profile_id
+            )
 
     baseline = _roadmap_of(profile.plan)
     if not _has_phases(baseline):
@@ -256,13 +273,18 @@ def _save(
     completed = _extract_completed_evidence(profile)
     removed = _pending_tasks(profile)
     warnings = _evidence_warnings(changes, requirement)
+    baseline_plan_id = _resolve_baseline_plan_id(store, profile_name, profile)
 
     meta = ArtifactMeta(
         id=store.new_id("ep"),
         stage=STAGE_ID,
         profile_name=profile_name,
         created_at=datetime.now().isoformat(),
-        inputs={"requirement_profile_id": requirement_profile_id, "baseline": "profile.plan"},
+        inputs={
+            "requirement_profile_id": requirement_profile_id,
+            "baseline": "profile.plan",
+            "baseline_plan_id": baseline_plan_id,
+        },
         validation={
             "confirmed": confirmed,
             "applied": confirmed,
@@ -270,11 +292,13 @@ def _save(
             "preserved_task_count": len(completed),
             "removed_task_count": len(removed),
             "warnings": warnings,
+            "roadmap_hash": roadmap_hash,
+            "changes_hash": changes_hash,
         },
     )
     artifact = ExecutionPlan(
         meta=meta,
-        baseline_plan_id=str(profile.plan.get("id") or ""),
+        baseline_plan_id=baseline_plan_id,
         requirement_profile_id=requirement_profile_id,
         strategy_summary=strategy_summary,
         roadmap=roadmap,
@@ -321,7 +345,10 @@ def _save(
         preserved_tasks = [task for task in current.tasks if task.status in _FINISHED_STATUSES]
         removed_tasks = [task for task in current.tasks if task.status not in _FINISHED_STATUSES]
         current.tasks = preserved_tasks
-        current.plan = {"roadmap": roadmap}
+        new_plan, dropped_plan_keys = _merge_plan_keys(current.plan, roadmap)
+        current.plan = new_plan
+        if dropped_plan_keys:
+            meta.validation["dropped_plan_keys"] = dropped_plan_keys
 
         now = datetime.now().isoformat()
         current.plan_saved_at = now
@@ -424,6 +451,174 @@ def _check_requirement_chain(
             "RequirementProfile 不属于当前 EvidenceRun，拒绝落库。",
             {"expected": expected_evidence, "received": actual_evidence},
         )
+
+
+def _assert_known_evidence(
+    changes: list[PlanChange], requirement: dict[str, Any]
+) -> None:
+    """拒绝引用 RequirementProfile 之外 evidence_ids 的变更。"""
+    known = _known_evidence_ids(requirement)
+    unknown = sorted(
+        {
+            evidence_id
+            for change in changes
+            for evidence_id in change.evidence_ids
+            if evidence_id not in known
+        }
+    )
+    if not unknown:
+        return
+    raise ExecutionPlanError(
+        "UNKNOWN_EVIDENCE_ID",
+        "变更引用了 RequirementProfile 中不存在的 evidence_ids，拒绝落库。",
+        {"unknown_evidence_ids": unknown, "available_evidence_ids": sorted(known)},
+    )
+
+
+def _resolve_baseline_plan_id(
+    store: ArtifactStore, profile_name: str, profile: CareerProfile
+) -> str:
+    """从 core_state 或 latest BaselinePlan 读取基线方案 id。"""
+    core_state = profile.core_state if isinstance(profile.core_state, dict) else {}
+    candidate = str(core_state.get("baseline_plan_id") or "").strip()
+    if candidate:
+        data = store.load(candidate)
+        if _is_stage(data, state_machine.STAGE_BASELINE_PLAN):
+            meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+            if str(meta.get("profile_name") or "") == profile_name:
+                return candidate
+    latest = store.latest(profile_name, state_machine.STAGE_BASELINE_PLAN)
+    if _is_stage(latest, state_machine.STAGE_BASELINE_PLAN):
+        meta = latest.get("meta") if isinstance(latest.get("meta"), dict) else {}
+        return str(meta.get("id") or "")
+    return ""
+
+
+def _merge_plan_keys(
+    plan: Any, roadmap: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """保留 profile.plan 的非 roadmap 键；丢弃过期 current_detail 时返回标记。"""
+    old_plan = plan if isinstance(plan, dict) else {}
+    phase_ids = _phase_ids(roadmap)
+    merged: dict[str, Any] = {}
+    dropped: list[str] = []
+    for key, value in old_plan.items():
+        if key in ("roadmap", "phases"):
+            continue
+        if key == "current_detail":
+            detail_phase = (
+                str(value.get("phase_id") or "").strip()
+                if isinstance(value, dict)
+                else ""
+            )
+            if detail_phase and detail_phase not in phase_ids:
+                dropped.append(key)
+                continue
+            merged[key] = copy.deepcopy(value)
+            continue
+        merged[key] = copy.deepcopy(value)
+    merged["roadmap"] = roadmap
+    return merged, dropped
+
+
+def _phase_ids(roadmap: dict[str, Any]) -> set[str]:
+    phases = roadmap.get("phases") if isinstance(roadmap.get("phases"), list) else []
+    ids: set[str] = set()
+    for index, phase in enumerate(phases):
+        if not isinstance(phase, dict):
+            continue
+        ids.add(str(phase.get("id") or f"phase_{index + 1}"))
+    return ids
+
+
+def _hash_value(value: Any) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        text = repr(value)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _find_applied_alignment(
+    store: ArtifactStore,
+    profile_name: str,
+    requirement_profile_id: str,
+    roadmap_hash: str,
+    changes_hash: str,
+) -> dict[str, Any] | None:
+    """查找同一 requirement + roadmap + changes 的已应用执行方案（幂等）。"""
+    for entry in store.list(profile_name, STAGE_ID):
+        if not isinstance(entry, dict) or not entry.get("applied"):
+            continue
+        if str(entry.get("requirement_profile_id") or "") != requirement_profile_id:
+            continue
+        meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+        validation = (
+            meta.get("validation") if isinstance(meta.get("validation"), dict) else {}
+        )
+        stored_roadmap_hash = str(validation.get("roadmap_hash") or "") or _hash_value(
+            entry.get("roadmap") or {}
+        )
+        stored_changes_hash = str(validation.get("changes_hash") or "") or _hash_value(
+            entry.get("changes") or []
+        )
+        if stored_roadmap_hash == roadmap_hash and stored_changes_hash == changes_hash:
+            return entry
+    return None
+
+
+def _applied_alignment_payload(
+    existing: dict[str, Any],
+    profile: CareerProfile,
+    requirement_profile_id: str,
+) -> dict[str, Any]:
+    """重复确认同一 alignment 时返回既有已应用方案，不重复写档案。"""
+    meta = existing.get("meta") if isinstance(existing.get("meta"), dict) else {}
+    validation = (
+        meta.get("validation") if isinstance(meta.get("validation"), dict) else {}
+    )
+    roadmap = (
+        existing.get("roadmap") if isinstance(existing.get("roadmap"), dict) else {}
+    )
+    changes = [item for item in existing.get("changes") or [] if isinstance(item, dict)]
+    return {
+        "status": "ok",
+        "applied": True,
+        "idempotent": True,
+        "execution_plan_id": str(meta.get("id") or ""),
+        "requirement_profile_id": requirement_profile_id,
+        "baseline": {},
+        "proposed": _roadmap_overview(roadmap),
+        "changes": changes,
+        "change_counts": _change_counts_raw(changes),
+        "diff_summary": str(existing.get("diff_summary") or ""),
+        "preserved_tasks": _task_briefs(_extract_completed_evidence(profile)),
+        "removed_tasks": [],
+        "warnings": [str(item) for item in validation.get("warnings") or []],
+        "preserved_task_count": _as_int(validation.get("preserved_task_count")),
+        "removed_task_count": _as_int(validation.get("removed_task_count")),
+        "plan_history_versions": len(profile.plan_history),
+        "adjustment": None,
+        "core_state": (
+            dict(profile.core_state) if isinstance(profile.core_state, dict) else {}
+        ),
+        "map_path": str(validation.get("map_path") or ""),
+        "map_error": str(validation.get("map_error") or ""),
+        "message": (
+            "相同的执行方案（requirement_profile_id + roadmap + changes）已经应用过；"
+            "本次不重复写入 plan_history / adjustments，也不重复删除任务。"
+        ),
+        "next_steps": ["get_next_tasks", "generate_tasks"],
+    }
+
+
+def _change_counts_raw(changes: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for change in changes:
+        key = str(change.get("type") or "")
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def _parse_alignment(alignment_json: str | dict[str, Any]) -> dict[str, Any]:

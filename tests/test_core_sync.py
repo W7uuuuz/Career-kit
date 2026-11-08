@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths  # noqa: E402
 from src.core import sync  # noqa: E402
+from src.core.artifacts.models import ArtifactMeta, ExecutionPlan  # noqa: E402
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
 from src.models import Application, CareerProfile, CheckIn, Task  # noqa: E402
 from src.tools import profile as profile_store  # noqa: E402
@@ -151,29 +152,59 @@ def _assert_id(artifact_id: str, prefix: str, stage: str) -> None:
     assert data["meta"]["profile_name"] == PROFILE_NAME
 
 
+def _save_applied_execution_plan() -> str:
+    """为 sync_review 准备一个已应用的执行版链路。"""
+    store = ArtifactStore()
+    meta = ArtifactMeta(
+        id=store.new_id("ep_"),
+        stage=sync.STAGE_EXECUTION_PLAN,
+        profile_name=PROFILE_NAME,
+        created_at=datetime.now().isoformat(),
+        validation={"confirmed": True, "applied": True},
+    )
+    plan = ExecutionPlan(
+        meta=meta,
+        requirement_profile_id="rp_test",
+        strategy_summary="执行版",
+        roadmap=_roadmap()["roadmap"],
+        applied=True,
+    )
+    store.save(plan)
+    profile = profile_store.load_profile(PROFILE_NAME)
+    state = dict(profile.core_state or {})
+    state["execution_plan_id"] = meta.id
+    state["stage"] = sync.STAGE_EXECUTION
+    state["updated_at"] = datetime.now().isoformat()
+    profile.core_state = state
+    profile_store.save_profile(profile, PROFILE_NAME)
+    return meta.id
+
+
 def _sync_all() -> dict[str, str]:
-    return {
+    ids = {
         "pf": sync.sync_profile(PROFILE_NAME),
         "ts": sync.sync_target(PROFILE_NAME),
         "mb": sync.sync_market_baseline(PROFILE_NAME),
         "gr": sync.sync_gap(PROFILE_NAME),
         "bp": sync.sync_baseline_plan(PROFILE_NAME),
         "es": sync.sync_execution_state(PROFILE_NAME),
-        "as": sync.sync_application_state(PROFILE_NAME),
-        "rr": sync.sync_review(
-            PROFILE_NAME,
-            plan_fit={
-                "status": "minor_drift",
-                "signals": [{"code": "coverage", "message": "有 2 项高频要求未覆盖"}],
-            },
-            weekly_facts={
-                "days": 7,
-                "start": datetime(2026, 1, 1),
-                "suggestions": ["继续执行高优先级任务"],
-                "completed": [Task(id="task_001", name="实现检索")],
-            },
-        ),
     }
+    _save_applied_execution_plan()
+    ids["as"] = sync.sync_application_state(PROFILE_NAME)
+    ids["rr"] = sync.sync_review(
+        PROFILE_NAME,
+        plan_fit={
+            "status": "minor_drift",
+            "signals": [{"code": "coverage", "message": "有 2 项高频要求未覆盖"}],
+        },
+        weekly_facts={
+            "days": 7,
+            "start": datetime(2026, 1, 1),
+            "suggestions": ["继续执行高优先级任务"],
+            "completed": [Task(id="task_001", name="实现检索")],
+        },
+    )
+    return ids
 
 
 def test_sync_writes_each_artifact_and_core_state(data_dir: Path) -> None:
@@ -194,7 +225,7 @@ def test_sync_writes_each_artifact_and_core_state(data_dir: Path) -> None:
     assert state[sync.KEY_EXECUTION] == ids["es"]
     assert state[sync.KEY_APPLICATIONS] == ids["as"]
     assert state[sync.KEY_REVIEW] == ids["rr"]
-    assert state["stage"] == sync.STAGE_REVIEW
+    assert state["stage"] == sync.STAGE_EXECUTION
     assert state["updated_at"]
     assert state["custom_key"] == "keep"
     assert state["company_pool_id"] == "cp_legacy"

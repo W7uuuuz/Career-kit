@@ -22,6 +22,7 @@ from ..tools.application_tracker import funnel_stats
 from ..tools.profile import load_profile
 from .artifacts.store import ArtifactStore
 from .orchestrator import state_machine
+from .progress import STAGE_KEYS
 
 STALE_EVIDENCE_DAYS = 7
 FUNNEL_MIN_SAMPLE = 5
@@ -46,11 +47,12 @@ def check_plan_fit(profile_name: str, trigger: str = "manual") -> dict[str, Any]
     trigger = trigger if trigger in TRIGGERS else "manual"
     profile = load_profile(profile_name)
     store = ArtifactStore()
+    core_state = profile.core_state if isinstance(profile.core_state, dict) else {}
 
-    pool = _latest(store, profile_name, state_machine.STAGE_COMPANY_POOL)
-    evidence = _latest(store, profile_name, state_machine.STAGE_EVIDENCE)
-    requirement = _latest(store, profile_name, state_machine.STAGE_REQUIREMENT)
-    plan = _latest(store, profile_name, state_machine.STAGE_EXECUTION_PLAN)
+    pool = _latest(store, profile_name, state_machine.STAGE_COMPANY_POOL, core_state)
+    evidence = _latest(store, profile_name, state_machine.STAGE_EVIDENCE, core_state)
+    requirement = _latest(store, profile_name, state_machine.STAGE_REQUIREMENT, core_state)
+    plan = _latest(store, profile_name, state_machine.STAGE_EXECUTION_PLAN, core_state)
 
     artifact_ids = {
         "company_pool_id": _artifact_id(pool),
@@ -72,6 +74,7 @@ def check_plan_fit(profile_name: str, trigger: str = "manual") -> dict[str, Any]
     else:
         signals.extend(_stale_evidence(evidence))
         signals.extend(_alignment_missing(evidence, plan))
+        signals.extend(_plan_not_applied(plan))
         signals.extend(_alignment_stale(evidence, requirement, plan))
         corpus = _task_corpus(profile)
         signals.extend(_uncovered_requirements(requirement, corpus))
@@ -103,15 +106,31 @@ def check_plan_fit(profile_name: str, trigger: str = "manual") -> dict[str, Any]
 
 
 def _latest(
-    store: ArtifactStore, profile_name: str, stage: str
+    store: ArtifactStore,
+    profile_name: str,
+    stage: str,
+    core_state: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
+    """优先 core_state 指针，再回退该档案该阶段 latest；跨档案一律拒绝。"""
+    state = core_state if isinstance(core_state, dict) else {}
+    artifact_id = str(state.get(STAGE_KEYS.get(stage, "")) or "")
+    if artifact_id:
+        data = store.load(artifact_id)
+        if _matches_stage(data, stage, profile_name):
+            return data
     data = store.latest(profile_name, stage)
+    return data if _matches_stage(data, stage, profile_name) else None
+
+
+def _matches_stage(
+    data: dict[str, Any] | None, stage: str, profile_name: str
+) -> bool:
     if not isinstance(data, dict):
-        return None
+        return False
     meta = data.get("meta")
     if not isinstance(meta, dict) or meta.get("stage") != stage:
-        return None
-    return data
+        return False
+    return str(meta.get("profile_name") or "") == profile_name
 
 
 def _artifact_id(artifact: dict[str, Any] | None) -> str:
@@ -214,6 +233,20 @@ def _alignment_missing(
             "已有岗位与面经证据，但还没有执行版方案（ExecutionPlan）；"
             "旧计划未按企业需求校准，建议重新对齐。",
             evidence_ids=[_artifact_id(evidence)],
+        )
+    ]
+
+
+def _plan_not_applied(plan: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if plan is None or bool(plan.get("applied")):
+        return []
+    return [
+        _signal(
+            "plan_not_applied",
+            "high",
+            "执行版方案已生成但尚未应用，当前计划仍是旧版本，不能视为已对齐；"
+            "建议确认并应用执行版方案。",
+            evidence_ids=[_artifact_id(plan)],
         )
     ]
 
@@ -477,6 +510,8 @@ def _recommend(
     codes = {signal["code"] for signal in signals}
     if "goal_changed" in codes:
         return "rerun_gap", "analyze_gaps"
+    if "plan_not_applied" in codes:
+        return "rerun_alignment", "save_execution_alignment"
     if "alignment_stale" in codes:
         return "rerun_alignment", "plan_execution_alignment"
     if "alignment_missing" in codes:

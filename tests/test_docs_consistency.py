@@ -81,6 +81,78 @@ def test_root_llms_txt_includes_funnel_tools():
     assert "get_weekly_review" in text
 
 
+def test_llms_docs_list_twelve_steps_in_order():
+    """根 llms.txt 与 docs/llms.txt 必须按 guidance 顺序列出全部 12 步名称。"""
+    from src.guidance import JOURNEY_STEPS
+
+    for rel in [("llms.txt",), ("docs", "llms.txt")]:
+        text = _read(*rel)
+        assert "12 步" in text, f"{rel} 未写「12 步」"
+        positions = []
+        for step in JOURNEY_STEPS:
+            pos = text.find(step.name)
+            assert pos >= 0, f"{rel} 缺少阶段名：{step.name}"
+            positions.append(pos)
+        assert positions == sorted(positions), f"{rel} 的 12 步顺序与 guidance 不一致"
+
+
+def test_root_llms_txt_covers_company_alignment_and_plan_fit():
+    """根 llms.txt 必须覆盖阶段 6-9、sync 层与计划失配检测。"""
+    text = _read("llms.txt")
+    for tool in (
+        "select_target_companies",
+        "collect_company_evidence",
+        "analyze_company_requirements",
+        "save_requirement_profile",
+        "plan_execution_alignment",
+        "save_execution_alignment",
+    ):
+        assert tool in text, f"根 llms.txt 缺少企业适配工具：{tool}"
+    assert "sync" in text.lower(), "根 llms.txt 未说明 sync 层"
+    assert "check_plan_fit" in text, "根 llms.txt 未说明计划失配检测"
+
+
+def test_onboarding_prompt_uses_twelve_step_brief():
+    """开场提示必须描述 12 步简介，不能残留 6 步口径。"""
+    text = _read("docs", "prompts", "onboarding.md")
+    assert "12 步简介" in text
+    assert "6 步" not in text
+
+
+STALE_STEP_TOOL_PATTERNS = ("47 个", "6 步", "7 步")
+
+
+def test_public_docs_have_no_stale_step_or_tool_counts():
+    """根 llms.txt / docs/llms.txt / onboarding 不得残留旧步数或旧工具数。"""
+    for rel in [
+        ("llms.txt",),
+        ("docs", "llms.txt"),
+        ("docs", "prompts", "onboarding.md"),
+    ]:
+        text = _read(*rel)
+        found = [p for p in STALE_STEP_TOOL_PATTERNS if p in text]
+        assert not found, f"{rel} 仍含陈旧数字：{found}"
+
+
+def _changelog_section(version: str) -> str:
+    text = _read("CHANGELOG.md")
+    marker = f"## {version}"
+    start = text.find(marker)
+    assert start >= 0, f"CHANGELOG.md 缺少 {marker} 段"
+    rest = text[start + len(marker):]
+    next_section = rest.find("\n## ")
+    return rest if next_section < 0 else rest[:next_section]
+
+
+def test_changelog_v030_has_single_12_step_48_tool_caliber():
+    """v0.3.0 段只能保留 12 步 / 48 工具口径，不得残留 7 步 / 47 工具矛盾。"""
+    section = _changelog_section("v0.3.0")
+    assert "12 步" in section, "CHANGELOG v0.3.0 未写 12 步"
+    assert "48" in section, "CHANGELOG v0.3.0 未写 48 工具"
+    found = [p for p in STALE_STEP_TOOL_PATTERNS if p in section]
+    assert not found, f"CHANGELOG v0.3.0 仍含陈旧数字：{found}"
+
+
 def test_scraper_config_matches_public_docs():
     """docs/scrapers.md 收录企业与 src/scrapers/config.yaml 注册源一致。"""
     config = yaml.safe_load(

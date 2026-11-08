@@ -185,11 +185,51 @@ def test_record_application_syncs_application_state_artifact(data_dir: Path) -> 
     assert artifact["applications"][0]["company"] == "字节跳动"
 
 
+def _seed_review_chain(profile: CareerProfile) -> None:
+    """ReviewReport 需要 applied ExecutionPlan + ExecutionState，否则不写孤儿 artifact。"""
+    from src.core.artifacts.models import (
+        ArtifactMeta,
+        ExecutionPlan,
+        ExecutionState,
+    )
+
+    store = ArtifactStore()
+    plan_id = store.save(
+        ExecutionPlan(
+            meta=ArtifactMeta(
+                id=store.new_id("ep"),
+                stage="execution_plan",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+            ),
+            requirement_profile_id="rp_seed",
+            strategy_summary="seed",
+            applied=True,
+        )
+    )
+    execution_id = store.save(
+        ExecutionState(
+            meta=ArtifactMeta(
+                id=store.new_id("es"),
+                stage="execution",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:01",
+            ),
+            execution_plan_id=plan_id,
+        )
+    )
+    profile.core_state = {
+        "execution_plan_id": plan_id,
+        "execution_state_id": execution_id,
+    }
+
+
 def test_get_weekly_review_syncs_review_artifact(data_dir: Path) -> None:
     from src.tools.task_tools import get_weekly_review
 
     profile = profile_store.load_profile(PROFILE_NAME)
     profile.applications = [Application(id="app_001", company="字节跳动", role="Agent")]
+    _seed_review_chain(profile)
     profile_store.save_profile(profile, PROFILE_NAME)
 
     out = get_weekly_review()
@@ -242,3 +282,118 @@ def test_workflow_status_keeps_existing_core_keys(data_dir: Path) -> None:
     assert profile.core_state.get("target_spec_id") == "ts_keep", "已有 key 不应重建"
     assert profile.core_state.get("custom_key") == "keep"
     assert profile.core_state.get("profile_id", "").startswith("pf_")
+
+
+def test_record_application_duplicate_branch_writes_no_artifact(data_dir: Path) -> None:
+    """重复投递提示分支只返回既有记录，不写 profile、不写 artifact。"""
+    from src.tools.application_tools import record_application
+
+    record_application(company="字节跳动", role="AI Agent 开发")
+    profile = profile_store.load_profile(PROFILE_NAME)
+    assert profile.core_state.get("application_state_id")
+
+    # 清掉指针，若重复分支偷偷 sync 就会重新写入
+    profile.core_state.pop("application_state_id", None)
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    payload = json.loads(record_application(company="字节跳动", role="AI Agent 开发"))
+
+    assert payload["duplicate"] is True
+    profile = profile_store.load_profile(PROFILE_NAME)
+    assert "application_state_id" not in profile.core_state
+
+
+def test_record_application_syncs_only_on_new_or_changed(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import src.core.sync as core_sync
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        core_sync,
+        "sync_application_state",
+        lambda profile_name: calls.append(profile_name) or "",
+    )
+    from src.tools.application_tools import record_application
+
+    record_application(company="字节跳动", role="AI Agent 开发")
+    assert len(calls) == 1
+
+    record_application(company="字节跳动", role="AI Agent 开发")  # 重复提示分支
+    assert len(calls) == 1
+
+    record_application(
+        company="字节跳动",
+        role="AI Agent 开发",
+        status="applied",
+        application_id="app_001",
+    )  # 状态未变化
+    assert len(calls) == 1
+
+    record_application(
+        company="字节跳动",
+        role="AI Agent 开发",
+        status="interview",
+        application_id="app_001",
+    )  # 状态真正变化
+    assert len(calls) == 2
+
+
+def test_delete_application_syncs_even_when_empty_and_warns(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import src.core.sync as core_sync
+    from src.tools.application_tools import delete_application, record_application
+
+    record_application(company="字节跳动", role="AI Agent 开发")
+    calls: list[str] = []
+
+    def _failing_sync(profile_name: str) -> str:
+        calls.append(profile_name)
+        raise RuntimeError("artifact store down")
+
+    monkeypatch.setattr(core_sync, "sync_application_state", _failing_sync)
+
+    payload = json.loads(delete_application("app_001"))
+
+    assert calls == [PROFILE_NAME]
+    assert "同步失败" in payload["message"]
+    assert "sync_warning" in payload["context"]
+    profile = profile_store.load_profile(PROFILE_NAME)
+    assert profile.applications == []
+
+
+def test_task_tools_surface_sync_failure_warning(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import src.core.sync as core_sync
+
+    def _failing_sync(profile_name: str) -> str:
+        raise RuntimeError("artifact store down")
+
+    monkeypatch.setattr(core_sync, "sync_execution_state", _failing_sync)
+    from src.tools.task_tools import checkin_task, generate_tasks
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.plan = {
+        "roadmap": {
+            "phases": [
+                {
+                    "id": "phase_1",
+                    "name": "基础",
+                    "milestones": [
+                        {"id": "m1", "name": "M1", "tasks": [{"name": "任务A"}]}
+                    ],
+                }
+            ]
+        }
+    }
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    out = json.loads(generate_tasks())
+    assert "同步失败" in out["message"]
+    assert "sync_warning" in out["context"]
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    checkin_out = checkin_task(task_id=profile.tasks[0].id, status="completed")
+    assert "同步失败" in checkin_out

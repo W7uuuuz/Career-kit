@@ -298,17 +298,44 @@ def _resolve_pool(
         data = store.load(pool_id)
         if not isinstance(data, dict):
             return None, pool_id, f"CompanyPool「{pool_id}」不存在"
-        meta = data.get("meta")
-        if not isinstance(meta, dict) or meta.get("stage") != state_machine.STAGE_COMPANY_POOL:
-            return None, pool_id, f"artifact「{pool_id}」不是 CompanyPool"
+        if not _is_pool_of_profile(data, profile_name):
+            return None, pool_id, f"CompanyPool「{pool_id}」不属于当前档案或类型不符"
         return data, pool_id, ""
+
+    core_id = _core_state_pool_id(profile_name)
+    if core_id:
+        data = store.load(core_id)
+        if _is_pool_of_profile(data, profile_name):
+            return data, core_id, ""
+
     data = store.latest(profile_name, state_machine.STAGE_COMPANY_POOL)
-    if not isinstance(data, dict):
+    if not _is_pool_of_profile(data, profile_name):
         return None, "", "尚未生成目标企业池，先调用 select_target_companies"
-    meta = data.get("meta")
-    if not isinstance(meta, dict) or meta.get("stage") != state_machine.STAGE_COMPANY_POOL:
-        return None, "", "未找到可用的 CompanyPool"
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
     return data, str(meta.get("id") or ""), ""
+
+
+def _core_state_pool_id(profile_name: str) -> str:
+    try:
+        profile = load_profile(profile_name)
+    except Exception:  # noqa: BLE001 - 档案读取失败时回退 latest
+        return ""
+    core_state = getattr(profile, "core_state", None)
+    if not isinstance(core_state, dict):
+        return ""
+    return str(core_state.get("company_pool_id") or "").strip()
+
+
+def _is_pool_of_profile(data: Any, profile_name: str) -> bool:
+    if not isinstance(data, dict):
+        return False
+    meta = data.get("meta")
+    if not isinstance(meta, dict):
+        return False
+    return (
+        meta.get("stage") == state_machine.STAGE_COMPANY_POOL
+        and str(meta.get("profile_name") or "") == profile_name
+    )
 
 
 def _pool_confirmed(pool: CompanyPool) -> bool:

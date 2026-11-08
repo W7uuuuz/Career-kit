@@ -93,6 +93,17 @@ def _broadcast_refresh() -> None:
             subscriber.put("refresh")
 
 
+def _run_sync(fn_name: str) -> str:
+    """控制台写操作后刷新 Core v2 artifact；失败不阻断，返回 warning 文本。"""
+    try:
+        from .core import sync as core_sync
+
+        getattr(core_sync, fn_name)(get_active_profile_name())
+    except Exception as exc:  # noqa: BLE001 - 同步失败不应让控制台写操作失败
+        return f"Core v2 同步失败（{fn_name}）：{exc}"
+    return ""
+
+
 def _collect_reports(profile_name: str) -> list[dict[str, Any]]:
     """列出调研报告（用于控制台筛选）。"""
     directory = kind_assets_dir("research", profile_name)
@@ -151,7 +162,11 @@ def update_task(task_id: str, fields: dict[str, Any]) -> dict[str, Any]:
             task.checkin_goal = float(fields["checkin_goal"] or 0)
         profile.touch()
         save_profile(profile)
-        return build_state(profile)
+        sync_warning = _run_sync("sync_execution_state")
+        state = build_state(profile)
+        if sync_warning:
+            state["sync_warning"] = sync_warning
+        return state
 
 
 def add_application_entry(data: dict[str, Any]) -> dict[str, Any]:
@@ -174,7 +189,11 @@ def add_application_entry(data: dict[str, Any]) -> dict[str, Any]:
         )
         profile.touch()
         save_profile(profile)
-        return build_state(profile)
+        sync_warning = _run_sync("sync_application_state")
+        state = build_state(profile)
+        if sync_warning:
+            state["sync_warning"] = sync_warning
+        return state
 
 
 def undo_task(task_id: str) -> None:
@@ -202,6 +221,9 @@ def undo_task(task_id: str) -> None:
         task.checkin_progress = 0
         profile.touch()
         save_profile(profile)
+        sync_warning = _run_sync("sync_execution_state")
+        if sync_warning:
+            sys.stderr.write(sync_warning + "\n")
 
 
 def _matches_alignment_stage(data: Any, stage: str) -> bool:
@@ -354,10 +376,19 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
     profile = profile or load_profile()
     plan = profile.plan if isinstance(profile.plan, dict) else {}
     roadmap = plan.get("roadmap", plan)
-    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
+    raw_phases = roadmap.get("phases") if isinstance(roadmap, dict) else []
+    # 损坏的路线图（phases 不是列表 / 元素不是对象）不能让整个控制台崩掉
+    phases = (
+        [p for p in raw_phases if isinstance(p, dict)]
+        if isinstance(raw_phases, list)
+        else []
+    )
 
-    phase_ids = [p.get("id") or f"phase_{i + 1}" for i, p in enumerate(phases)]
-    current = resolve_current_phase(profile)
+    phase_ids = [str(p.get("id") or f"phase_{i + 1}") for i, p in enumerate(phases)]
+    try:
+        current = resolve_current_phase(profile)
+    except Exception:  # noqa: BLE001 - 损坏数据退化为无当前阶段
+        current = None
     current_phase_id = current["phase_id"] if current else None
     if current_phase_id is None and phase_ids:
         current_phase_id = phase_ids[-1]
@@ -371,16 +402,21 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         done = sum(1 for t in phase_tasks if t.status in ("completed", "skipped"))
         total_done += done
         total_tasks += len(phase_tasks)
+        raw_milestones = phase.get("milestones")
+        milestones = (
+            [ms for ms in raw_milestones if isinstance(ms, dict)]
+            if isinstance(raw_milestones, list)
+            else []
+        )
         ms_names = {
             ms.get("id"): ms.get("name", "")
-            for ms in phase.get("milestones", [])
-            if isinstance(ms, dict)
+            for ms in milestones
         }
         milestone_tasks = []
-        for ms in phase.get("milestones", []):
-            if not isinstance(ms, dict):
-                continue
-            for t in ms.get("tasks") or []:
+        for ms in milestones:
+            raw_task_defs = ms.get("tasks")
+            task_defs = raw_task_defs if isinstance(raw_task_defs, list) else []
+            for t in task_defs:
                 if isinstance(t, dict):
                     milestone_tasks.append({
                         "name": t.get("name", ""),
@@ -532,7 +568,16 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
                 if not self._authorized():
                     _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
                     return
-                _json_response(self, 200, build_state())
+                try:
+                    state = build_state()
+                except Exception as exc:  # noqa: BLE001 - 状态构建失败要返回可读 JSON
+                    _json_response(
+                        self,
+                        500,
+                        {"error": f"状态构建失败：{exc}"},
+                    )
+                    return
+                _json_response(self, 200, state)
                 return
             if path == "/api/events":
                 if not self._authorized():
@@ -623,7 +668,10 @@ def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
                             if task and task.status == "completed":
                                 record_capability_evidence(profile, task)
                             save_profile(profile)
+                        sync_warning = _run_sync("sync_execution_state")
                         state = build_state(profile)
+                        if sync_warning:
+                            state["sync_warning"] = sync_warning
             except ValueError as exc:
                 _json_response(self, 400, {"error": str(exc)})
                 return

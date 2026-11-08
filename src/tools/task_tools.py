@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import INDEX_FILENAME, get_assets_root
-from ..guidance import guide_for
+from ..guidance import guide_for, is_legacy
 from ..mcp_app import mcp
 from .dashboard import (
     render_progress_html as _render_progress_html,
@@ -20,6 +20,11 @@ from .session_tools import _has_goal, _summarize_dict
 from .tool_helpers import _json, _parse_json_param
 
 _FINISHED_TASK_STATUSES = ("completed", "skipped")
+
+
+def _sync_failure_warning(label: str, exc: Exception) -> str:
+    """sync 失败不阻断主工具，但要在返回内容里留痕，方便排查。"""
+    return f"Core v2 同步失败（{label}）：{exc}"
 
 
 def _roadmap_phase_id(phase: dict, index: int) -> str:
@@ -148,19 +153,19 @@ def generate_tasks() -> str:
     ]
     tasks = create_tasks_from_roadmap(profile, only_phase_ids={target_phase_id})
     new_ids = {t.id for t in tasks}
-    # 执行版路线图会复用 phase_id：历史 completed/skipped 任务即使不在新任务定义里，
-    # 也必须保留，不能因为重建当前阶段而丢失。
+    # 历史 completed/skipped 任务是用户真实完成过的证据：不论其 phase_id 是否
+    # 还在新路线图里（应用执行版可能删除整个阶段），都必须完整保留。
     kept_finished = [
         t for t in old_tasks
-        if t.phase_id == target_phase_id
-        and t.status in _FINISHED_TASK_STATUSES
-        and t.id not in new_ids
+        if t.status in _FINISHED_TASK_STATUSES and t.id not in new_ids
     ]
 
     profile.tasks = []
-    for task in kept_other:
-        profile.add_task(task)
-    for task in kept_finished:
+    kept_ids: set[str] = set()
+    for task in kept_other + kept_finished:
+        if task.id in kept_ids:
+            continue
+        kept_ids.add(task.id)
         profile.add_task(task)
     for task in tasks:
         profile.add_task(task)
@@ -173,13 +178,14 @@ def generate_tasks() -> str:
 
     save_profile(profile)
 
-    # Core v2 同步：任务/打卡状态落 ExecutionState artifact（失败不阻断）
+    # Core v2 同步：任务/打卡状态落 ExecutionState artifact（失败不阻断，但要留痕）
+    sync_warning = ""
     try:
         from ..core.sync import sync_execution_state
 
         sync_execution_state(get_active_profile_name())
-    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
-        pass
+    except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
+        sync_warning = _sync_failure_warning("sync_execution_state", exc)
 
     # 任务生成后自动刷新路线图 HTML：避免用户打开旧快照看到「没有可打卡任务」（P1-4）
     map_path = ""
@@ -198,11 +204,12 @@ def generate_tasks() -> str:
         if map_path
         else f"路线图 HTML 刷新失败：{map_error}——可稍后用 export_dashboard(mode=\"roadmap\") 重试。\n"
     )
+    sync_note = f"{sync_warning}\n" if sync_warning else ""
     return _json({
         "message": (
             f"{migrated_note}已为当前阶段「{target_name}」生成 {len(tasks)} 个任务"
             "（后续阶段保留里程碑，不生成空壳任务）。\n"
-            f"{map_note}"
+            f"{map_note}{sync_note}"
             "下一步：调用 get_next_tasks 查看执行任务；"
             "或调用 detail_current_phase 生成当前阶段的详细路线（含按天/按比例打卡点）。\n\n"
             f"{guide_for(profile)}"
@@ -214,6 +221,7 @@ def generate_tasks() -> str:
             "phase_id": target_phase_id,
             "phase_name": target_name,
             "task_count": len(tasks),
+            **({"sync_warning": sync_warning} if sync_warning else {}),
         },
     })
 
@@ -580,13 +588,14 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
 
     save_profile(profile)
 
-    # Core v2 同步：打卡后刷新 ExecutionState artifact（失败不阻断）
+    # Core v2 同步：打卡后刷新 ExecutionState artifact（失败不阻断，但要留痕）
     try:
         from ..core.sync import sync_execution_state
 
         sync_execution_state(get_active_profile_name())
-    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
-        pass
+    except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
+        lines.append("")
+        lines.append(_sync_failure_warning("sync_execution_state", exc))
 
     lines.append("")
     lines.append(format_progress_overview(profile))
@@ -846,13 +855,14 @@ def get_weekly_review(days: int = 7) -> str:
     if fit_lines:
         review = review + "\n\n" + "\n".join(fit_lines)
 
-    # Core v2 同步：周检视事实 + 计划失配结果落 ReviewReport artifact（失败不阻断）
+    # Core v2 同步：周检视事实 + 计划失配结果落 ReviewReport artifact（失败不阻断，但要留痕）
+    sync_warning = ""
     try:
         from ..core.sync import sync_review
 
         sync_review(get_active_profile_name(), plan_fit=fit, weekly_facts=facts)
-    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
-        pass
+    except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
+        sync_warning = _sync_failure_warning("sync_review", exc)
 
     follow_up = (
         "认可就继续 get_next_tasks；想调整随时说，"
@@ -861,7 +871,8 @@ def get_weekly_review(days: int = 7) -> str:
         else "数据都健康——继续 get_next_tasks 即可。"
     )
 
-    return f"{review}\n\n下一步：{follow_up}"
+    warning_note = f"\n\n{sync_warning}" if sync_warning else ""
+    return f"{review}{warning_note}\n\n下一步：{follow_up}"
 
 
 def _plan_fit_result(trigger: str) -> dict:
@@ -946,6 +957,13 @@ _STAGE_NEXT_TOOLS = (
     "gather_research_data",
     "save_gap_analysis",
     "save_roadmap",
+    "select_target_companies",
+    "collect_company_evidence",
+    "analyze_company_requirements",
+    "plan_execution_alignment",
+    "get_next_tasks",
+    "record_application",
+    "get_weekly_review",
 )
 
 _CORE_STAGE_INDEX = {
@@ -986,7 +1004,17 @@ def _backfill_core_state(profile):
             bool(profile.who or profile.have or profile.want or profile.summary),
             core_sync.sync_profile,
         ),
-        (core_sync.KEY_TARGET, bool(profile.want), core_sync.sync_target),
+        (
+            core_sync.KEY_TARGET,
+            bool(profile.want)
+            and (
+                bool((profile.want or {}).get("user_confirmed"))
+                or bool((profile.guidance or {}).get("goal_confirmed_at"))
+                or bool(profile.summary)
+                or is_legacy(profile)
+            ),
+            core_sync.sync_target,
+        ),
         (
             core_sync.KEY_MARKET_BASELINE,
             bool(
@@ -1035,17 +1063,26 @@ def _stage_position(profile, core_action: dict) -> tuple[int, str, str]:
         except Exception:  # noqa: BLE001 - 无核心模块时按建档起点处理
             return 1, _STAGE_NAMES[0], _STAGE_NEXT_TOOLS[0]
         state = profile.core_state if isinstance(profile.core_state, dict) else {}
+        # 完整 12 阶段 key：不能只遍历前 5 个再硬编码跳到执行阶段，
+        # 否则投递/复盘阶段永远显示不出来。
         keys = (
             core_sync.KEY_PROFILE,
             core_sync.KEY_TARGET,
             core_sync.KEY_MARKET_BASELINE,
             core_sync.KEY_GAP,
             core_sync.KEY_BASELINE_PLAN,
+            "company_pool_id",
+            "evidence_run_id",
+            "requirement_profile_id",
+            "execution_plan_id",
+            core_sync.KEY_EXECUTION,
+            core_sync.KEY_APPLICATIONS,
+            core_sync.KEY_REVIEW,
         )
         for position, key in enumerate(keys, start=1):
             if not state.get(key):
                 return position, _STAGE_NAMES[position - 1], _STAGE_NEXT_TOOLS[position - 1]
-        index = 10
+        index = len(keys)
 
     if not next_tool and index == 10:
         next_tool = "get_next_tasks"
@@ -1184,8 +1221,34 @@ def get_workflow_status() -> str:
         all_finished = all(t.status in finished_status for t in profile.tasks)
 
         if all_finished:
-            phase = "completed"
-            next_step = "目标达成！可回顾目标，规划下一步。"
+            roadmap = profile.plan.get("roadmap", profile.plan)
+            roadmap_phases = (
+                [p for p in roadmap.get("phases", []) if isinstance(p, dict)]
+                if isinstance(roadmap, dict)
+                else []
+            )
+            pending_phase = _next_phase_to_generate(profile, roadmap_phases) if roadmap_phases else ""
+            # 全部任务完成不等于「目标达成」：core_v2 可能还需要为新阶段生成任务。
+            if pending_phase or core_v2.get("next_tool") == "generate_tasks":
+                phase = "execution_prep"
+                if pending_phase:
+                    pending_name = next(
+                        (
+                            p.get("name") or pending_phase
+                            for idx, p in enumerate(roadmap_phases)
+                            if _roadmap_phase_id(p, idx) == pending_phase
+                        ),
+                        pending_phase,
+                    )
+                    next_step = (
+                        f"generate_tasks（当前任务已完成，路线图还有新阶段"
+                        f"「{pending_name}」待生成）"
+                    )
+                else:
+                    next_step = "generate_tasks（core v2 需要为新阶段生成任务）"
+            else:
+                phase = "completed"
+                next_step = "所有任务已完成——可回顾目标或规划下一步。"
         elif stale_gap:
             next_step = stale_step
         else:
@@ -1199,10 +1262,12 @@ def get_workflow_status() -> str:
         )
 
     fit = _plan_fit_result("manual") if profile.plan.get("roadmap") else {}
+    # 执行中（已有任务）时，企业适配/上游采集只是可选提示，不能覆盖主下一步。
     if (
         fit.get("status") in ("major_drift", "stale_evidence")
         and fit.get("next_tool")
         and not stale_gap
+        and not profile.tasks
     ):
         next_step = (
             f"{fit['next_tool']}（计划失配：{fit.get('recommended_action', '')}）"
@@ -1258,7 +1323,7 @@ def get_workflow_status() -> str:
         stored = [f"{key}={value}" for key, value in artifact_ids.items() if value]
         if stored:
             lines.append("- 已落库：" + "、".join(stored))
-        lines.append("- 说明：企业适配是执行前的可选校准；不做也能按基线路线图继续执行。")
+        lines.append("- 说明：企业适配是执行前的推荐校准；不做也能按基线路线图继续执行。")
         lines.append("")
     fit_lines = _plan_fit_lines(fit)
     if fit_lines:
@@ -1269,7 +1334,7 @@ def get_workflow_status() -> str:
     lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
     lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
     lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap")
-    lines.append("- 企业适配（执行前可选校准）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
+    lines.append("- 企业适配（执行前推荐校准）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
     lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
     lines.append("- 复盘：get_weekly_review 做周检视；投递/面试/offer 进展用 record_application 登记")

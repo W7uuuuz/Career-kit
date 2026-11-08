@@ -59,6 +59,7 @@ def record_application(
 
     profile = load_profile()
     company_mismatch_note = ""
+    changed = False
 
     if application_id:
         app = profile.get_application(application_id)
@@ -103,19 +104,23 @@ def record_application(
                 "next_steps": ["record_application"],
             })
         app = add_application(profile, company, role, status, channel, source, notes)
+        changed = True
         msg = f"已记录投递：{app.company}（{app.role or '岗位未填'}）· {_STATUS_LABELS[app.status]}"
         if dup and allow_duplicate:
             msg += f"（用户确认独立投递，另有既有记录 {dup.id}）"
 
     save_profile(profile)
 
-    # Core v2 同步：投递记录落 ApplicationState artifact（失败不阻断）
-    try:
-        from ..core.sync import sync_application_state
+    # Core v2 同步：只有新建或状态真正变化才落 ApplicationState artifact；
+    # 状态未变化不重复写；失败不阻断主工具，但要把 warning 带回给调用方。
+    sync_warning = ""
+    if changed:
+        try:
+            from ..core.sync import sync_application_state
 
-        sync_application_state(get_active_profile_name())
-    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
-        pass
+            sync_application_state(get_active_profile_name())
+        except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
+            sync_warning = f"Core v2 同步失败（sync_application_state）：{exc}"
 
     # 事件联动（软提示）：面试/offer 是重大事件，建议触发洞察；拒绝提示复盘
     next_steps = ["get_progress"]
@@ -141,14 +146,19 @@ def record_application(
         )
 
     stats = funnel_stats(profile)
+    if sync_warning:
+        lines += [sync_warning, ""]
     lines += [format_funnel_report(profile), ""]
 
+    context = {"phase": "application_recorded", "funnel": stats}
+    if sync_warning:
+        context["sync_warning"] = sync_warning
     return _json({
         "message": "\n".join(lines),
         "application": application_summary(app),
         "next_app_id_hint": application_id or app.id,
         "next_steps": next_steps,
-        "context": {"phase": "application_recorded", "funnel": stats},
+        "context": context,
     })
 
 
@@ -184,21 +194,29 @@ def delete_application(application_id: str) -> str:
     profile.touch()
     save_profile(profile)
 
-    # Core v2 同步：删除后刷新 ApplicationState artifact（失败不阻断）
+    # Core v2 同步：删除后刷新 ApplicationState artifact（失败不阻断，但要留痕）。
+    # 即使删空也要调用：sync 层负责处理空状态。
+    sync_warning = ""
     try:
         from ..core.sync import sync_application_state
 
         sync_application_state(get_active_profile_name())
-    except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
-        pass
+    except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
+        sync_warning = f"Core v2 同步失败（sync_application_state）：{exc}"
 
+    message = (
+        f"已删除投递记录：{app.company}·{app.role or '岗位未填'}（{application_id}）。\n"
+        "删除不可恢复；若这条其实是「被拒/撤回」，建议以后用 record_application 更新"
+        "状态而不是删除，避免漏斗统计失真。"
+    )
+    if sync_warning:
+        message += f"\n{sync_warning}"
+    context = {"phase": "application_deleted", "funnel": funnel_stats(profile)}
+    if sync_warning:
+        context["sync_warning"] = sync_warning
     return _json({
-        "message": (
-            f"已删除投递记录：{app.company}·{app.role or '岗位未填'}（{application_id}）。\n"
-            "删除不可恢复；若这条其实是「被拒/撤回」，建议以后用 record_application 更新"
-            "状态而不是删除，避免漏斗统计失真。"
-        ),
+        "message": message,
         "deleted": deleted_summary,
         "next_steps": ["get_progress"],
-        "context": {"phase": "application_deleted", "funnel": funnel_stats(profile)},
+        "context": context,
     })

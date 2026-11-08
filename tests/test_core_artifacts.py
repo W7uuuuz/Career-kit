@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -188,6 +189,63 @@ def test_artifact_store_profile_isolation(store: ArtifactStore) -> None:
     assert len(store.list("alice")) == 1
     assert len(store.list("bob")) == 1
     assert store.list("carol") == []
+
+
+def test_artifact_store_concurrent_saves_unique_versions(store: ArtifactStore) -> None:
+    pools = [_pool(store, confirmed=True) for _ in range(12)]
+    ids: list[str] = [""] * len(pools)
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(len(pools))
+
+    def worker(index: int) -> None:
+        try:
+            barrier.wait()
+            ids[index] = store.save(pools[index])
+        except BaseException as exc:  # noqa: BLE001 - 测试收集所有线程异常
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(len(pools))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    versions = sorted(store.load(item)["meta"]["version"] for item in ids)
+    assert versions == list(range(1, len(pools) + 1))
+    latest = store.latest("alice", state_machine.STAGE_COMPANY_POOL)
+    assert latest is not None
+    assert latest["meta"]["version"] == len(pools)
+
+
+def test_artifact_store_save_does_not_mutate_caller_meta(store: ArtifactStore) -> None:
+    pool = _pool(store, confirmed=True)
+    pool.meta.created_at = ""
+    before = pool.meta.model_dump()
+
+    artifact_id = store.save(pool)
+
+    assert pool.meta.model_dump() == before
+    stored = store.load(artifact_id)
+    assert stored is not None
+    assert stored["meta"]["created_at"]
+    assert stored["meta"]["version"] == 1
+
+
+def test_artifact_store_latest_orders_by_version_not_created_at(store: ArtifactStore) -> None:
+    older = _pool(store, confirmed=True)
+    older.meta.created_at = "2030-01-01T00:00:00"
+    older_id = store.save(older)
+
+    newer = _pool(store, confirmed=True)
+    newer.meta.created_at = "2000-01-01T00:00:00"
+    newer_id = store.save(newer)
+
+    latest = store.latest("alice", state_machine.STAGE_COMPANY_POOL)
+    assert latest is not None
+    assert latest["meta"]["id"] == newer_id
+    assert store.list("alice", state_machine.STAGE_COMPANY_POOL)[0]["meta"]["id"] == newer_id
+    assert older_id != newer_id
 
 
 def test_new_id_prefix_format_and_uniqueness(store: ArtifactStore) -> None:

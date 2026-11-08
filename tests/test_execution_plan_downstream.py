@@ -451,3 +451,218 @@ def test_workflow_status_enters_execution(applied_workspace: SimpleNamespace) ->
     assert "### 企业适配（Core v2）" in output
     assert "- 阶段：executing" in output
     assert "- 下一步：get_next_tasks" in output or "下一步**：get_next_tasks" in output
+
+
+def _isolate_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "history"
+    monkeypatch.setattr(paths, "PROFILE_DIR", root)
+    monkeypatch.setattr(profile_store, "PROFILE_DIR", root)
+
+
+def test_generate_tasks_keeps_finished_tasks_from_deleted_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """应用执行版删除整个阶段后，该阶段下的 completed/skipped 任务不能丢。"""
+    _isolate_profile(tmp_path, monkeypatch)
+    profile = CareerProfile(
+        who={"name": "张三"},
+        plan={
+            "roadmap": {
+                "phases": [
+                    {
+                        "id": "phase_1",
+                        "name": "新阶段",
+                        "milestones": [
+                            {"id": "m1", "name": "M", "tasks": [{"name": "新任务"}]}
+                        ],
+                    }
+                ]
+            }
+        },
+        tasks=[
+            Task(
+                id="task_001",
+                name="已完成旧阶段任务",
+                phase_id="deleted_phase",
+                milestone_id="old_ms",
+                status="completed",
+                completed_at="2026-01-01T00:00:00",
+            ),
+            Task(
+                id="task_002",
+                name="已跳过旧阶段任务",
+                phase_id="deleted_phase",
+                milestone_id="old_ms",
+                status="skipped",
+            ),
+            Task(
+                id="task_003",
+                name="旧待办",
+                phase_id="phase_1",
+                milestone_id="m1",
+                status="pending",
+            ),
+        ],
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    payload = json.loads(task_tools.generate_tasks())
+
+    assert payload["context"]["phase"] == "tasks_generated"
+    after = profile_store.load_profile(PROFILE_NAME)
+    by_id = {task.id: task for task in after.tasks}
+    assert by_id["task_001"].status == "completed"
+    assert by_id["task_002"].status == "skipped"
+    assert "task_003" not in by_id  # 旧 pending 不复活
+    assert any(task.name == "新任务" for task in after.tasks)
+
+
+def test_create_tasks_reuses_old_id_when_milestone_id_is_missing() -> None:
+    """旧任务 milestone_id 不规范时，用 phase + name 兜底，避免同名重复任务。"""
+    from src.tools.task_manager import create_tasks_from_roadmap
+
+    profile = CareerProfile(
+        plan={
+            "roadmap": {
+                "phases": [
+                    {
+                        "id": "phase_1",
+                        "name": "P",
+                        "milestones": [
+                            {"id": "m1", "name": "M", "tasks": [{"name": "同名任务"}]}
+                        ],
+                    }
+                ]
+            }
+        },
+        tasks=[
+            Task(
+                id="task_009",
+                name="同名任务",
+                phase_id="phase_1",
+                milestone_id="",
+                status="completed",
+                completed_at="2026-01-01T00:00:00",
+            )
+        ],
+    )
+
+    tasks = create_tasks_from_roadmap(profile, only_phase_ids={"phase_1"})
+
+    assert len(tasks) == 1
+    assert tasks[0].id == "task_009"
+    assert tasks[0].status == "completed"
+
+
+def test_stage_position_fallback_walks_all_twelve_keys() -> None:
+    """状态机不可用时，兜底要遍历完整 12 个 core_state key，而不是硬编码 10。"""
+    profile = CareerProfile(
+        core_state={
+            "profile_id": "pf_1",
+            "target_spec_id": "ts_1",
+            "market_baseline_id": "mb_1",
+            "gap_report_id": "gr_1",
+            "baseline_plan_id": "bp_1",
+            "company_pool_id": "cp_1",
+            "evidence_run_id": "ev_1",
+            "requirement_profile_id": "rp_1",
+            "execution_plan_id": "ep_1",
+            "execution_state_id": "es_1",
+        }
+    )
+
+    index, name, next_tool = task_tools._stage_position(profile, {})
+
+    assert index == 11
+    assert name == "求职投递管理"
+    assert next_tool == "record_application"
+
+
+def test_workflow_status_plan_fit_does_not_override_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """执行中 plan_fit 指向上游采集时，只能作为提示，主下一步仍是 get_next_tasks。"""
+    _isolate_profile(tmp_path, monkeypatch)
+    profile = CareerProfile(
+        who={"name": "张三"},
+        summary="已确认",
+        plan={
+            "roadmap": {
+                "phases": [
+                    {
+                        "id": "phase_1",
+                        "name": "阶段",
+                        "milestones": [
+                            {"id": "m1", "name": "M", "tasks": [{"name": "任务A"}]}
+                        ],
+                    }
+                ]
+            }
+        },
+        tasks=[
+            Task(id="task_001", name="任务A", phase_id="phase_1", milestone_id="m1")
+        ],
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    monkeypatch.setattr(
+        task_tools,
+        "_plan_fit_result",
+        lambda trigger: {
+            "status": "major_drift",
+            "next_tool": "collect_company_evidence",
+            "recommended_action": "证据过期",
+        },
+    )
+
+    output = task_tools.get_workflow_status()
+
+    next_line = next(line for line in output.splitlines() if line.startswith("**下一步**"))
+    assert "get_next_tasks" in next_line
+    assert "collect_company_evidence" not in next_line
+
+
+def test_workflow_status_all_finished_with_pending_phase_routes_generate_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """当前任务全部完成但路线图还有新阶段时，不能直接宣布「目标达成」。"""
+    _isolate_profile(tmp_path, monkeypatch)
+    profile = CareerProfile(
+        who={"name": "张三"},
+        summary="已确认",
+        plan={
+            "roadmap": {
+                "phases": [
+                    {
+                        "id": "phase_1",
+                        "name": "阶段一",
+                        "milestones": [
+                            {"id": "m1", "name": "M1", "tasks": [{"name": "任务A"}]}
+                        ],
+                    },
+                    {
+                        "id": "phase_2",
+                        "name": "阶段二",
+                        "milestones": [
+                            {"id": "m2", "name": "M2", "tasks": [{"name": "任务B"}]}
+                        ],
+                    },
+                ]
+            }
+        },
+        tasks=[
+            Task(
+                id="task_001",
+                name="任务A",
+                phase_id="phase_1",
+                milestone_id="m1",
+                status="completed",
+            )
+        ],
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    output = task_tools.get_workflow_status()
+
+    next_line = next(line for line in output.splitlines() if line.startswith("**下一步**"))
+    assert "generate_tasks" in next_line
+    assert "目标达成" not in output

@@ -584,6 +584,54 @@ def test_unconfirmed_pool_is_rejected(
     assert store.latest(PROFILE, state_machine.STAGE_EVIDENCE) is None
 
 
+def test_empty_pool_id_prefers_core_state(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_pool_id = _seed(store, _pool(store))
+    store.save(_pool(store))
+    profile = profile_store.load_profile(PROFILE)
+    profile.core_state = {"company_pool_id": old_pool_id}
+    profile_store.save_profile(profile, PROFILE)
+    _patch_sources(
+        monkeypatch,
+        {
+            "bytedance": {
+                "results": [
+                    {
+                        "title": "Agent 工程师",
+                        "location": "北京",
+                        "url": "https://jobs/1",
+                        "description": "正文",
+                    }
+                ]
+            }
+        },
+    )
+
+    result = _run(store)
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
+    assert run.company_pool_id == old_pool_id
+    assert run.company_pool_id != store.latest(
+        PROFILE, state_machine.STAGE_COMPANY_POOL
+    )["meta"]["id"]
+
+
+def test_explicit_pool_from_other_profile_is_rejected(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bob_pool_id = store.save(_pool(store, profile_name="bob"))
+    _seed(store, _pool(store))
+    _patch_sources(monkeypatch, {})
+
+    result = _run(store, {"company_pool_id": bob_pool_id})
+
+    assert result.status == "failed"
+    assert "不属于当前档案" in result.message
+    assert store.latest(PROFILE, state_machine.STAGE_EVIDENCE) is None
+
+
 async def test_mcp_tool_returns_summary(store: ArtifactStore, monkeypatch: pytest.MonkeyPatch) -> None:
     _seed(store, _pool(store, profile_name="default"), profile_name="default")
     _patch_sources(

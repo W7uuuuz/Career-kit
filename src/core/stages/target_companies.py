@@ -20,6 +20,7 @@ from ..orchestrator import state_machine
 from .base import StageContext, StageResult
 
 STAGE_ID = state_machine.STAGE_COMPANY_POOL
+TARGET_STAGE_ID = state_machine.STAGE_TARGET
 REQUIRES = ("target_spec",)
 PRODUCES = "company_pool"
 
@@ -68,6 +69,17 @@ def parse_tokens(value: Any) -> list[str]:
 
 def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     """执行阶段 6：生成并保存 CompanyPool，按确认状态决定是否推进。"""
+    store = ctx.store
+    target_spec_id, target_error = _resolve_target_spec_id(
+        store, ctx.profile_name, inputs
+    )
+    if target_error:
+        return StageResult(
+            status="failed",
+            message=target_error,
+            next_stage=STAGE_ID,
+        )
+
     spec = _target_spec_from_inputs(inputs)
     industry = str(inputs.get("industry") or DEFAULT_INDUSTRY).strip()
     companies, gaps = _build_entries(
@@ -83,13 +95,14 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         for entry in selected:
             entry.status = "confirmed"
 
-    store = ctx.store
     meta = ArtifactMeta(
         id=store.new_id("cp_"),
         stage=STAGE_ID,
         profile_name=ctx.profile_name,
         created_at=datetime.now().isoformat(),
-        inputs=_meta_inputs(inputs, spec, industry, confirmed),
+        inputs=_meta_inputs(
+            inputs, spec, industry, confirmed, target_spec_id=target_spec_id
+        ),
         validation={
             "confirmed": effective_confirmed,
             "requested_confirmed": confirmed,
@@ -328,13 +341,63 @@ def _counts(companies: list[CompanyEntry]) -> dict[str, int]:
     return counts
 
 
+def _resolve_target_spec_id(
+    store: Any, profile_name: str, inputs: dict[str, Any]
+) -> tuple[str, str]:
+    """解析 target_spec_id：显式 id 校验归属，空 id 读 core_state 或 latest。"""
+    explicit = str(inputs.get("target_spec_id") or "").strip()
+    if explicit:
+        data = store.load(explicit)
+        if not _is_target_spec(data, profile_name):
+            return "", f"TargetSpec「{explicit}」不存在、类型不符或不属于当前档案"
+        return explicit, ""
+
+    core_id = _core_state_target_spec_id(profile_name)
+    if core_id:
+        data = store.load(core_id)
+        if _is_target_spec(data, profile_name):
+            return core_id, ""
+
+    latest = store.latest(profile_name, TARGET_STAGE_ID)
+    if _is_target_spec(latest, profile_name):
+        meta = latest.get("meta") if isinstance(latest.get("meta"), dict) else {}
+        return str(meta.get("id") or ""), ""
+    return "", ""
+
+
+def _core_state_target_spec_id(profile_name: str) -> str:
+    try:
+        profile = load_profile(profile_name)
+    except Exception:  # noqa: BLE001 - 档案读取失败时按无 core_state 处理
+        return ""
+    core_state = getattr(profile, "core_state", None)
+    if not isinstance(core_state, dict):
+        return ""
+    return str(core_state.get("target_spec_id") or "").strip()
+
+
+def _is_target_spec(data: Any, profile_name: str) -> bool:
+    if not isinstance(data, dict):
+        return False
+    meta = data.get("meta")
+    if not isinstance(meta, dict):
+        return False
+    return (
+        meta.get("stage") == TARGET_STAGE_ID
+        and str(meta.get("profile_name") or "") == profile_name
+    )
+
+
 def _meta_inputs(
     inputs: dict[str, Any],
     spec: TargetSpec,
     industry: str,
     confirmed: bool,
+    *,
+    target_spec_id: str = "",
 ) -> dict[str, str]:
     return {
+        "target_spec_id": target_spec_id,
         "target_tiers": "、".join(spec.target_tiers),
         "bridge_tiers": "、".join(spec.bridge_tiers),
         "city": spec.city,

@@ -370,3 +370,157 @@ def test_server_requires_token_and_writes_checkin(temp_profile):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_build_state_tolerates_damaged_roadmap(temp_profile):
+    """damaged roadmap（phases/milestones/tasks 类型不对）不能让控制台崩。"""
+    profile = _profile()
+    profile.plan = {"roadmap": {"phases": "not-a-list"}}
+    profile_module.save_profile(profile)
+
+    state = build_state()
+
+    assert state["phases"] == []
+
+    broken = _profile()
+    broken.tasks = []
+    broken.plan = {
+        "roadmap": {
+            "phases": [
+                "bad-phase",
+                {"id": "p1", "name": "P1", "milestones": "bad-milestones"},
+                {
+                    "id": "p2",
+                    "name": "P2",
+                    "milestones": [
+                        {"id": "m1", "name": "M1", "tasks": "bad-tasks"},
+                        {
+                            "id": "m2",
+                            "name": "M2",
+                            "tasks": ["bad-task", {"name": "T", "description": "d"}],
+                        },
+                    ],
+                },
+            ]
+        }
+    }
+    profile_module.save_profile(broken)
+
+    state = build_state()
+
+    assert [phase["id"] for phase in state["phases"]] == ["p1", "p2"]
+    assert state["phases"][1]["milestone_tasks"] == [
+        {"name": "T", "desc": "d", "priority": "medium", "done_criteria": ""}
+    ]
+
+
+def test_console_writes_trigger_core_sync(temp_profile, monkeypatch):
+    """update_task/add_application_entry/undo_task 成功后要刷新对应 artifact。"""
+    import src.core.sync as core_sync
+
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        core_sync,
+        "sync_execution_state",
+        lambda name: calls.append(("exec", name)) or "",
+    )
+    monkeypatch.setattr(
+        core_sync,
+        "sync_application_state",
+        lambda name: calls.append(("app", name)) or "",
+    )
+    profile_module.save_profile(_profile())
+
+    from src.web import add_application_entry, undo_task, update_task
+
+    state = update_task("task_001", {"name": "改过的任务"})
+    assert state["phases"][0]["tasks"][0]["name"] == "改过的任务"
+    assert ("exec", "default") in calls
+
+    state = add_application_entry({"company": "新公司", "role": "Agent 实习"})
+    assert state["applications"][-1]["company"] == "新公司"
+    assert ("app", "default") in calls
+
+    undo_task("task_001")
+    assert calls.count(("exec", "default")) >= 2
+
+
+def test_console_sync_failure_does_not_block_write(temp_profile, monkeypatch):
+    """sync 失败只在 state 里留 warning，控制台写操作仍成功。"""
+    import src.core.sync as core_sync
+
+    def _failing_sync(profile_name: str) -> str:
+        raise RuntimeError("artifact store down")
+
+    monkeypatch.setattr(core_sync, "sync_execution_state", _failing_sync)
+    monkeypatch.setattr(core_sync, "sync_application_state", _failing_sync)
+    profile_module.save_profile(_profile())
+
+    from src.web import add_application_entry, undo_task, update_task
+
+    state = update_task("task_001", {"name": "改过的任务"})
+    assert "同步失败" in state["sync_warning"]
+
+    state = add_application_entry({"company": "新公司", "role": "Agent 实习"})
+    assert "同步失败" in state["sync_warning"]
+
+    undo_task("task_001")  # 不应抛异常
+
+
+def test_checkin_sync_failure_does_not_block(temp_profile, monkeypatch):
+    import src.core.sync as core_sync
+
+    def _failing_sync(profile_name: str) -> str:
+        raise RuntimeError("artifact store down")
+
+    monkeypatch.setattr(core_sync, "sync_execution_state", _failing_sync)
+    profile_module.save_profile(_profile())
+    server, token = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+    try:
+        request = urllib.request.Request(
+            f"{base}/api/checkin",
+            data=json.dumps(
+                {"task_id": "task_001", "status": "completed", "amount": 1}
+            ).encode(),
+            headers={"X-CK-Token": token, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request) as res:
+            data = json.loads(res.read())
+        assert data["ok"] is True
+        assert "同步失败" in data["state"]["sync_warning"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_state_route_returns_readable_json_on_error(temp_profile, monkeypatch):
+    import src.web as web
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("坏数据")
+
+    monkeypatch.setattr(web, "build_state", _boom)
+    server, token = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+    try:
+        request = urllib.request.Request(
+            f"{base}/api/state", headers={"X-CK-Token": token}
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(request)
+        assert exc.value.code == 500
+        body = json.loads(exc.value.read().decode("utf-8"))
+        assert "状态构建失败" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

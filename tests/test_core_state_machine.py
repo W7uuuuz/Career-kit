@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths  # noqa: E402
 from src.core.artifacts.models import (  # noqa: E402
+    ApplicationState,
     ArtifactMeta,
     BaselinePlan,
     CompanyEntry,
@@ -28,6 +29,7 @@ from src.core.artifacts.models import (  # noqa: E402
     MarketBaseline,
     ProfileSnapshot,
     RequirementProfile,
+    ReviewReport,
     TargetSpec,
 )
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
@@ -90,11 +92,11 @@ def profile_state(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return data
 
 
-def _meta(store: ArtifactStore, stage: str) -> ArtifactMeta:
+def _meta(store: ArtifactStore, stage: str, profile_name: str = PROFILE_NAME) -> ArtifactMeta:
     return ArtifactMeta(
         id=store.new_id(PREFIXES[stage]),
         stage=stage,
-        profile_name=PROFILE_NAME,
+        profile_name=profile_name,
         created_at=datetime.now().isoformat(),
     )
 
@@ -144,10 +146,12 @@ def _save_baseline(store: ArtifactStore) -> str:
     )
 
 
-def _save_pool(store: ArtifactStore, confirmed: bool = True) -> str:
+def _save_pool(
+    store: ArtifactStore, confirmed: bool = True, profile_name: str = PROFILE_NAME
+) -> str:
     return store.save(
         CompanyPool(
-            meta=_meta(store, state_machine.STAGE_COMPANY_POOL),
+            meta=_meta(store, state_machine.STAGE_COMPANY_POOL, profile_name),
             target_spec=TargetSpec(role="AI Agent 开发"),
             companies=[
                 CompanyEntry(
@@ -199,6 +203,32 @@ def _save_execution(store: ArtifactStore, execution_plan_id: str) -> str:
         ExecutionState(
             meta=_meta(store, state_machine.STAGE_EXECUTION),
             execution_plan_id=execution_plan_id,
+        )
+    )
+
+
+def _save_application(store: ArtifactStore) -> str:
+    return store.save(
+        ApplicationState(
+            meta=ArtifactMeta(
+                id=store.new_id("as"),
+                stage=state_machine.STAGE_APPLICATIONS,
+                profile_name=PROFILE_NAME,
+                created_at=datetime.now().isoformat(),
+            )
+        )
+    )
+
+
+def _save_review(store: ArtifactStore) -> str:
+    return store.save(
+        ReviewReport(
+            meta=ArtifactMeta(
+                id=store.new_id("rr"),
+                stage=state_machine.STAGE_REVIEW,
+                profile_name=PROFILE_NAME,
+                created_at=datetime.now().isoformat(),
+            )
         )
     )
 
@@ -366,3 +396,51 @@ def test_core_state_artifact_ids_take_precedence(
     assert action["stage"] == state_machine.STAGE_REQUIREMENT
     assert action["artifact_ids"]["company_pool_id"] == old_pool_id
     assert action["artifact_ids"]["evidence_run_id"] == old_evidence_id
+
+def test_optional_artifacts_do_not_skip_core_stages(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    profile_state["who"] = {"name": "张三"}
+    profile_state["have"] = {"skills": ["Python"]}
+    profile_state["want"] = {"target_role": "AI Agent 开发"}
+    _save_application(store)
+    _save_review(store)
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_MARKET
+    assert action["next_tool"] == "gather_research_data"
+    assert action["artifact_ids"]["application_state_id"] == ""
+    assert action["artifact_ids"]["review_report_id"] == ""
+
+
+def test_cross_profile_artifact_is_rejected(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    foreign_pool_id = _save_pool(store, profile_name="bob")
+    profile_state["core_state"] = {"company_pool_id": foreign_pool_id}
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["artifact_ids"]["company_pool_id"] == ""
+    assert action["stage"] == state_machine.STAGE_PROFILE
+
+
+def test_empty_reference_does_not_satisfy_chain(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    pool_id = _save_pool(store)
+    store.save(
+        EvidenceRun(
+            meta=_meta(store, state_machine.STAGE_EVIDENCE),
+            target_spec=TargetSpec(role="AI Agent 开发"),
+            company_pool_id="",
+        )
+    )
+    profile_state["core_state"] = {"company_pool_id": pool_id}
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_EVIDENCE
+    assert action["next_tool"] == "collect_company_evidence"
+    assert action["artifact_ids"]["evidence_run_id"] == ""

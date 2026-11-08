@@ -13,28 +13,36 @@
 - [知识库](docs/knowledge.md): 目录结构、文件格式
 - [示例](docs/examples/README.md): 完整工作流示例、场景示例
 
-## 快速开始
+## 快速开始（12 步）
 
 ```
-1. start_session()
-2. parse_resume(file_path)                     # 可选：先解析简历素材
-3. intake(who/have/want)                       # 技能需附证据与置信度
-4. finalize_profile()
-5. list_data_sources()                        # 查看可用企业数据源
-6. fetch_company_jobs(company=..., params=...)  # 抓取真实岗位（含薪资）
-7. analyze_gaps() → save_gap_analysis()       # 基于真实数据分析
-8. generate_roadmap() → save_roadmap()        # 只定顺序与完成标准，无时长
-9. detail_current_phase() → save_current_detail() → generate_tasks()  # 先细化当前阶段，再生成/合并任务
-10. get_next_tasks()
-11. checkin_task(...)                         # 完成即沉淀能力证据
-12. record_application(company, role)          # 投递/过筛/面试/offer 全程登记（求职漏斗）
-13. get_weekly_review(days=7)                  # 周检视：打卡 + 阶段 + 漏斗事实复盘
-14. export_dashboard()                        # 生成阶段进度仪表盘
+1.  职业档案构建        start_session() → parse_resume(可选) → intake(who/have/want) → finalize_profile()
+2.  目标岗位定位        explore_goals()（方向不明时）→ intake(want, user_confirmed=true)
+3.  市场基线调研        research_market() → gather_research_data()
+4.  能力差距诊断        analyze_gaps() → save_gap_analysis()
+5.  培养方案规划        generate_roadmap() → save_roadmap()
+6.  目标企业筛选        select_target_companies()
+7.  岗位与面经采集      collect_company_evidence()
+8.  企业需求分析        analyze_company_requirements() → save_requirement_profile()
+9.  执行方案校准        plan_execution_alignment() → save_execution_alignment()
+10. 任务执行与打卡      detail_current_phase() → save_current_detail() → generate_tasks() → get_next_tasks() → checkin_task()
+11. 求职投递管理        record_application()          # 投递/过筛/面试/offer 全程登记
+12. 周期复盘与计划调整  get_weekly_review() / check_plan_fit() / trigger_insight() → apply_insight()
 ```
+
+补充说明：
+
+- **sync 层**：阶段 1-5、10-12 的工具成功后，自动把既有档案事实写入新 artifact 与 `core_state`
+  （`src/core/sync.py`）；sync 失败不阻断主工具。
+- **企业适配（阶段 6-9）** 建议在执行前完成；用户拒绝时可按基线版执行。
+  每条执行方案变更必须带 `evidence_ids`，数字由代码计算，LLM 只写 `interpretation`。
+- **计划失配检测**：证据刷新后、完成里程碑、周检视或用户主动问时调用 `check_plan_fit`；
+  返回 `major_drift` 时先把 `question_for_user` 转问用户，不自动改计划。
+- **阶段 11/12 为可选/周期阶段**，不阻塞阶段 10 的执行。
 
 ## 核心原则
 
-1. **必须使用真实数据**：分析前必须用 `fetch_company_jobs` / `search_knowledge` 获取真实数据，不要凭 LLM 知识编造
-2. **按工作流执行**：每个阶段有前置条件，不要跳过步骤
+1. **必须使用真实数据**：分析前必须用 `fetch_company_jobs` / `search_cases` / `search_knowledge` 获取真实数据，不要凭 LLM 知识编造
+2. **按 12 步顺序执行**：每个阶段有前置条件，不要跳过步骤
 3. **保存中间结果**：使用 `save_*` 工具保存 LLM 生成的内容
 4. **不规划时间**：路线图和任务不含任何时长字段；用户想要日程时在对话中直接写 markdown/HTML 文档交付，时间由用户自己填

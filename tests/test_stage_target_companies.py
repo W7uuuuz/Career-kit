@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths
-from src.core.artifacts.models import CompanyPool
+from src.core.artifacts.models import ArtifactMeta, CompanyPool, TargetSpec
 from src.core.artifacts.store import ArtifactStore
 from src.core.orchestrator import state_machine
 from src.core.stages import target_companies
@@ -20,6 +20,27 @@ from src.core.stages.base import StageContext, StageResult
 from src.scrapers import catalog
 from src.tools import profile as profile_module
 from src.tools.company_selection_tools import select_target_companies
+
+
+class _TargetArtifact(TargetSpec):
+    """测试用 TargetSpec + meta，用于验证 target_spec_id 解析。"""
+
+    meta: ArtifactMeta
+
+
+def _save_target(
+    store: ArtifactStore, profile_name: str, role: str = "AI Agent 开发"
+) -> str:
+    artifact = _TargetArtifact(
+        meta=ArtifactMeta(
+            id=store.new_id("ts_"),
+            stage=state_machine.STAGE_TARGET,
+            profile_name=profile_name,
+            created_at="2026-01-01T00:00:00",
+        ),
+        role=role,
+    )
+    return store.save(artifact)
 
 
 @pytest.fixture()
@@ -84,6 +105,41 @@ def test_confirmed_mode_writes_core_state_and_unlocks_evidence(data_dir: Path) -
     action = state_machine.next_action("default")
     assert action["next_tool"] == "collect_company_evidence"
     assert action["artifact_ids"]["company_pool_id"] == result.artifact_id
+
+
+def test_meta_inputs_include_target_spec_id(data_dir: Path) -> None:
+    store = ArtifactStore()
+    _, artifact = _run(store, {"target_spec": {"role": "AI Agent 开发"}})
+
+    inputs = artifact["meta"]["inputs"]
+    assert "target_spec_id" in inputs
+    assert inputs["target_spec_id"] == ""
+
+
+def test_meta_inputs_use_core_state_target_spec_id(data_dir: Path) -> None:
+    store = ArtifactStore()
+    core_id = _save_target(store, "default", role="档案目标")
+    newest_id = _save_target(store, "default", role="新目标")
+    profile = profile_module.load_profile("default")
+    profile.core_state = {"target_spec_id": core_id}
+    profile_module.save_profile(profile, "default")
+
+    _, artifact = _run(store, {})
+
+    assert artifact["meta"]["inputs"]["target_spec_id"] == core_id
+    assert artifact["meta"]["inputs"]["target_spec_id"] != newest_id
+
+
+def test_explicit_target_spec_from_other_profile_is_rejected(data_dir: Path) -> None:
+    store = ArtifactStore()
+    bob_id = _save_target(store, "bob")
+
+    ctx = StageContext(profile_name="default", store=store)
+    result = target_companies.run(ctx, {"target_spec_id": bob_id})
+
+    assert result.status == "failed"
+    assert "不属于当前档案" in result.message
+    assert store.latest("default", state_machine.STAGE_COMPANY_POOL) is None
 
 
 def test_confirmed_without_selected_companies_returns_insufficient_data(data_dir: Path) -> None:

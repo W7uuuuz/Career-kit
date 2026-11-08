@@ -311,6 +311,20 @@ def test_analyze_tool_rejects_missing_evidence(store: ArtifactStore) -> None:
     assert result["code"] == "EVIDENCE_RUN_NOT_FOUND"
 
 
+def test_stage_rejects_evidence_from_other_profile(store: ArtifactStore) -> None:
+    run = _run_in_memory()
+    run.meta.profile_name = "bob"
+    run.meta.id = store.new_id("ev")
+    store.save(run)
+
+    ctx = StageContext(profile_name="alice", store=store)
+    result = requirements.run(ctx, {"evidence_run_id": run.meta.id})
+
+    assert result.status == "failed"
+    assert "不属于当前档案" in result.message
+    assert store.latest("alice", state_machine.STAGE_REQUIREMENT) is None
+
+
 def test_save_requirement_profile_accepts_interpretation_and_keeps_numbers(
     store: ArtifactStore,
 ) -> None:
