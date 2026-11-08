@@ -31,11 +31,33 @@
 | `inovance` | 汇川技术 | JD | 社招 | [guide](../src/scrapers/inovance/guide.md) |
 | `tebian` | 特变电工 | JD | 社招 | [guide](../src/scrapers/tebian/guide.md) |
 | `sungrow` | 阳光电源 | JD | 社招 | [guide](../src/scrapers/sungrow/guide.md) |
+| `dji` | 大疆 | JD | 社招 | [guide](../src/scrapers/dji/guide.md) |
+| `yoozoo` | 游族网络 | JD | 社招 | [guide](../src/scrapers/yoozoo/guide.md) |
+| `shengqu` | 盛趣游戏 | JD | 社招 | [guide](../src/scrapers/shengqu/guide.md) |
+| `zuoyebang` | 作业帮 | JD | 社招 | [guide](../src/scrapers/zuoyebang/guide.md) |
+| `giant` | 巨人网络 | JD | 社招 | [guide](../src/scrapers/giant/guide.md) |
+| `mgtv` | 芒果TV | JD | 社招 | [guide](../src/scrapers/mgtv/guide.md) |
+| `yuanfudao` | 猿辅导 | JD | 校招/实习 | [guide](../src/scrapers/yuanfudao/guide.md) |
+| `keep` | Keep | JD | 社招 | [guide](../src/scrapers/keep/guide.md) |
+| `hello` | 哈啰 | JD | 社招 | [guide](../src/scrapers/hello/guide.md) |
+| `zhihu` | 知乎 | JD | 社招 | [guide](../src/scrapers/zhihu/guide.md) |
+| `iqiyi` | 爱奇艺 | JD | 社招 | [guide](../src/scrapers/iqiyi/guide.md) |
+| `papergames` | 叠纸游戏 | JD | 社招 | [guide](../src/scrapers/papergames/guide.md) |
+| `maimai` | 脉脉 | JD | 社招 | [guide](../src/scrapers/maimai/guide.md) |
+| `minimax` | MiniMax | JD | 社招 | [guide](../src/scrapers/minimax/guide.md) |
+| `soul` | Soul | JD | 社招 | [guide](../src/scrapers/soul/guide.md) |
+| `lilith` | 莉莉丝 | JD | 社招 | [guide](../src/scrapers/lilith/guide.md) |
+| `dewu` | 得物 | JD | 社招 | [guide](../src/scrapers/dewu/guide.md) |
+| `sensetime` | 商汤科技 | JD | 社招 | [guide](../src/scrapers/sensetime/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
 
 > `get_scraper_guide(company)` 运行时读取同一份 guide.md。新增企业时在包内附
 > guide.md 即自动生效（模板见 `_template/guide.md`）。
+>
+> 飞书招聘源（`papergames` / `maimai` / `minimax` / `soul` / `lilith` / `dewu` /
+> `sensetime`）依赖 Playwright Chromium，首次使用需执行
+> `playwright install chromium`。
 
 企业档位（大厂 / 中厂 / 小厂）、行业与别名由 `src/scrapers/companies.yaml` 维护；
 `list_data_sources` 会显示每个源的档位与行业。目录也收录暂未接入 scraper 的企业，

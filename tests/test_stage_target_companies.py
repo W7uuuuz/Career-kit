@@ -209,22 +209,22 @@ def test_unscrapable_companies_are_kept_with_flag(data_dir: Path) -> None:
     store = ArtifactStore()
     _, artifact = _run(store, {"target_tiers": "中厂", "industry": "互联网"})
 
-    dewu = next(item for item in artifact["companies"] if item["id"] == "dewu")
-    assert dewu["scrapable"] is False
-    assert dewu["scrapers"] == []
+    beike = next(item for item in artifact["companies"] if item["id"] == "beike")
+    assert beike["scrapable"] is False
+    assert beike["scrapers"] == []
     assert artifact["counts"]["not_scrapable"] > 0
-    assert any("未接入自动抓取" in gap and "得物" in gap for gap in artifact["gaps"])
+    assert any("未接入自动抓取" in gap and "贝壳" in gap for gap in artifact["gaps"])
 
 
 def test_select_target_companies_tool_recommended(data_dir: Path) -> None:
-    payload = json.loads(select_target_companies(include="dewu"))
+    payload = json.loads(select_target_companies(include="beike"))
 
     assert payload["status"] == "needs_confirmation"
     assert payload["artifact_id"].startswith("cp_")
     assert payload["confirmed"] is False
     assert payload["next_tool"] == "select_target_companies"
     assert "大厂" in payload["by_tier"]
-    assert "得物" in payload["not_scrapable"]
+    assert "贝壳找房" in payload["not_scrapable"]
     assert payload["unscrapable_note"]
 
     stored = ArtifactStore().load(payload["artifact_id"])

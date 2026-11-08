@@ -6,7 +6,7 @@
 企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
 查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
 
-## 已注册企业（27）
+## 已注册企业（45）
 
 | ID | 名称 | 数据类型 | 支持渠道 |
 |----|------|----------|----------|
@@ -35,6 +35,24 @@
 | `inovance` | 汇川技术 | JD | 社招 |
 | `tebian` | 特变电工 | JD | 社招 |
 | `sungrow` | 阳光电源 | JD | 社招 |
+| `dji` | 大疆 | JD | 社招 |
+| `yoozoo` | 游族网络 | JD | 社招 |
+| `shengqu` | 盛趣游戏 | JD | 社招 |
+| `zuoyebang` | 作业帮 | JD | 社招 |
+| `giant` | 巨人网络 | JD | 社招 |
+| `mgtv` | 芒果TV | JD | 社招 |
+| `yuanfudao` | 猿辅导 | JD | 校招/实习 |
+| `keep` | Keep | JD | 社招 |
+| `hello` | 哈啰 | JD | 社招 |
+| `zhihu` | 知乎 | JD | 社招 |
+| `iqiyi` | 爱奇艺 | JD | 社招 |
+| `papergames` | 叠纸游戏 | JD | 社招 |
+| `maimai` | 脉脉 | JD | 社招 |
+| `minimax` | MiniMax | JD | 社招 |
+| `soul` | Soul | JD | 社招 |
+| `lilith` | 莉莉丝 | JD | 社招 |
+| `dewu` | 得物 | JD | 社招 |
+| `sensetime` | 商汤科技 | JD | 社招 |
 | `nowcoder` | 牛客网 | 面经 | — |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — |
 

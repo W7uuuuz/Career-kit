@@ -106,6 +106,14 @@ companies:
     aliases: [华为, Huawei]
     scrapers: [huawei]
 
+  - id: dji
+    name: 大疆
+    tier: 大厂
+    industry: 硬件/科技
+    aliases: [大疆, DJI]
+    scrapers: [dji]
+    careers_url: https://careers.dji.com/zh-CN/
+
   - id: boe
     name: 京东方
     tier: 大厂
@@ -182,7 +190,7 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [得物, 毒]
-    scrapers: []
+    scrapers: [dewu]
 
   - id: mihoyo
     name: 米哈游
@@ -205,6 +213,14 @@ companies:
     aliases: [贝壳, 贝壳找房]
     scrapers: []
 
+  - id: hello
+    name: 哈啰
+    tier: 中厂
+    industry: 互联网
+    aliases: [哈啰, 哈啰出行, Hello]
+    scrapers: [hello]
+    careers_url: https://hellobike.zhiye.com/social/jobs
+
   - id: 58
     name: 58同城
     tier: 中厂
@@ -226,26 +242,34 @@ companies:
     aliases: [微博, 新浪微博, Weibo]
     scrapers: []
 
+  - id: soul
+    name: Soul
+    tier: 中厂
+    industry: 互联网
+    aliases: [Soul, SoulApp]
+    scrapers: [soul]
+    careers_url: https://soulapp.jobs.feishu.cn/index
+
   - id: zhihu
     name: 知乎
     tier: 中厂
     industry: 互联网
     aliases: [知乎, Zhihu]
-    scrapers: []
+    scrapers: [zhihu]
 
   - id: iqiyi
     name: 爱奇艺
     tier: 中厂
     industry: 互联网
     aliases: [爱奇艺, iQIYI]
-    scrapers: []
+    scrapers: [iqiyi]
 
   - id: mgtv
     name: 芒果TV
     tier: 中厂
     industry: 互联网
     aliases: [芒果TV, 芒果超媒]
-    scrapers: []
+    scrapers: [mgtv]
 
   - id: qunar
     name: 去哪儿
@@ -301,14 +325,14 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [Keep, keep]
-    scrapers: []
+    scrapers: [keep]
 
   - id: maimai
     name: 脉脉
     tier: 中厂
     industry: 互联网
     aliases: [脉脉, Maimai]
-    scrapers: []
+    scrapers: [maimai]
 
   - id: liepin
     name: 猎聘
@@ -329,14 +353,14 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [莉莉丝, Lilith]
-    scrapers: []
+    scrapers: [lilith]
 
   - id: papergames
     name: 叠纸游戏
     tier: 中厂
     industry: 互联网
     aliases: [叠纸, 叠纸游戏, Papergames]
-    scrapers: []
+    scrapers: [papergames]
 
   - id: hypergryph
     name: 鹰角网络
@@ -357,28 +381,28 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [巨人, 巨人网络]
-    scrapers: []
+    scrapers: [giant]
 
   - id: shengqu
     name: 盛趣游戏
     tier: 中厂
     industry: 互联网
     aliases: [盛趣, 盛趣游戏]
-    scrapers: []
+    scrapers: [shengqu]
 
   - id: youzu
     name: 游族网络
     tier: 中厂
     industry: 互联网
     aliases: [游族, 游族网络]
-    scrapers: []
+    scrapers: [yoozoo]
 
   - id: sensetime
     name: 商汤科技
     tier: 中厂
     industry: 互联网
     aliases: [商汤, 商汤科技, SenseTime]
-    scrapers: []
+    scrapers: [sensetime]
 
   - id: megvii
     name: 旷视科技
@@ -393,6 +417,14 @@ companies:
     industry: 互联网
     aliases: [地平线, Horizon Robotics]
     scrapers: []
+
+  - id: minimax
+    name: MiniMax
+    tier: 中厂
+    industry: 互联网/AI
+    aliases: [MiniMax, 稀宇科技]
+    scrapers: [minimax]
+    careers_url: https://www.minimax.cn/careers
 
   - id: shein
     name: SHEIN
@@ -413,14 +445,14 @@ companies:
     tier: 中厂
     industry: 互联网
     aliases: [猿辅导]
-    scrapers: []
+    scrapers: [yuanfudao]
 
   - id: zuoyebang
     name: 作业帮
     tier: 中厂
     industry: 互联网
     aliases: [作业帮]
-    scrapers: []
+    scrapers: [zuoyebang]
 
   - id: tal
     name: 好未来

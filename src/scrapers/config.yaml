@@ -220,6 +220,151 @@ scrapers:
     url_patterns:
       - "app.mokahr.com"
 
+  dji:
+    name: 大疆
+    module: dji.scraper
+    class: Scraper
+    description: 大疆社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "apply.careers.dji.com"
+
+  yoozoo:
+    name: 游族网络
+    module: yoozoo.scraper
+    class: Scraper
+    description: 游族网络社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "app.mokahr.com"
+
+  shengqu:
+    name: 盛趣游戏
+    module: shengqu.scraper
+    class: Scraper
+    description: 盛趣游戏社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "app.mokahr.com"
+
+  zuoyebang:
+    name: 作业帮
+    module: zuoyebang.scraper
+    class: Scraper
+    description: 作业帮社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "job.zuoyebang.com"
+
+  giant:
+    name: 巨人网络
+    module: giant.scraper
+    class: Scraper
+    description: 巨人网络社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "app.mokahr.com"
+
+  mgtv:
+    name: 芒果TV
+    module: mgtv.scraper
+    class: Scraper
+    description: 芒果TV社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "hr.mgtv.com"
+
+  yuanfudao:
+    name: 猿辅导
+    module: yuanfudao.scraper
+    class: Scraper
+    description: 猿辅导校园招聘（Moka），公开接口，校招/实习，不公开薪资
+    url_patterns:
+      - "hr.yuanfudao.com"
+
+  keep:
+    name: Keep
+    module: keep.scraper
+    class: Scraper
+    description: Keep 社会招聘（北森），公开接口，社招，不公开薪资
+    url_patterns:
+      - "hr.keep.com"
+
+  hello:
+    name: 哈啰
+    module: hello.scraper
+    class: Scraper
+    description: 哈啰社会招聘（北森），公开接口，社招，不公开薪资
+    url_patterns:
+      - "hellobike.zhiye.com"
+
+  zhihu:
+    name: 知乎
+    module: zhihu.scraper
+    class: Scraper
+    description: 知乎社会招聘（Moka），公开接口，社招，不公开薪资
+    url_patterns:
+      - "app.mokahr.com"
+
+  iqiyi:
+    name: 爱奇艺
+    module: iqiyi.scraper
+    class: Scraper
+    description: 爱奇艺社会招聘（北森），公开接口，社招，部分岗位公开薪资
+    url_patterns:
+      - "iqiyi.zhiye.com"
+
+  papergames:
+    name: 叠纸游戏
+    module: papergames.scraper
+    class: Scraper
+    description: 叠纸游戏社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "career.papegames.com"
+      - "papergames.jobs.feishu.cn"
+
+  maimai:
+    name: 脉脉
+    module: maimai.scraper
+    class: Scraper
+    description: 脉脉社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "maimai.jobs.feishu.cn"
+
+  minimax:
+    name: MiniMax
+    module: minimax.scraper
+    class: Scraper
+    description: MiniMax 社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "vrfi1sk8a0.jobs.feishu.cn"
+
+  soul:
+    name: Soul
+    module: soul.scraper
+    class: Scraper
+    description: Soul 社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "soulapp.jobs.feishu.cn"
+
+  lilith:
+    name: 莉莉丝
+    module: lilith.scraper
+    class: Scraper
+    description: 莉莉丝社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "lilithgames.jobs.feishu.cn"
+
+  dewu:
+    name: 得物
+    module: dewu.scraper
+    class: Scraper
+    description: 得物社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "poizon.jobs.feishu.cn"
+
+  sensetime:
+    name: 商汤科技
+    module: sensetime.scraper
+    class: Scraper
+    description: 商汤科技社会招聘（飞书招聘），需 Playwright Chromium，社招，不公开薪资
+    url_patterns:
+      - "hr-jobs.sensetime.com"
+
   nowcoder:
     name: 牛客网
     module: nowcoder.scraper
