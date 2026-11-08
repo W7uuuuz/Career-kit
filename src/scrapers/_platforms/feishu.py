@@ -10,7 +10,8 @@
 两个接口的 ``_signature`` 由页面前端 acrawler SDK 生成，且与请求参数绑定，
 无法在会话间复用。因此这里用 Playwright 打开门户页面，捕获页面自身发起的
 官方 API 响应，不做签名逆向。列表响应已包含 ``description`` / ``requirement``，
-无需登录，门户不公开薪资。
+无需登录，门户不公开薪资。浏览器优先使用系统默认 Chrome / Edge，未检测到时
+回退 Playwright Chromium。
 """
 
 from __future__ import annotations
@@ -22,10 +23,15 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..base import CompanyScraper
+from ..browser import launch_browser
 
 _SEARCH_API = "/api/v1/search/job/posts"
 _JOB_ID_RE = re.compile(r"/position/([0-9A-Za-z]+)")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+_BROWSER_HINT = (
+    "浏览器优先使用系统默认 Chrome / Edge；未检测到时执行 "
+    "playwright install chromium 使用内置 Chromium"
+)
 
 
 class FeishuScraper(CompanyScraper):
@@ -77,15 +83,15 @@ class FeishuScraper(CompanyScraper):
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return [{"error": f"{self.COMPANY_NAME}源需要 Playwright：pip install playwright && playwright install chromium"}]
+            return [{"error": f"{self.COMPANY_NAME}源需要 Playwright：pip install playwright"}]
 
         collected: list[dict[str, Any]] = []
         try:
             with sync_playwright() as p:
                 try:
-                    browser = p.chromium.launch(headless=True)
+                    browser = launch_browser(p, headless=True)
                 except Exception as exc:
-                    return [{"error": f"{self.COMPANY_NAME}浏览器启动失败：{exc}（请执行 playwright install chromium）"}]
+                    return [{"error": f"{self.COMPANY_NAME}浏览器启动失败：{exc}（{_BROWSER_HINT}）"}]
 
                 try:
                     context = browser.new_context(locale="zh-CN")
@@ -202,15 +208,15 @@ class FeishuScraper(CompanyScraper):
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return {"error": f"{self.COMPANY_NAME}源需要 Playwright：pip install playwright && playwright install chromium"}
+            return {"error": f"{self.COMPANY_NAME}源需要 Playwright：pip install playwright"}
 
         payloads: list[dict[str, Any]] = []
         try:
             with sync_playwright() as p:
                 try:
-                    browser = p.chromium.launch(headless=True)
+                    browser = launch_browser(p, headless=True)
                 except Exception as exc:
-                    return {"error": f"{self.COMPANY_NAME}浏览器启动失败：{exc}（请执行 playwright install chromium）"}
+                    return {"error": f"{self.COMPANY_NAME}浏览器启动失败：{exc}（{_BROWSER_HINT}）"}
 
                 try:
                     context = browser.new_context(locale="zh-CN")

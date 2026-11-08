@@ -40,8 +40,9 @@ https://lilithgames.jobs.feishu.cn/career/position/<jobId>/detail
 ## 注意事项
 
 - 飞书招聘门户使用前端 acrawler SDK 生成 `_signature`，签名与请求参数绑定，
-  无法用普通 HTTP 客户端复用；本源依赖 Playwright，首次使用需执行
-  `playwright install chromium`。
+  无法用普通 HTTP 客户端复用；本源依赖 Playwright，优先使用系统默认
+  Chrome / Edge，未检测到时回退 Playwright Chromium（需执行
+  `playwright install chromium`）。
 - 门户不公开薪资，`salary` 通常为空。
 - 搜索关键词为服务端过滤，城市为本地过滤；`limit` 最大 100。
 - 列表接口为社招（`portal_type=6`）；校园招聘与实习在 `/campus/` 路径，

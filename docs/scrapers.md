@@ -57,7 +57,8 @@
 > guide.md 即自动生效（模板见 `_template/guide.md`）。
 >
 > 飞书招聘源（`papergames` / `maimai` / `minimax` / `soul` / `lilith` / `dewu` /
-> `sensetime`）依赖 Playwright Chromium，首次使用需执行
+> `sensetime`）通过页面前端签名捕获接口响应，优先使用系统默认 Chrome / Edge；
+> 未检测到 Chrome / Edge 时回退 Playwright Chromium，需执行
 > `playwright install chromium`。
 
 企业档位（大厂 / 中厂 / 小厂）、行业与别名由 `src/scrapers/companies.yaml` 维护；
