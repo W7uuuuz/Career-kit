@@ -132,7 +132,11 @@ def sync_market_baseline(profile_name: str) -> str:
 
 
 def sync_gap(profile_name: str) -> str:
-    """差距分析 → GapReport artifact（`gr_`）。"""
+    """差距分析 → GapReport artifact（`gr_`）。
+
+    必须能解析出 profile 快照并落成 ProfileSnapshot，否则返回空字符串，
+    不写 ``profile_snapshot_id`` 为空的半成品 GapReport。
+    """
     try:
         profile = load_profile(profile_name)
         gap = profile.gap if isinstance(profile.gap, dict) else {}
@@ -140,6 +144,9 @@ def sync_gap(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
+        profile_id = _resolve_profile_id(store, profile, profile_name, state)
+        if not profile_id:
+            return ""
         artifact = GapReport(
             meta=_meta(
                 store,
@@ -147,11 +154,11 @@ def sync_gap(profile_name: str) -> str:
                 STAGE_GAP,
                 profile_name,
                 {
-                    "profile_id": state.get(KEY_PROFILE, ""),
+                    "profile_id": profile_id,
                     "market_baseline_id": state.get(KEY_MARKET_BASELINE, ""),
                 },
             ),
-            profile_snapshot_id=str(state.get(KEY_PROFILE, "")),
+            profile_snapshot_id=profile_id,
             market_baseline_id=str(state.get(KEY_MARKET_BASELINE, "")),
             match_score=_as_int(gap.get("match_score")),
             match_level=str(gap.get("match_level") or ""),
@@ -170,17 +177,24 @@ def sync_gap(profile_name: str) -> str:
 
 
 def sync_baseline_plan(profile_name: str) -> str:
-    """基线路线图 → BaselinePlan artifact（`bp_`）。"""
+    """基线路线图 → BaselinePlan artifact（`bp_`）。
+
+    ``plan.roadmap`` 必须是带非空 phases 的 dict；list/空值视为畸形数据，
+    返回空字符串，不写半成品。
+    """
     try:
         profile = load_profile(profile_name)
         plan = profile.plan if isinstance(profile.plan, dict) else {}
         roadmap = plan.get("roadmap")
-        if not roadmap:
+        if not isinstance(roadmap, dict):
+            return ""
+        phases = roadmap.get("phases")
+        if not isinstance(phases, list) or not phases:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
         strategy = str(plan.get("strategy_summary") or "")
-        if not strategy and isinstance(roadmap, dict):
+        if not strategy:
             strategy = str(roadmap.get("strategy_summary") or "")
         artifact = BaselinePlan(
             meta=_meta(
@@ -192,7 +206,7 @@ def sync_baseline_plan(profile_name: str) -> str:
             ),
             gap_report_id=str(state.get(KEY_GAP, "")),
             strategy_summary=strategy,
-            roadmap=_as_dict(roadmap),
+            roadmap=roadmap,
         )
         return _persist(profile, profile_name, artifact, KEY_BASELINE_PLAN, STAGE_BASELINE_PLAN)
     except Exception:
@@ -200,13 +214,28 @@ def sync_baseline_plan(profile_name: str) -> str:
 
 
 def sync_execution_state(profile_name: str) -> str:
-    """任务与打卡 → ExecutionState artifact（`es_`）。"""
+    """任务与打卡 → ExecutionState artifact（`es_`）。
+
+    必须已有已应用的 ExecutionPlan，或可解析的 baseline plan；否则返回空字符串，
+    不写 ``execution_plan_id`` 为空的半成品 ExecutionState。
+    """
     try:
         profile = load_profile(profile_name)
         if not profile.tasks:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
+        plan_id = str(state.get("execution_plan_id") or "")
+        plan = store.load(plan_id) if plan_id else None
+        has_applied_plan = _matches_stage(
+            plan, STAGE_EXECUTION_PLAN, profile_name
+        ) and bool(plan.get("applied"))
+        if has_applied_plan:
+            baseline_id = str(state.get(KEY_BASELINE_PLAN) or "")
+        else:
+            baseline_id = _resolve_baseline_plan_id(store, profile_name, state)
+            if not baseline_id:
+                return ""
         task_counts = {"pending": 0, "in_progress": 0, "completed": 0, "skipped": 0}
         for task in profile.tasks:
             task_counts[task.status] = task_counts.get(task.status, 0) + 1
@@ -223,11 +252,11 @@ def sync_execution_state(profile_name: str) -> str:
                 profile_name,
                 {
                     "profile_id": state.get(KEY_PROFILE, ""),
-                    "baseline_plan_id": state.get(KEY_BASELINE_PLAN, ""),
-                    "execution_plan_id": state.get("execution_plan_id", ""),
+                    "baseline_plan_id": baseline_id,
+                    "execution_plan_id": plan_id if has_applied_plan else "",
                 },
             ),
-            execution_plan_id=str(state.get("execution_plan_id") or ""),
+            execution_plan_id=plan_id if has_applied_plan else "",
             current_phase_id=str(current["phase_id"]) if current else "",
             task_counts=task_counts,
             checkin_counts=checkin_counts,
@@ -388,7 +417,7 @@ def _persist(
     advance_stage: bool = True,
 ) -> str:
     store = ArtifactStore()
-    artifact_id = store.save(artifact)
+    artifact_id = store.save(artifact, dedupe=True)
     updates: dict[str, Any] = {key: artifact_id}
     if advance_stage:
         updates["stage"] = stage
@@ -425,6 +454,66 @@ def _resolve_target_spec(
             except Exception:
                 pass
     return target_spec(profile)
+
+
+def _resolve_profile_id(
+    store: ArtifactStore,
+    profile: CareerProfile,
+    profile_name: str,
+    state: dict[str, Any],
+) -> str:
+    """解析 GapReport 依赖的 ProfileSnapshot id。
+
+    优先 core_state 指针，其次该档案最新的 ProfileSnapshot；都没有时尝试从
+    当前档案生成可解析的快照并落库。无法生成时返回空字符串。
+    """
+    profile_id = str(state.get(KEY_PROFILE) or "")
+    if profile_id and _matches_stage(
+        store.load(profile_id), STAGE_PROFILE, profile_name
+    ):
+        return profile_id
+    latest = store.latest(profile_name, STAGE_PROFILE)
+    if _matches_stage(latest, STAGE_PROFILE, profile_name):
+        return _artifact_id(latest)
+    try:
+        snapshot = profile_snapshot(profile)
+    except Exception:
+        return ""
+    if not (
+        snapshot.who
+        or snapshot.have
+        or snapshot.want
+        or snapshot.gap
+        or snapshot.plan
+        or snapshot.summary
+    ):
+        return ""
+    artifact = _ProfileArtifact(
+        meta=_meta(store, "pf", STAGE_PROFILE, profile_name, {}),
+        **snapshot.model_dump(),
+    )
+    new_id = store.save(artifact, dedupe=True)
+    merge_core_state(profile_name, {KEY_PROFILE: new_id}, advance_stage=False)
+    return new_id
+
+
+def _resolve_baseline_plan_id(
+    store: ArtifactStore, profile_name: str, state: dict[str, Any]
+) -> str:
+    """解析 ExecutionState 依赖的 BaselinePlan id；缺失时尝试从档案同步一次。"""
+    baseline_id = str(state.get(KEY_BASELINE_PLAN) or "")
+    if baseline_id and _matches_stage(
+        store.load(baseline_id), STAGE_BASELINE_PLAN, profile_name
+    ):
+        return baseline_id
+    return sync_baseline_plan(profile_name)
+
+
+def _artifact_id(artifact: dict[str, Any] | None) -> str:
+    if not isinstance(artifact, dict):
+        return ""
+    meta = artifact.get("meta")
+    return str(meta.get("id") or "") if isinstance(meta, dict) else ""
 
 
 def _report_paths(research: dict[str, Any]) -> dict[str, str]:

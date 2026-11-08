@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import sqlite3
@@ -33,7 +34,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   version INTEGER NOT NULL,
   data TEXT NOT NULL,
   inputs TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  content_hash TEXT
 )
 """
 
@@ -79,6 +81,9 @@ def _retry_on_busy(func: Any) -> Any:
 class ArtifactStore:
     """Artifact 存取层；`db_path` 为空时使用 `paths.PROFILE_DIR/career-kit.db`。"""
 
+    # 每个 profile+stage 保留的版本上限；测试可 monkeypatch。
+    MAX_PER_STAGE = 100
+
     def __init__(self, db_path: Path | str | None = None) -> None:
         self._db_path = Path(db_path) if db_path is not None else None
 
@@ -89,12 +94,17 @@ class ArtifactStore:
             return self._db_path
         return paths.PROFILE_DIR / "career-kit.db"
 
-    def save(self, artifact: BaseModel) -> str:
+    def save(self, artifact: BaseModel, dedupe: bool = False) -> str:
         """保存 artifact 并返回 id；同一阶段的新 artifact 自动递增版本号。
 
         版本号在 `BEGIN IMMEDIATE` 事务内分配，并发保存同一 profile+stage 时
         由 SQLite 写锁串行化，不会得到重复 version。`meta.created_at` /
         `meta.version` 只落库，不回填调用方对象。
+
+        ``dedupe=True`` 时，若同一 profile+stage 已存在内容完全相同的 artifact
+        （``content_hash`` 排除 meta.id/version/created_at），直接复用其 id，
+        不新增行也不递增版本。同一 id 重复保存且内容不变时同样不写库；内容变化
+        则 version +1。
         """
         if not isinstance(artifact, BaseModel):
             raise TypeError("ArtifactStore.save 只接受 Pydantic 模型")
@@ -111,15 +121,37 @@ class ArtifactStore:
         created_at = str(getattr(meta, "created_at", "") or "") or datetime.now().isoformat()
         inputs = json.dumps(getattr(meta, "inputs", {}) or {}, ensure_ascii=False)
         kind = type(artifact).__name__
+        content_hash = _content_hash(artifact.model_dump(mode="json"))
 
-        def write() -> None:
+        def write() -> str:
             conn = self._connect()
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 try:
-                    version = self._next_version(
-                        conn, artifact_id, profile_name, stage, requested_version
-                    )
+                    existing = conn.execute(
+                        "SELECT version, content_hash FROM artifacts WHERE id = ?",
+                        (artifact_id,),
+                    ).fetchone()
+                    if dedupe:
+                        match = conn.execute(
+                            "SELECT id FROM artifacts WHERE profile_name = ? AND stage = ? "
+                            "AND content_hash = ? "
+                            "ORDER BY version DESC, created_at DESC, rowid DESC LIMIT 1",
+                            (profile_name, stage, content_hash),
+                        ).fetchone()
+                        if match is not None:
+                            conn.execute("COMMIT")
+                            return str(match["id"])
+                    if existing is not None and str(existing["content_hash"] or "") == content_hash:
+                        conn.execute("COMMIT")
+                        return artifact_id
+
+                    if existing is not None:
+                        version = max(int(existing["version"]) + 1, requested_version)
+                    else:
+                        version = self._next_version(
+                            conn, artifact_id, profile_name, stage, requested_version
+                        )
                     stored_meta = meta.model_copy(
                         update={"version": version, "created_at": created_at}
                     )
@@ -128,11 +160,13 @@ class ArtifactStore:
                     ).model_dump_json()
                     conn.execute(
                         "INSERT INTO artifacts"
-                        "(id, profile_name, stage, kind, version, data, inputs, created_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                        "(id, profile_name, stage, kind, version, data, inputs, created_at, "
+                        "content_hash) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                         "ON CONFLICT(id) DO UPDATE SET profile_name=excluded.profile_name, "
                         "stage=excluded.stage, kind=excluded.kind, version=excluded.version, "
-                        "data=excluded.data, inputs=excluded.inputs, created_at=excluded.created_at",
+                        "data=excluded.data, inputs=excluded.inputs, created_at=excluded.created_at, "
+                        "content_hash=excluded.content_hash",
                         (
                             artifact_id,
                             profile_name,
@@ -142,9 +176,12 @@ class ArtifactStore:
                             payload,
                             inputs,
                             created_at,
+                            content_hash,
                         ),
                     )
+                    self._prune(conn, profile_name, stage)
                     conn.execute("COMMIT")
+                    return artifact_id
                 except BaseException:
                     with suppress(sqlite3.Error):
                         conn.execute("ROLLBACK")
@@ -152,8 +189,23 @@ class ArtifactStore:
             finally:
                 conn.close()
 
-        _retry_on_busy(write)
-        return artifact_id
+        return _retry_on_busy(write)
+
+    def _prune(self, conn: sqlite3.Connection, profile_name: str, stage: str) -> None:
+        """保留该 profile+stage 最新的 N 个版本，删除更旧的版本。"""
+        limit = int(getattr(self, "MAX_PER_STAGE", 100) or 0)
+        if limit <= 0:
+            return
+        rows = conn.execute(
+            "SELECT id FROM artifacts WHERE profile_name = ? AND stage = ? "
+            "ORDER BY version DESC, created_at DESC, rowid DESC LIMIT -1 OFFSET ?",
+            (profile_name, stage, limit),
+        ).fetchall()
+        if not rows:
+            return
+        ids = [str(row["id"]) for row in rows]
+        placeholders = ",".join("?" for _ in ids)
+        conn.execute(f"DELETE FROM artifacts WHERE id IN ({placeholders})", ids)
 
     def _next_version(
         self,
@@ -244,15 +296,54 @@ class ArtifactStore:
                 conn.row_factory = sqlite3.Row
                 conn.execute("PRAGMA busy_timeout=30000")
                 conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute(_CREATE_TABLE)
-                conn.execute(_CREATE_INDEX)
-                conn.execute(_CREATE_VERSION_INDEX)
+                _ensure_schema(conn)
             except BaseException:
                 conn.close()
                 raise
             return conn
 
         return _retry_on_busy(open_connection)
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    """建表并兼容旧库：补 content_hash 列并回填历史行。"""
+    conn.execute(_CREATE_TABLE)
+    conn.execute(_CREATE_INDEX)
+    conn.execute(_CREATE_VERSION_INDEX)
+    columns = {
+        str(row["name"]) for row in conn.execute("PRAGMA table_info(artifacts)").fetchall()
+    }
+    if "content_hash" not in columns:
+        try:
+            conn.execute("ALTER TABLE artifacts ADD COLUMN content_hash TEXT")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
+    rows = conn.execute(
+        "SELECT id, data FROM artifacts WHERE content_hash IS NULL"
+    ).fetchall()
+    for row in rows:
+        data = _decode(row["data"])
+        if data is None:
+            continue
+        conn.execute(
+            "UPDATE artifacts SET content_hash = ? WHERE id = ?",
+            (_content_hash(data), row["id"]),
+        )
+
+
+def _content_hash(data: dict[str, Any]) -> str:
+    """计算内容哈希；排除 meta.id/version/created_at，避免无意义的新版本。"""
+    try:
+        payload = json.loads(json.dumps(data, ensure_ascii=False, sort_keys=True))
+    except (TypeError, ValueError):
+        payload = dict(data)
+    meta = payload.get("meta")
+    if isinstance(meta, dict):
+        for key in ("id", "version", "created_at"):
+            meta.pop(key, None)
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _decode(raw: Any) -> dict[str, Any] | None:

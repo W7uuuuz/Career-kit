@@ -84,10 +84,15 @@ def _meta(
     )
 
 
-def _pool(store: ArtifactStore, confirmed: bool, profile_name: str = "alice") -> CompanyPool:
+def _pool(
+    store: ArtifactStore,
+    confirmed: bool,
+    profile_name: str = "alice",
+    role: str = "AI Agent 开发",
+) -> CompanyPool:
     return CompanyPool(
         meta=_meta(store, state_machine.STAGE_COMPANY_POOL, profile_name),
-        target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
+        target_spec=TargetSpec(role=role, city="北京"),
         companies=[
             CompanyEntry(
                 id="bytedance",
@@ -246,6 +251,74 @@ def test_artifact_store_latest_orders_by_version_not_created_at(store: ArtifactS
     assert latest["meta"]["id"] == newer_id
     assert store.list("alice", state_machine.STAGE_COMPANY_POOL)[0]["meta"]["id"] == newer_id
     assert older_id != newer_id
+
+
+def test_artifact_store_dedupes_identical_content(store: ArtifactStore) -> None:
+    first = store.save(_pool(store, confirmed=True), dedupe=True)
+    second = store.save(_pool(store, confirmed=True), dedupe=True)
+    third = store.save(_pool(store, confirmed=True), dedupe=True)
+
+    assert first == second == third
+    items = store.list("alice", state_machine.STAGE_COMPANY_POOL)
+    assert len(items) == 1
+    assert items[0]["meta"]["id"] == first
+    assert items[0]["meta"]["version"] == 1
+
+
+def test_artifact_store_same_id_same_content_keeps_version(store: ArtifactStore) -> None:
+    pool = _pool(store, confirmed=True)
+    first = store.save(pool)
+    second = store.save(pool)
+
+    assert first == second
+    loaded = store.load(first)
+    assert loaded is not None
+    assert loaded["meta"]["version"] == 1
+    assert len(store.list("alice", state_machine.STAGE_COMPANY_POOL)) == 1
+
+
+def test_artifact_store_same_id_content_change_bumps_version(store: ArtifactStore) -> None:
+    pool = _pool(store, confirmed=True)
+    artifact_id = store.save(pool)
+
+    pool.companies[0].name = "字节跳动（改名）"
+    again = store.save(pool)
+
+    assert again == artifact_id
+    loaded = store.load(artifact_id)
+    assert loaded is not None
+    assert loaded["meta"]["version"] == 2
+    assert loaded["companies"][0]["name"] == "字节跳动（改名）"
+    assert len(store.list("alice", state_machine.STAGE_COMPANY_POOL)) == 1
+
+
+def test_artifact_store_new_ids_increment_version(store: ArtifactStore) -> None:
+    first = store.save(_pool(store, confirmed=True, role="角色一"))
+    second = store.save(_pool(store, confirmed=True, role="角色二"))
+
+    assert first != second
+    assert store.load(first)["meta"]["version"] == 1
+    assert store.load(second)["meta"]["version"] == 2
+
+
+def test_artifact_store_prunes_old_versions(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ArtifactStore, "MAX_PER_STAGE", 2)
+    ids = [
+        store.save(_pool(store, confirmed=True, role=f"角色{i}"))
+        for i in range(4)
+    ]
+
+    items = store.list("alice", state_machine.STAGE_COMPANY_POOL)
+    assert [item["meta"]["id"] for item in items] == [ids[3], ids[2]]
+    assert store.load(ids[0]) is None
+    assert store.load(ids[1]) is None
+    assert store.load(ids[2]) is not None
+    assert store.load(ids[3]) is not None
+    latest = store.latest("alice", state_machine.STAGE_COMPANY_POOL)
+    assert latest is not None
+    assert latest["meta"]["id"] == ids[3]
 
 
 def test_new_id_prefix_format_and_uniqueness(store: ArtifactStore) -> None:

@@ -371,3 +371,107 @@ def test_sync_skips_market_baseline_without_report_or_samples(data_dir: Path) ->
     _save(profile)
     assert sync.sync_market_baseline(PROFILE_NAME) == ""
     assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_MARKET_BASELINE) == []
+
+
+def test_sync_profile_dedupes_unchanged_content(data_dir: Path) -> None:
+    _save(_full_profile())
+
+    ids = [sync.sync_profile(PROFILE_NAME) for _ in range(5)]
+
+    assert len(set(ids)) == 1
+    assert ids[0]
+    items = ArtifactStore().list(PROFILE_NAME, sync.STAGE_PROFILE)
+    assert len(items) == 1
+    assert items[0]["meta"]["version"] == 1
+    state = profile_store.load_profile(PROFILE_NAME).core_state
+    assert state[sync.KEY_PROFILE] == ids[0]
+
+
+def test_sync_profile_new_version_when_content_changes(data_dir: Path) -> None:
+    _save(_full_profile())
+    first = sync.sync_profile(PROFILE_NAME)
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.who["name"] = "李四"
+    _save(profile)
+    second = sync.sync_profile(PROFILE_NAME)
+
+    assert second and second != first
+    assert _load_artifact(second)["name"] == "李四"
+    assert _load_artifact(second)["meta"]["version"] == 2
+    items = ArtifactStore().list(PROFILE_NAME, sync.STAGE_PROFILE)
+    assert [item["meta"]["id"] for item in items] == [second, first]
+    state = profile_store.load_profile(PROFILE_NAME).core_state
+    assert state[sync.KEY_PROFILE] == second
+
+
+def test_sync_baseline_plan_rejects_malformed_roadmap(data_dir: Path) -> None:
+    profile = _full_profile()
+
+    profile.plan = {"roadmap": []}
+    _save(profile)
+    assert sync.sync_baseline_plan(PROFILE_NAME) == ""
+
+    profile.plan = {"roadmap": {"phases": []}}
+    _save(profile)
+    assert sync.sync_baseline_plan(PROFILE_NAME) == ""
+
+    profile.plan = {"roadmap": "not-a-dict"}
+    _save(profile)
+    assert sync.sync_baseline_plan(PROFILE_NAME) == ""
+
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_BASELINE_PLAN) == []
+
+
+def test_sync_gap_requires_resolvable_profile_snapshot(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _save(CareerProfile(gap={"match_score": 50}))
+
+    def _broken_snapshot(profile: CareerProfile) -> Any:
+        raise RuntimeError("snapshot unparsable")
+
+    monkeypatch.setattr(sync, "profile_snapshot", _broken_snapshot)
+
+    assert sync.sync_gap(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_GAP) == []
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_PROFILE) == []
+
+
+def test_sync_gap_creates_profile_anchor_when_missing(data_dir: Path) -> None:
+    _save(CareerProfile(who={"name": "张三"}, gap={"match_score": 50}))
+
+    gap_id = sync.sync_gap(PROFILE_NAME)
+
+    assert gap_id.startswith("gr_")
+    gap = _load_artifact(gap_id)
+    profile_id = gap["profile_snapshot_id"]
+    assert profile_id.startswith("pf_")
+    assert _load_artifact(profile_id)["meta"]["stage"] == sync.STAGE_PROFILE
+    state = profile_store.load_profile(PROFILE_NAME).core_state
+    assert state[sync.KEY_PROFILE] == profile_id
+    assert state[sync.KEY_GAP] == gap_id
+
+
+def test_sync_execution_state_requires_plan_or_baseline(data_dir: Path) -> None:
+    profile = _full_profile()
+    profile.plan = {}
+    _save(profile)
+
+    assert sync.sync_execution_state(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_EXECUTION) == []
+
+
+def test_sync_execution_state_omits_unapplied_execution_plan(
+    data_dir: Path,
+) -> None:
+    _save(_full_profile())
+    sync.sync_baseline_plan(PROFILE_NAME)
+
+    execution_id = sync.sync_execution_state(PROFILE_NAME)
+
+    assert execution_id.startswith("es_")
+    execution = _load_artifact(execution_id)
+    assert execution["execution_plan_id"] == ""
+    assert execution["meta"]["inputs"]["baseline_plan_id"]
+    assert "execution_plan_id" not in execution["meta"]["inputs"]

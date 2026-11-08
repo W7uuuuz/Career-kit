@@ -111,14 +111,12 @@ def _latest(
     stage: str,
     core_state: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """优先 core_state 指针，再回退该档案该阶段 latest；跨档案一律拒绝。"""
+    """只按 core_state 指针解析；不无条件回退 latest，避免读取无关旧 artifact。"""
     state = core_state if isinstance(core_state, dict) else {}
     artifact_id = str(state.get(STAGE_KEYS.get(stage, "")) or "")
-    if artifact_id:
-        data = store.load(artifact_id)
-        if _matches_stage(data, stage, profile_name):
-            return data
-    data = store.latest(profile_name, stage)
+    if not artifact_id:
+        return None
+    data = store.load(artifact_id)
     return data if _matches_stage(data, stage, profile_name) else None
 
 

@@ -564,3 +564,24 @@ def test_optional_artifacts_do_not_complete_chain(workspace: SimpleNamespace) ->
     result = check_plan_fit(PROFILE_NAME)
 
     assert result["status"] == "incomplete_chain"
+
+
+def test_cleared_core_state_ignores_stale_artifacts(workspace: SimpleNamespace) -> None:
+    _seed_aligned(workspace)
+    assert workspace.store.list(PROFILE_NAME), "测试前置：库中应已有 artifact"
+
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.core_state = {}
+    profile_module.save_profile(profile, PROFILE_NAME)
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    assert result["status"] == "incomplete_chain"
+    assert result["recommended_action"] == "continue"
+    assert result["next_tool"] == ""
+    assert result["artifact_ids"] == {
+        "company_pool_id": "",
+        "evidence_run_id": "",
+        "requirement_profile_id": "",
+        "execution_plan_id": "",
+    }
