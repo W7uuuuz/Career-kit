@@ -34,11 +34,11 @@ Each stage makes one decision and delivers one artifact; order is fixed, pace is
 4. **Capability gap diagnosis** — compare market requirements against current state.
 5. **Training plan design** — break the goal into ordered phases and tasks.
 6. **Target company selection** — turn tiers into a user-confirmed company pool.
-7. **Job and interview evidence collection** — collect real JDs and interview reports with sources and confidence.
+7. **Job and interview evidence collection** — collect real JDs and interview reports with sources and confidence; optionally add BOSS for salary and broader coverage.
 8. **Company requirement analysis** — extract high-frequency requirements, per-JD hard filters, and interview topics.
 9. **Execution plan calibration** — align the baseline plan with the requirement profile.
 10. **Task execution and check-ins** — work through tasks and turn completions into capability evidence.
-11. **Application management** — record applications, interviews, offers, and funnel conversion.
+11. **Application management** — build a ranked application list from the evidence pool, then record applications, interviews, offers, and funnel conversion.
 12. **Periodic review and plan adjustment** — review facts and detect plan drift when data or goals change.
 
 > If this project helps you, a star is appreciated.
@@ -71,7 +71,7 @@ You: I got a big-tech interview.
 Career Kit: event-triggered insight → re-evaluate the plan → adjust tasks
 ```
 
-Under the hood: 48 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, company alignment, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
+Under the hood: 49 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, company alignment, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
 
 ## Compared with other job-hunting tools
 
@@ -152,7 +152,7 @@ Then say "call start_session" to your agent in a new session; "Welcome to Career
 - [LLM usage guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)
 - [Workflow](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)
 - [Install guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md): source install, one-click script, local console, troubleshooting
-- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 48 MCP tools
+- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 49 MCP tools
 - [Data sources](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)
 - [Knowledge base](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)
 - [Examples](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)

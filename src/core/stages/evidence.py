@@ -44,6 +44,7 @@ DEFAULT_PER_COMPANY_LIMIT = 5
 DEFAULT_MAX_COMPANIES = 15
 DEFAULT_MAX_JD = 50
 DEFAULT_MAX_INTERVIEWS = 30
+BOSS_SOURCE = "boss"
 
 _REMOTE_HINTS = ("远程", "全国", "不限", "remote", "anywhere")
 _CONFIDENCE_LEVELS = ("low", "medium", "high")
@@ -82,6 +83,8 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     max_jd = _as_int(inputs.get("max_jd"), DEFAULT_MAX_JD, 0)
     max_interviews = _as_int(inputs.get("max_interviews"), DEFAULT_MAX_INTERVIEWS, 0)
     reuse_research = not _as_bool(inputs.get("refresh"))
+    include_boss = _as_bool(inputs.get("include_boss"))
+    boss_confirmed = _as_bool(inputs.get("boss_confirmed"))
 
     profile = load_profile(ctx.profile_name)
     education = _education_of(profile)
@@ -106,6 +109,10 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         for entry in selected
         for slug in _entry_scrapers(entry)
     ]
+    if include_boss and max_jd != 0:
+        jd_tasks.append(
+            _search_boss_jobs(target, _boss_limit(max_jd, per_company_limit), deadline, semaphore)
+        )
     jd_results = await asyncio.gather(*jd_tasks)
     source_status: list[dict[str, Any]] = [
         {
@@ -124,7 +131,9 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     source_status.extend(interview_status)
 
     fetched_company_ids = {
-        result["entry"].id for result in jd_results if result["status"] != "failed"
+        result["entry"].id
+        for result in jd_results
+        if result.get("entry") is not None and result["status"] != "failed"
     }
     counts: dict[str, int] = {
         "companies_requested": len(selected),
@@ -137,6 +146,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         "reused_jd": 0,
         "reused_interviews": 0,
         "unknown_city": 0,
+        "boss_jobs": 0,
     }
 
     fresh_jd, counts = await _enrich_jobs(jd_results, target.city, deadline, semaphore, counts)
@@ -163,6 +173,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     counts["interviews"] = len(final_interviews)
     counts["reused_jd"] = sum(1 for item in final_jd if item.reused)
     counts["reused_interviews"] = sum(1 for item in final_interviews if item.reused)
+    counts["boss_jobs"] = sum(1 for item in final_jd if item.source == BOSS_SOURCE)
     confidence = {
         "jd": _confidence(len(final_jd), low=15, medium=30),
         "interview": _confidence(len(final_interviews), low=10, medium=20),
@@ -183,6 +194,8 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             "max_jd": str(max_jd),
             "max_interviews": str(max_interviews),
             "refresh": "true" if not reuse_research else "false",
+            "include_boss": "true" if include_boss else "false",
+            "boss_confirmed": "true" if boss_confirmed else "false",
         },
         source_status=source_status,
         validation={
@@ -396,6 +409,80 @@ def _search_params(slug: str, role: str, city: str, limit: int) -> dict[str, Any
     return params
 
 
+def _boss_limit(max_jd: int, per_company_limit: int) -> int:
+    """BOSS 抓取上限：受最终 JD 预算约束，未给预算时退化为单企业配额。"""
+    return max_jd if max_jd > 0 else per_company_limit
+
+
+async def _search_boss_jobs(
+    target: TargetSpec,
+    limit: int,
+    deadline: float,
+    semaphore: asyncio.Semaphore,
+) -> dict[str, Any]:
+    """抓取 BOSS 直聘作为跨公司补充源；不占企业池名额。"""
+    if not target.role:
+        return _source_result(
+            None, BOSS_SOURCE, "failed", 0, "目标岗位为空，无法搜索 BOSS", 0.0
+        )
+    params: dict[str, Any] = {"limit": limit, "keyword": target.role}
+    if target.city:
+        params["city"] = target.city
+
+    loop = asyncio.get_running_loop()
+    request_started = loop.time()
+    async with semaphore:
+        started = loop.time()
+        remaining = deadline - started
+        if remaining <= 0:
+            return _source_result(
+                None,
+                BOSS_SOURCE,
+                "failed",
+                0,
+                "总预算耗尽，未执行 BOSS 抓取",
+                loop.time() - request_started,
+            )
+        timeout = min(SOURCE_TIMEOUT, remaining)
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(search_company_jobs, BOSS_SOURCE, **params), timeout=timeout
+            )
+        except TimeoutError:
+            return _source_result(
+                None, BOSS_SOURCE, "failed", 0, f"抓取超时（{timeout:.0f} 秒）", timeout
+            )
+        except Exception as exc:  # noqa: BLE001 - 单源异常不拖垮整批
+            return _source_result(
+                None,
+                BOSS_SOURCE,
+                "failed",
+                0,
+                f"{type(exc).__name__}: {exc}",
+                loop.time() - started,
+            )
+    elapsed = loop.time() - started
+    if not isinstance(response, dict):
+        return _source_result(None, BOSS_SOURCE, "failed", 0, "抓取返回格式异常", elapsed)
+
+    error = str(response.get("error") or "").strip()
+    if error:
+        return _source_result(None, BOSS_SOURCE, "failed", 0, error, elapsed)
+
+    rows = [
+        row
+        for row in response.get("results") or []
+        if isinstance(row, dict) and not row.get("error")
+    ]
+    warnings = [str(item) for item in response.get("warnings") or [] if str(item).strip()]
+    status = "ok" if rows else "empty"
+    if not rows and warnings:
+        status = "failed"
+    return _source_result(
+        None, BOSS_SOURCE, status, len(rows), "；".join(warnings), elapsed, rows=rows
+    )
+
+
 async def _search_company_jobs(
     entry: CompanyEntry,
     slug: str,
@@ -450,7 +537,7 @@ async def _search_company_jobs(
 
 
 def _source_result(
-    entry: CompanyEntry,
+    entry: CompanyEntry | None,
     source: str,
     status: str,
     count: int,
@@ -505,10 +592,11 @@ async def _enrich_jobs(
 
     for result in jd_results:
         slug = result["source"]
-        entry = result["entry"]
+        entry = result.get("entry")
+        default_company = entry.name if entry is not None else slug
         for row in result["rows"]:
             title = str(row.get("title") or "").strip() or "未知岗位"
-            company = str(row.get("company") or "").strip() or slug
+            company = str(row.get("company") or "").strip() or default_company
             location = str(row.get("location") or "").strip()
             keep, unknown = _city_decision(location, city)
             if not keep:
@@ -576,12 +664,17 @@ async def _enrich_jobs(
     evidence: list[JDEvidence] = []
     for item in kept:
         entry = item["entry"]
+        if entry is not None:
+            company_id, company, tier = entry.id, item["company"], entry.tier
+        else:
+            company_id, tier, catalog_name = _map_boss_company(item["company"])
+            company = item["company"] or catalog_name
         evidence.append(
             JDEvidence(
                 id="",
-                company_id=entry.id,
-                company=item["company"],
-                tier=entry.tier,
+                company_id=company_id,
+                company=company,
+                tier=tier,
                 title=item["title"],
                 location=item["location"],
                 salary=item["salary"],
@@ -1066,6 +1159,14 @@ def _match_company(name: str, pool: CompanyPool) -> tuple[str, str, str]:
     if entry is not None:
         return str(entry["id"]), str(entry["name"]), str(entry["tier"])
     return "", name, ""
+
+
+def _map_boss_company(name: str) -> tuple[str, str, str]:
+    """BOSS 公司名映射企业目录；映射不到时档位标「未收录」，不硬猜。"""
+    entry = catalog.get_company(name) if name else None
+    if entry is None:
+        return "", "未收录", name
+    return str(entry["id"]), str(entry["tier"] or "未收录"), str(entry["name"])
 
 
 def _url_key(url: str) -> str:

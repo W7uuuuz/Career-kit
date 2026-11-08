@@ -169,7 +169,9 @@ collect_company_evidence(
   max_companies=15,
   max_jd=50,
   max_interviews=30,
-  refresh=false
+  refresh=false,
+  include_boss=false,       # 可选：补充 BOSS 薪资与广度
+  boss_confirmed=false      # 含 BOSS 时先问用户，同意后传 true
 )
 ```
 
@@ -264,6 +266,7 @@ collect_company_evidence(
 **流程**：
 
 ```text
+build_application_list(city, role, top=30, min_score=0)  # 从证据池批量生成投递清单
 record_application(company, role, status, channel, source, notes)
 delete_application(application_id)   # 仅录错/重复时
 ```

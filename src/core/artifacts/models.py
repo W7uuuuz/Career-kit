@@ -255,6 +255,24 @@ class ExecutionState(BaseModel):
     capability_evidence: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ApplicationCandidate(BaseModel):
+    """投递清单中的单个候选岗位（由证据池筛选与打分产生）。"""
+
+    id: str
+    company: str
+    company_id: str = ""
+    tier: str = ""
+    title: str
+    location: str = ""
+    salary: str = ""
+    url: str = ""
+    source: str = ""
+    match_score: int = 0
+    reasons: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    status: Literal["pending", "applied"] = "pending"
+
+
 class ApplicationState(BaseModel):
     """阶段 11 产物：求职投递与漏斗状态。"""
 
@@ -262,6 +280,7 @@ class ApplicationState(BaseModel):
     evidence_run_id: str = ""
     applications: list[dict[str, Any]] = Field(default_factory=list)
     funnel: dict[str, Any] = Field(default_factory=dict)
+    candidates: list[ApplicationCandidate] = Field(default_factory=list)
 
 
 class ReviewReport(BaseModel):
@@ -275,6 +294,7 @@ class ReviewReport(BaseModel):
 
 
 __all__ = [
+    "ApplicationCandidate",
     "ApplicationState",
     "ArtifactMeta",
     "BaselinePlan",

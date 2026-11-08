@@ -575,7 +575,7 @@ def test_stage_position_fallback_walks_all_twelve_keys() -> None:
 
     assert index == 11
     assert name == "求职投递管理"
-    assert next_tool == "record_application"
+    assert next_tool == "build_application_list / record_application"
 
 
 def test_workflow_status_plan_fit_does_not_override_execution(

@@ -29,6 +29,7 @@ ASSETS_KIND_DIRS: dict[str, str] = {
     "roadmap": "路线图",
     "progress": "进度",
     "evidence": "证据池",
+    "applications": "投递清单",
 }
 
 # 固定文件名（保 localStorage 打卡状态与「永远是最新」语义）
@@ -59,6 +60,7 @@ _KIND_LABELS: dict[str, str] = {
     "roadmap": "路线图",
     "progress": "进度",
     "evidence": "证据池",
+    "applications": "投递清单",
 }
 
 # 固定名资产没有文件名主题，用可读标题替代主干
@@ -449,4 +451,5 @@ _KIND_DESC: dict[str, str] = {
     "roadmap": "可交互打卡的职业地图（固定名，永远是最新版）",
     "progress": "进度仪表盘快照（固定名，永远是最新版）",
     "evidence": "目标企业 JD 与面经证据池（带来源、样本量与置信度）",
+    "applications": "按城市硬筛、按方向与技能打分的投递候选清单（带匹配分与缺口）",
 }

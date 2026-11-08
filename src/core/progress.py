@@ -77,6 +77,7 @@ _CORE_PREFIX_STAGES: tuple[str, ...] = (
 )
 
 _OPTIONAL_EXECUTION_TOOLS = [
+    "build_application_list",
     "record_application",
     "check_plan_fit",
     "get_weekly_review",

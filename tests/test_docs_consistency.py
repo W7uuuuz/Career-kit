@@ -144,11 +144,11 @@ def _changelog_section(version: str) -> str:
     return rest if next_section < 0 else rest[:next_section]
 
 
-def test_changelog_v030_has_single_12_step_48_tool_caliber():
-    """v0.3.0 段只能保留 12 步 / 48 工具口径，不得残留 7 步 / 47 工具矛盾。"""
+def test_changelog_v030_has_single_12_step_49_tool_caliber():
+    """v0.3.0 只能保留 12 步 / 49 工具口径，不能出现 7 步 / 48 工具矛盾。"""
     section = _changelog_section("v0.3.0")
     assert "12 步" in section, "CHANGELOG v0.3.0 未写 12 步"
-    assert "48" in section, "CHANGELOG v0.3.0 未写 48 工具"
+    assert "49" in section, "CHANGELOG v0.3.0 未写 49 工具"
     found = [p for p in STALE_STEP_TOOL_PATTERNS if p in section]
     assert not found, f"CHANGELOG v0.3.0 仍含陈旧数字：{found}"
 

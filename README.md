@@ -36,11 +36,11 @@
 4. **能力差距诊断**——对照市场要求与用户现状，得到一份可执行的差距诊断。
 5. **培养方案规划**——把目标拆成有顺序的阶段和任务，得到一张可打卡的基线职业地图。
 6. **目标企业筛选**——把档位落到具体企业，得到一份用户确认的目标企业池。
-7. **岗位与面经采集**——批量抓取目标企业的 JD 与面经，得到一份带来源与置信度的证据池。
+7. **岗位与面经采集**——批量抓取目标企业的 JD 与面经，可选补充 BOSS 直聘的薪资与广度，得到一份带来源与置信度的证据池。
 8. **企业需求分析**——统计高频共性要求、单 JD 硬门槛与面经考点，得到一份需求画像。
 9. **执行方案校准**——用需求画像校准基线路线图，得到一份执行版方案。
 10. **任务执行与打卡**——逐项推进任务，完成即沉淀为能力证据。
-11. **求职投递管理**——记录投递、面试、offer 与漏斗转化。
+11. **求职投递管理**——从证据池批量生成投递清单，并记录投递、面试、offer 与漏斗转化。
 12. **周期复盘与计划调整**——复盘打卡 / 阶段 / 求职漏斗；数据或目标变化时检测计划是否失配。
 
 > 如果这个项目对你有帮助，欢迎点一个 Star。
@@ -73,7 +73,7 @@ Career Kit：打卡记录 → 沉淀能力证据 → 阶段完成自动审计
 Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 ```
 
-底层是 48 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、企业适配、任务与漏斗、洞察产出七大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
+底层是 49 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、企业适配、任务与漏斗、洞察产出七大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
 
 ## 与其他求职工具的对比
 
@@ -156,7 +156,7 @@ career-kit-doctor
 - [LLM 使用指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)：工作流、规则、常见场景
 - [工作流详解](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)：各阶段前置条件、输入输出
 - [安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)：源码安装、一键脚本、本地控制台、常见问题
-- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：48 个 MCP 工具的唯一事实源
+- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：49 个 MCP 工具的唯一事实源
 - [企业库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)：已收录企业、数据源说明
 - [知识库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)：目录结构、文件格式
 - [示例](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)：可交互职业地图与场景示例

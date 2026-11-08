@@ -962,7 +962,7 @@ _STAGE_NEXT_TOOLS = (
     "analyze_company_requirements",
     "plan_execution_alignment",
     "get_next_tasks",
-    "record_application",
+    "build_application_list / record_application",
     "get_weekly_review",
 )
 
@@ -1337,7 +1337,8 @@ def get_workflow_status() -> str:
     lines.append("- 企业适配（执行前推荐校准）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
     lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
-    lines.append("- 复盘：get_weekly_review 做周检视；投递/面试/offer 进展用 record_application 登记")
+    lines.append("- 投递：build_application_list 批量生成投递清单；投递/面试/offer 进展用 record_application 登记")
+    lines.append("- 复盘：get_weekly_review 做周检视；计划失配用 check_plan_fit")
     lines.append("")
     lines.append("节奏原则：顺序归产品，时间归用户——不为任务设定时限。")
 

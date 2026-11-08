@@ -567,7 +567,7 @@ def test_step8_mcp_tools_registered():
         "select_target_companies", "collect_company_evidence",
         "analyze_company_requirements", "save_requirement_profile",
         "plan_execution_alignment", "save_execution_alignment",
-        "check_plan_fit",
+        "check_plan_fit", "build_application_list",
         # 计划导入
         "import_plan",
     ]

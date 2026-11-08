@@ -9,7 +9,7 @@
     `list_data_sources` 显示档位与行业；先覆盖互联网，制造/能源企业只打标不进入默认适配。
   - 新增 6 个企业适配工具：`select_target_companies`、`collect_company_evidence`、
     `analyze_company_requirements`、`save_requirement_profile`、
-    `plan_execution_alignment`、`save_execution_alignment`（工具数 41 → 48）。
+    `plan_execution_alignment`、`save_execution_alignment`（工具数 41 → 49）。
   - 证据层：批量抓取目标企业 JD + 面经，城市硬筛、详情补抓、去重、来源状态与样本置信度；
     报告落盘 `~/CareerKit/<档案>/证据池/`。
   - 需求分析：频率、公司覆盖、Wilson 95% 区间与逐条硬门槛由代码计算；
@@ -33,7 +33,7 @@
     企业需求分析 → 执行方案校准 → 任务执行与打卡 → 求职投递管理 → 周期复盘与计划调整）。
   - 新增 sync 层，把阶段 1-5、10-12 的既有档案数据写入新 artifact 与 `core_state`；
     state_machine、guidance、`get_workflow_status` 统一按 12 阶段推进；阶段 11/12 为可选/周期阶段。
-  - 版本：`0.2.3` → `0.3.0`；工具数 41 → 48。
+  - 版本：`0.2.3` → `0.3.0`；工具数 41 → 49。
 
 ## v0.2.3 (2026-11-07)
 

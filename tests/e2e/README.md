@@ -39,7 +39,7 @@
 | browser | HTML 打开、勾选打卡、localStorage、重置 | Chromium |
 | llm | Agent 选工具、守规则、最终档案状态 | LLM API |
 
-核心套件覆盖主要 48 个工具路径；`fetch_company_jobs` / `fetch_jd_detail` 由 live 套件覆盖。
+核心套件覆盖主要 49 个工具路径；`fetch_company_jobs` / `fetch_jd_detail` 由 live 套件覆盖。
 
 ## 产物
 

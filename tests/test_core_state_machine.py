@@ -318,6 +318,7 @@ def test_stages_follow_artifact_order(
     assert action["next_tool"] == "get_next_tasks"
     assert action["artifact_ids"]["execution_state_id"] == execution_id
     assert action["optional_next_tools"] == [
+        "build_application_list",
         "record_application",
         "check_plan_fit",
         "get_weekly_review",

@@ -21,6 +21,7 @@ from ..tools.profile import load_profile, profile_lock, save_profile
 from ..tools.task_manager import resolve_current_phase
 from .adapters.legacy_profile import profile_snapshot, target_spec
 from .artifacts.models import (
+    ApplicationCandidate,
     ApplicationState,
     ArtifactMeta,
     BaselinePlan,
@@ -268,16 +269,21 @@ def sync_execution_state(profile_name: str) -> str:
 
 
 def sync_application_state(profile_name: str) -> str:
-    """投递记录 → ApplicationState artifact（`as_`，可选阶段，不推进 stage）。"""
+    """投递记录 → ApplicationState artifact（`as_`，可选阶段，不推进 stage）。
+
+    重建时保留最近一次 ApplicationState 的 ``candidates``：投递清单是用户资产，
+    记录/删除投递不应把已生成的候选清空。只有投递记录与候选都为空时才清指针。
+    """
     try:
         profile = load_profile(profile_name)
         state = _core_state(profile)
-        if not profile.applications:
-            # 投递被删空时清掉旧指针，避免 core_state 指向已失效的 artifact。
+        store = ArtifactStore()
+        candidates = _existing_candidates(store, profile_name, state)
+        if not profile.applications and not candidates:
+            # 投递被删空且没有候选时清掉旧指针，避免 core_state 指向已失效的 artifact。
             if state.get(KEY_APPLICATIONS):
                 merge_core_state(profile_name, {KEY_APPLICATIONS: None})
             return ""
-        store = ArtifactStore()
         artifact = ApplicationState(
             meta=_meta(
                 store,
@@ -292,6 +298,7 @@ def sync_application_state(profile_name: str) -> str:
             evidence_run_id=str(state.get("evidence_run_id") or ""),
             applications=[app.model_dump() for app in profile.applications],
             funnel=funnel_stats(profile),
+            candidates=candidates,
         )
         return _persist(
             profile,
@@ -303,6 +310,39 @@ def sync_application_state(profile_name: str) -> str:
         )
     except Exception:
         return ""
+
+
+def _existing_candidates(
+    store: ArtifactStore, profile_name: str, state: dict[str, Any]
+) -> list[ApplicationCandidate]:
+    """读取最近一次 ApplicationState 的候选；缺失或损坏时返回空列表。"""
+    artifact_id = str(state.get(KEY_APPLICATIONS) or "")
+    data = store.load(artifact_id) if artifact_id else None
+    if _matches_stage(data, STAGE_APPLICATIONS, profile_name):
+        candidates = _parse_candidates(data)
+        if candidates:
+            return candidates
+    latest = store.latest(profile_name, STAGE_APPLICATIONS)
+    if _matches_stage(latest, STAGE_APPLICATIONS, profile_name):
+        return _parse_candidates(latest)
+    return []
+
+
+def _parse_candidates(data: dict[str, Any] | None) -> list[ApplicationCandidate]:
+    if not isinstance(data, dict):
+        return []
+    raw = data.get("candidates")
+    if not isinstance(raw, list):
+        return []
+    candidates: list[ApplicationCandidate] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            candidates.append(ApplicationCandidate.model_validate(item))
+        except Exception:
+            continue
+    return candidates
 
 
 def sync_review(

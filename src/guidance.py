@@ -507,9 +507,10 @@ def _execution_guide(profile: Any, *, ready: bool) -> Guide:
         "execution",
         "execution",
         "下一步推进当前阶段的任务；完成一项就打卡，进度会沉淀为能力证据。"
-        "也可以顺手登记投递或做周期复盘。",
-        options=["看下一步任务", "登记投递", "做周检视/计划检查"],
+        "也可以生成投递清单、登记投递或做周期复盘。",
+        options=["看下一步任务", "生成投递清单", "登记投递", "做周检视/计划检查"],
         next_action="get_next_tasks；完成后 checkin_task；"
+                    "批量投递用 build_application_list；"
                     "投递进展用 record_application / delete_application；"
                     "周期复盘用 get_weekly_review / check_plan_fit",
         profile=profile,

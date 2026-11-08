@@ -658,3 +658,162 @@ async def test_mcp_tool_returns_summary(store: ArtifactStore, monkeypatch: pytes
     assert payload["counts"]["kept_jobs"] == 1
     assert payload["next_tool"] == "analyze_company_requirements"
     assert set(payload["report_paths"]) == {"md", "html", "json"}
+    assert "boss" not in payload
+
+
+def test_include_boss_false_skips_boss(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store))
+    captured = _patch_sources(
+        monkeypatch,
+        {
+            "bytedance": {
+                "results": [
+                    {
+                        "title": "官方 Agent 工程师",
+                        "location": "北京",
+                        "url": "https://jobs/official",
+                        "description": "官方正文",
+                    }
+                ]
+            },
+            "boss": {
+                "results": [
+                    {
+                        "title": "BOSS Agent 工程师",
+                        "company": "字节跳动",
+                        "location": "北京",
+                        "url": "https://zhipin/job/1",
+                        "description": "BOSS 正文",
+                    }
+                ]
+            },
+        },
+    )
+
+    result = _run(store)
+
+    assert result.status == "ok"
+    assert [slug for slug, _params in captured["search"]] == ["bytedance"]
+    run = _load(store, result.artifact_id)
+    assert all(item["source"] != "boss" for item in run.meta.source_status)
+    assert all(item.source != "boss" for item in run.jd_items)
+
+
+async def test_mcp_tool_boss_requires_confirmation(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store, profile_name="default"), profile_name="default")
+
+    raw = await evidence_tools.collect_company_evidence(include_boss=True)
+
+    payload = json.loads(raw)
+    assert payload["isError"] is True
+    assert payload["code"] == "CONFIRMATION_REQUIRED"
+    assert "是否抓取 BOSS 直聘" in payload["details"]["question"]
+    assert "src.scrapers.boss.login" in payload["details"]["login_command"]
+    assert "user_instruction" in payload["details"]
+
+
+async def test_mcp_tool_boss_requires_login(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store, profile_name="default"), profile_name="default")
+    monkeypatch.setattr(evidence_tools, "boss_has_valid_cookies", lambda: False)
+
+    raw = await evidence_tools.collect_company_evidence(
+        include_boss=True, boss_confirmed=True
+    )
+
+    payload = json.loads(raw)
+    assert payload["isError"] is True
+    assert payload["code"] == "LOGIN_REQUIRED"
+    assert "要现在登录吗" in payload["details"]["question"]
+    assert "src.scrapers.boss.login" in payload["details"]["login_command"]
+
+
+async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store, profile_name="default"), profile_name="default")
+    captured = _patch_sources(
+        monkeypatch,
+        {
+            "bytedance": {
+                "results": [
+                    {
+                        "title": "官方 Agent 工程师",
+                        "company": "字节跳动",
+                        "location": "北京",
+                        "url": "https://jobs/official",
+                        "description": "官方正文",
+                    }
+                ]
+            },
+            "boss": {
+                "results": [
+                    {
+                        "title": "BOSS Agent 工程师",
+                        "company": "字节跳动",
+                        "location": "北京",
+                        "url": "https://zhipin/job/1",
+                        "salary": "25-45K",
+                        "description": "BOSS 正文",
+                    },
+                    {
+                        "title": "BOSS 小厂 Agent",
+                        "company": "某未收录小厂",
+                        "location": "北京",
+                        "url": "https://zhipin/job/2",
+                        "salary": "10-20K",
+                    },
+                    {
+                        "title": "重复 URL",
+                        "company": "字节跳动",
+                        "location": "北京",
+                        "url": "https://jobs/official",
+                        "description": "重复岗位",
+                    },
+                ]
+            },
+        },
+    )
+    monkeypatch.setattr(evidence_tools, "boss_has_valid_cookies", lambda: True)
+
+    raw = await evidence_tools.collect_company_evidence(
+        include_boss=True, boss_confirmed=True
+    )
+
+    payload = json.loads(raw)
+    assert payload["status"] == "ok"
+    assert payload["counts"]["kept_jobs"] == 3
+    assert payload["counts"]["boss_jobs"] == 2
+    assert payload["boss"]["jd_count"] == 2
+    assert payload["boss"]["returned"] == 3
+    assert payload["boss"]["status"] == "ok"
+
+    boss_status = [
+        item
+        for item in payload["source_status"]
+        if item["source"] == "boss" and item["scope"] == "jd"
+    ]
+    assert len(boss_status) == 1
+    assert boss_status[0]["status"] == "ok"
+
+    run = _load(store, payload["artifact_id"])
+    boss_items = [item for item in run.jd_items if item.source == "boss"]
+    assert {item.title for item in boss_items} == {"BOSS Agent 工程师", "BOSS 小厂 Agent"}
+
+    mapped = next(item for item in boss_items if item.title == "BOSS Agent 工程师")
+    assert mapped.company_id == "bytedance"
+    assert mapped.tier == "大厂"
+    assert mapped.salary == "25-45K"
+
+    unmapped = next(item for item in boss_items if item.title == "BOSS 小厂 Agent")
+    assert unmapped.company_id == ""
+    assert unmapped.tier == "未收录"
+    assert unmapped.salary == "10-20K"
+
+    assert ("https://zhipin/job/2", "boss") in captured["detail"]
+

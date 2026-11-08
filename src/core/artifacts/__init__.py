@@ -1,6 +1,7 @@
 """Artifact 模型与存储的统一出口。"""
 
 from .models import (
+    ApplicationCandidate,
     ApplicationState,
     ArtifactMeta,
     BaselinePlan,
@@ -24,6 +25,7 @@ from .models import (
 from .store import ArtifactStore
 
 __all__ = [
+    "ApplicationCandidate",
     "ApplicationState",
     "ArtifactMeta",
     "ArtifactStore",
