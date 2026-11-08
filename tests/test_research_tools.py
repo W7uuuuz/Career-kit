@@ -62,6 +62,18 @@ def _case():
     }
 
 
+def _source_job(slug):
+    return {
+        "company": slug,
+        "title": f"{slug} Agent 工程师",
+        "location": "北京",
+        "salary": "20-40K",
+        "summary": "负责 Agent 产品后端",
+        "source": slug,
+        "url": f"https://example.com/job/{slug}",
+    }
+
+
 class _FakeLoader:
     """按 slug 返回预设响应的假 search_company_jobs。"""
 
@@ -281,3 +293,62 @@ def test_save_report_dated_files_and_research_contract(temp_profile):
     report["generated_at"] = "2026-10-26 20:05"
     paths2 = save_report(profile2, report)
     assert paths2["md"] != paths["md"]
+
+
+def _gather_message(specs, query=None):
+    import src.tools.research_tools as rt
+
+    slugs = [rt.resolve_company(str(spec["company"])) for spec in specs]
+    loader = _FakeLoader(
+        {slug: {"company": slug, "results": [_source_job(slug)], "count": 1} for slug in slugs}
+    )
+    original_loader = rt.search_company_jobs
+    original_cases = rt.collect_cases
+    original_detail = rt.get_job_detail
+    rt.search_company_jobs = loader
+    rt.collect_cases = lambda **kwargs: {"cases": [], "warnings": [], "sources": {}}
+    rt.get_job_detail = lambda url, company=None: {
+        "description": "岗位正文",
+        "requirements": "Python",
+    }
+    try:
+        return asyncio.run(
+            rt.gather_research_data(json.dumps(specs), json.dumps(query or {}))
+        )
+    finally:
+        rt.search_company_jobs = original_loader
+        rt.collect_cases = original_cases
+        rt.get_job_detail = original_detail
+
+
+def test_research_budget_constants():
+    import src.tools.research_tools as rt
+
+    assert rt._SOURCE_TIMEOUT == 20.0
+    assert rt._TOTAL_BUDGET == 60.0
+
+
+def test_one_or_two_sources_do_not_suggest_batching(temp_profile):
+    one = _gather_message([{"company": "字节", "limit": 3}])
+    two = _gather_message(
+        [{"company": "字节", "limit": 3}, {"company": "腾讯", "limit": 3}]
+    )
+    assert "拆批" not in one
+    assert "拆批" not in two
+
+
+def test_three_sources_or_two_sources_with_case_suggest_batching(temp_profile):
+    three = _gather_message(
+        [
+            {"company": "字节", "limit": 3},
+            {"company": "腾讯", "limit": 3},
+            {"company": "百度", "limit": 3},
+        ]
+    )
+    assert "拆批" in three and "3 个" in three
+
+    mixed = _gather_message(
+        [{"company": "字节", "limit": 3}, {"company": "腾讯", "limit": 3}],
+        {"role": "AI Agent 开发"},
+    )
+    assert "拆批" in mixed and "3 个" in mixed

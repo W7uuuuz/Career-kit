@@ -390,6 +390,8 @@ def test_reuses_recent_research_by_url_and_title(
     run = _load(store, result.artifact_id)
     assert run.counts["kept_jobs"] == 2
     assert run.counts["reused_jd"] == 1
+    assert run.counts["fresh_jobs"] == 1
+    assert "新抓" in result.message and "复用" in result.message
     assert run.counts["interviews"] == 2
     assert run.counts["reused_interviews"] == 1
     reused_jd = next(item for item in run.jd_items if item.reused)

@@ -140,6 +140,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         "companies_fetched": len(fetched_company_ids),
         "raw_jobs": sum(int(result["count"]) for result in jd_results),
         "kept_jobs": 0,
+        "fresh_jobs": 0,
         "dropped_city": 0,
         "dropped_no_detail": 0,
         "interviews": 0,
@@ -172,6 +173,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     counts["kept_jobs"] = len(final_jd)
     counts["interviews"] = len(final_interviews)
     counts["reused_jd"] = sum(1 for item in final_jd if item.reused)
+    counts["fresh_jobs"] = len(final_jd) - counts["reused_jd"]
     counts["reused_interviews"] = sum(1 for item in final_interviews if item.reused)
     counts["boss_jobs"] = sum(1 for item in final_jd if item.source == BOSS_SOURCE)
     confidence = {
@@ -238,9 +240,10 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     _update_core_state(ctx.profile_name, evidence.meta.id)
 
     message = (
-        f"已采集 JD {counts['kept_jobs']} 条（置信度 {confidence['jd']}）、"
-        f"面经 {counts['interviews']} 条（置信度 {confidence['interview']}）；"
-        f"复用历史样本 {counts['reused_jd']} 条 JD / {counts['reused_interviews']} 条面经。"
+        f"已采集 JD：新抓 {counts['fresh_jobs']} 条 + 复用 {counts['reused_jd']} 条 "
+        f"= 保留 {counts['kept_jobs']} 条（置信度 {confidence['jd']}）；"
+        f"面经 {counts['interviews']} 条（置信度 {confidence['interview']}），"
+        f"其中复用 {counts['reused_interviews']} 条。"
     )
     return StageResult(
         status="ok",

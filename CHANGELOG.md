@@ -33,6 +33,11 @@
     企业需求分析 → 执行方案校准 → 任务执行与打卡 → 求职投递管理 → 周期复盘与计划调整）。
   - 新增 sync 层，把阶段 1-5、10-12 的既有档案数据写入新 artifact 与 `core_state`；
     state_machine、guidance、`get_workflow_status` 统一按 12 阶段推进；阶段 11/12 为可选/周期阶段。
+  - **BUG 修复（真实 E2E 记录）**：
+    - `check_plan_fit` 增加技能别名与泛化软技能降级，修复执行版刚应用后误报 `major_drift`；
+    - `gather_research_data` 单源 20 秒 / 总预算 60 秒，源较多时提示拆批；
+    - doctor 新增包版本检查，暴露 editable 元数据陈旧；
+    - `collect_company_evidence` 新增 `fresh_jobs`，文案区分「新抓 / 复用 / 保留」。
   - 版本：`0.2.3` → `0.3.0`；工具数 41 → 49。
 
 ## v0.2.3 (2026-11-07)

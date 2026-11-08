@@ -72,7 +72,7 @@
 4. gather_research_data(jd_specs, case_query, boss_confirmed)
    - 目标公司 1 家 + 同方向对照 2-4 家
    - 逐条补抓岗位详情；无详情岗位剔除并计入缺口
-   - 单源 30 秒 / 总预算 75 秒；失败不拖垮整批，已完成来源写断点缓存
+   - 单源 20 秒 / 总预算 60 秒；超过 2 个源建议拆批；失败不拖垮整批，已完成来源写断点缓存
 5. 报告三件套自动落盘（代码渲染，不经 LLM）
 6. 按需读取全文：read_research_details(ids=..., kind="jd"/"case")
 ```

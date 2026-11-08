@@ -166,6 +166,7 @@ def _save_plan(
     *,
     created_at: str | None = None,
     applied: bool = True,
+    roadmap: dict[str, Any] | None = None,
 ) -> str:
     return store.save(
         ExecutionPlan(
@@ -177,7 +178,8 @@ def _save_plan(
             ),
             requirement_profile_id=requirement_id,
             strategy_summary="执行版",
-            roadmap={
+            roadmap=roadmap
+            or {
                 "strategy_summary": "执行版",
                 "phases": [
                     {
@@ -208,12 +210,16 @@ def _save_profile(
     plan_saved_at: str = "",
     section_updated_at: dict[str, str] | None = None,
     applications: list[Application] | None = None,
+    have: dict[str, Any] | None = None,
+    plan: dict[str, Any] | None = None,
 ) -> CareerProfile:
     profile = CareerProfile(
         who={"name": "张三"},
-        have={"skills": ["Python"]},
+        have=have if have is not None else {"skills": ["Python"]},
         want={"target_role": "AI Agent 开发", "city": "北京"},
-        plan={
+        plan=plan
+        if plan is not None
+        else {
             "roadmap": {
                 "phases": [
                     {
@@ -269,6 +275,40 @@ def _seed_aligned(workspace: SimpleNamespace) -> dict[str, str]:
         tasks=[_rag_task()],
         core_state=_core_state(pool_id, evidence_id, requirement_id, plan_id),
         plan_saved_at=_iso(-1),
+    )
+    return {
+        "pool_id": pool_id,
+        "evidence_id": evidence_id,
+        "requirement_id": requirement_id,
+        "plan_id": plan_id,
+    }
+
+
+def _seed_chain(
+    workspace: SimpleNamespace,
+    *,
+    terms: tuple[str, ...],
+    tasks: list[Task],
+    have: dict[str, Any] | None = None,
+    profile_plan: dict[str, Any] | None = None,
+    roadmap: dict[str, Any] | None = None,
+    confidence: tuple[str, str] = ("high", "high"),
+) -> dict[str, str]:
+    store = workspace.store
+    pool_id = _save_pool(store, created_at=_iso(-3))
+    evidence_id = _save_evidence(
+        store, pool_id, created_at=_iso(-3), confidence=confidence
+    )
+    requirement_id = _save_requirement(
+        store, evidence_id, terms=terms, confidence=confidence, created_at=_iso(-2)
+    )
+    plan_id = _save_plan(store, requirement_id, created_at=_iso(-1), roadmap=roadmap)
+    _save_profile(
+        tasks=tasks,
+        core_state=_core_state(pool_id, evidence_id, requirement_id, plan_id),
+        plan_saved_at=_iso(-1),
+        have=have,
+        plan=profile_plan,
     )
     return {
         "pool_id": pool_id,
@@ -419,6 +459,134 @@ def test_uncovered_requirement_low_confidence_is_observation_only(
     signals = {signal["code"]: signal for signal in result["signals"]}
     assert signals["uncovered_requirement"]["severity"] == "info"
     assert signals["insufficient_sample"]["severity"] == "info"
+
+
+def test_alias_coverage_avoids_false_major_drift(workspace: SimpleNamespace) -> None:
+    tasks = [
+        Task(
+            id="task_fastapi",
+            name="用 FastAPI 实现简历解析服务",
+            phase_id="phase_1",
+            status="pending",
+        ),
+        Task(
+            id="task_agent",
+            name="搭建 Agent + RAG 问答项目",
+            phase_id="phase_1",
+            status="pending",
+        ),
+        Task(
+            id="task_pr",
+            name="给开源项目提交 PR 并参与 Code Review 评审",
+            phase_id="phase_1",
+            status="pending",
+        ),
+    ]
+    _seed_chain(
+        workspace,
+        terms=("Python", "大模型", "协作", "产品"),
+        tasks=tasks,
+    )
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    uncovered = {
+        signal["message"]: signal
+        for signal in result["signals"]
+        if signal["code"] == "uncovered_requirement"
+    }
+    joined = "\n".join(uncovered)
+    assert "Python" not in joined
+    assert "大模型" not in joined
+    assert "协作" not in joined
+    assert any("产品" in message for message in uncovered)
+    product = next(
+        signal for message, signal in uncovered.items() if "产品" in message
+    )
+    assert product["severity"] == "info"
+    assert all(signal["severity"] != "high" for signal in result["signals"])
+    assert result["status"] != "major_drift"
+    assert result["status"] == "aligned"
+
+
+def test_truly_uncovered_hard_skill_stays_high(workspace: SimpleNamespace) -> None:
+    _seed_chain(
+        workspace,
+        terms=("Kubernetes",),
+        tasks=[_rag_task()],
+    )
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    uncovered = [
+        signal for signal in result["signals"] if signal["code"] == "uncovered_requirement"
+    ]
+    assert len(uncovered) == 1
+    assert "Kubernetes" in uncovered[0]["message"]
+    assert uncovered[0]["severity"] == "high"
+    assert result["status"] == "major_drift"
+    assert result["next_tool"] == "plan_execution_alignment"
+
+
+def test_have_skills_participate_in_coverage(workspace: SimpleNamespace) -> None:
+    _seed_chain(
+        workspace,
+        terms=("Python",),
+        tasks=[],
+        have={"skills": [{"name": "FastAPI", "skill": "FastAPI"}]},
+    )
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    uncovered = [
+        signal for signal in result["signals"] if signal["code"] == "uncovered_requirement"
+    ]
+    assert uncovered == []
+    assert result["status"] == "aligned"
+
+
+def test_phase_goal_and_kpi_participate_in_coverage(
+    workspace: SimpleNamespace,
+) -> None:
+    profile_plan = {
+        "roadmap": {
+            "phases": [
+                {
+                    "id": "phase_1",
+                    "type": "learn",
+                    "name": "阶段",
+                    "goal": "掌握后端微服务架构",
+                    "kpi": {
+                        "metric": "服务数",
+                        "target": "完成 3 个分布式服务",
+                        "evidence": "仓库链接",
+                    },
+                    "milestones": [
+                        {
+                            "name": "里程碑",
+                            "done_criteria": "能独立部署",
+                            "deliverable": "可运行仓库",
+                            "tasks": [],
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    _seed_chain(
+        workspace,
+        terms=("后端", "微服务", "分布式", "架构"),
+        tasks=[],
+        profile_plan=profile_plan,
+    )
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    uncovered = [
+        signal for signal in result["signals"] if signal["code"] == "uncovered_requirement"
+    ]
+    assert uncovered == []
+    assert result["status"] == "aligned"
 
 
 def test_goal_changed(workspace: SimpleNamespace) -> None:

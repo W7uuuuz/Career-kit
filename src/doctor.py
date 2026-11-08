@@ -26,6 +26,9 @@ FAIL = "FAIL"
 # 预期工具数：与 docs/tools.md、README 保持一致
 EXPECTED_TOOL_COUNT = 49
 
+# 预期包版本：与 pyproject.toml 保持一致，用于发现 editable 元数据陈旧
+EXPECTED_PACKAGE_VERSION = "0.3.0"
+
 # 核心工具：缺失即判定注册损坏（比单纯计数更可诊断）
 CORE_TOOLS = (
     "start_session",
@@ -97,6 +100,29 @@ def check_mcp_package() -> Check:
     except PackageNotFoundError:
         ver = getattr(mcp, "__version__", "unknown")
     return Check("mcp 依赖", OK, f"mcp 可导入（{ver}）")
+
+
+def check_package_version() -> Check:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        installed = version("career-kit")
+    except PackageNotFoundError:
+        return Check(
+            "包版本",
+            WARN,
+            "未以包形式安装（源码运行），pip 元数据不可用",
+            f'需要时用当前解释器安装："{sys.executable}" -m pip install -e .',
+        )
+    if installed != EXPECTED_PACKAGE_VERSION:
+        return Check(
+            "包版本",
+            WARN,
+            f"pip 元数据为 {installed}，预期 {EXPECTED_PACKAGE_VERSION}",
+            "重新安装刷新元数据：uv pip install -e ."
+            f'（或 "{sys.executable}" -m pip install -e .）',
+        )
+    return Check("包版本", OK, f"career-kit {installed}")
 
 
 def check_server() -> Check:
@@ -350,6 +376,7 @@ def run_checks(*, browser: bool = False, network: bool = False) -> list[Check]:
     checks = [
         check_interpreter(),
         check_mcp_package(),
+        check_package_version(),
         check_server(),
         check_data_dir(),
     ]

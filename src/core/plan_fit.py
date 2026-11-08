@@ -14,6 +14,7 @@ LLM 只负责把 signal 转成给用户的一句询问（question_for_user）。
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -40,6 +41,54 @@ _QUESTIONS = {
 }
 
 _SEVERITIES = ("high", "medium", "info")
+
+# 技能别名：需求侧高频词 → 任务里等价的真实做法。
+# 命中任一别名即视为计划已覆盖该要求，避免「用 FastAPI 做了项目」却因
+# 任务文本没出现「Python」而误报缺口。
+_SKILL_ALIASES: dict[str, tuple[str, ...]] = {
+    "Python": ("python", "fastapi", "flask", "django", "pytest", "pandas"),
+    "大模型": (
+        "大模型",
+        "llm",
+        "agent",
+        "rag",
+        "langchain",
+        "langgraph",
+        "prompt",
+        "微调",
+        "transformer",
+        "embedding",
+        "向量",
+    ),
+    "协作": (
+        "协作",
+        "团队",
+        "pr",
+        "pull request",
+        "code review",
+        "评审",
+        "跨团队",
+        "沟通",
+        "项目管理",
+    ),
+    "产品": ("产品", "需求分析", "用户研究"),
+    "后端/数据": (
+        "后端",
+        "微服务",
+        "分布式",
+        "高并发",
+        "mysql",
+        "redis",
+        "kafka",
+        "api",
+        "架构",
+    ),
+}
+
+# 泛化软技能/背景项：未覆盖时最多给 info，不参与 major_drift 判定。
+_GENERIC_TERMS = frozenset({"产品", "协作", "沟通", "跨团队", "英语", "论文", "开源"})
+
+_ASCII_ALIAS = re.compile(r"^[a-z0-9+#.\-]+$")
 
 
 def check_plan_fit(profile_name: str, trigger: str = "manual") -> dict[str, Any]:
@@ -295,6 +344,53 @@ def _alignment_stale(
     ]
 
 
+def _normalize(text: Any) -> str:
+    """统一小写并折叠空白，供字面与别名匹配共用。"""
+    return " ".join(str(text or "").lower().split())
+
+
+def _have_skill_parts(have: Any) -> list[str]:
+    """提取 have.skills 中的字符串或 dict 的 name/skill。"""
+    if not isinstance(have, dict):
+        return []
+    raw = have.get("skills")
+    items = raw if isinstance(raw, list) else [raw] if raw else []
+    parts: list[str] = []
+    for item in items:
+        if isinstance(item, str):
+            parts.append(item)
+        elif isinstance(item, dict):
+            for key in ("name", "skill"):
+                value = item.get(key)
+                if value:
+                    parts.append(str(value))
+    return parts
+
+
+def _route_corpus(roadmap: dict[str, Any]) -> list[str]:
+    """提取阶段 goal、KPI 与里程碑的完成标准/交付物。"""
+    parts: list[str] = []
+    for phase in _as_list(roadmap.get("phases")):
+        if not isinstance(phase, dict):
+            continue
+        parts.append(str(phase.get("goal") or ""))
+        kpi = phase.get("kpi")
+        if isinstance(kpi, dict):
+            for key in ("metric", "target", "evidence"):
+                parts.append(str(kpi.get(key) or ""))
+        for milestone in _as_list(phase.get("milestones")):
+            if not isinstance(milestone, dict):
+                continue
+            parts.append(str(milestone.get("done_criteria") or ""))
+            parts.append(str(milestone.get("deliverable") or ""))
+            for task in _as_list(milestone.get("tasks")):
+                if not isinstance(task, dict):
+                    continue
+                parts.append(str(task.get("name") or ""))
+                parts.append(str(task.get("description") or ""))
+    return parts
+
+
 def _task_corpus(profile: CareerProfile) -> str:
     parts: list[str] = []
     for task in profile.tasks:
@@ -302,19 +398,9 @@ def _task_corpus(profile: CareerProfile) -> str:
         parts.append(task.description)
         parts.extend(str(item) for item in task.how_to)
         parts.append(task.done_criteria)
-    roadmap = _roadmap_of(profile.plan)
-    for phase in _as_list(roadmap.get("phases")):
-        if not isinstance(phase, dict):
-            continue
-        for milestone in _as_list(phase.get("milestones")):
-            if not isinstance(milestone, dict):
-                continue
-            for task in _as_list(milestone.get("tasks")):
-                if not isinstance(task, dict):
-                    continue
-                parts.append(str(task.get("name") or ""))
-                parts.append(str(task.get("description") or ""))
-    return "\n".join(part for part in parts if part).lower()
+    parts.extend(_route_corpus(_roadmap_of(profile.plan)))
+    parts.extend(_have_skill_parts(profile.have))
+    return _normalize("\n".join(part for part in parts if part))
 
 
 def _roadmap_of(plan: Any) -> dict[str, Any]:
@@ -330,8 +416,43 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _alias_group(term: str) -> tuple[str, ...]:
+    """返回 term 所属的别名组；不在任何组内时返回空元组。"""
+    normalized = _normalize(term)
+    if not normalized:
+        return ()
+    for canonical, aliases in _SKILL_ALIASES.items():
+        group = tuple(_normalize(item) for item in (canonical, *aliases))
+        if normalized in group:
+            return group
+    return ()
+
+
+def _alias_in_corpus(corpus: str, alias: str) -> bool:
+    if not alias:
+        return False
+    if _ASCII_ALIAS.match(alias):
+        # ASCII 别名加词边界，避免 "pr" 命中 "process"、"rag" 命中 "storage"。
+        pattern = r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])"
+        return re.search(pattern, corpus) is not None
+    return alias in corpus
+
+
+def _is_generic_term(term: str) -> bool:
+    normalized = _normalize(term)
+    if not normalized:
+        return False
+    if normalized in _GENERIC_TERMS:
+        return True
+    return any(item in _GENERIC_TERMS for item in _alias_group(term))
+
+
 def _corpus_contains(corpus: str, term: str) -> bool:
-    return bool(term) and term.strip().lower() in corpus
+    normalized = _normalize(term)
+    if not normalized:
+        return False
+    group = _alias_group(term) or (normalized,)
+    return any(_alias_in_corpus(corpus, alias) for alias in group)
 
 
 def _requirement_severity(confidence: str, company_count: int) -> str:
@@ -357,8 +478,18 @@ def _uncovered_requirements(
         seen.add(term)
         company_count = _as_int(item.get("company_count"))
         jd_count = _as_int(item.get("jd_count"))
-        severity = _requirement_severity(confidence, company_count)
-        if severity == "info":
+        generic = _is_generic_term(term)
+        severity = (
+            "info"
+            if generic
+            else _requirement_severity(confidence, company_count)
+        )
+        if generic:
+            message = (
+                f"泛化要求「{term}」在现有任务中未直接体现，属软技能/背景项，"
+                "先作观察，不据此判定计划失配。"
+            )
+        elif severity == "info":
             message = (
                 f"高频要求「{term}」在现有任务中尚未体现；但 JD 样本置信度为 low，"
                 "先作观察，不据此判定计划失配。"

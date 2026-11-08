@@ -40,9 +40,9 @@ _ROSTER_CASE_MAX = 8
 _BRIEF_LIMIT = 60
 _DETAIL_MAX_IDS = 10
 _DETAIL_TEXT_LIMIT = 6000
-_SOURCE_TIMEOUT = 30.0
+_SOURCE_TIMEOUT = 20.0
 _CASE_TIMEOUT = 25.0
-_TOTAL_BUDGET = 75.0
+_TOTAL_BUDGET = 60.0
 _PARTIAL_CACHE_TTL = 3600
 _PARTIAL_CACHE_VERSION = 1
 _CACHE_LOCK = threading.Lock()
@@ -104,8 +104,8 @@ def research_market() -> str:
                       "不要把命令丢给用户手动执行，也不要直接宣布调研失败。"
                       "抓取阶段会逐条补抓岗位详情；未取得正文的岗位将被剔除，"
                       "因此耗时略高于纯列表抓取。"
-                      "调用前按源数量播报耗时：每源约 10-30 秒，另加逐条详情补抓；"
-                      "超过 90 秒建议拆成两批（目标 1 家 + 对照 2-4 家）",
+                      "调用前按源数量播报耗时：每源约 10-20 秒，总预算约 60 秒，另加逐条详情补抓；"
+                      "源较多时建议拆成两批（目标 1 家 + 对照 2-4 家）",
             "output": {
                 "report_paths": {"md": "", "html": "", "json": "", "index": ""},
                 "source_status": [],
@@ -157,8 +157,8 @@ def research_market() -> str:
         "样本量较大时，若宿主 harness 支持子 Agent，用 Task 发起 research-analyst"
         "（仓库提供 .opencode/agent 与 .claude/agents 定义），把花名册、聚合摘要与"
         " delegate.prompt 交给它，父 Agent 仅汇总其结论与重点名单。\n"
-        "播报纪律：调用 gather_research_data 前说明「抓取哪些来源 + 每源约 10-30 秒、"
-        "详情逐条补抓；超过 90 秒建议拆批」，不得静默执行。\n"
+        "播报纪律：调用 gather_research_data 前说明「抓取哪些来源 + 每源约 10-20 秒、"
+        "总预算约 60 秒、详情逐条补抓；源较多时建议拆批」，不得静默执行。\n"
         "汇报口径：摘要须包含样本数与来源成败；路径展示工具返回的完整位置（不得编造）；"
         "明确说明「每条附来源链接可逐条核验；未获取的内容已标注未获取」。\n"
         "调研只采集事实，不做评价——解读留给差距分析，汇报中对数据的评述不超过一句。\n"
@@ -554,6 +554,7 @@ async def gather_research_data(
         )
     specs = [s for s in specs if isinstance(s, dict)][: _MAX_SPECS]
     role = str(query.get("role") or direction or "").strip()
+    source_count = len(specs) + (1 if str(query.get("role") or "").strip() else 0)
     if not specs and not role:
         return error_response(
             "MISSING_DATA",
@@ -676,6 +677,11 @@ async def gather_research_data(
         )
     else:
         _clear_partial_cache(fingerprint)
+    if source_count > 2:
+        message += (
+            f"\n\n本轮源较多（{source_count} 个），已在 {_TOTAL_BUDGET:.0f} 秒预算内返回；"
+            "未完成来源已写断点缓存，重跑会续抓；下次建议拆批。"
+        )
     login_command = f'"{sys.executable}" -m src.scrapers.boss.login'
     if boss_auth_lost:
         message += (
