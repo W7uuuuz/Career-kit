@@ -398,10 +398,12 @@ def _next_step_message(next_tool: str) -> str:
     """按 resolve_progress 的 next_tool 生成与 next_steps 同源的下一步文案。"""
     if next_tool == "select_target_companies":
         return (
-            "接下来先做企业适配（执行前必做），把基线路线图校准为执行版："
-            "select_target_companies → collect_company_evidence → analyze_company_requirements "
-            "→ save_requirement_profile → plan_execution_alignment → save_execution_alignment；"
-            "完成后再 detail_current_phase → generate_tasks。"
+            "两条路都可以：\n"
+            "1. 推荐先做企业适配：select_target_companies → collect_company_evidence → "
+            "analyze_company_requirements → save_requirement_profile → "
+            "plan_execution_alignment → save_execution_alignment，把基线路线图校准为执行版；\n"
+            "2. 也可以先按基线执行：detail_current_phase → generate_tasks，"
+            "会记录企业适配跳过事实，后续可随时补。"
         )
     if next_tool in {"intake(want)", "explore_goals"}:
         return (
@@ -568,6 +570,9 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     progress = resolve_progress(profile)
     next_tool = str(progress.get("next_tool") or "")
     next_steps = [next_tool] if next_tool else ["select_target_companies"]
+    if next_tool == "select_target_companies":
+        # 推荐企业适配，也允许先按基线执行（detail_current_phase → generate_tasks）。
+        next_steps.append("detail_current_phase")
 
     # 格式化报告
     report = format_roadmap(parsed)

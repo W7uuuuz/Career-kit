@@ -1129,7 +1129,7 @@ def test_daily_same_day_is_idempotent(temp_profile):
 
 
 def test_save_roadmap_guides_execution_start(temp_profile, monkeypatch):
-    """save_roadmap 的 next_steps 与 message 同源：目标已确认后指向企业适配。"""
+    """save_roadmap 的 next_steps 与 message 同源：推荐企业适配，也可先按基线执行。"""
     from src import paths
     from src.server import intake, save_roadmap
 
@@ -1145,11 +1145,13 @@ def test_save_roadmap_guides_execution_start(temp_profile, monkeypatch):
          "kpi": {"metric": "完成", "target": "1个"}},
     ]}}
     out = _parse(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert out["next_steps"] == ["select_target_companies"]
+    assert out["next_steps"] == ["select_target_companies", "detail_current_phase"]
     assert "select_target_companies" in out["message"]
     assert "detail_current_phase" in out["message"]
+    assert "generate_tasks" in out["message"]
     assert "intake(want)" not in out["message"]
-    assert "跳过" not in out["message"] and "按基线" not in out["message"]
+    assert "跳过" in out["message"] and "按基线" in out["message"]
+    assert "必做" not in out["message"]
 
 
 # ============ 差距分析内容质量门（BUG-002/003 收尾：不编造落成代码） ============
@@ -1366,33 +1368,44 @@ def test_generate_tasks_records_retained_completed_evidence(temp_profile):
     evidence = saved.have.get("capability_evidence") or []
     assert [item["task"] for item in evidence] == ["已完成任务"], "重复重建不得重复追加"
 
-def test_generate_tasks_requires_company_alignment(temp_profile):
-    """路线图存在但企业适配未完成时，执行工具不能绕过（目标已确认的引导流程）。"""
+def test_company_alignment_skip_allows_baseline_execution(temp_profile):
+    """用户选择先按基线执行时，generate_tasks/detail 继续并记录可审计跳过事实。"""
     from src.core.progress import resolve_progress
-    from src.guidance import mark_brief_shown, mark_goal_confirmed
-    from src.models import CareerProfile
-    from src.server import detail_current_phase, generate_tasks
+    from src.server import (
+        detail_current_phase,
+        finalize_profile,
+        generate_tasks,
+        intake,
+        save_roadmap,
+    )
 
-    profile = CareerProfile()
-    mark_brief_shown(profile)
-    mark_goal_confirmed(profile)
-    profile.want = {"target_role": "AI Agent", "city": "上海"}
-    profile.plan = {"roadmap": {"phases": [
+    intake("who", '{"name": "张三"}')
+    intake("have", '{"skills": []}')
+    intake(
+        "want",
+        '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
+    )
+    finalize_profile()
+
+    roadmap = {"roadmap": {"strategy_summary": "测试", "phases": [
         {"id": "phase_1", "name": "基础学习", "milestones": [
             {"id": "m1", "name": "M1", "tasks": [{"name": "任务A"}]}
         ]},
     ]}}
-    profile_module.save_profile(profile)
+    _parse(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+
+    tasks_out = _parse(generate_tasks())
+    assert "已按基线执行" in tasks_out["message"]
+    assert tasks_out["context"]["enterprise_alignment_skipped"] is True
+
+    profile = profile_module.load_profile()
+    assert profile.guidance.get("enterprise_alignment_skipped_at")
+    assert profile.tasks
 
     progress = resolve_progress(profile)
-    assert progress["stage"] not in ("execution", "executing")
+    assert progress["stage"] == "executing"
+    assert progress["next_tool"] == "get_next_tasks"
 
-    tasks_out = json.loads(generate_tasks())
-    assert tasks_out.get("isError") is True
-    assert tasks_out["code"] == "ENTERPRISE_ALIGNMENT_REQUIRED"
-    assert "企业适配" in tasks_out["message"]
-
-    detail_out = json.loads(detail_current_phase())
-    assert detail_out.get("isError") is True
-    assert detail_out["code"] == "ENTERPRISE_ALIGNMENT_REQUIRED"
+    detail_out = _parse(detail_current_phase())
+    assert detail_out["current_phase"]["phase_id"] == "phase_1"
 

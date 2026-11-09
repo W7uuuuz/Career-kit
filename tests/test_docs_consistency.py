@@ -333,6 +333,8 @@ def test_command_scripts_are_thin_and_guidance_driven():
         assert "第一条动作必须是调用" in text, f"{rel} 缺少先调 start_session 的硬规则"
         assert "detail_current_phase" in text, f"{rel} 执行阶段应先细化再生成任务"
         assert "build_application_list" in text, f"{rel} 缺少投递清单工具"
+        assert "执行前必做" not in text, f"{rel} 企业适配应为推荐 + 可审计跳过"
+        assert "按基线执行" in text and "跳过" in text, f"{rel} 缺少基线执行/跳过说明"
 
 
 def test_user_brief_is_single_source_of_truth():

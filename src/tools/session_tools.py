@@ -61,7 +61,7 @@ def start_session() -> str:
             + (f"；差距分析已存在（match {profile.gap.get('match_score', '?')}）" if has_gap else "")
             + stale_note
             + "\n\n本会话应从续跑开始，而不是按新用户建档：\n"
-            f"1. 下一步按状态机：{next_tool}——企业适配/上游采集未完成时先补齐，不要跳过\n"
+            f"1. 下一步按状态机：{next_tool}——企业适配推荐先补齐；用户明确选择先按基线执行时记录跳过\n"
             "2. 用户报告完成 → checkin_task 打卡（完成即沉淀能力证据）\n"
             "3. 用户说目标变了 / 想换方向 → 按 get_workflow_status 提示重新分析规划\n"
             "4. 用户明确要重新建档 → switch_profile 或 delete_profile 后走全量手册\n"

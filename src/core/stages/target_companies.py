@@ -80,10 +80,18 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             next_stage=STAGE_ID,
         )
 
-    spec = _target_spec_from_inputs(inputs)
+    spec, selection, spec_error = _resolve_spec(
+        store, ctx.profile_name, target_spec_id, inputs
+    )
+    if spec_error:
+        return StageResult(
+            status="failed",
+            message=spec_error,
+            next_stage=STAGE_ID,
+        )
     industry = str(inputs.get("industry") or DEFAULT_INDUSTRY).strip()
     companies, gaps = _build_entries(
-        spec,
+        selection,
         industry,
         parse_tokens(inputs.get("include")),
         parse_tokens(inputs.get("exclude")),
@@ -209,6 +217,103 @@ def _target_spec_from_inputs(inputs: dict[str, Any]) -> TargetSpec:
     if role:
         spec.role = role
     return spec
+
+
+def _resolve_spec(
+    store: Any,
+    profile_name: str,
+    target_spec_id: str,
+    inputs: dict[str, Any],
+) -> tuple[TargetSpec, TargetSpec, str]:
+    """解析 CompanyPool body.target_spec 与用于筛选的档位。
+
+    - 有 target_spec_id 时，body 必须与 artifact 完全一致；调用方提供的
+      target_spec / role / city 等身份字段如与 artifact 冲突，拒绝生成；
+    - 只有档位（target_tiers / bridge_tiers）是可调整的筛选参数，不写回 body；
+    - 没有 target_spec_id 时沿用档案/输入构造。
+    """
+    artifact_spec = _load_target_spec(store, profile_name, target_spec_id)
+    if target_spec_id and artifact_spec is None:
+        return (
+            TargetSpec(),
+            TargetSpec(),
+            f"TargetSpec「{target_spec_id}」不存在、类型不符或不属于当前档案",
+        )
+    if artifact_spec is None:
+        spec = _target_spec_from_inputs(inputs)
+        return spec, spec.model_copy(deep=True), ""
+
+    conflicts = _target_conflicts(inputs, artifact_spec)
+    if conflicts:
+        return (
+            TargetSpec(),
+            TargetSpec(),
+            "CompanyPool 的 target_spec 与 target_spec_id 指向的 TargetSpec 不一致，拒绝落库："
+            + "；".join(conflicts),
+        )
+    spec = artifact_spec.model_copy(deep=True)
+    selection = spec.model_copy(deep=True)
+    target_tiers = parse_tokens(inputs.get("target_tiers"))
+    bridge_tiers = parse_tokens(inputs.get("bridge_tiers"))
+    if target_tiers:
+        selection.target_tiers = target_tiers
+    if bridge_tiers:
+        selection.bridge_tiers = bridge_tiers
+    return spec, selection, ""
+
+
+def _load_target_spec(
+    store: Any, profile_name: str, target_spec_id: str
+) -> TargetSpec | None:
+    if not target_spec_id:
+        return None
+    data = store.load(target_spec_id)
+    if not _is_target_spec(data, profile_name):
+        return None
+    fields = {name: data[name] for name in TargetSpec.model_fields if name in data}
+    try:
+        return TargetSpec.model_validate(fields)
+    except Exception:  # noqa: BLE001 - 损坏 artifact 按不一致处理
+        return None
+
+
+def _target_conflicts(
+    inputs: dict[str, Any],
+    artifact_spec: TargetSpec,
+) -> list[str]:
+    """调用方显式给出的身份字段必须与 TargetSpec artifact 一致。"""
+    supplied: dict[str, Any] = {}
+    raw = inputs.get("target_spec")
+    if isinstance(raw, BaseModel):
+        raw = raw.model_dump()
+    if isinstance(raw, dict):
+        supplied.update(raw)
+    for field in ("role", "city", "direction", "graduation_year"):
+        value = str(inputs.get(field) or "").strip()
+        if value:
+            supplied[field] = value
+
+    conflicts: list[str] = []
+    for field in TargetSpec.model_fields:
+        if field not in supplied:
+            continue
+        value = _normalize_target_field(supplied.get(field))
+        current = _normalize_target_field(getattr(artifact_spec, field))
+        if not value:
+            continue
+        if value != current:
+            conflicts.append(f"{field}={value!r} 与 artifact 的 {current!r} 不一致")
+    return conflicts
+
+
+def _normalize_target_field(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value is None:
+        return ""
+    return value
 
 
 def _requested_confirmation(ctx: StageContext, inputs: dict[str, Any]) -> bool:

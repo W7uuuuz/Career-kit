@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths  # noqa: E402
 from src.core import sync  # noqa: E402
-from src.core.artifacts.models import ArtifactMeta, ExecutionPlan  # noqa: E402
+from src.core.artifacts.models import ArtifactMeta, ExecutionPlan, ExecutionState  # noqa: E402
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
 from src.models import Application, CareerProfile, CheckIn, Task  # noqa: E402
 from src.tools import profile as profile_store  # noqa: E402
@@ -467,3 +467,148 @@ def test_sync_execution_state_omits_unapplied_execution_plan(
     assert sync.sync_execution_state(PROFILE_NAME) == ""
     assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_EXECUTION) == []
     assert sync.KEY_EXECUTION not in profile_store.load_profile(PROFILE_NAME).core_state
+
+
+def _save_applied_plan_with_preserved(task_ids: list[str]) -> str:
+    """写入 applied ExecutionPlan，completed_evidence 记录 apply 时保留的历史任务。"""
+    store = ArtifactStore()
+    meta = ArtifactMeta(
+        id=store.new_id("ep_"),
+        stage=sync.STAGE_EXECUTION_PLAN,
+        profile_name=PROFILE_NAME,
+        created_at=datetime.now().isoformat(),
+        validation={"confirmed": True, "applied": True},
+    )
+    plan = ExecutionPlan(
+        meta=meta,
+        requirement_profile_id="rp_test",
+        strategy_summary="执行版",
+        roadmap=_roadmap()["roadmap"],
+        completed_evidence=[{"task_id": task_id, "name": task_id} for task_id in task_ids],
+        applied=True,
+    )
+    store.save(plan)
+    profile = profile_store.load_profile(PROFILE_NAME)
+    state = dict(profile.core_state or {})
+    state["execution_plan_id"] = meta.id
+    state["stage"] = sync.STAGE_EXECUTION
+    state["updated_at"] = datetime.now().isoformat()
+    profile.core_state = state
+    profile_store.save_profile(profile, PROFILE_NAME)
+    return meta.id
+
+
+def _preserved_only_profile() -> CareerProfile:
+    return CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发", "user_confirmed": True},
+        tasks=[
+            Task(id="task_001", name="实现检索", phase_id="phase_1", status="completed"),
+            Task(id="task_002", name="旧任务", phase_id="phase_2", status="skipped"),
+        ],
+        core_state={"custom_key": "keep"},
+    )
+
+
+def test_sync_execution_state_skips_preserved_only_tasks(data_dir: Path) -> None:
+    _save(_preserved_only_profile())
+    _save_applied_plan_with_preserved(["task_001", "task_002"])
+
+    # 只有 apply 时保留的历史任务，说明还没为新方案 generate_tasks。
+    assert sync.sync_execution_state(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_EXECUTION) == []
+    assert sync.KEY_EXECUTION not in profile_store.load_profile(PROFILE_NAME).core_state
+
+
+def test_sync_execution_state_writes_after_new_generation(data_dir: Path) -> None:
+    profile = _preserved_only_profile()
+    profile.tasks.append(
+        Task(id="task_003", name="新方案任务", phase_id="phase_1", status="pending")
+    )
+    _save(profile)
+    _save_applied_plan_with_preserved(["task_001", "task_002"])
+
+    artifact_id = sync.sync_execution_state(PROFILE_NAME)
+    assert artifact_id.startswith("es_")
+    data = _load_artifact(artifact_id)
+    assert data["task_counts"] == {
+        "pending": 1,
+        "in_progress": 0,
+        "completed": 1,
+        "skipped": 1,
+    }
+
+
+def test_backfill_does_not_sync_preserved_only_tasks(data_dir: Path) -> None:
+    from src.tools import task_tools
+
+    _save(_preserved_only_profile())
+    _save_applied_plan_with_preserved(["task_001", "task_002"])
+    profile_store.set_active_profile_name(PROFILE_NAME)
+
+    profile = task_tools._backfill_core_state(profile_store.load_profile(PROFILE_NAME))
+
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_EXECUTION) == []
+    assert sync.KEY_EXECUTION not in profile.core_state
+
+
+def test_sync_review_requires_execution_state_of_current_plan(data_dir: Path) -> None:
+    _save(_full_profile())
+    current_plan_id = _save_applied_execution_plan()
+    store = ArtifactStore()
+    stale_plan_id = store.new_id("ep_")
+
+    # core_state 指向旧计划代际的 ExecutionState：ReviewReport 必须拒绝引用。
+    stale_execution_id = store.save(
+        ExecutionState(
+            meta=ArtifactMeta(
+                id=store.new_id("es_"),
+                stage=sync.STAGE_EXECUTION,
+                profile_name=PROFILE_NAME,
+                created_at=datetime.now().isoformat(),
+                inputs={"execution_plan_id": stale_plan_id},
+            ),
+            execution_plan_id=stale_plan_id,
+        )
+    )
+    profile = profile_store.load_profile(PROFILE_NAME)
+    state = dict(profile.core_state or {})
+    state["execution_plan_id"] = current_plan_id
+    state[sync.KEY_EXECUTION] = stale_execution_id
+    profile.core_state = state
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    assert sync.sync_review(PROFILE_NAME, plan_fit={"status": "minor_drift"}) == ""
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_REVIEW) == []
+
+
+def test_market_baseline_profile_id_points_to_resolved_snapshot(
+    data_dir: Path,
+) -> None:
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={
+            "target_role": "AI Agent 开发",
+            "direction": "AI 应用",
+            "city": "北京",
+            "user_confirmed": True,
+        },
+        research={
+            "report_md": "C:/reports/research.md",
+            "jd_samples": [{"title": "AI Agent 工程师", "company": "字节跳动"}],
+        },
+    )
+    _save(profile)
+
+    market_id = sync.sync_market_baseline(PROFILE_NAME)
+
+    assert market_id.startswith("mb_")
+    state = profile_store.load_profile(PROFILE_NAME).core_state
+    assert state[sync.KEY_PROFILE]
+    market = _load_artifact(market_id)
+    assert market["meta"]["inputs"]["profile_id"] == state[sync.KEY_PROFILE]
+    assert market["meta"]["inputs"]["profile_id"] == sync._existing_profile_id(
+        ArtifactStore(), PROFILE_NAME, state
+    )

@@ -1004,8 +1004,8 @@ def test_import_jd_returns_guide_and_confirmation_hint(temp_profile):
     assert "下一步：调用 analyze_gaps" not in out
 
 
-def test_company_and_alignment_guides_have_no_skip_branch():
-    """企业适配是执行前必做：company / alignment 引导不再提供跳过或按基线选项。"""
+def test_company_guide_offers_baseline_skip_and_alignment_does_not():
+    """企业适配是推荐项：company 引导提供按基线执行选项，alignment 不再给跳过。"""
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     store = ArtifactStore()
@@ -1018,8 +1018,10 @@ def test_company_and_alignment_guides_have_no_skip_branch():
     company = build_guide(profile)
     assert company.status == "company"
     company_text = render_guide(company)
-    assert "跳过" not in company_text and "按基线" not in company_text
-    assert company.options == ["生成目标企业名单"]
+    assert "跳过" in company_text and "按基线" in company_text
+    assert company.options == ["生成目标企业名单", "先跳过，按基线执行"]
+    assert "detail_current_phase" in company.next_action
+    assert "generate_tasks" in company.next_action
 
     pool_id = _save_pool(store)
     profile.core_state["company_pool_id"] = pool_id
@@ -1035,8 +1037,8 @@ def test_company_and_alignment_guides_have_no_skip_branch():
     assert alignment.options == ["开始校准"]
 
 
-def test_save_roadmap_points_to_company_adaptation_without_skip(temp_profile):
-    """save_roadmap 的 message 与 next_steps 都指向 select_target_companies。"""
+def test_save_roadmap_offers_company_adaptation_or_baseline(temp_profile):
+    """save_roadmap 同时给出推荐的企业适配和「先按基线执行」两条路。"""
     from src.server import save_roadmap
 
     profile = _confirmed_profile()
@@ -1064,9 +1066,12 @@ def test_save_roadmap_points_to_company_adaptation_without_skip(temp_profile):
     }
     out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
 
-    assert out["next_steps"] == ["select_target_companies"]
+    assert out["next_steps"] == ["select_target_companies", "detail_current_phase"]
     assert "select_target_companies" in out["message"]
-    assert "跳过" not in out["message"] and "按基线" not in out["message"]
+    assert "detail_current_phase" in out["message"]
+    assert "generate_tasks" in out["message"]
+    assert "按基线" in out["message"] and "跳过" in out["message"]
+    assert "必做" not in out["message"]
 
 
 def test_start_session_empty_profile_does_not_route_to_finalize(temp_profile):

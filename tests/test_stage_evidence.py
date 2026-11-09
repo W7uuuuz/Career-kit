@@ -853,3 +853,49 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
     assert all("zhipin" not in url for url, _company in captured["detail"])
     assert any("list-only" in gap for gap in run.gaps)
 
+
+def test_list_only_empty_location_is_still_city_filtered(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store))
+    _patch_sources(
+        monkeypatch,
+        {
+            "bytedance": {
+                "results": [
+                    {
+                        "title": "官方 Agent 工程师",
+                        "location": "北京",
+                        "url": "https://jobs/official",
+                        "description": "官方正文",
+                    }
+                ]
+            },
+            "boss": {
+                "results": [
+                    {
+                        "title": "BOSS 地点未知 Agent",
+                        "company": "字节跳动",
+                        "location": "",
+                        "url": "https://zhipin/job/1",
+                        "salary": "25-45K",
+                        "detail_status": "list_only",
+                    }
+                ]
+            },
+        },
+    )
+
+    result = _run(store, {"include_boss": True, "boss_confirmed": True})
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
+    assert [item.title for item in run.jd_items] == ["官方 Agent 工程师"]
+    assert run.counts["dropped_city"] == 1
+    assert run.counts["unknown_city"] == 1
+    assert run.counts["list_only_dropped_city"] == 1
+    assert run.counts["list_only_kept"] == 0
+    assert any(
+        "list-only" in gap and "城市硬筛" in gap for gap in run.gaps
+    )
+

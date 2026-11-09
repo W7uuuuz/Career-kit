@@ -28,43 +28,26 @@ def _sync_failure_warning(label: str, exc: Exception) -> str:
     return f"Core v2 同步失败（{label}）：{exc}"
 
 
-def _explicit_goal_confirmed(profile) -> bool:
-    """用户是否亲口确认过目标（不看旧档案兜底）。"""
-    guidance = getattr(profile, "guidance", None) or {}
-    want = getattr(profile, "want", None) or {}
-    return bool(guidance.get("goal_confirmed_at")) or bool(want.get("user_confirmed"))
+BASELINE_EXECUTION_NOTE = (
+    "已按基线执行，企业适配已记录跳过；后续可随时补企业适配"
+    "（select_target_companies → collect_company_evidence → analyze_company_requirements → "
+    "save_requirement_profile → plan_execution_alignment → save_execution_alignment）。"
+)
 
 
-def _enterprise_alignment_gate(profile) -> dict | None:
-    """执行工具门禁：引导流程里目标已确认时，必须先进入执行阶段。
+def _mark_enterprise_alignment_skipped(profile) -> bool:
+    """企业适配未完成但用户选择先按基线执行时，写入可审计的跳过事实。
 
-    旧档案（没有用户确认标记）保留原有路径；只要用户确认了目标，就不能仅凭
-    ``plan.roadmap`` 绕过企业适配链路。
+    只在状态机尚未进入执行阶段时记录；已经进入执行链路不重复改写时间戳。
     """
-    if not _explicit_goal_confirmed(profile):
-        return None
     progress = resolve_progress(profile)
     if str(progress.get("stage") or "") in (STAGE_EXECUTION, STAGE_EXECUTING):
-        return None
-    return progress
-
-
-def _enterprise_alignment_error(progress: dict) -> str:
-    next_tool = str(progress.get("next_tool") or "")
-    reason = str(progress.get("reason") or "")
-    return error_response(
-        "ENTERPRISE_ALIGNMENT_REQUIRED",
-        "企业适配还没完成：执行前必须按状态机走完企业适配链路"
-        f"（当前下一步：{next_tool}；{reason}）。"
-        "请先完成 select_target_companies → collect_company_evidence → "
-        "analyze_company_requirements → save_requirement_profile → "
-        "plan_execution_alignment → save_execution_alignment，再细化或生成任务。",
-        {
-            "stage": str(progress.get("stage") or ""),
-            "next_tool": next_tool,
-            "reason": reason,
-        },
-    )
+        return False
+    guidance = dict(getattr(profile, "guidance", None) or {})
+    guidance["enterprise_alignment_skipped_at"] = datetime.now().isoformat()
+    profile.guidance = guidance
+    save_profile(profile)
+    return True
 
 
 def _roadmap_phase_id(phase: dict, index: int) -> str:
@@ -160,9 +143,8 @@ def generate_tasks() -> str:
             {"section": "plan"},
         )
 
-    blocked = _enterprise_alignment_gate(profile)
-    if blocked is not None:
-        return _enterprise_alignment_error(blocked)
+    baseline_skipped = _mark_enterprise_alignment_skipped(profile)
+    skip_note = f"{BASELINE_EXECUTION_NOTE}\n" if baseline_skipped else ""
 
     phase_rows = [phase for phase in phases if isinstance(phase, dict)]
     phase_ids = [_roadmap_phase_id(phase, index) for index, phase in enumerate(phase_rows)]
@@ -171,12 +153,17 @@ def generate_tasks() -> str:
     if not target_phase_id:
         return _json({
             "message": (
+                f"{skip_note}"
                 "所有阶段的任务都已生成并完成——没有新的当前阶段可生成。\n"
                 f"{MAINTENANCE_CLOSING}\n\n"
                 f"{guide_for(profile)}"
             ),
             "next_steps": ["get_progress", "get_weekly_review"],
-            "context": {"phase": "all_phases_generated", "task_count": 0},
+            "context": {
+                "phase": "all_phases_generated",
+                "task_count": 0,
+                "enterprise_alignment_skipped": baseline_skipped,
+            },
         })
 
     target_phase = next(
@@ -258,6 +245,7 @@ def generate_tasks() -> str:
     sync_note = f"{sync_warning}\n" if sync_warning else ""
     return _json({
         "message": (
+            f"{skip_note}"
             f"{migrated_note}已为当前阶段「{target_name}」生成 {len(tasks)} 个任务"
             "（后续阶段保留里程碑，不生成空壳任务）。\n"
             f"{map_note}{sync_note}"
@@ -272,6 +260,7 @@ def generate_tasks() -> str:
             "phase_id": target_phase_id,
             "phase_name": target_name,
             "task_count": len(tasks),
+            "enterprise_alignment_skipped": baseline_skipped,
             **({"sync_warning": sync_warning} if sync_warning else {}),
         },
     })
@@ -304,14 +293,13 @@ def detail_current_phase() -> str:
             {"missing": "plan.roadmap"},
         )
 
-    blocked = _enterprise_alignment_gate(profile)
-    if blocked is not None:
-        return _enterprise_alignment_error(blocked)
+    baseline_skipped = _mark_enterprise_alignment_skipped(profile)
+    skip_note = f"{BASELINE_EXECUTION_NOTE}\n" if baseline_skipped else ""
 
     current = resolve_current_phase(profile)
     if current is None:
         return (
-            f"所有阶段的任务都已完成。\n{MAINTENANCE_CLOSING}"
+            f"{skip_note}所有阶段的任务都已完成。\n{MAINTENANCE_CLOSING}"
         )
     view = {
         "phase_id": current["phase_id"],
@@ -345,6 +333,8 @@ def detail_current_phase() -> str:
         "resource_catalog": select_resources(
             resource_tags, limit=14, priority_tags=priority_tags
         ),
+        "baseline_execution_note": BASELINE_EXECUTION_NOTE if baseline_skipped else "",
+        "enterprise_alignment_skipped": baseline_skipped,
         "current_phase": {
             "phase_id": view["phase_id"],
             "phase_name": view["phase_name"],
@@ -1415,7 +1405,7 @@ def get_workflow_status() -> str:
         stored = [f"{key}={value}" for key, value in artifact_ids.items() if value]
         if stored:
             lines.append("- 已落库：" + "、".join(stored))
-        lines.append("- 说明：企业适配是执行前必做链路；完成后才进入任务执行。")
+        lines.append("- 说明：企业适配推荐执行；用户选择先按基线执行时会记录跳过事实，后续可补。")
         lines.append("")
     fit_lines = _plan_fit_lines(fit)
     if fit_lines:
@@ -1426,7 +1416,7 @@ def get_workflow_status() -> str:
     lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
     lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
     lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap")
-    lines.append("- 企业适配（执行前必做）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
+    lines.append("- 企业适配（推荐；可先按基线执行并记录跳过）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
     lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
     lines.append("- 投递：build_application_list 批量生成投递清单；投递/面试/offer 进展用 record_application 登记")

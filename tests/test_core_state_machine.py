@@ -480,3 +480,203 @@ def test_empty_reference_does_not_satisfy_chain(
     assert action["stage"] == state_machine.STAGE_EVIDENCE
     assert action["next_tool"] == "collect_company_evidence"
     assert action["artifact_ids"]["evidence_run_id"] == ""
+
+
+def _save_requirement_custom(
+    store: ArtifactStore,
+    evidence_run_id: str,
+    *,
+    validation: dict[str, Any],
+    interpretation: dict[str, Any] | None = None,
+) -> str:
+    meta = _meta(store, state_machine.STAGE_REQUIREMENT).model_copy(
+        update={"validation": validation}
+    )
+    return store.save(
+        RequirementProfile(
+            meta=meta,
+            evidence_run_id=evidence_run_id,
+            interpretation=interpretation or {},
+        )
+    )
+
+
+def _seed_through_evidence(store: ArtifactStore) -> str:
+    _save_profile(store)
+    _save_target(store)
+    _save_market(store)
+    _save_gap(store)
+    _save_baseline(store)
+    pool_id = _save_pool(store)
+    return _save_evidence(store, pool_id)
+
+
+def test_draft_requirement_requires_save_before_stage_nine(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    draft_id = _save_requirement_custom(
+        store, evidence_id, validation={"status": "draft"}
+    )
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_REQUIREMENT
+    assert action["next_tool"] == "save_requirement_profile"
+    assert action["artifact_ids"]["requirement_profile_id"] == draft_id
+
+
+def test_draft_requirement_with_interpretation_reaches_stage_nine(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    _save_requirement_custom(
+        store,
+        evidence_id,
+        validation={"status": "draft"},
+        interpretation={"summary": "RAG 是核心要求"},
+    )
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_EXECUTION_PLAN
+    assert action["next_tool"] == "plan_execution_alignment"
+
+
+def test_saved_requirement_without_interpretation_reaches_stage_nine(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    _save_requirement_custom(store, evidence_id, validation={"status": "saved"})
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_EXECUTION_PLAN
+    assert action["next_tool"] == "plan_execution_alignment"
+
+
+def test_execution_plan_baseline_mismatch_blocks_advancement(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    requirement_id = _save_requirement_custom(
+        store, evidence_id, validation={"status": "saved"}
+    )
+    store.save(
+        ExecutionPlan(
+            meta=_meta(store, state_machine.STAGE_EXECUTION_PLAN).model_copy(
+                update={"validation": {"applied": True}}
+            ),
+            requirement_profile_id=requirement_id,
+            baseline_plan_id="bp_other",
+            applied=True,
+        )
+    )
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_EXECUTION_PLAN
+    assert action["next_tool"] == "plan_execution_alignment"
+    assert "baseline_plan_id" in action["reason"]
+
+
+def test_empty_upstream_ids_are_reported_not_skipped() -> None:
+    from src.core import progress as progress_module
+
+    # 上游 id 与下游引用都为空：必须报「缺少上游」，不能静默放行。
+    problems = progress_module._upstream_problems(
+        state_machine.STAGE_COMPANY_POOL,
+        {"meta": {"inputs": {}}},
+        {},
+    )
+    assert any("缺少上游" in problem and "baseline_plan_id" in problem for problem in problems)
+
+    # 专用例外只允许 strict_baseline=False 的 ExecutionPlan 缺 baseline_plan_id。
+    plan = {
+        "requirement_profile_id": "rp_1",
+        "baseline_plan_id": "",
+        "meta": {"validation": {}},
+    }
+    ids = {"requirement_profile_id": "rp_1"}
+    assert (
+        progress_module._upstream_problems(
+            state_machine.STAGE_EXECUTION_PLAN, plan, ids, strict_baseline=False
+        )
+        == []
+    )
+    strict = progress_module._upstream_problems(
+        state_machine.STAGE_EXECUTION_PLAN, plan, ids, strict_baseline=True
+    )
+    assert any("baseline_plan_id" in problem for problem in strict)
+
+
+def test_skip_flag_cannot_bypass_applied_plan_upstream_checks(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    requirement_id = _save_requirement_custom(
+        store, evidence_id, validation={"status": "saved"}
+    )
+    store.save(
+        ExecutionPlan(
+            meta=_meta(store, state_machine.STAGE_EXECUTION_PLAN).model_copy(
+                update={"validation": {"applied": True}}
+            ),
+            requirement_profile_id=requirement_id,
+            baseline_plan_id="bp_other",
+            applied=True,
+        )
+    )
+    profile_state["plan"] = {"roadmap": {"phases": [{"name": "基线", "milestones": []}]}}
+    profile_state["tasks"] = [object()]
+    profile_state["guidance"] = {
+        "enterprise_alignment_skipped_at": "2026-11-09T00:00:00"
+    }
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    # 已应用执行版必须继续走 6C 上游校验，不能被「先按基线执行」豁免覆盖。
+    assert action["stage"] == state_machine.STAGE_EXECUTION_PLAN
+    assert action["next_tool"] == "plan_execution_alignment"
+    assert action["next_tool"] not in {"generate_tasks", "get_next_tasks"}
+    assert "baseline_plan_id" in action["reason"]
+
+
+def test_skip_flag_cannot_bypass_stale_execution_state_generation(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    requirement_id = _save_requirement_custom(
+        store, evidence_id, validation={"status": "saved"}
+    )
+    baseline_id = _latest_id(store, state_machine.STAGE_BASELINE_PLAN)
+    plan_id = store.save(
+        ExecutionPlan(
+            meta=_meta(store, state_machine.STAGE_EXECUTION_PLAN).model_copy(
+                update={"validation": {"applied": True}}
+            ),
+            requirement_profile_id=requirement_id,
+            baseline_plan_id=baseline_id,
+            applied=True,
+        )
+    )
+    store.save(
+        ExecutionState(
+            meta=_meta(store, state_machine.STAGE_EXECUTION),
+            execution_plan_id="ep_old_generation",
+        )
+    )
+    profile_state["plan"] = {"roadmap": {"phases": [{"name": "基线", "milestones": []}]}}
+    profile_state["tasks"] = [object()]
+    profile_state["guidance"] = {
+        "enterprise_alignment_skipped_at": "2026-11-09T00:00:00"
+    }
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    # 旧代际 ExecutionState 不能借跳过标记直接 get_next_tasks。
+    assert plan_id
+    assert action["stage"] == state_machine.STAGE_EXECUTION
+    assert action["next_tool"] == "generate_tasks"
+    assert action["artifact_ids"]["execution_state_id"] == ""
+

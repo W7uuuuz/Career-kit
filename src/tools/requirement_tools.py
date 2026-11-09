@@ -196,6 +196,12 @@ def save_requirement_profile(analysis_json: str) -> str:
         interpretation=merged_interpretation,
         **stats,
     )
+    # 标记为已保存/已解读：progress 只放行草稿之外的需求画像进入阶段 9。
+    final.meta.validation = {
+        **(final.meta.validation or {}),
+        "status": "saved",
+        "interpreted": True,
+    }
 
     issues = requirements.validate(final)
     if issues:

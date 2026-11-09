@@ -292,12 +292,23 @@ def test_analyze_tool_saves_draft_and_updates_core_state(store: ArtifactStore) -
     assert draft is not None
     assert draft["meta"]["stage"] == requirements.STAGE_ID
     assert draft["interpretation"] == {}
+    assert draft["meta"]["validation"]["status"] == "draft"
     assert draft["sample_size_jd"] == 5
 
     profile = profile_store.load_profile("alice")
     assert profile.core_state["requirement_profile_id"] == profile_id
     assert profile.core_state["stage"] == "requirement"
     assert profile.core_state["updated_at"]
+
+
+def test_stage_run_draft_next_stage_is_save_requirement(store: ArtifactStore) -> None:
+    _save_run(store)
+    ctx = StageContext(profile_name="alice", store=store)
+
+    result = requirements.run(ctx, {"evidence_run_id": ""})
+
+    assert result.status == "ok"
+    assert result.next_stage == requirements.STAGE_ID
 
 
 def test_analyze_tool_uses_latest_evidence_when_id_empty(store: ArtifactStore) -> None:
@@ -356,6 +367,7 @@ def test_save_requirement_profile_accepts_interpretation_and_keeps_numbers(
     stored = store.load(profile_id)
     assert stored is not None
     assert stored["interpretation"] == interpretation
+    assert stored["meta"]["validation"]["status"] == "saved"
     assert stored["meta"]["version"] == 2
     assert stored["sample_size_jd"] == analyzed["sample_size"]["jd"]
     assert stored["sample_size_interview"] == analyzed["sample_size"]["interview"]

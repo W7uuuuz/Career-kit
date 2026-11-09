@@ -64,7 +64,11 @@ def _seed_upstream(store: ArtifactStore, profile_name: str = "default") -> dict[
                 created_at="2026-01-01T00:00:01",
                 inputs={"profile_id": profile_id},
             ),
+            direction="AI Agent 开发",
             role="AI Agent 开发",
+            city="北京",
+            target_tiers=["大厂"],
+            bridge_tiers=["中厂"],
         )
     )
     market_id = store.save(
@@ -104,6 +108,13 @@ def _seed_upstream(store: ArtifactStore, profile_name: str = "default") -> dict[
         )
     )
     profile = profile_module.load_profile(profile_name)
+    profile.want = {
+        "target_role": "AI Agent 开发",
+        "direction": "AI Agent 开发",
+        "city": "北京",
+        "target_tiers": ["大厂"],
+        "bridge_tiers": ["中厂"],
+    }
     core_state = dict(profile.core_state or {})
     core_state.update(
         {
@@ -346,3 +357,53 @@ def test_select_target_companies_tool_confirmed(data_dir: Path) -> None:
     profile = profile_module.load_profile("default")
     assert profile.core_state["company_pool_id"] == payload["artifact_id"]
     assert state_machine.next_action("default")["next_tool"] == "collect_company_evidence"
+
+
+def test_conflicting_target_spec_is_rejected(data_dir: Path) -> None:
+    store = ArtifactStore()
+    _seed_upstream(store)
+
+    ctx = StageContext(profile_name="default", store=store)
+    result = target_companies.run(
+        ctx, {"target_spec": {"role": "后端开发工程师", "city": "北京"}}
+    )
+
+    assert result.status == "failed"
+    assert "target_spec" in result.message
+    assert store.latest("default", state_machine.STAGE_COMPANY_POOL) is None
+
+
+def test_tier_override_does_not_change_body_target_spec(data_dir: Path) -> None:
+    store = ArtifactStore()
+    chain = _seed_upstream(store)
+
+    result, artifact = _run(
+        store,
+        {"target_tiers": "中厂", "bridge_tiers": "中厂", "industry": "互联网"},
+    )
+
+    assert result.status in {"ok", "needs_confirmation", "insufficient_data"}
+    target_artifact = store.load(chain["target_spec_id"])
+    assert target_artifact is not None
+    body = {
+        key: artifact["target_spec"][key]
+        for key in (
+            "role",
+            "direction",
+            "city",
+            "target_tiers",
+            "bridge_tiers",
+        )
+    }
+    expected = {
+        key: target_artifact[key]
+        for key in (
+            "role",
+            "direction",
+            "city",
+            "target_tiers",
+            "bridge_tiers",
+        )
+    }
+    assert body == expected
+    assert artifact["meta"]["inputs"]["target_spec_id"] == chain["target_spec_id"]

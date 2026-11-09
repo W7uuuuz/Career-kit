@@ -14,7 +14,9 @@
 
 每个阶段只产出一个 artifact，下一阶段只读这个 artifact，不依赖会话记忆。
 阶段 11/12 是可选/周期性阶段，不阻塞阶段 10 的执行。
-阶段 6-9 是执行前必做的企业适配链路，完成后才进入阶段 10。
+阶段 6-9 是推荐的企业适配链路：完成后可把基线路线图校准为执行版；
+用户选择先按基线执行时记录跳过事实（`guidance.enterprise_alignment_skipped_at`），
+后续可随时补，不阻塞阶段 10。
 
 **上游引用契约（阶段 2-10）**：下游 artifact 必须通过 body 字段或
 `meta.inputs` 引用上游 id，空引用视为不满足；下游 artifact 存在也不能让缺失的
@@ -171,6 +173,8 @@ evidence / requirement / execution_plan / execution / applications / review`；
 - 未接入抓取的企业保留在名单中并标「需手动投递」，不编造岗位。
 - 企业池未确认时不得进入采集。
 - 支持 include/exclude；同一企业同时出现时 include 优先。
+- 有 TargetSpec 时，`CompanyPool.target_spec` 必须与 `target_spec_id` 指向的 artifact 一致；
+  身份字段冲突时拒绝落库。档位参数只影响本次筛选，不改写 body。
 
 ---
 
@@ -200,8 +204,9 @@ collect_company_evidence(
 - 目标城市非空时，`location` 为空的岗位按硬筛剔除，同时计入 `unknown_city`
   与 `dropped_city`，并写入数据缺口（空 location 不能静默放行）。
 - 官方源 JD 必须抓到详情；无详情剔除并计入 `dropped_no_detail`。
-- BOSS 的 `detail_status=list_only` 行尊重来源声明：不补详情、不剔除，
-  保留薪资/公司/地点/技能等列表字段，并计入 list-only 缺口；
+- BOSS 的 `detail_status=list_only` 只豁免详情补抓/详情缺失剔除，不豁免城市硬筛：
+  空 location 的 list-only 行按城市硬筛剔除，同时计入 `dropped_city`、`unknown_city`
+  与 list-only 缺口；保留的 list-only 行只保留薪资/公司/地点/技能等列表字段，
   需要全文时由用户显式调用 `fetch_jd_detail`。
 - 单源失败不拖垮整批，失败原因进 `source_status` 与 `gaps`。
 - 复用 `profile.research` 中 7 天内的样本，按 URL/公司+标题去重。
@@ -227,6 +232,8 @@ collect_company_evidence(
 **产物**：`RequirementProfile`（`rp_`）。
 
 **关键规则**：
+- `analyze_company_requirements` 只落草稿；必须调用 `save_requirement_profile`
+  （或草稿已有非空 interpretation）才允许进入阶段 9，未解读草稿不推进。
 - 频率、公司覆盖、Wilson 95% 区间、逐条硬门槛全部由代码计算。
 - 高频共性：`jd_frequency >= 0.5` 且 `company_count >= 2`；样本不足时降级为观察。
 - 不再使用「必备项」：区分高频共性要求、单 JD 硬门槛、面经高频考点、
@@ -253,6 +260,8 @@ collect_company_evidence(
 **产物**：`ExecutionPlan`（`ep_`）+ 替换后的 `profile.plan` + `plan_history` + `adjustments`。
 
 **关键规则**：
+- ExecutionPlan 必须引用当前 `requirement_profile_id` 与 `baseline_plan_id`；
+  core_state 或显式传入的 `baseline_plan_id` 与当前链路不一致时拒绝落库。
 - 每条 change 必须带 `evidence_ids`；没有证据的变更不允许落库。
 - 已完成/已跳过任务是历史，不能删除；旧 pending/in_progress 不迁移。
 - 用户确认是硬门禁：未确认只返回 diff 预览，不改档案。
@@ -277,10 +286,12 @@ collect_company_evidence(
 **产物**：`ExecutionState`（`es_`）+ `profile.tasks` + `profile.have.capability_evidence`。
 
 **关键规则**：
-- `detail_current_phase` / `generate_tasks` 先校验状态机已进入执行阶段；企业适配（阶段 6-9）
-  未完成时拒绝执行，不能仅凭已有路线图绕过。无用户确认的旧档案按旧路径豁免。
+- 企业适配（阶段 6-9）为推荐链路，不是硬门禁；用户选择先按基线执行时，
+  `detail_current_phase` / `generate_tasks` 会记录 `guidance.enterprise_alignment_skipped_at`
+  并继续按基线生成/细化，后续可随时补企业适配。
 - `checkin_mode`：`once` / `daily`（amount 累加天数）/ `percent`（amount 累加比例）。
-- `ExecutionState` 只在存在 applied `ExecutionPlan` 且 `execution_plan_id` 非空时写入。
+- `ExecutionState` 只在存在 applied `ExecutionPlan` 且 `execution_plan_id` 非空时写入；
+  只保留 apply 时旧 completed/skipped 历史任务（尚未为新方案生成任务）时不落库。
 - 只有匹配当前 applied plan 的 `ExecutionState` 才进入 `get_next_tasks`；
   旧计划留下的任务需先 `generate_tasks` 重新生成。
 - 完成得轻松时可在对话中建议加深，但不自动繁殖任务。

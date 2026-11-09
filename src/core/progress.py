@@ -80,7 +80,10 @@ _UPSTREAM_REFS: dict[str, tuple[tuple[str, str, str], ...]] = {
     STAGE_COMPANY_POOL: ((STAGE_BASELINE_PLAN, "baseline_plan_id", "inputs"),),
     STAGE_EVIDENCE: ((STAGE_COMPANY_POOL, "company_pool_id", "body"),),
     STAGE_REQUIREMENT: ((STAGE_EVIDENCE, "evidence_run_id", "body"),),
-    STAGE_EXECUTION_PLAN: ((STAGE_REQUIREMENT, "requirement_profile_id", "body"),),
+    STAGE_EXECUTION_PLAN: (
+        (STAGE_REQUIREMENT, "requirement_profile_id", "body"),
+        (STAGE_BASELINE_PLAN, "baseline_plan_id", "body"),
+    ),
     STAGE_EXECUTION: ((STAGE_EXECUTION_PLAN, "execution_plan_id", "body"),),
 }
 
@@ -135,6 +138,15 @@ def resolve_progress(
             legacy=legacy,
             has_tasks=has_tasks,
         )
+
+    # 用户选择「先按基线执行」并已记录跳过事实时，基线任务不再被企业适配链路
+    # （CompanyPool/Evidence/Requirement/ExecutionPlan）卡住；已应用的执行版仍走
+    # 原有代际校验，避免绕过 6C 的 ExecutionState 匹配规则。
+    baseline = _baseline_execution_result(
+        profile, resolved, legacy=legacy, has_tasks=has_tasks
+    )
+    if baseline is not None:
+        return baseline
 
     has_required_artifact = any(
         resolved[stage] is not None for stage in REQUIRED_STAGES
@@ -268,6 +280,18 @@ def resolve_progress(
         )
     artifact_ids[STAGE_KEYS[STAGE_REQUIREMENT]] = _artifact_id(requirement)
 
+    # 阶段 8 门禁：analyze 只落草稿，必须 save_requirement_profile 或已有非空
+    # interpretation 才允许进入阶段 9。手工/旧 artifact 不带 draft 标记时保持兼容。
+    if not _requirement_ready(requirement):
+        return _result(
+            STAGE_REQUIREMENT,
+            "save_requirement_profile",
+            "需求画像仍是未解读草稿，先调用 save_requirement_profile 写入 interpretation",
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
+        )
+
     plan = resolved[STAGE_EXECUTION_PLAN]
     if plan is None:
         return _result(
@@ -278,7 +302,12 @@ def resolve_progress(
             legacy=legacy,
             has_tasks=has_tasks,
         )
-    problems = _upstream_problems(STAGE_EXECUTION_PLAN, plan, artifact_ids)
+    problems = _upstream_problems(
+        STAGE_EXECUTION_PLAN,
+        plan,
+        artifact_ids,
+        strict_baseline=_is_tracked_plan(plan),
+    )
     if problems:
         return _result(
             STAGE_EXECUTION_PLAN,
@@ -513,12 +542,24 @@ def _upstream_problems(
     stage: str,
     artifact: dict[str, Any],
     artifact_ids: dict[str, str],
+    *,
+    strict_baseline: bool = True,
 ) -> list[str]:
-    """校验阶段 2-10 的上游引用；空上游 id 与不一致都视为不满足。"""
+    """校验阶段 2-10 的上游引用；空上游 id 与不一致都视为不满足。
+
+    ``strict_baseline=False`` 用于接口契约升级前生成、没有 validation 元信息的
+    ExecutionPlan：允许它缺少 baseline_plan_id，其余上游仍强校验。
+    """
     problems: list[str] = []
     for upstream_stage, field, where in _UPSTREAM_REFS.get(stage, ()):
         expected = artifact_ids.get(STAGE_KEYS[upstream_stage], "")
         actual = _artifact_field(artifact, field, where)
+        if (
+            upstream_stage == STAGE_BASELINE_PLAN
+            and not strict_baseline
+            and not actual
+        ):
+            continue
         upstream_label = f"{field}（{upstream_stage}）"
         if not expected:
             problems.append(f"缺少上游 {upstream_label}，不能推进")
@@ -527,6 +568,34 @@ def _upstream_problems(
         elif actual != expected:
             problems.append(f"{stage} 的 {upstream_label} 与当前上游不一致")
     return problems
+
+
+def _is_tracked_plan(plan: dict[str, Any]) -> bool:
+    """是否由当前 save 路径生成（带 validation）；旧 artifact 无元信息时豁免新字段。"""
+    meta = plan.get("meta")
+    validation = meta.get("validation") if isinstance(meta, dict) else None
+    return isinstance(validation, dict) and bool(validation)
+
+
+def _has_interpretation(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for item in value.values():
+        if isinstance(item, str) and item.strip():
+            return True
+        if isinstance(item, (list, tuple, dict)) and item:
+            return True
+    return False
+
+
+def _requirement_ready(requirement: dict[str, Any]) -> bool:
+    """草稿必须有非空 interpretation 或已被 save_requirement_profile 保存。"""
+    if _has_interpretation(requirement.get("interpretation")):
+        return True
+    meta = requirement.get("meta")
+    validation = meta.get("validation") if isinstance(meta, dict) else None
+    status = str(validation.get("status") or "") if isinstance(validation, dict) else ""
+    return status != "draft"
 
 
 def _result(
@@ -624,6 +693,51 @@ def _goal_confirmed(profile: Any) -> bool:
 def _has_want(profile: Any) -> bool:
     want = getattr(profile, "want", None) or {}
     return isinstance(want, dict) and bool(want)
+
+
+def _baseline_execution_result(
+    profile: Any,
+    resolved: dict[str, dict[str, Any] | None],
+    *,
+    legacy: dict[str, bool],
+    has_tasks: bool,
+) -> dict[str, Any] | None:
+    """「先按基线执行」记录存在时，优先返回执行阶段（不越过已应用的执行版）。"""
+    guidance = getattr(profile, "guidance", None)
+    if not isinstance(guidance, dict) or not guidance.get(
+        "enterprise_alignment_skipped_at"
+    ):
+        return None
+    plan = getattr(profile, "plan", None)
+    if not (isinstance(plan, dict) and plan.get("roadmap")):
+        return None
+    # 已应用执行版必须继续走 6C 的代际/上游引用校验，不能被基线豁免覆盖。
+    execution_plan = resolved.get(STAGE_EXECUTION_PLAN)
+    if execution_plan is not None and bool(execution_plan.get("applied")):
+        return None
+    if resolved.get(STAGE_PROFILE) is None and not legacy.get("profile"):
+        return None
+
+    artifact_ids = {
+        STAGE_KEYS[stage]: _artifact_id(resolved.get(stage)) for stage in STAGE_ORDER
+    }
+    if has_tasks:
+        return _result(
+            STAGE_EXECUTING,
+            "get_next_tasks",
+            "已按基线执行，企业适配已记录跳过；可按当前阶段任务推进",
+            artifact_ids,
+            has_tasks=True,
+            legacy=legacy,
+        )
+    return _result(
+        STAGE_EXECUTION,
+        "generate_tasks",
+        "已按基线执行，企业适配已记录跳过；先生成当前阶段任务",
+        artifact_ids,
+        has_tasks=False,
+        legacy=legacy,
+    )
 
 
 def _target_stale(profile: Any, artifact: dict[str, Any]) -> bool:

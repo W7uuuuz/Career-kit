@@ -760,6 +760,64 @@ def _validate_artifact(evidence_ids: list[str]):
     )
 
 
+def test_save_rejects_explicit_baseline_plan_mismatch(
+    workspace: SimpleNamespace,
+) -> None:
+    other_id = workspace.store.save(
+        BaselinePlan(
+            meta=_meta(workspace.store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            gap_report_id="gr_other",
+            roadmap=_baseline_plan()["roadmap"],
+        )
+    )
+    alignment = _alignment(workspace.requirement_id)
+    alignment["baseline_plan_id"] = other_id
+
+    with pytest.raises(stage.ExecutionPlanError) as exc_info:
+        stage.save_execution_alignment(
+            json.dumps(alignment, ensure_ascii=False), confirmed=False
+        )
+
+    assert exc_info.value.code == "BASELINE_PLAN_MISMATCH"
+    assert workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN) is None
+
+
+def test_save_rejects_invalid_core_state_baseline_pointer(
+    workspace: SimpleNamespace,
+) -> None:
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.core_state["baseline_plan_id"] = "bp_missing"
+    profile_module.save_profile(profile, PROFILE_NAME)
+
+    with pytest.raises(stage.ExecutionPlanError) as exc_info:
+        stage.save_execution_alignment(
+            json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
+            confirmed=False,
+        )
+
+    assert exc_info.value.code == "BASELINE_PLAN_NOT_FOUND"
+    assert workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN) is None
+
+
+def test_save_accepts_matching_explicit_baseline_plan(
+    workspace: SimpleNamespace,
+) -> None:
+    baseline_id = workspace.store.latest(
+        PROFILE_NAME, state_machine.STAGE_BASELINE_PLAN
+    )["meta"]["id"]
+    alignment = _alignment(workspace.requirement_id)
+    alignment["baseline_plan_id"] = baseline_id
+
+    result = stage.save_execution_alignment(
+        json.dumps(alignment, ensure_ascii=False), confirmed=False
+    )
+
+    artifact = workspace.store.load(result["execution_plan_id"])
+    assert artifact is not None
+    assert artifact["baseline_plan_id"] == baseline_id
+    assert artifact["meta"]["inputs"]["baseline_plan_id"] == baseline_id
+
+
 def test_validate_rejects_empty_evidence_ids() -> None:
     issues = stage.validate(_validate_artifact([]))
     assert any("不能为空" in issue for issue in issues)

@@ -149,6 +149,8 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         "unknown_city": 0,
         "boss_jobs": 0,
         "list_only": 0,
+        "list_only_kept": 0,
+        "list_only_dropped_city": 0,
     }
 
     fresh_jd, counts = await _enrich_jobs(jd_results, target.city, deadline, semaphore, counts)
@@ -305,10 +307,11 @@ def validate(artifact: BaseModel) -> list[str]:
         1 for item in artifact.interview_items if item.reused
     ):
         issues.append("counts.reused_interviews 与 reused 标记数量不一致")
-    if counts.get("list_only", 0) != sum(
+    kept_list_only = counts.get("list_only_kept", counts.get("list_only", 0))
+    if kept_list_only != sum(
         1 for item in artifact.jd_items if item.detail_status == "list_only"
     ):
-        issues.append("counts.list_only 与 list_only 标记数量不一致")
+        issues.append("counts.list_only_kept 与 list_only 标记数量不一致")
     return issues
 
 
@@ -610,11 +613,17 @@ async def _enrich_jobs(
             title = str(row.get("title") or "").strip() or "未知岗位"
             company = str(row.get("company") or "").strip() or default_company
             location = str(row.get("location") or "").strip()
+            list_only = str(row.get("detail_status") or "").strip() == "list_only"
             keep, unknown = _city_decision(location, city)
             if unknown:
                 counts["unknown_city"] += 1
             if not keep:
                 counts["dropped_city"] += 1
+                # list-only 只豁免详情补抓/详情缺失剔除，不豁免城市硬筛；
+                # 被城市硬筛剔除的 list-only 行仍要计入 list-only 缺口。
+                if list_only:
+                    counts["list_only"] += 1
+                    counts["list_only_dropped_city"] += 1
                 continue
             url = str(row.get("url") or "").strip()
             title_key = (_norm_text(company), _norm_text(title), _norm_text(location))
@@ -647,9 +656,10 @@ async def _enrich_jobs(
     needs_detail: list[dict[str, Any]] = []
     kept: list[dict[str, Any]] = []
     for item in pending:
-        # BOSS 研究阶段固定 list-only：尊重来源声明，不补详情、不剔除，计入缺口。
+        # BOSS 研究阶段固定 list-only：只豁免详情补抓/详情缺失剔除（城市硬筛已在上游执行）。
         if item["detail_status"] == "list_only":
             counts["list_only"] += 1
+            counts["list_only_kept"] += 1
             kept.append(item)
         elif item["description"] or item["requirements"]:
             item["detail_status"] = "ok"
@@ -1158,9 +1168,16 @@ def _build_gaps(
         )
     if counts["dropped_no_detail"]:
         gaps.append(f"缺少岗位详情剔除 {counts['dropped_no_detail']} 条 JD")
-    if counts.get("list_only"):
+    if counts.get("list_only_kept", counts.get("list_only")):
         gaps.append(
-            f"BOSS 直聘 list-only 保留 {counts['list_only']} 条（仅列表字段，未补详情）"
+            "BOSS 直聘 list-only 保留 "
+            f"{counts.get('list_only_kept', counts.get('list_only', 0))} 条"
+            "（仅列表字段，未补详情）"
+        )
+    if counts.get("list_only_dropped_city"):
+        gaps.append(
+            f"BOSS 直聘 list-only 有 {counts['list_only_dropped_city']} 条因城市硬筛剔除"
+            "（list-only 仅豁免详情补抓，不豁免城市硬筛）"
         )
     if not counts["kept_jobs"]:
         gaps.append("未采集到任何 JD")

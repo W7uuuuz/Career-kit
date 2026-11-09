@@ -847,3 +847,35 @@ def test_old_execution_state_does_not_unlock_get_next_tasks(
     assert action["stage"] == state_machine.STAGE_EXECUTION
     assert action["next_tool"] == "generate_tasks"
     assert action["artifact_ids"]["execution_state_id"] == ""
+
+
+def test_preserved_history_tasks_cannot_create_execution_state(
+    applied_workspace: SimpleNamespace,
+) -> None:
+    from src.core import sync as core_sync
+
+    store = applied_workspace.store
+    profile = profile_store.load_profile(PROFILE_NAME)
+    # 应用执行版后只剩 apply 时保留的 completed 历史任务。
+    assert [task.id for task in profile.tasks] == ["task_001"]
+
+    assert core_sync.sync_execution_state(PROFILE_NAME) == ""
+    assert store.list(PROFILE_NAME, state_machine.STAGE_EXECUTION) == []
+    assert "execution_state_id" not in profile_store.load_profile(
+        PROFILE_NAME
+    ).core_state
+
+
+def test_generate_tasks_then_creates_execution_state(
+    applied_workspace: SimpleNamespace,
+) -> None:
+    from src.core import sync as core_sync
+
+    task_tools.generate_tasks()
+
+    execution_id = core_sync.sync_execution_state(PROFILE_NAME)
+
+    assert execution_id.startswith("es_")
+    data = applied_workspace.store.load(execution_id)
+    assert data is not None
+    assert data["execution_plan_id"] == applied_workspace.result["execution_plan_id"]

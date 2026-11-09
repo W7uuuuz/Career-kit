@@ -82,6 +82,7 @@ _ALIGNMENT_METHODOLOGY: dict[str, Any] = {
     ],
     "output_schema": {
         "requirement_profile_id": "requirement artifact id",
+        "baseline_plan_id": "可省略：由代码解析当前 BaselinePlan；显式传入时必须与当前链路一致",
         "strategy_summary": "执行版整体策略",
         "roadmap": {
             "strategy_summary": "与顶层一致",
@@ -293,7 +294,9 @@ def _save(
     # evidence_ids 已在 _assert_known_evidence 里统一校验：未知/空 id 直接拒绝落库，
     # 因此这里不再保留永远不可达的「有未知 id」警告分支。
     warnings: list[str] = []
-    baseline_plan_id = _resolve_baseline_plan_id(store, profile_name, profile)
+    baseline_plan_id = _resolve_checked_baseline_plan_id(
+        store, profile_name, profile, data.get("baseline_plan_id")
+    )
 
     meta = ArtifactMeta(
         id=store.new_id("ep"),
@@ -513,6 +516,55 @@ def _assert_known_evidence(
             "每条变更都必须带非空 evidence_ids，否则拒绝落库。",
             {"available_evidence_ids": sorted(known)},
         )
+
+
+def _resolve_checked_baseline_plan_id(
+    store: ArtifactStore,
+    profile_name: str,
+    profile: CareerProfile,
+    requested: Any = "",
+) -> str:
+    """解析并强校验 ExecutionPlan 的 baseline_plan_id。
+
+    - core_state 已有指针但指向非本档案 BaselinePlan：拒绝，避免覆盖链路；
+    - 调用方显式传入 baseline_plan_id 时必须存在且与当前链路一致；
+    - 旧档案没有 BaselinePlan artifact 时保持兼容，返回空串由 progress 按旧链路处理。
+    """
+    core_state = profile.core_state if isinstance(profile.core_state, dict) else {}
+    core_id = str(core_state.get("baseline_plan_id") or "").strip()
+    if core_id and not _is_baseline_of_profile(store, profile_name, core_id):
+        raise ExecutionPlanError(
+            "BASELINE_PLAN_NOT_FOUND",
+            "core_state.baseline_plan_id 指向的基线方案不存在或不属于当前档案，拒绝落库。",
+            {"baseline_plan_id": core_id},
+        )
+    resolved = _resolve_baseline_plan_id(store, profile_name, profile)
+    requested_id = str(requested or "").strip()
+    if not requested_id:
+        return resolved
+    if not _is_baseline_of_profile(store, profile_name, requested_id):
+        raise ExecutionPlanError(
+            "BASELINE_PLAN_NOT_FOUND",
+            "提交的 baseline_plan_id 不存在、类型不符或不属于当前档案，拒绝落库。",
+            {"baseline_plan_id": requested_id},
+        )
+    if resolved and requested_id != resolved:
+        raise ExecutionPlanError(
+            "BASELINE_PLAN_MISMATCH",
+            "提交的 baseline_plan_id 与当前基线链路不一致，拒绝落库。",
+            {"expected": resolved, "received": requested_id},
+        )
+    return requested_id
+
+
+def _is_baseline_of_profile(
+    store: ArtifactStore, profile_name: str, baseline_plan_id: str
+) -> bool:
+    data = store.load(baseline_plan_id)
+    if not _is_stage(data, state_machine.STAGE_BASELINE_PLAN):
+        return False
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    return str(meta.get("profile_name") or "") == profile_name
 
 
 def _resolve_baseline_plan_id(

@@ -83,9 +83,10 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
   登录只打开一个专用窗口（清理恢复的旧标签页），成功后窗口保持；不会出现多个扫码页。
   成功登录后窗口会切到「登录成功」提示页，不会停在登录页。
 - 数据真实：没抓到就写「未获取」；失败源如实展示。
-- 企业适配（执行前必做校准）：select_target_companies → collect_company_evidence →
+- 企业适配（推荐校准）：select_target_companies → collect_company_evidence →
   analyze_company_requirements → save_requirement_profile → plan_execution_alignment →
   save_execution_alignment；数字由代码计算，LLM 只写 interpretation，每条变更必须带 evidence_ids。
+  用户选择先按基线执行时，记录 `guidance.enterprise_alignment_skipped_at` 跳过事实，后续可补。
 - BOSS 补充：collect_company_evidence 可带 include_boss=true；只问一次并传 boss_confirmed=true；
   未登录返回 LOGIN_REQUIRED / next_tool=boss_login，直接调用 boss_login(action="login")，
   不再追问第二次；登录成功后浏览器窗口保持常开，不得把登录失败当抓取失败。
@@ -93,7 +94,8 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
   排除已投递，报告落 ~/CareerKit/<档案>/投递清单/。
 - 计划失配检测：证据刷新后、完成一个里程碑、周检视或用户主动问时调用 check_plan_fit；
   status=major_drift 时把 question_for_user 原意转问用户，用户同意后才 refresh / 重新校准，不自动改计划。
-- 路线图后先做企业适配（执行前必做），再细化当前阶段、生成任务；阶段 6-9 必须走完才进入执行。
+- 路线图后推荐先做企业适配再细化、生成任务；也可选择先按基线执行（detail_current_phase →
+  generate_tasks，会记录跳过事实），阶段 6-9 后续可随时补，不阻塞基线执行。
 
 ## 返回值与错误
 

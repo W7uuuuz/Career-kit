@@ -606,11 +606,14 @@ def _company_guide(profile: Any) -> Guide:
     return _guide(
         "company",
         "company",
-        "路线图已就绪。下一步筛选目标企业：先按档位和行业给你一份名单，你再增删确认。"
-        "要现在生成名单吗？",
-        options=["生成目标企业名单"],
-        next_action="select_target_companies；名单确认后进入 collect_company_evidence，"
-                    "企业适配是执行前必做链路",
+        "路线图已就绪。下一步可以按企业适配校准：先按档位和行业给你一份名单，"
+        "你再增删确认；也可以先跳过，按基线路线图执行。要怎么做？",
+        options=["生成目标企业名单", "先跳过，按基线执行"],
+        next_action=(
+            "选企业适配 → select_target_companies（推荐，完成后链路可校准执行版）；"
+            "选按基线执行 → detail_current_phase → generate_tasks，"
+            "会记录企业适配跳过事实，后续可随时补"
+        ),
         profile=profile,
     )
 

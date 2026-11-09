@@ -122,7 +122,9 @@ def sync_market_baseline(profile_name: str) -> str:
         state = _core_state(profile)
         store = ArtifactStore()
         # 旧档案迁移时允许先补 ProfileSnapshot 锚点，再由 TargetSpec/MarketBaseline 引用。
-        if not _resolve_profile_id(store, profile, profile_name, state):
+        # meta.inputs.profile_id 必须指向本次解析/创建的快照，不能用解析前的旧 state。
+        profile_id = _resolve_profile_id(store, profile, profile_name, state)
+        if not profile_id:
             return ""
         target_id = _resolve_target_spec_id(store, profile_name, state)
         if not target_id:
@@ -133,7 +135,7 @@ def sync_market_baseline(profile_name: str) -> str:
                 "mb",
                 STAGE_MARKET_BASELINE,
                 profile_name,
-                {"profile_id": state.get(KEY_PROFILE, ""), "target_spec_id": target_id},
+                {"profile_id": profile_id, "target_spec_id": target_id},
             ),
             target_spec=_resolve_target_spec(store, profile, target_id),
             jd_samples=_dict_list(research.get("jd_samples")),
@@ -257,6 +259,10 @@ def sync_execution_state(profile_name: str) -> str:
             _matches_stage(plan, STAGE_EXECUTION_PLAN, profile_name)
             and bool(plan.get("applied"))
         ):
+            return ""
+        # ExecutionState 只属于当前 applied plan 的代际：plan 里保留的
+        # completed/skipped 历史任务不是新方案生成的任务，不能凭它们落库。
+        if not _has_current_generation_tasks(plan, profile):
             return ""
         task_counts = {"pending": 0, "in_progress": 0, "completed": 0, "skipped": 0}
         for task in profile.tasks:
@@ -393,6 +399,9 @@ def sync_review(
         execution = store.load(execution_id) if execution_id else None
         if not _matches_stage(execution, STAGE_EXECUTION, profile_name):
             return ""
+        # ReviewReport 引用的 ExecutionState 必须属于当前 applied plan。
+        if str(execution.get("execution_plan_id") or "") != plan_id:
+            return ""
 
         fit = _jsonable(plan_fit) if isinstance(plan_fit, dict) else {}
         facts = _jsonable(weekly_facts) if isinstance(weekly_facts, dict) else {}
@@ -494,6 +503,52 @@ def _matches_stage(
     if not isinstance(meta, dict) or meta.get("stage") != stage:
         return False
     return str(meta.get("profile_name") or "") == profile_name
+
+
+def _has_current_generation_tasks(
+    plan: dict[str, Any], profile: CareerProfile
+) -> bool:
+    """任务是否属于当前 applied plan 这一代。
+
+    apply 时保留的 completed/skipped 历史任务记在 ExecutionPlan.completed_evidence；
+    如果档案里的任务全部是这些历史任务，说明新方案还没执行 generate_tasks，
+    不能据此写入 ExecutionState。旧 artifact 没有 completed_evidence 时保持兼容。
+    """
+    current_ids = {task.id for task in profile.tasks if task.id}
+    if not current_ids:
+        return False
+    preserved_ids = {
+        str(item.get("task_id") or "").strip()
+        for item in plan.get("completed_evidence") or []
+        if isinstance(item, dict) and str(item.get("task_id") or "").strip()
+    }
+    if not (preserved_ids and current_ids <= preserved_ids):
+        return True
+    # 新方案的任务名与历史任务完全同名时会被复用 ID：只要当前 plan 的预期任务
+    # 已被现有任务覆盖，就视为已生成（避免误把已完成的复用任务挡在门禁外）。
+    return _tasks_cover_plan(plan, profile)
+
+
+def _tasks_cover_plan(plan: dict[str, Any], profile: CareerProfile) -> bool:
+    roadmap = plan.get("roadmap") if isinstance(plan.get("roadmap"), dict) else {}
+    phases = roadmap.get("phases") if isinstance(roadmap.get("phases"), list) else []
+    expected: set[tuple[str, str]] = set()
+    for index, phase in enumerate(phases):
+        if not isinstance(phase, dict):
+            continue
+        phase_id = str(phase.get("id") or f"phase_{index + 1}")
+        milestones = phase.get("milestones") if isinstance(phase.get("milestones"), list) else []
+        for milestone in milestones:
+            if not isinstance(milestone, dict):
+                continue
+            tasks = milestone.get("tasks") if isinstance(milestone.get("tasks"), list) else []
+            for task in tasks:
+                if isinstance(task, dict) and str(task.get("name") or "").strip():
+                    expected.add((phase_id, str(task["name"]).strip()))
+    if not expected:
+        return False
+    current = {(task.phase_id, task.name) for task in profile.tasks}
+    return expected <= current
 
 
 def _core_state(profile: CareerProfile) -> dict[str, Any]:

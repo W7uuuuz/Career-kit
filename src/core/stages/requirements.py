@@ -391,6 +391,7 @@ def build_requirement_profile(
         ],
         validation={
             "method": "deterministic",
+            "status": "draft",
             "confidence_jd": stats["confidence_jd"],
             "confidence_interview": stats["confidence_interview"],
         },
@@ -450,11 +451,12 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         f"{len(artifact.high_frequency)} 项，公司差异化 "
         f"{len(artifact.company_specific)} 项。"
     )
+    # 只落草稿；下一工具是同阶段的 save_requirement_profile，不是阶段 9。
     return StageResult(
         status="ok",
         artifact_id=artifact.meta.id,
         message=f"{summary}\n\n{build_analysis_prompt(artifact)}",
-        next_stage=state_machine.STAGE_EXECUTION_PLAN,
+        next_stage=STAGE_ID,
         warnings=list(artifact.gaps),
     )
 
