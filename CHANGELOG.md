@@ -21,6 +21,14 @@
     `generate_tasks` 重建时为历史完成任务补能力证据。
   - 非法枚举统一返回 `INVALID_PARAM`；目标城市已设置时，空 `location` 岗位
     在证据池与投递清单中按城市硬筛剔除并计入缺口。
+  - 终审回归：BOSS 学历筛选不再向 BOSS 传 `degree`；含 BOSS 时统一「先登录再
+    gather」；`auth.validity` 统一 status 与抓取门禁。
+  - 目标确认与 TargetSpec 单源；USER_BRIEF 三段与 README 对齐；扫盲续跑不跳
+    finalize。
+  - ExecutionState 代际、RequirementProfile 草稿门禁、`baseline_plan_id`、
+    CompanyPool target、Review/Market 上游引用收紧。
+  - 企业适配改为「推荐 + 可审计跳过」：记录
+    `enterprise_alignment_skipped_at`，基线任务仍可执行；E2E core 恢复。
   - 工具数 49 → 50。
 
 ## v0.3.0 (2026-11-09)
