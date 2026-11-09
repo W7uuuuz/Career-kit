@@ -24,7 +24,10 @@ from src.core.artifacts.models import (
     CompanyEntry,
     CompanyPool,
     EvidenceRun,
+    GapReport,
     JDEvidence,
+    MarketBaseline,
+    ProfileSnapshot,
     RequirementItem,
     RequirementProfile,
     TargetSpec,
@@ -48,11 +51,64 @@ def _meta(store: ArtifactStore, stage_id: str, prefix: str, inputs: dict[str, st
     )
 
 
+class _ProfileArtifact(ProfileSnapshot):
+    meta: ArtifactMeta
+
+
+class _TargetArtifact(TargetSpec):
+    meta: ArtifactMeta
+
+
 def _seed_chain() -> dict[str, Any]:
     store = ArtifactStore()
+    profile_id = store.save(
+        _ProfileArtifact(
+            meta=_meta(store, state_machine.STAGE_PROFILE, "pf"),
+            name="张三",
+            who={"name": "张三"},
+            summary="测试档案",
+        )
+    )
+    target_id = store.save(
+        _TargetArtifact(
+            meta=_meta(
+                store, state_machine.STAGE_TARGET, "ts",
+                {"profile_id": profile_id},
+            ),
+            role="AI Agent 开发",
+            city="北京",
+        )
+    )
+    market_id = store.save(
+        MarketBaseline(
+            meta=_meta(
+                store, state_machine.STAGE_MARKET, "mb",
+                {"target_spec_id": target_id},
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
+        )
+    )
+    gap_id = store.save(
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP, "gr"),
+            profile_snapshot_id=profile_id,
+            market_baseline_id=market_id,
+            match_score=60,
+        )
+    )
+    baseline_id = store.save(
+        BaselinePlan(
+            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            gap_report_id=gap_id,
+            roadmap=_baseline_plan()["roadmap"],
+        )
+    )
     pool_id = store.save(
         CompanyPool(
-            meta=_meta(store, state_machine.STAGE_COMPANY_POOL, "cp"),
+            meta=_meta(
+                store, state_machine.STAGE_COMPANY_POOL, "cp",
+                {"baseline_plan_id": baseline_id},
+            ),
             target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
             companies=[
                 CompanyEntry(
@@ -115,6 +171,11 @@ def _seed_chain() -> dict[str, Any]:
     )
     return {
         "store": store,
+        "profile_id": profile_id,
+        "target_spec_id": target_id,
+        "market_baseline_id": market_id,
+        "gap_report_id": gap_id,
+        "baseline_plan_id": baseline_id,
         "pool_id": pool_id,
         "evidence_id": evidence_id,
         "requirement_id": requirement_id,
@@ -207,6 +268,11 @@ def _seed_profile(chain: dict[str, Any]) -> CareerProfile:
         ],
         core_state={
             "stage": "need_execution_plan",
+            "profile_id": chain["profile_id"],
+            "target_spec_id": chain["target_spec_id"],
+            "market_baseline_id": chain["market_baseline_id"],
+            "gap_report_id": chain["gap_report_id"],
+            "baseline_plan_id": chain["baseline_plan_id"],
             "company_pool_id": chain["pool_id"],
             "evidence_run_id": chain["evidence_id"],
             "requirement_profile_id": chain["requirement_id"],
@@ -391,7 +457,10 @@ def test_confirm_applies_plan_and_enters_executing(
     assert result["applied"] is True
     assert result["preserved_task_count"] == 2
     assert result["removed_task_count"] == 2
-    assert result["next_steps"] == ["get_next_tasks", "generate_tasks"]
+    assert result["next_steps"][0] == "generate_tasks"
+    assert result["next_steps"] == ["generate_tasks", "get_next_tasks"]
+    # message 与 next_steps 同源：应用后先 generate_tasks。
+    assert "generate_tasks" in result["message"]
 
     profile = profile_module.load_profile(PROFILE_NAME)
     roadmap = profile.plan["roadmap"]
@@ -432,10 +501,12 @@ def test_confirm_applies_plan_and_enters_executing(
     assert artifact["applied"] is True
     assert artifact["meta"]["validation"]["applied"] is True
 
+    # 新计划刚应用、尚无可匹配的 ExecutionState：必须先按执行版重新生成任务。
     action = state_machine.next_action(PROFILE_NAME)
-    assert action["stage"] == state_machine.STAGE_EXECUTING
-    assert action["next_tool"] == "get_next_tasks"
+    assert action["stage"] == state_machine.STAGE_EXECUTION
+    assert action["next_tool"] == "generate_tasks"
     assert action["artifact_ids"]["execution_plan_id"] == result["execution_plan_id"]
+    assert action["artifact_ids"]["execution_state_id"] == ""
 
 
 def test_change_without_evidence_ids_is_rejected(workspace: SimpleNamespace) -> None:
@@ -652,6 +723,8 @@ def test_reconfirm_same_alignment_is_idempotent(
     assert second["applied"] is True
     assert second.get("idempotent") is True
     assert second["execution_plan_id"] == first["execution_plan_id"]
+    assert second["next_steps"] == ["generate_tasks", "get_next_tasks"]
+    assert "generate_tasks" in second["message"]
 
     after = profile_module.load_profile(PROFILE_NAME)
     assert len(after.plan_history) == history_before
@@ -662,3 +735,36 @@ def test_reconfirm_same_alignment_is_idempotent(
     )
     assert latest_after is not None
     assert latest_after["meta"]["id"] == latest_before["meta"]["id"]
+
+
+def _validate_artifact(evidence_ids: list[str]):
+    from src.core.artifacts.models import ExecutionPlan, PlanChange
+
+    return ExecutionPlan(
+        meta=ArtifactMeta(
+            id="ep_test",
+            stage=state_machine.STAGE_EXECUTION_PLAN,
+            profile_name=PROFILE_NAME,
+            created_at="2026-11-09T00:00:00",
+        ),
+        requirement_profile_id="rp_test",
+        roadmap=_new_roadmap(),
+        changes=[
+            PlanChange(
+                type="add_task",
+                details={"name": "校验任务"},
+                evidence_ids=evidence_ids,
+            )
+        ],
+        diff_summary="test",
+    )
+
+
+def test_validate_rejects_empty_evidence_ids() -> None:
+    issues = stage.validate(_validate_artifact([]))
+    assert any("不能为空" in issue for issue in issues)
+
+
+def test_validate_rejects_unknown_evidence_ids() -> None:
+    issues = stage.validate(_validate_artifact(["JD999"]), known_evidence_ids={"JD001"})
+    assert any("未知 evidence_ids" in issue and "JD999" in issue for issue in issues)

@@ -1,4 +1,4 @@
-﻿"""引导状态机回归：位置推导、目标确认、单一文案源、与状态机一致。"""
+"""引导状态机回归：位置推导、目标确认、单一文案源、与状态机一致。"""
 
 from __future__ import annotations
 
@@ -100,10 +100,24 @@ def _save_profile_artifact(store: ArtifactStore) -> str:
     )
 
 
+def _latest_id(store: ArtifactStore, stage: str) -> str:
+    data = store.latest(PROFILE_NAME, stage)
+    if not isinstance(data, dict):
+        return ""
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    return str(meta.get("id") or "")
+
+
 def _save_target(store: ArtifactStore) -> str:
     return store.save(
         _TargetArtifact(
-            meta=_meta(store, state_machine.STAGE_TARGET, "ts"),
+            meta=_meta(store, state_machine.STAGE_TARGET, "ts").model_copy(
+                update={
+                    "inputs": {
+                        "profile_id": _latest_id(store, state_machine.STAGE_PROFILE)
+                    }
+                }
+            ),
             role="AI Agent 开发",
             city="上海",
         )
@@ -113,7 +127,13 @@ def _save_target(store: ArtifactStore) -> str:
 def _save_market(store: ArtifactStore) -> str:
     return store.save(
         MarketBaseline(
-            meta=_meta(store, state_machine.STAGE_MARKET, "mb"),
+            meta=_meta(store, state_machine.STAGE_MARKET, "mb").model_copy(
+                update={
+                    "inputs": {
+                        "target_spec_id": _latest_id(store, state_machine.STAGE_TARGET)
+                    }
+                }
+            ),
             target_spec=TargetSpec(role="AI Agent 开发"),
         )
     )
@@ -121,7 +141,12 @@ def _save_market(store: ArtifactStore) -> str:
 
 def _save_gap(store: ArtifactStore) -> str:
     return store.save(
-        GapReport(meta=_meta(store, state_machine.STAGE_GAP, "gr"), match_score=60)
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP, "gr"),
+            profile_snapshot_id=_latest_id(store, state_machine.STAGE_PROFILE),
+            market_baseline_id=_latest_id(store, state_machine.STAGE_MARKET),
+            match_score=60,
+        )
     )
 
 
@@ -129,6 +154,7 @@ def _save_baseline(store: ArtifactStore) -> str:
     return store.save(
         BaselinePlan(
             meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            gap_report_id=_latest_id(store, state_machine.STAGE_GAP),
             roadmap={"phases": []},
         )
     )
@@ -137,7 +163,15 @@ def _save_baseline(store: ArtifactStore) -> str:
 def _save_pool(store: ArtifactStore) -> str:
     return store.save(
         CompanyPool(
-            meta=_meta(store, state_machine.STAGE_COMPANY_POOL, "cp"),
+            meta=_meta(store, state_machine.STAGE_COMPANY_POOL, "cp").model_copy(
+                update={
+                    "inputs": {
+                        "baseline_plan_id": _latest_id(
+                            store, state_machine.STAGE_BASELINE_PLAN
+                        )
+                    }
+                }
+            ),
             target_spec=TargetSpec(role="AI Agent 开发"),
             companies=[
                 CompanyEntry(
@@ -839,6 +873,9 @@ def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
     intake("have", '{"skills": []}')
     intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     finalize_profile()
+    # 先触发一次状态读取，让 TargetSpec 等上游 artifact 完成回填；
+    # 之后 save_roadmap / status 的下一步才都基于同一条 artifact 链。
+    get_workflow_status()
 
     roadmap = {
         "roadmap": {
@@ -1093,3 +1130,36 @@ def test_intake_bundle_return_does_not_self_manage_next_step(temp_profile):
     assert "已记录到" in out
     assert "继续补齐" not in out
     assert "[GUIDE]" in out
+
+def test_save_roadmap_message_matches_unconfirmed_goal(temp_profile):
+    """目标未确认时，save_roadmap 的 message 与 next_steps 都指向 intake(want)。"""
+    from src.server import save_roadmap
+
+    profile = CareerProfile()
+    mark_brief_shown(profile)
+    profile.who = {"name": "张三"}
+    profile.have = {"skills": ["Python"]}
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile_module.save_profile(profile, PROFILE_NAME)
+    # 已有 ProfileSnapshot 但目标未确认、缺 TargetSpec：下一步应为 intake(want)。
+    _save_profile_artifact(ArtifactStore())
+
+    roadmap = {
+        "roadmap": {
+            "strategy_summary": "测试",
+            "phases": [
+                {
+                    "id": "phase_1",
+                    "type": "project",
+                    "name": "做项目",
+                    "resume_value": "项目经历",
+                    "kpi": {"metric": "完成", "target": "1个"},
+                }
+            ],
+        }
+    }
+    out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+
+    assert out["next_steps"] == ["intake(want)"]
+    assert "intake(want)" in out["message"]
+    assert "select_target_companies" not in out["message"]

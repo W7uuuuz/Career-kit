@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths
+from src.core import sync as core_sync
 from src.core.artifacts.store import ArtifactStore
 from src.core.orchestrator import state_machine
 from src.core.stages import evidence as evidence_stage
@@ -81,6 +82,7 @@ def _seed_profile() -> CareerProfile:
             "bridge_tiers": ["中厂"],
         },
         gap={"start_level": "小厂", "match_score": 60},
+        research={"report_md": "C:/reports/baseline.md"},
         plan=_baseline_plan(),
         tasks=[
             Task(
@@ -227,6 +229,16 @@ def test_company_alignment_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     calls = _patch_sources(monkeypatch)
     _seed_profile()
     store = ArtifactStore()
+
+    # 阶段 1-5 上游链：CompanyPool 必须引用 BaselinePlan，progress 才能推进。
+    for sync_fn in (
+        core_sync.sync_profile,
+        core_sync.sync_target,
+        core_sync.sync_market_baseline,
+        core_sync.sync_gap,
+        core_sync.sync_baseline_plan,
+    ):
+        assert sync_fn(PROFILE_NAME)
 
     # 阶段 6：目标企业筛选（已确认）
     pool_payload = _payload(
@@ -463,6 +475,11 @@ def test_company_alignment_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert applied_artifact["applied"] is True
     assert applied_artifact["meta"]["validation"]["applied"] is True
     assert applied_artifact["requirement_profile_id"] == rp_id
+
+    # 新计划应用后先按执行版生成任务，再由 ExecutionState 解锁 get_next_tasks。
+    from src.tools.task_tools import generate_tasks
+
+    assert "已为当前阶段" in generate_tasks()
 
     action = state_machine.next_action(PROFILE_NAME)
     assert action["stage"] == state_machine.STAGE_EXECUTING

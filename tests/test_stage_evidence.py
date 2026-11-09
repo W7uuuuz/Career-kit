@@ -765,6 +765,7 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
                         "url": "https://zhipin/job/1",
                         "salary": "25-45K",
                         "description": "BOSS 正文",
+                        "detail_status": "list_only",
                     },
                     {
                         "title": "BOSS 小厂 Agent",
@@ -772,6 +773,7 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
                         "location": "北京",
                         "url": "https://zhipin/job/2",
                         "salary": "10-20K",
+                        "detail_status": "list_only",
                     },
                     {
                         "title": "重复 URL",
@@ -820,5 +822,10 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
     assert unmapped.tier == "未收录"
     assert unmapped.salary == "10-20K"
 
-    assert ("https://zhipin/job/2", "boss") in captured["detail"]
+    # BOSS list-only：不补详情、不剔除，保留列表字段并计入缺口。
+    assert all(item.detail_status == "list_only" for item in boss_items)
+    assert run.counts["list_only"] == 2
+    assert run.counts["dropped_no_detail"] == 0
+    assert all("zhipin" not in url for url, _company in captured["detail"])
+    assert any("list-only" in gap for gap in run.gaps)
 

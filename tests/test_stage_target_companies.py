@@ -12,7 +12,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths
-from src.core.artifacts.models import ArtifactMeta, CompanyPool, TargetSpec
+from src.core.artifacts.models import (
+    ArtifactMeta,
+    BaselinePlan,
+    CompanyPool,
+    GapReport,
+    MarketBaseline,
+    ProfileSnapshot,
+    TargetSpec,
+)
 from src.core.artifacts.store import ArtifactStore
 from src.core.orchestrator import state_machine
 from src.core.stages import target_companies
@@ -26,6 +34,95 @@ class _TargetArtifact(TargetSpec):
     """测试用 TargetSpec + meta，用于验证 target_spec_id 解析。"""
 
     meta: ArtifactMeta
+
+
+class _ProfileArtifact(ProfileSnapshot):
+    meta: ArtifactMeta
+
+
+def _seed_upstream(store: ArtifactStore, profile_name: str = "default") -> dict[str, str]:
+    """阶段 1-5 上游链 + core_state 指针，便于 progress 校验 CompanyPool 引用。"""
+    profile_id = store.save(
+        _ProfileArtifact(
+            meta=ArtifactMeta(
+                id=store.new_id("pf_"),
+                stage=state_machine.STAGE_PROFILE,
+                profile_name=profile_name,
+                created_at="2026-01-01T00:00:00",
+            ),
+            name="测试用户",
+            who={"name": "测试用户"},
+            summary="测试档案",
+        )
+    )
+    target_id = store.save(
+        _TargetArtifact(
+            meta=ArtifactMeta(
+                id=store.new_id("ts_"),
+                stage=state_machine.STAGE_TARGET,
+                profile_name=profile_name,
+                created_at="2026-01-01T00:00:01",
+                inputs={"profile_id": profile_id},
+            ),
+            role="AI Agent 开发",
+        )
+    )
+    market_id = store.save(
+        MarketBaseline(
+            meta=ArtifactMeta(
+                id=store.new_id("mb_"),
+                stage=state_machine.STAGE_MARKET,
+                profile_name=profile_name,
+                created_at="2026-01-01T00:00:02",
+                inputs={"target_spec_id": target_id},
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发"),
+        )
+    )
+    gap_id = store.save(
+        GapReport(
+            meta=ArtifactMeta(
+                id=store.new_id("gr_"),
+                stage=state_machine.STAGE_GAP,
+                profile_name=profile_name,
+                created_at="2026-01-01T00:00:03",
+            ),
+            profile_snapshot_id=profile_id,
+            market_baseline_id=market_id,
+        )
+    )
+    baseline_id = store.save(
+        BaselinePlan(
+            meta=ArtifactMeta(
+                id=store.new_id("bp_"),
+                stage=state_machine.STAGE_BASELINE_PLAN,
+                profile_name=profile_name,
+                created_at="2026-01-01T00:00:04",
+            ),
+            gap_report_id=gap_id,
+            roadmap={"phases": [{"name": "基础", "milestones": []}]},
+        )
+    )
+    profile = profile_module.load_profile(profile_name)
+    core_state = dict(profile.core_state or {})
+    core_state.update(
+        {
+            "profile_id": profile_id,
+            "target_spec_id": target_id,
+            "market_baseline_id": market_id,
+            "gap_report_id": gap_id,
+            "baseline_plan_id": baseline_id,
+        }
+    )
+    profile.core_state = core_state
+    profile_module.save_profile(profile, profile_name)
+    return {
+        "profile_id": profile_id,
+        "target_spec_id": target_id,
+        "market_baseline_id": market_id,
+        "gap_report_id": gap_id,
+        "baseline_plan_id": baseline_id,
+    }
 
 
 def _save_target(
@@ -67,6 +164,7 @@ def _run(
 
 def test_recommended_mode_saves_artifact_and_keeps_gate(data_dir: Path) -> None:
     store = ArtifactStore()
+    _seed_upstream(store)
     result, artifact = _run(store, {"target_spec": {"role": "AI Agent 开发", "city": "北京"}})
 
     assert result.status == "needs_confirmation"
@@ -86,6 +184,7 @@ def test_recommended_mode_saves_artifact_and_keeps_gate(data_dir: Path) -> None:
 
 def test_confirmed_mode_writes_core_state_and_unlocks_evidence(data_dir: Path) -> None:
     store = ArtifactStore()
+    _seed_upstream(store)
     result, artifact = _run(
         store,
         {"target_spec": {"role": "AI Agent 开发"}, "confirmed": True},
@@ -144,6 +243,7 @@ def test_explicit_target_spec_from_other_profile_is_rejected(data_dir: Path) -> 
 
 def test_confirmed_without_selected_companies_returns_insufficient_data(data_dir: Path) -> None:
     store = ArtifactStore()
+    _seed_upstream(store)
     result, artifact = _run(
         store,
         {
@@ -158,7 +258,8 @@ def test_confirmed_without_selected_companies_returns_insufficient_data(data_dir
     assert artifact["meta"]["validation"]["confirmed"] is False
     assert artifact["companies"] == []
     assert any("没有匹配" in gap for gap in artifact["gaps"])
-    assert profile_module.load_profile("default").core_state == {}
+    core_state = profile_module.load_profile("default").core_state
+    assert "company_pool_id" not in core_state
     assert state_machine.next_action("default")["next_tool"] == "select_target_companies"
 
 
@@ -233,6 +334,7 @@ def test_select_target_companies_tool_recommended(data_dir: Path) -> None:
 
 
 def test_select_target_companies_tool_confirmed(data_dir: Path) -> None:
+    _seed_upstream(ArtifactStore())
     payload = json.loads(
         select_target_companies(target_tiers="大厂", bridge_tiers="中厂", confirmed=True)
     )

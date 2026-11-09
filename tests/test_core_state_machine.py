@@ -112,35 +112,61 @@ def _save_profile(store: ArtifactStore) -> str:
     )
 
 
-def _save_target(store: ArtifactStore) -> str:
+def _latest_id(
+    store: ArtifactStore, stage: str, profile_name: str = PROFILE_NAME
+) -> str:
+    data = store.latest(profile_name, stage)
+    if not isinstance(data, dict):
+        return ""
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    return str(meta.get("id") or "")
+
+
+def _save_target(store: ArtifactStore, profile_name: str = PROFILE_NAME) -> str:
     return store.save(
         TargetArtifact(
-            meta=_meta(store, state_machine.STAGE_TARGET),
+            meta=_meta(
+                store,
+                state_machine.STAGE_TARGET,
+                profile_name,
+            ).model_copy(
+                update={"inputs": {"profile_id": _latest_id(store, state_machine.STAGE_PROFILE, profile_name)}}
+            ),
             role="AI Agent 开发",
             city="北京",
         )
     )
 
 
-def _save_market(store: ArtifactStore) -> str:
+def _save_market(store: ArtifactStore, profile_name: str = PROFILE_NAME) -> str:
     return store.save(
         MarketBaseline(
-            meta=_meta(store, state_machine.STAGE_MARKET),
+            meta=_meta(
+                store, state_machine.STAGE_MARKET, profile_name
+            ).model_copy(
+                update={"inputs": {"target_spec_id": _latest_id(store, state_machine.STAGE_TARGET, profile_name)}}
+            ),
             target_spec=TargetSpec(role="AI Agent 开发"),
         )
     )
 
 
-def _save_gap(store: ArtifactStore) -> str:
+def _save_gap(store: ArtifactStore, profile_name: str = PROFILE_NAME) -> str:
     return store.save(
-        GapReport(meta=_meta(store, state_machine.STAGE_GAP), match_score=60)
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP, profile_name),
+            profile_snapshot_id=_latest_id(store, state_machine.STAGE_PROFILE, profile_name),
+            market_baseline_id=_latest_id(store, state_machine.STAGE_MARKET, profile_name),
+            match_score=60,
+        )
     )
 
 
-def _save_baseline(store: ArtifactStore) -> str:
+def _save_baseline(store: ArtifactStore, profile_name: str = PROFILE_NAME) -> str:
     return store.save(
         BaselinePlan(
-            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN),
+            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, profile_name),
+            gap_report_id=_latest_id(store, state_machine.STAGE_GAP, profile_name),
             roadmap={"phases": []},
         )
     )
@@ -151,7 +177,11 @@ def _save_pool(
 ) -> str:
     return store.save(
         CompanyPool(
-            meta=_meta(store, state_machine.STAGE_COMPANY_POOL, profile_name),
+            meta=_meta(
+                store, state_machine.STAGE_COMPANY_POOL, profile_name
+            ).model_copy(
+                update={"inputs": {"baseline_plan_id": _latest_id(store, state_machine.STAGE_BASELINE_PLAN, profile_name)}}
+            ),
             target_spec=TargetSpec(role="AI Agent 开发"),
             companies=[
                 CompanyEntry(
@@ -430,6 +460,11 @@ def test_cross_profile_artifact_is_rejected(
 def test_empty_reference_does_not_satisfy_chain(
     store: ArtifactStore, profile_state: dict[str, Any]
 ) -> None:
+    _save_profile(store)
+    _save_target(store)
+    _save_market(store)
+    _save_gap(store)
+    _save_baseline(store)
     pool_id = _save_pool(store)
     store.save(
         EvidenceRun(

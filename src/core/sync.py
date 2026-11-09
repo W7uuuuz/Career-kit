@@ -84,16 +84,27 @@ def sync_profile(profile_name: str) -> str:
 
 
 def sync_target(profile_name: str) -> str:
-    """目标岗位定位 → TargetSpec artifact（`ts_`）。"""
+    """目标岗位定位 → TargetSpec artifact（`ts_`）。
+
+    TargetSpec 必须引用 ProfileSnapshot；缺上游时先尝试生成快照，仍缺失则返回空，
+    不写半成品。
+    """
     try:
         profile = load_profile(profile_name)
         if not profile.want:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
+        # TargetSpec 不能反向创建 ProfileSnapshot：新流程必须等 finalize_profile，
+        # 否则 intake(want) 后 GUIDE 会跳过建档直接进入市场调研。
+        profile_id = _existing_profile_id(store, profile_name, state)
+        if not profile_id:
+            return ""
         spec = target_spec(profile)
         artifact = _TargetArtifact(
-            meta=_meta(store, "ts", STAGE_TARGET, profile_name, {"profile_id": state.get(KEY_PROFILE, "")}),
+            meta=_meta(
+                store, "ts", STAGE_TARGET, profile_name, {"profile_id": profile_id}
+            ),
             **spec.model_dump(),
         )
         return _persist(profile, profile_name, artifact, KEY_TARGET, STAGE_TARGET)
@@ -110,15 +121,21 @@ def sync_market_baseline(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
+        # 旧档案迁移时允许先补 ProfileSnapshot 锚点，再由 TargetSpec/MarketBaseline 引用。
+        if not _resolve_profile_id(store, profile, profile_name, state):
+            return ""
+        target_id = _resolve_target_spec_id(store, profile_name, state)
+        if not target_id:
+            return ""
         artifact = MarketBaseline(
             meta=_meta(
                 store,
                 "mb",
                 STAGE_MARKET_BASELINE,
                 profile_name,
-                {"profile_id": state.get(KEY_PROFILE, ""), "target_spec_id": state.get(KEY_TARGET, "")},
+                {"profile_id": state.get(KEY_PROFILE, ""), "target_spec_id": target_id},
             ),
-            target_spec=_resolve_target_spec(store, profile, state),
+            target_spec=_resolve_target_spec(store, profile, target_id),
             jd_samples=_dict_list(research.get("jd_samples")),
             case_samples=_dict_list(research.get("cases")),
             digest=_as_dict(research.get("digest")),
@@ -148,6 +165,9 @@ def sync_gap(profile_name: str) -> str:
         profile_id = _resolve_profile_id(store, profile, profile_name, state)
         if not profile_id:
             return ""
+        market_id = _resolve_market_baseline_id(store, profile_name, state)
+        if not market_id:
+            return ""
         artifact = GapReport(
             meta=_meta(
                 store,
@@ -156,11 +176,11 @@ def sync_gap(profile_name: str) -> str:
                 profile_name,
                 {
                     "profile_id": profile_id,
-                    "market_baseline_id": state.get(KEY_MARKET_BASELINE, ""),
+                    "market_baseline_id": market_id,
                 },
             ),
             profile_snapshot_id=profile_id,
-            market_baseline_id=str(state.get(KEY_MARKET_BASELINE, "")),
+            market_baseline_id=market_id,
             match_score=_as_int(gap.get("match_score")),
             match_level=str(gap.get("match_level") or ""),
             start_level=str(gap.get("start_level") or ""),
@@ -194,6 +214,9 @@ def sync_baseline_plan(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
+        gap_id = _resolve_gap_report_id(store, profile_name, state)
+        if not gap_id:
+            return ""
         strategy = str(plan.get("strategy_summary") or "")
         if not strategy:
             strategy = str(roadmap.get("strategy_summary") or "")
@@ -203,9 +226,9 @@ def sync_baseline_plan(profile_name: str) -> str:
                 "bp",
                 STAGE_BASELINE_PLAN,
                 profile_name,
-                {"profile_id": state.get(KEY_PROFILE, ""), "gap_report_id": state.get(KEY_GAP, "")},
+                {"profile_id": state.get(KEY_PROFILE, ""), "gap_report_id": gap_id},
             ),
-            gap_report_id=str(state.get(KEY_GAP, "")),
+            gap_report_id=gap_id,
             strategy_summary=strategy,
             roadmap=roadmap,
         )
@@ -217,8 +240,8 @@ def sync_baseline_plan(profile_name: str) -> str:
 def sync_execution_state(profile_name: str) -> str:
     """任务与打卡 → ExecutionState artifact（`es_`）。
 
-    必须已有已应用的 ExecutionPlan，或可解析的 baseline plan；否则返回空字符串，
-    不写 ``execution_plan_id`` 为空的半成品 ExecutionState。
+    必须已有 applied ExecutionPlan 且 ``execution_plan_id`` 非空；否则返回空字符串，
+    绝不写 ``execution_plan_id`` 为空的半成品 ExecutionState。
     """
     try:
         profile = load_profile(profile_name)
@@ -226,17 +249,15 @@ def sync_execution_state(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
-        plan_id = str(state.get("execution_plan_id") or "")
-        plan = store.load(plan_id) if plan_id else None
-        has_applied_plan = _matches_stage(
-            plan, STAGE_EXECUTION_PLAN, profile_name
-        ) and bool(plan.get("applied"))
-        if has_applied_plan:
-            baseline_id = str(state.get(KEY_BASELINE_PLAN) or "")
-        else:
-            baseline_id = _resolve_baseline_plan_id(store, profile_name, state)
-            if not baseline_id:
-                return ""
+        plan_id = str(state.get("execution_plan_id") or "").strip()
+        if not plan_id:
+            return ""
+        plan = store.load(plan_id)
+        if not (
+            _matches_stage(plan, STAGE_EXECUTION_PLAN, profile_name)
+            and bool(plan.get("applied"))
+        ):
+            return ""
         task_counts = {"pending": 0, "in_progress": 0, "completed": 0, "skipped": 0}
         for task in profile.tasks:
             task_counts[task.status] = task_counts.get(task.status, 0) + 1
@@ -253,11 +274,10 @@ def sync_execution_state(profile_name: str) -> str:
                 profile_name,
                 {
                     "profile_id": state.get(KEY_PROFILE, ""),
-                    "baseline_plan_id": baseline_id,
-                    "execution_plan_id": plan_id if has_applied_plan else "",
+                    "execution_plan_id": plan_id,
                 },
             ),
-            execution_plan_id=plan_id if has_applied_plan else "",
+            execution_plan_id=plan_id,
             current_phase_id=str(current["phase_id"]) if current else "",
             task_counts=task_counts,
             checkin_counts=checkin_counts,
@@ -481,10 +501,21 @@ def _core_state(profile: CareerProfile) -> dict[str, Any]:
     return dict(state) if isinstance(state, dict) else {}
 
 
+def _resolve_target_spec_id(
+    store: ArtifactStore, profile_name: str, state: dict[str, Any]
+) -> str:
+    """解析 MarketBaseline 依赖的 TargetSpec id；缺失时尝试从档案同步一次。"""
+    target_id = str(state.get(KEY_TARGET) or "").strip()
+    if target_id:
+        # core_state 已有指针但不合法时不再重建，避免覆盖用户已有 key。
+        data = store.load(target_id)
+        return target_id if _matches_stage(data, STAGE_TARGET, profile_name) else ""
+    return sync_target(profile_name)
+
+
 def _resolve_target_spec(
-    store: ArtifactStore, profile: CareerProfile, state: dict[str, Any]
+    store: ArtifactStore, profile: CareerProfile, target_id: str
 ) -> TargetSpec:
-    target_id = str(state.get(KEY_TARGET) or "")
     if target_id:
         data = store.load(target_id)
         if isinstance(data, dict):
@@ -494,6 +525,21 @@ def _resolve_target_spec(
             except Exception:
                 pass
     return target_spec(profile)
+
+
+def _existing_profile_id(
+    store: ArtifactStore, profile_name: str, state: dict[str, Any]
+) -> str:
+    """只解析已存在的 ProfileSnapshot；缺失时不创建，返回空字符串。"""
+    profile_id = str(state.get(KEY_PROFILE) or "")
+    if profile_id and _matches_stage(
+        store.load(profile_id), STAGE_PROFILE, profile_name
+    ):
+        return profile_id
+    latest = store.latest(profile_name, STAGE_PROFILE)
+    if _matches_stage(latest, STAGE_PROFILE, profile_name):
+        return _artifact_id(latest)
+    return ""
 
 
 def _resolve_profile_id(
@@ -537,16 +583,29 @@ def _resolve_profile_id(
     return new_id
 
 
-def _resolve_baseline_plan_id(
+def _resolve_market_baseline_id(
     store: ArtifactStore, profile_name: str, state: dict[str, Any]
 ) -> str:
-    """解析 ExecutionState 依赖的 BaselinePlan id；缺失时尝试从档案同步一次。"""
-    baseline_id = str(state.get(KEY_BASELINE_PLAN) or "")
-    if baseline_id and _matches_stage(
-        store.load(baseline_id), STAGE_BASELINE_PLAN, profile_name
-    ):
-        return baseline_id
-    return sync_baseline_plan(profile_name)
+    """解析 GapReport 依赖的 MarketBaseline id；缺失时尝试从档案同步一次。"""
+    market_id = str(state.get(KEY_MARKET_BASELINE) or "").strip()
+    if market_id:
+        data = store.load(market_id)
+        return (
+            market_id
+            if _matches_stage(data, STAGE_MARKET_BASELINE, profile_name)
+            else ""
+        )
+    return sync_market_baseline(profile_name)
+
+
+def _resolve_gap_report_id(
+    store: ArtifactStore, profile_name: str, state: dict[str, Any]
+) -> str:
+    """解析 BaselinePlan 依赖的 GapReport id；缺失时尝试从档案同步一次。"""
+    gap_id = str(state.get(KEY_GAP) or "").strip()
+    if gap_id:
+        return gap_id if _matches_stage(store.load(gap_id), STAGE_GAP, profile_name) else ""
+    return sync_gap(profile_name)
 
 
 def _artifact_id(artifact: dict[str, Any] | None) -> str:

@@ -25,7 +25,12 @@ class ArtifactMeta(BaseModel):
 
 
 class TargetSpec(BaseModel):
-    """目标岗位定位——阶段 6 的输入，从旧档案 want/who 适配。"""
+    """目标岗位定位——阶段 6 的输入，从旧档案 want/who 适配。
+
+    TargetSpec 本身不带 meta；持久化时由 `core.sync` 包装为带 `ArtifactMeta`
+    的 `_TargetArtifact`，`meta.stage=target`，上游 `meta.inputs.profile_id`
+    必须指向当前档案的 ProfileSnapshot。
+    """
 
     direction: str = ""
     role: str = ""
@@ -37,7 +42,11 @@ class TargetSpec(BaseModel):
 
 
 class ProfileSnapshot(BaseModel):
-    """档案只读快照——阶段 9 校准执行方案时的输入。"""
+    """档案只读快照——阶段 9 校准执行方案时的输入。
+
+    与 TargetSpec 一样不带 meta；持久化时由 `core.sync` 包装为带
+    `ArtifactMeta` 的 `_ProfileArtifact`，`meta.stage=profile`。
+    """
 
     name: str = ""
     who: dict[str, Any] = Field(default_factory=dict)
@@ -89,7 +98,7 @@ class JDEvidence(BaseModel):
     requirements: str = ""
     source: str = ""
     fetched_at: str = ""
-    detail_status: Literal["ok", "missing", "failed"] = "missing"
+    detail_status: Literal["ok", "missing", "failed", "list_only"] = "missing"
     reused: bool = False
 
 
@@ -274,7 +283,12 @@ class ApplicationCandidate(BaseModel):
 
 
 class ApplicationState(BaseModel):
-    """阶段 11 产物：求职投递与漏斗状态。"""
+    """阶段 11 产物：求职投递与漏斗状态。
+
+    - `applications` 保存用户口述的投递/面试记录；
+    - `funnel` 保存按事件历史计算的漏斗统计；
+    - `candidates` 保存 build_application_list 生成并落库的投递候选清单。
+    """
 
     meta: ArtifactMeta
     evidence_run_id: str = ""

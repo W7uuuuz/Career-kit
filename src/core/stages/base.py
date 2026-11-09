@@ -38,4 +38,39 @@ class Stage(Protocol):
     def validate(self, artifact: BaseModel) -> list[str]: ...
 
 
-__all__ = ["Stage", "StageContext", "StageResult"]
+def clean_evidence_ids(raw: Any) -> list[str]:
+    """把任意输入归一为去空后的 evidence id 列表。
+
+    所有阶段共用这一个入口，避免「校验只查非空」「save 查未知」两套规则。
+    """
+    if not isinstance(raw, (list, tuple, set)):
+        return []
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def unknown_evidence_ids(evidence_ids: list[str], known: set[str]) -> list[str]:
+    """返回不在已知证据集合中的 id；空列表表示全部有效。"""
+    return sorted({item for item in evidence_ids if item not in known})
+
+
+def evidence_id_problems(raw: Any, known: set[str] | None = None) -> list[str]:
+    """统一的 evidence_ids 校验：空 id 必拒绝；给定 known 时未知 id 也拒绝。"""
+    ids = clean_evidence_ids(raw)
+    if not ids:
+        return ["evidence_ids 不能为空"]
+    if known is None:
+        return []
+    unknown = unknown_evidence_ids(ids, known)
+    if unknown:
+        return [f"未知 evidence_ids：{', '.join(unknown)}"]
+    return []
+
+
+__all__ = [
+    "Stage",
+    "StageContext",
+    "StageResult",
+    "clean_evidence_ids",
+    "evidence_id_problems",
+    "unknown_evidence_ids",
+]

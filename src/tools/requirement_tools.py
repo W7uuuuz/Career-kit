@@ -150,28 +150,52 @@ def save_requirement_profile(analysis_json: str) -> str:
     final = draft.model_copy(deep=True)
     final.interpretation = merged_interpretation
 
-    # 重算数字：即使草稿在库中被改动，也不进入最终 artifact。
-    revalidated = False
-    evidence_data = store.load(final.evidence_run_id)
-    if isinstance(evidence_data, dict):
-        evidence_meta = evidence_data.get("meta")
-        if (
-            isinstance(evidence_meta, dict)
-            and evidence_meta.get("stage") == state_machine.STAGE_EVIDENCE
-        ):
-            try:
-                evidence = EvidenceRun.model_validate(evidence_data)
-                stats = requirements.compute_statistics(evidence)
-            except Exception:  # noqa: BLE001 —— 证据损坏时退回草稿数字
-                stats = None
-            if stats is not None:
-                final = RequirementProfile(
-                    meta=final.meta,
-                    evidence_run_id=final.evidence_run_id,
-                    interpretation=merged_interpretation,
-                    **stats,
-                )
-                revalidated = True
+    evidence_run_id = final.evidence_run_id.strip()
+    if not evidence_run_id:
+        return error_response(
+            "EVIDENCE_RUN_NOT_FOUND",
+            "需求画像草稿没有 evidence_run_id，无法复算统计，拒绝落库。",
+            {"requirement_profile_id": profile_id},
+        )
+    evidence_data = store.load(evidence_run_id)
+    if not isinstance(evidence_data, dict):
+        return error_response(
+            "EVIDENCE_RUN_NOT_FOUND",
+            f"EvidenceRun「{evidence_run_id}」不存在，拒绝沿用草稿统计落库。",
+            {"requirement_profile_id": profile_id, "evidence_run_id": evidence_run_id},
+        )
+    evidence_meta = evidence_data.get("meta")
+    if not isinstance(evidence_meta, dict) or evidence_meta.get(
+        "stage"
+    ) != state_machine.STAGE_EVIDENCE:
+        return error_response(
+            "EVIDENCE_RUN_NOT_FOUND",
+            f"artifact「{evidence_run_id}」不是 EvidenceRun，拒绝落库。",
+            {"requirement_profile_id": profile_id, "evidence_run_id": evidence_run_id},
+        )
+    if str(evidence_meta.get("profile_name") or "") != profile_name:
+        return error_response(
+            "EVIDENCE_RUN_NOT_FOUND",
+            f"EvidenceRun「{evidence_run_id}」不属于当前档案，拒绝落库。",
+            {"requirement_profile_id": profile_id, "evidence_run_id": evidence_run_id},
+        )
+    try:
+        evidence = EvidenceRun.model_validate(evidence_data)
+        stats = requirements.compute_statistics(evidence)
+    except Exception as exc:  # noqa: BLE001 —— 证据损坏必须拒绝，不沿用草稿数字
+        return error_response(
+            "EVIDENCE_RUN_CORRUPT",
+            f"EvidenceRun「{evidence_run_id}」数据损坏，无法复算统计，拒绝落库：{exc}",
+            {"requirement_profile_id": profile_id, "evidence_run_id": evidence_run_id},
+        )
+
+    # 数字一律由代码从 EvidenceRun 重算，忽略草稿里可能被改动的统计。
+    final = RequirementProfile(
+        meta=final.meta,
+        evidence_run_id=evidence_run_id,
+        interpretation=merged_interpretation,
+        **stats,
+    )
 
     issues = requirements.validate(final)
     if issues:
@@ -181,14 +205,16 @@ def save_requirement_profile(analysis_json: str) -> str:
             {"requirement_profile_id": profile_id, "issues": issues},
         )
 
-    final.meta.version = int(final.meta.version or 1) + 1
     store.save(final)
+    stored = store.load(final.meta.id) or {}
+    stored_meta = stored.get("meta") if isinstance(stored.get("meta"), dict) else {}
+    version = int(stored_meta.get("version") or final.meta.version or 1)
     requirements.update_core_state(profile_name, final.meta.id)
 
     payload = requirements.summary_dict(final)
     payload["status"] = "ok"
-    payload["revalidated"] = revalidated
-    payload["version"] = final.meta.version
+    payload["revalidated"] = True
+    payload["version"] = version
     payload["interpretation_keys"] = sorted(merged_interpretation)
     payload["next_step"] = "调用 plan_execution_alignment 进入阶段 9（执行方案校准）"
     return _json(payload)

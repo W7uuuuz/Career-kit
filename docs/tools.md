@@ -59,11 +59,11 @@
 | 工具 | 作用 |
 |------|------|
 | `select_target_companies` | 阶段 6：按目标档/过渡档/行业筛选企业池；支持 include/exclude；未确认只生成推荐池，确认后才能进入采集 |
-| `collect_company_evidence` | 阶段 7：批量抓取目标企业 JD 与面经，城市硬筛、详情补抓、去重；单源失败不拖垮整批；产物落盘证据池报告；可选 `include_boss=true` 补充 BOSS 薪资与广度（需先确认并扫码登录） |
-| `analyze_company_requirements` | 阶段 8：用代码统计 JD/面经频率、公司覆盖、Wilson 区间与逐条硬门槛，返回受约束的分析提示 |
-| `save_requirement_profile` | 阶段 8：只保存 LLM 的定性解读；数字、列表与 evidence_ids 由代码重新计算，LLM 不可改写 |
+| `collect_company_evidence` | 阶段 7：批量抓取目标企业 JD 与面经，城市硬筛、详情补抓、去重；单源失败不拖垮整批；产物落盘证据池报告；可选 `include_boss=true` 补充 BOSS 薪资与广度（需先确认并扫码登录）。BOSS 的 `detail_status=list_only` 行尊重来源声明：保留列表字段、不补详情、不剔除，并计入 list-only 缺口 |
+| `analyze_company_requirements` | 阶段 8：用代码统计 JD/面经频率、公司覆盖、Wilson 区间与逐条硬门槛，返回受约束的分析提示；置信度只按样本量计算 |
+| `save_requirement_profile` | 阶段 8：只保存 LLM 的定性解读；必须能从 EvidenceRun 复算统计，缺失或损坏时拒绝落库；数字、列表与 evidence_ids 由代码重算，interpretation 一旦引用证据 id 必须真实存在 |
 | `plan_execution_alignment` | 阶段 9：返回校准方法论、基线路线图、已完成能力与需求摘要，供设计执行版方案 |
-| `save_execution_alignment` | 阶段 9：预览或应用执行版；每条变更必须带 evidence_ids；确认后替换计划、保留完成历史并记录调整 |
+| `save_execution_alignment` | 阶段 9：预览或应用执行版；每条变更必须带非空 evidence_ids 且属于当前 RequirementProfile，未知或空 id 拒绝落库；确认后替换计划、保留完成历史并记录调整 |
 | `check_plan_fit` | 计划失配检测：只读检查证据新鲜度、链路一致性、要求覆盖率与漏斗信号，返回给用户的询问话术；不自动改计划 |
 
 ### 任务执行与求职漏斗工具（8）

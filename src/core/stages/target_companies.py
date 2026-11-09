@@ -95,13 +95,19 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         for entry in selected:
             entry.status = "confirmed"
 
+    baseline_plan_id = _resolve_baseline_plan_id(store, ctx.profile_name)
     meta = ArtifactMeta(
         id=store.new_id("cp_"),
         stage=STAGE_ID,
         profile_name=ctx.profile_name,
         created_at=datetime.now().isoformat(),
         inputs=_meta_inputs(
-            inputs, spec, industry, confirmed, target_spec_id=target_spec_id
+            inputs,
+            spec,
+            industry,
+            confirmed,
+            target_spec_id=target_spec_id,
+            baseline_plan_id=baseline_plan_id,
         ),
         validation={
             "confirmed": effective_confirmed,
@@ -388,6 +394,42 @@ def _is_target_spec(data: Any, profile_name: str) -> bool:
     )
 
 
+def _resolve_baseline_plan_id(store: Any, profile_name: str) -> str:
+    """CompanyPool 的上游是 BaselinePlan；缺失时留空，由 progress 阻止推进。"""
+    core_id = _core_state_key(profile_name, "baseline_plan_id")
+    if core_id:
+        data = store.load(core_id)
+        if _is_stage(data, state_machine.STAGE_BASELINE_PLAN, profile_name):
+            return core_id
+    latest = store.latest(profile_name, state_machine.STAGE_BASELINE_PLAN)
+    if _is_stage(latest, state_machine.STAGE_BASELINE_PLAN, profile_name):
+        meta = latest.get("meta") if isinstance(latest.get("meta"), dict) else {}
+        return str(meta.get("id") or "")
+    return ""
+
+
+def _core_state_key(profile_name: str, key: str) -> str:
+    try:
+        profile = load_profile(profile_name)
+    except Exception:  # noqa: BLE001 - 档案读取失败时按无 core_state 处理
+        return ""
+    core_state = getattr(profile, "core_state", None)
+    if not isinstance(core_state, dict):
+        return ""
+    return str(core_state.get(key) or "").strip()
+
+
+def _is_stage(data: Any, stage: str, profile_name: str) -> bool:
+    if not isinstance(data, dict):
+        return False
+    meta = data.get("meta")
+    if not isinstance(meta, dict):
+        return False
+    return meta.get("stage") == stage and str(
+        meta.get("profile_name") or ""
+    ) == profile_name
+
+
 def _meta_inputs(
     inputs: dict[str, Any],
     spec: TargetSpec,
@@ -395,9 +437,11 @@ def _meta_inputs(
     confirmed: bool,
     *,
     target_spec_id: str = "",
+    baseline_plan_id: str = "",
 ) -> dict[str, str]:
     return {
         "target_spec_id": target_spec_id,
+        "baseline_plan_id": baseline_plan_id,
         "target_tiers": "、".join(spec.target_tiers),
         "bridge_tiers": "、".join(spec.bridge_tiers),
         "city": spec.city,

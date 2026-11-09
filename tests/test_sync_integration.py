@@ -96,6 +96,7 @@ def test_finalize_profile_syncs_profile_artifact(data_dir: Path) -> None:
 def test_save_gap_analysis_syncs_gap_artifact(data_dir: Path) -> None:
     from src.tools.analysis_tools import save_gap_analysis
 
+    _seed_legacy_profile()
     gap = {"match_score": 60, "skill_gaps": [{"skill": "RAG", "source": "JD"}]}
     out = save_gap_analysis(gap_json=json.dumps(gap, ensure_ascii=False))
     assert json.loads(out).get("isError") is not True
@@ -109,6 +110,7 @@ def test_save_gap_analysis_syncs_gap_artifact(data_dir: Path) -> None:
 def test_save_roadmap_syncs_baseline_plan_artifact(data_dir: Path) -> None:
     from src.tools.roadmap_tools import save_roadmap
 
+    _seed_legacy_profile()
     roadmap = {
         "roadmap": {
             "strategy_summary": "基线策略",
@@ -153,6 +155,7 @@ def test_generate_tasks_and_checkin_sync_execution_state(data_dir: Path) -> None
             ]
         }
     }
+    _seed_applied_plan(profile)
     profile_store.save_profile(profile, PROFILE_NAME)
 
     out = generate_tasks()
@@ -183,6 +186,29 @@ def test_record_application_syncs_application_state_artifact(data_dir: Path) -> 
     artifact = _load_artifact(app_id)
     assert len(artifact["applications"]) == 1
     assert artifact["applications"][0]["company"] == "字节跳动"
+
+
+def _seed_applied_plan(profile: CareerProfile) -> str:
+    """写入 applied ExecutionPlan 并挂到 core_state；ExecutionState 才允许落库。"""
+    from src.core.artifacts.models import ArtifactMeta, ExecutionPlan
+
+    store = ArtifactStore()
+    plan_id = store.save(
+        ExecutionPlan(
+            meta=ArtifactMeta(
+                id=store.new_id("ep"),
+                stage="execution_plan",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+            ),
+            requirement_profile_id="rp_seed",
+            applied=True,
+        )
+    )
+    state = dict(profile.core_state or {})
+    state["execution_plan_id"] = plan_id
+    profile.core_state = state
+    return plan_id
 
 
 def _seed_review_chain(profile: CareerProfile) -> None:
@@ -258,7 +284,8 @@ def test_workflow_status_backfills_legacy_and_returns_12_stage(data_dir: Path) -
     assert state.get("market_baseline_id", "").startswith("mb_")
     assert state.get("gap_report_id", "").startswith("gr_")
     assert state.get("baseline_plan_id", "").startswith("bp_")
-    assert state.get("execution_state_id", "").startswith("es_")
+    # 没有 applied ExecutionPlan 时不写半成品 ExecutionState（I5）。
+    assert not state.get("execution_state_id")
 
     # 12 阶段位置：企业基线链路已补齐，当前停在阶段 6（目标企业筛选）
     assert "12 步" in out
@@ -397,3 +424,48 @@ def test_task_tools_surface_sync_failure_warning(
     profile = profile_store.load_profile(PROFILE_NAME)
     checkin_out = checkin_task(task_id=profile.tasks[0].id, status="completed")
     assert "同步失败" in checkin_out
+
+def test_sync_execution_state_requires_applied_plan(data_dir: Path) -> None:
+    from src.core import sync as core_sync
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.plan = {"roadmap": {"phases": [{"id": "phase_1", "tasks": [{"name": "A"}]}]}}
+    profile.tasks = [Task(id="task_001", name="A", phase_id="phase_1")]
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    assert core_sync.sync_execution_state(PROFILE_NAME) == ""
+    assert ArtifactStore().list(
+        PROFILE_NAME, "execution"
+    ) == []
+    assert "execution_state_id" not in profile_store.load_profile(PROFILE_NAME).core_state
+
+def test_sync_skips_half_artifacts_when_upstream_missing(data_dir: Path) -> None:
+    from src.core import sync as core_sync
+
+    # 缺 TargetSpec：MarketBaseline 不落库
+    profile = CareerProfile(
+        who={"name": "张三"},
+        research={"report_md": "C:/r.md"},
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_market_baseline(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, "market_baseline") == []
+
+    # 缺 MarketBaseline：GapReport 不落库
+    profile = CareerProfile(who={"name": "张三"}, gap={"match_score": 60})
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_gap(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, "gap") == []
+
+    # 缺 GapReport：BaselinePlan 不落库
+    roadmap = {
+        "roadmap": {
+            "phases": [
+                {"id": "phase_1", "name": "基础", "milestones": [{"id": "m1", "name": "M"}]}
+            ]
+        }
+    }
+    profile = CareerProfile(who={"name": "张三"}, plan=roadmap)
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_baseline_plan(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, "baseline_plan") == []

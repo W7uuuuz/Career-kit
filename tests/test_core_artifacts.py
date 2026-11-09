@@ -21,13 +21,17 @@ from src import paths
 from src.core.adapters.legacy_profile import profile_snapshot, target_spec
 from src.core.artifacts.models import (
     ArtifactMeta,
+    BaselinePlan,
     CompanyEntry,
     CompanyPool,
     EvidenceRun,
     ExecutionPlan,
+    ExecutionState,
+    GapReport,
     HardRequirement,
     InterviewEvidence,
     JDEvidence,
+    MarketBaseline,
     PlanChange,
     ProfileSnapshot,
     RequirementItem,
@@ -39,10 +43,16 @@ from src.core.orchestrator import state_machine
 from src.models import CareerProfile
 
 PREFIXES = {
+    state_machine.STAGE_PROFILE: "pf",
+    state_machine.STAGE_TARGET: "ts",
+    state_machine.STAGE_MARKET: "mb",
+    state_machine.STAGE_GAP: "gr",
+    state_machine.STAGE_BASELINE_PLAN: "bp",
     state_machine.STAGE_COMPANY_POOL: "cp",
     state_machine.STAGE_EVIDENCE: "ev",
     state_machine.STAGE_REQUIREMENT: "rp",
     state_machine.STAGE_EXECUTION_PLAN: "ep",
+    state_machine.STAGE_EXECUTION: "es",
 }
 
 
@@ -84,14 +94,85 @@ def _meta(
     )
 
 
+class _ProfileArtifact(ProfileSnapshot):
+    meta: ArtifactMeta
+
+
+class _TargetArtifact(TargetSpec):
+    meta: ArtifactMeta
+
+
+def _seed_upstream(store: ArtifactStore, profile_name: str = "alice") -> dict[str, str]:
+    """阶段 1-5 的完整上游链，供阶段 6+ 的引用校验使用。"""
+    profile_id = store.save(
+        _ProfileArtifact(
+            meta=_meta(store, state_machine.STAGE_PROFILE, profile_name),
+            name="张三",
+            who={"name": "张三"},
+            summary="测试档案",
+        )
+    )
+    target_id = store.save(
+        _TargetArtifact(
+            meta=_meta(
+                store,
+                state_machine.STAGE_TARGET,
+                profile_name,
+                {"profile_id": profile_id},
+            ),
+            role="AI Agent 开发",
+            city="北京",
+        )
+    )
+    market_id = store.save(
+        MarketBaseline(
+            meta=_meta(
+                store,
+                state_machine.STAGE_MARKET,
+                profile_name,
+                {"target_spec_id": target_id},
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
+        )
+    )
+    gap_id = store.save(
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP, profile_name),
+            profile_snapshot_id=profile_id,
+            market_baseline_id=market_id,
+            match_score=60,
+        )
+    )
+    baseline_id = store.save(
+        BaselinePlan(
+            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, profile_name),
+            gap_report_id=gap_id,
+            roadmap={"phases": [{"name": "基础", "milestones": []}]},
+        )
+    )
+    return {
+        "profile_id": profile_id,
+        "target_spec_id": target_id,
+        "market_baseline_id": market_id,
+        "gap_report_id": gap_id,
+        "baseline_plan_id": baseline_id,
+    }
+
+
 def _pool(
     store: ArtifactStore,
     confirmed: bool,
     profile_name: str = "alice",
     role: str = "AI Agent 开发",
+    baseline_plan_id: str = "",
 ) -> CompanyPool:
     return CompanyPool(
-        meta=_meta(store, state_machine.STAGE_COMPANY_POOL, profile_name),
+        meta=_meta(
+            store,
+            state_machine.STAGE_COMPANY_POOL,
+            profile_name,
+            {"baseline_plan_id": baseline_plan_id},
+        ),
         target_spec=TargetSpec(role=role, city="北京"),
         companies=[
             CompanyEntry(
@@ -442,7 +523,10 @@ def test_state_machine_without_artifacts(store: ArtifactStore, core_state: dict[
 def test_state_machine_unconfirmed_pool_requires_selection(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    store.save(_pool(store, confirmed=False))
+    chain = _seed_upstream(store)
+    store.save(
+        _pool(store, confirmed=False, baseline_plan_id=chain["baseline_plan_id"])
+    )
     result = state_machine.next_action("alice")
     assert result["stage"] == state_machine.STAGE_COMPANY_POOL
     assert result["next_tool"] == "select_target_companies"
@@ -451,7 +535,10 @@ def test_state_machine_unconfirmed_pool_requires_selection(
 def test_state_machine_confirmed_pool_collects_evidence(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    pool_id = store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     result = state_machine.next_action("alice")
     assert result["stage"] == state_machine.STAGE_EVIDENCE
     assert result["next_tool"] == "collect_company_evidence"
@@ -462,7 +549,10 @@ def test_state_machine_confirmed_pool_collects_evidence(
 def test_state_machine_evidence_analyzes_requirements(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    pool_id = store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     evidence_id = store.save(_evidence(store, pool_id))
     result = state_machine.next_action("alice")
     assert result["stage"] == state_machine.STAGE_REQUIREMENT
@@ -473,7 +563,10 @@ def test_state_machine_evidence_analyzes_requirements(
 def test_state_machine_requirement_plans_execution(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    pool_id = store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     evidence_id = store.save(_evidence(store, pool_id))
     requirement_id = store.save(_requirement(store, evidence_id))
     result = state_machine.next_action("alice")
@@ -485,7 +578,10 @@ def test_state_machine_requirement_plans_execution(
 def test_state_machine_unapplied_plan_awaits_confirmation(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    pool_id = store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     evidence_id = store.save(_evidence(store, pool_id))
     requirement_id = store.save(_requirement(store, evidence_id))
     plan_id = store.save(_plan(store, requirement_id, applied=False))
@@ -498,7 +594,10 @@ def test_state_machine_unapplied_plan_awaits_confirmation(
 def test_state_machine_applied_plan_enters_execution(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    pool_id = store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     evidence_id = store.save(_evidence(store, pool_id))
     requirement_id = store.save(_requirement(store, evidence_id))
     store.save(_plan(store, requirement_id, applied=True))
@@ -508,11 +607,43 @@ def test_state_machine_applied_plan_enters_execution(
     assert result["artifact_ids"]["execution_plan_id"] != ""
 
 
+def test_state_machine_stale_execution_state_requires_regeneration(
+    store: ArtifactStore, core_state: dict[str, Any]
+) -> None:
+    chain = _seed_upstream(store)
+    pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
+    evidence_id = store.save(_evidence(store, pool_id))
+    requirement_id = store.save(_requirement(store, evidence_id))
+    old_plan_id = store.save(_plan(store, requirement_id, applied=True))
+    current_plan_id = store.save(_plan(store, requirement_id, applied=True))
+    stale_execution_id = store.save(
+        ExecutionState(
+            meta=_meta(store, state_machine.STAGE_EXECUTION),
+            execution_plan_id=old_plan_id,
+        )
+    )
+    core_state["value"] = {
+        "execution_plan_id": current_plan_id,
+        "execution_state_id": stale_execution_id,
+    }
+    result = state_machine.next_action("alice")
+    assert result["stage"] == state_machine.STAGE_EXECUTION
+    assert result["next_tool"] == "generate_tasks"
+    assert result["artifact_ids"]["execution_state_id"] == ""
+
+
 def test_state_machine_prefers_core_state_artifact_ids(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    old_pool_id = store.save(_pool(store, confirmed=True))
-    store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    old_pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
+    store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     old_evidence_id = store.save(_evidence(store, old_pool_id))
     core_state["value"] = {
         "company_pool_id": old_pool_id,
@@ -527,8 +658,13 @@ def test_state_machine_prefers_core_state_artifact_ids(
 def test_state_machine_stale_evidence_forces_recollection(
     store: ArtifactStore, core_state: dict[str, Any]
 ) -> None:
-    old_pool_id = store.save(_pool(store, confirmed=True))
-    new_pool_id = store.save(_pool(store, confirmed=True))
+    chain = _seed_upstream(store)
+    old_pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
+    new_pool_id = store.save(
+        _pool(store, confirmed=True, baseline_plan_id=chain["baseline_plan_id"])
+    )
     stale_evidence_id = store.save(_evidence(store, old_pool_id))
     core_state["value"] = {
         "company_pool_id": new_pool_id,
@@ -539,3 +675,47 @@ def test_state_machine_stale_evidence_forces_recollection(
     assert result["next_tool"] == "collect_company_evidence"
     assert result["artifact_ids"]["company_pool_id"] == new_pool_id
     assert result["artifact_ids"]["evidence_run_id"] == ""
+
+def test_market_baseline_without_target_spec_cannot_advance(
+    store: ArtifactStore, core_state: dict[str, Any]
+) -> None:
+    chain = _seed_upstream(store)
+    store.save(
+        MarketBaseline(
+            meta=_meta(store, state_machine.STAGE_MARKET),
+            target_spec=TargetSpec(role="AI Agent 开发"),
+        )
+    )
+    result = state_machine.next_action("alice")
+    assert result["stage"] == state_machine.STAGE_MARKET
+    assert result["next_tool"] == "gather_research_data"
+    assert "target_spec_id" in result["reason"]
+    assert result["artifact_ids"]["market_baseline_id"] == ""
+    assert result["artifact_ids"]["target_spec_id"] == chain["target_spec_id"]
+
+
+def test_gap_report_without_market_baseline_cannot_advance(
+    store: ArtifactStore, core_state: dict[str, Any]
+) -> None:
+    chain = _seed_upstream(store)
+    store.save(
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP),
+            profile_snapshot_id=chain["profile_id"],
+        )
+    )
+    result = state_machine.next_action("alice")
+    assert result["stage"] == state_machine.STAGE_GAP
+    assert result["next_tool"] == "analyze_gaps"
+    assert "market_baseline_id" in result["reason"]
+
+
+def test_company_pool_without_baseline_plan_cannot_advance(
+    store: ArtifactStore, core_state: dict[str, Any]
+) -> None:
+    _seed_upstream(store)
+    store.save(_pool(store, confirmed=True))
+    result = state_machine.next_action("alice")
+    assert result["stage"] == state_machine.STAGE_COMPANY_POOL
+    assert result["next_tool"] == "select_target_companies"
+    assert "baseline_plan_id" in result["reason"]

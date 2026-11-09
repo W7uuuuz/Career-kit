@@ -1128,22 +1128,27 @@ def test_daily_same_day_is_idempotent(temp_profile):
     assert task.checkin_progress == 1
 
 
-def test_save_roadmap_guides_execution_start(temp_profile):
-    """save_roadmap 文案引导先做企业适配，再细化当前阶段、生成任务。"""
+def test_save_roadmap_guides_execution_start(temp_profile, monkeypatch):
+    """save_roadmap 的 next_steps 与 message 同源：目标已确认后指向企业适配。"""
+    from src import paths
     from src.server import intake, save_roadmap
+
+    # temp_profile 只重定向 profile 存储；artifact store 也要一起隔离，避免读到历史链。
+    monkeypatch.setattr(paths, "PROFILE_DIR", temp_profile)
 
     intake("who", '{"name": "张三"}')
     intake("have", '{"skills": ["Python"]}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
 
     roadmap = {"roadmap": {"strategy_summary": "测试", "phases": [
         {"type": "project", "name": "做项目", "resume_value": "项目",
          "kpi": {"metric": "完成", "target": "1个"}},
     ]}}
     out = _parse(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+    assert out["next_steps"] == ["select_target_companies"]
     assert "select_target_companies" in out["message"]
     assert "detail_current_phase" in out["message"]
-    assert out["next_steps"] == ["select_target_companies"]
+    assert "intake(want)" not in out["message"]
     assert "跳过" not in out["message"] and "按基线" not in out["message"]
 
 

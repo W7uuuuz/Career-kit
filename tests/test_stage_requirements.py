@@ -20,6 +20,7 @@ from src.core.artifacts.models import (
     EvidenceRun,
     InterviewEvidence,
     JDEvidence,
+    RequirementItem,
     RequirementProfile,
     TargetSpec,
 )
@@ -470,3 +471,160 @@ def test_stage_run_resolves_latest_and_validate_rejects_tampering(
     tampered.interpretation = {"high_frequency": []}
     issues = requirements.validate(tampered)
     assert any("interpretation 只允许" in issue for issue in issues)
+
+def _save_draft(
+    store: ArtifactStore, evidence_run_id: str, profile_name: str = "alice"
+) -> str:
+    return store.save(
+        RequirementProfile(
+            meta=ArtifactMeta(
+                id=store.new_id("rp"),
+                stage=state_machine.STAGE_REQUIREMENT,
+                profile_name=profile_name,
+                created_at=datetime.now().isoformat(),
+                inputs={"evidence_run_id": evidence_run_id},
+            ),
+            evidence_run_id=evidence_run_id,
+            sample_size_jd=999,
+            high_frequency=[
+                RequirementItem(
+                    term="伪造高频",
+                    category="skill",
+                    jd_count=999,
+                    jd_frequency=1.0,
+                    company_count=1,
+                    company_frequency=1.0,
+                    companies=["伪造公司"],
+                    evidence_ids=["JD999"],
+                )
+            ],
+        )
+    )
+
+
+def test_save_requirement_profile_rejects_missing_evidence_run(
+    store: ArtifactStore,
+) -> None:
+    draft_id = _save_draft(store, "ev_missing")
+
+    result = json.loads(
+        requirement_tools.save_requirement_profile(
+            json.dumps(
+                {"requirement_profile_id": draft_id, "interpretation": {"summary": "x"}},
+                ensure_ascii=False,
+            )
+        )
+    )
+
+    assert result["isError"] is True
+    assert result["code"] == "EVIDENCE_RUN_NOT_FOUND"
+    draft = store.load(draft_id)
+    assert draft is not None
+    assert draft["sample_size_jd"] == 999
+    assert draft["interpretation"] == {}
+    assert draft["meta"]["version"] == 1
+
+
+def test_save_requirement_profile_rejects_corrupt_evidence_run(
+    store: ArtifactStore,
+) -> None:
+    bad_evidence_id = store.save(
+        EvidenceRun(
+            meta=ArtifactMeta(
+                id=store.new_id("ev"),
+                stage=state_machine.STAGE_EVIDENCE,
+                profile_name="alice",
+                created_at=datetime.now().isoformat(),
+            ),
+            target_spec=TargetSpec(),
+            company_pool_id="cp_x",
+            jd_items=[JDEvidence(id="JD001", company_id="a", company="A", tier="小厂", title="t")],
+        )
+    )
+    # 把 evidence artifact 的 data 破坏成非法 JSON，模拟损坏。
+    import sqlite3
+
+    with sqlite3.connect(store.db_path) as conn:
+        conn.execute("UPDATE artifacts SET data = ? WHERE id = ?", ("{broken", bad_evidence_id))
+        conn.commit()
+
+    draft_id = _save_draft(store, bad_evidence_id)
+    result = json.loads(
+        requirement_tools.save_requirement_profile(
+            json.dumps(
+                {"requirement_profile_id": draft_id, "interpretation": {"summary": "x"}},
+                ensure_ascii=False,
+            )
+        )
+    )
+
+    assert result["isError"] is True
+    assert result["code"] in {"EVIDENCE_RUN_NOT_FOUND", "EVIDENCE_RUN_CORRUPT"}
+    assert store.load(draft_id)["sample_size_jd"] == 999
+
+
+def test_interpretation_evidence_ids_must_exist(store: ArtifactStore) -> None:
+    run = _save_run(store)
+    analyzed = _parse(requirement_tools.analyze_company_requirements(run.meta.id))
+    profile_id = analyzed["requirement_profile_id"]
+
+    bad = json.loads(
+        requirement_tools.save_requirement_profile(
+            json.dumps(
+                {
+                    "requirement_profile_id": profile_id,
+                    "interpretation": {"summary": "JD999 是高频要求"},
+                },
+                ensure_ascii=False,
+            )
+        )
+    )
+    assert bad["isError"] is True
+    assert bad["code"] == "INVALID_ARTIFACT"
+    assert "JD999" in bad["message"]
+
+    bad_list = json.loads(
+        requirement_tools.save_requirement_profile(
+            json.dumps(
+                {
+                    "requirement_profile_id": profile_id,
+                    "interpretation": {"priorities": ["参考 IV999 准备"]},
+                },
+                ensure_ascii=False,
+            )
+        )
+    )
+    assert bad_list["isError"] is True
+    assert "IV999" in bad_list["message"]
+
+    for text in ("参考JD999", "参考 jd999", "iv999 是考点"):
+        bad_inline = json.loads(
+            requirement_tools.save_requirement_profile(
+                json.dumps(
+                    {
+                        "requirement_profile_id": profile_id,
+                        "interpretation": {"summary": text},
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        )
+        assert bad_inline["isError"] is True, text
+        assert bad_inline["code"] == "INVALID_ARTIFACT", text
+
+    good = _parse(
+        requirement_tools.save_requirement_profile(
+            json.dumps(
+                {
+                    "requirement_profile_id": profile_id,
+                    "interpretation": {"summary": "参考jd001 与 iv002 是高频"},
+                },
+                ensure_ascii=False,
+            )
+        )
+    )
+    assert good["status"] == "ok"
+    assert good["version"] == 2
+    stored = store.load(profile_id)
+    assert stored is not None
+    assert stored["meta"]["version"] == good["version"]

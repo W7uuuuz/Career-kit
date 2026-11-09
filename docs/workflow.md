@@ -16,6 +16,14 @@
 阶段 11/12 是可选/周期性阶段，不阻塞阶段 10 的执行。
 阶段 6-9 是执行前必做的企业适配链路，完成后才进入阶段 10。
 
+**上游引用契约（阶段 2-10）**：下游 artifact 必须通过 body 字段或
+`meta.inputs` 引用上游 id，空引用视为不满足；下游 artifact 存在也不能让缺失的
+上游阶段被跳过。artifact 的 `meta.stage` 取值包括
+`profile / target / market_baseline / gap / baseline_plan / company_pool /
+evidence / requirement / execution_plan / execution / applications / review`；
+`core_state.stage` 与 artifact 阶段基本同源，但阶段 10 例外：artifact 用
+`execution`，执行态 `core_state.stage` 写 `executing`（见 save_execution_alignment）。
+
 ---
 
 ## 阶段 1：职业档案构建
@@ -38,6 +46,8 @@
 > AI 不得代填。唯一跳过方式是用户明确要求时 `finalize_profile(skip_probing=True)`。
 
 **产物**：`ProfileSnapshot`（`pf_`）+ `profile.summary`。
+`ProfileSnapshot` 模型本身不带 `meta`，由 `core.sync` 包装成带 `ArtifactMeta`
+的持久化 artifact（`meta.stage=profile`）。
 
 ---
 
@@ -54,6 +64,8 @@
 ```
 
 **产物**：`TargetSpec`（`ts_`）+ `profile.want`。
+`TargetSpec` 同样由 `core.sync` 包装持久化，`meta.inputs.profile_id` 必须指向
+当前档案的 `ProfileSnapshot`。
 
 **关键规则**：模型从简历推断的目标只能作为候选，未确认时 GUIDE 停在 goal 状态；
 目标变更后旧分析和计划可能过期，后续用 `check_plan_fit` 检测。
@@ -182,10 +194,14 @@ collect_company_evidence(
 
 **关键规则**：
 - 只抓已确认且可抓的企业；城市是硬筛选。
-- 每条 JD 必须抓到详情；无详情剔除并计入 `dropped_no_detail`。
+- 官方源 JD 必须抓到详情；无详情剔除并计入 `dropped_no_detail`。
+- BOSS 的 `detail_status=list_only` 行尊重来源声明：不补详情、不剔除，
+  保留薪资/公司/地点/技能等列表字段，并计入 list-only 缺口；
+  需要全文时由用户显式调用 `fetch_jd_detail`。
 - 单源失败不拖垮整批，失败原因进 `source_status` 与 `gaps`。
 - 复用 `profile.research` 中 7 天内的样本，按 URL/公司+标题去重。
-- 置信度只按样本量计算：JD <15 low / 15-29 medium / >=30 high；
+- 置信度只按样本量计算（与 RequirementProfile 同口径）：
+  JD <15 low / 15-29 medium / >=30 high；
   面经 <10 low / 10-19 medium / >=20 high。
 - 面经与 JD 分开统计；面经无法对应企业时保留为通用面经。
 
@@ -257,6 +273,9 @@ collect_company_evidence(
 
 **关键规则**：
 - `checkin_mode`：`once` / `daily`（amount 累加天数）/ `percent`（amount 累加比例）。
+- `ExecutionState` 只在存在 applied `ExecutionPlan` 且 `execution_plan_id` 非空时写入。
+- 只有匹配当前 applied plan 的 `ExecutionState` 才进入 `get_next_tasks`；
+  旧计划留下的任务需先 `generate_tasks` 重新生成。
 - 完成得轻松时可在对话中建议加深，但不自动繁殖任务。
 - 产品不为任务设定时限。
 
@@ -274,7 +293,8 @@ record_application(company, role, status, channel, source, notes)
 delete_application(application_id)   # 仅录错/重复时
 ```
 
-**产物**：`ApplicationState`（`as_`）+ `profile.applications` + 漏斗统计。
+**产物**：`ApplicationState`（`as_`）+ `profile.applications` + 漏斗统计 +
+`candidates`（由 `build_application_list` 生成并保存的投递清单）。
 
 **关键规则**：
 - 只记录用户口述的真实事实，不编造、不代用户估计状态。

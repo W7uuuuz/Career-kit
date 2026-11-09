@@ -67,14 +67,22 @@ ARTIFACT_KEYS: tuple[str, ...] = tuple(STAGE_KEYS[stage] for stage in STAGE_ORDE
 REQUIRED_STAGES: tuple[str, ...] = STAGE_ORDER[:10]
 OPTIONAL_STAGES: tuple[str, ...] = (STAGE_APPLICATIONS, STAGE_REVIEW)
 
-# 阶段 1-5 允许旧档案兜底（没有 artifact 时按已有 section 判断）。
-_CORE_PREFIX_STAGES: tuple[str, ...] = (
-    STAGE_PROFILE,
-    STAGE_TARGET,
-    STAGE_MARKET,
-    STAGE_GAP,
-    STAGE_BASELINE_PLAN,
-)
+# 各阶段（2-10）的必需上游引用矩阵：stage -> (上游 stage, 字段名, 字段位置)。
+# 字段位置为 "body"（artifact 顶层字段）或 "inputs"（meta.inputs）。
+_UPSTREAM_REFS: dict[str, tuple[tuple[str, str, str], ...]] = {
+    STAGE_TARGET: ((STAGE_PROFILE, "profile_id", "inputs"),),
+    STAGE_MARKET: ((STAGE_TARGET, "target_spec_id", "inputs"),),
+    STAGE_GAP: (
+        (STAGE_PROFILE, "profile_snapshot_id", "body"),
+        (STAGE_MARKET, "market_baseline_id", "body"),
+    ),
+    STAGE_BASELINE_PLAN: ((STAGE_GAP, "gap_report_id", "body"),),
+    STAGE_COMPANY_POOL: ((STAGE_BASELINE_PLAN, "baseline_plan_id", "inputs"),),
+    STAGE_EVIDENCE: ((STAGE_COMPANY_POOL, "company_pool_id", "body"),),
+    STAGE_REQUIREMENT: ((STAGE_EVIDENCE, "evidence_run_id", "body"),),
+    STAGE_EXECUTION_PLAN: ((STAGE_REQUIREMENT, "requirement_profile_id", "body"),),
+    STAGE_EXECUTION: ((STAGE_EXECUTION_PLAN, "execution_plan_id", "body"),),
+}
 
 _OPTIONAL_EXECUTION_TOOLS = [
     "build_application_list",
@@ -102,6 +110,7 @@ def resolve_progress(
 
     artifact_ids: dict[str, str] = dict.fromkeys(ARTIFACT_KEYS, "")
     legacy = legacy_flags(profile)
+    has_tasks = _has_tasks(profile)
 
     # 目标 JD 更新后旧差距分析过期：必须强制回到差距阶段，下游 tasks/plan 不得覆盖。
     if getattr(profile, "gap", None) and str(
@@ -116,7 +125,7 @@ def resolve_progress(
             "目标 JD 已更新，旧差距分析已过期，必须先重新分析",
             resolved_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
         )
 
     has_required_artifact = any(
@@ -126,60 +135,55 @@ def resolve_progress(
     # 跳阶段，否则 GUIDE 会在 finalize 前跳到市场调研（复测 BUG #12-13）。
     legacy_mode = _is_legacy_mode(profile)
 
-    for stage in _CORE_PREFIX_STAGES:
-        artifact = resolved[stage]
-        if artifact is not None:
-            artifact_ids[STAGE_KEYS[stage]] = _artifact_id(artifact)
-            continue
-        # 新流程档案在 finalize 前可能已经同步出 TargetSpec（intake 确认目标时）：
-        # 此时缺 ProfileSnapshot 不能因为下游 artifact 存在就跳过建档（BUG #12-13）。
-        if downstream_exists(resolved, stage) and (
-            stage != STAGE_PROFILE or legacy_mode
-        ):
-            continue
-        if legacy_mode and not has_required_artifact and legacy_stage_done(profile, stage):
-            continue
-
-        # 空档案还没有任何可采集内容：先走采集卡，而不是让用户 finalize 空档案。
-        if stage == STAGE_PROFILE:
-            if not _has_any_section(profile):
-                return _result(
-                    STAGE_PROFILE,
-                    "intake(section='bundle')",
-                    "尚无档案内容，先采集基本信息",
-                    artifact_ids,
-                    legacy=legacy,
-                    has_tasks=_has_tasks(profile),
-                )
-            # 目标未由用户确认时停在目标阶段；已有目标字段则请用户确认，
-            # 完全没有目标则先探索方向。legacy 档案按已确认处理。
-            if not _goal_confirmed(profile):
-                if _has_want(profile) or bool(getattr(profile, "target_jd", None)):
-                    return _result(
-                        STAGE_TARGET,
-                        "intake(want)",
-                        "目标已存在但尚未由用户确认",
-                        artifact_ids,
-                        legacy=legacy,
-                        has_tasks=_has_tasks(profile),
-                    )
-                return _result(
-                    STAGE_TARGET,
-                    "explore_goals",
-                    "尚未确定目标岗位",
-                    artifact_ids,
-                    legacy=legacy,
-                    has_tasks=_has_tasks(profile),
-                )
-
-        return _result(
-            stage,
-            _core_stage_tool(profile, stage),
-            _core_stage_reason(profile, stage),
-            artifact_ids,
-            legacy=legacy,
-            has_tasks=_has_tasks(profile),
+    # 阶段 1：档案快照。只有旧档案（无 guidance）在有下游产物时才允许按 section 兜底跳过。
+    profile_artifact = resolved[STAGE_PROFILE]
+    if profile_artifact is not None:
+        artifact_ids[STAGE_KEYS[STAGE_PROFILE]] = _artifact_id(profile_artifact)
+    else:
+        legacy_profile_done = (
+            legacy_mode
+            and not has_required_artifact
+            and legacy_stage_done(profile, STAGE_PROFILE)
         )
+        # 新流程（有 guidance）没有 ProfileSnapshot 时必须停在 finalize，
+        # 即使 TargetSpec 已由 intake(want, user_confirmed=true) 同步存在。
+        if not legacy_profile_done:
+            early = _profile_stage_result(
+                profile, artifact_ids, legacy=legacy, has_tasks=has_tasks
+            )
+            if early is not None:
+                return early
+
+    # 阶段 2-5：缺 artifact 不得因为下游 artifact 存在而跳过；
+    # 已有 artifact 必须引用上游 id，空引用视为不满足。
+    for stage in (STAGE_TARGET, STAGE_MARKET, STAGE_GAP, STAGE_BASELINE_PLAN):
+        artifact = resolved[stage]
+        if artifact is None:
+            if (
+                legacy_mode
+                and not has_required_artifact
+                and legacy_stage_done(profile, stage)
+            ):
+                continue
+            return _result(
+                stage,
+                _core_stage_tool(profile, stage),
+                _core_stage_reason(profile, stage),
+                artifact_ids,
+                legacy=legacy,
+                has_tasks=has_tasks,
+            )
+        problems = _upstream_problems(stage, artifact, artifact_ids)
+        if problems:
+            return _result(
+                stage,
+                _core_stage_tool(profile, stage),
+                "；".join(problems),
+                artifact_ids,
+                legacy=legacy,
+                has_tasks=has_tasks,
+            )
+        artifact_ids[STAGE_KEYS[stage]] = _artifact_id(artifact)
 
     pool = resolved[STAGE_COMPANY_POOL]
     if pool is None:
@@ -189,7 +193,17 @@ def resolve_progress(
             "尚未生成 CompanyPool",
             artifact_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
+        )
+    problems = _upstream_problems(STAGE_COMPANY_POOL, pool, artifact_ids)
+    if problems:
+        return _result(
+            STAGE_COMPANY_POOL,
+            "select_target_companies",
+            "；".join(problems),
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_COMPANY_POOL]] = _artifact_id(pool)
     if not _confirmed(pool):
@@ -199,48 +213,72 @@ def resolve_progress(
             "CompanyPool 尚未确认",
             artifact_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
         )
 
     evidence = resolved[STAGE_EVIDENCE]
-    if evidence is None or not _references(
-        evidence, "company_pool_id", artifact_ids[STAGE_KEYS[STAGE_COMPANY_POOL]]
-    ):
+    if evidence is None:
         return _result(
             STAGE_EVIDENCE,
             "collect_company_evidence",
             "缺少与当前 CompanyPool 匹配的 EvidenceRun",
             artifact_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
+        )
+    problems = _upstream_problems(STAGE_EVIDENCE, evidence, artifact_ids)
+    if problems:
+        return _result(
+            STAGE_EVIDENCE,
+            "collect_company_evidence",
+            "；".join(problems),
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_EVIDENCE]] = _artifact_id(evidence)
 
     requirement = resolved[STAGE_REQUIREMENT]
-    if requirement is None or not _references(
-        requirement, "evidence_run_id", artifact_ids[STAGE_KEYS[STAGE_EVIDENCE]]
-    ):
+    if requirement is None:
         return _result(
             STAGE_REQUIREMENT,
             "analyze_company_requirements",
             "缺少与当前 EvidenceRun 匹配的 RequirementProfile",
             artifact_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
+        )
+    problems = _upstream_problems(STAGE_REQUIREMENT, requirement, artifact_ids)
+    if problems:
+        return _result(
+            STAGE_REQUIREMENT,
+            "analyze_company_requirements",
+            "；".join(problems),
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_REQUIREMENT]] = _artifact_id(requirement)
 
     plan = resolved[STAGE_EXECUTION_PLAN]
-    if plan is None or not _references(
-        plan, "requirement_profile_id", artifact_ids[STAGE_KEYS[STAGE_REQUIREMENT]]
-    ):
+    if plan is None:
         return _result(
             STAGE_EXECUTION_PLAN,
             "plan_execution_alignment",
             "缺少与当前 RequirementProfile 匹配的 ExecutionPlan",
             artifact_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
+        )
+    problems = _upstream_problems(STAGE_EXECUTION_PLAN, plan, artifact_ids)
+    if problems:
+        return _result(
+            STAGE_EXECUTION_PLAN,
+            "plan_execution_alignment",
+            "；".join(problems),
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_EXECUTION_PLAN]] = _artifact_id(plan)
 
@@ -251,43 +289,39 @@ def resolve_progress(
             "ExecutionPlan 已生成但未应用",
             artifact_ids,
             legacy=legacy,
-            has_tasks=_has_tasks(profile),
+            has_tasks=has_tasks,
         )
 
+    # 只有与当前 applied ExecutionPlan 匹配的 ExecutionState 才算执行态就绪；
+    # 旧计划留下的任务不能直接把新计划推进到 executing/get_next_tasks。
     execution = resolved[STAGE_EXECUTION]
-    if execution is not None and _references(
-        execution, "execution_plan_id", artifact_ids[STAGE_KEYS[STAGE_EXECUTION_PLAN]]
-    ):
-        artifact_ids[STAGE_KEYS[STAGE_EXECUTION]] = _artifact_id(execution)
-        return _result(
-            STAGE_EXECUTING,
-            "get_next_tasks",
-            "执行状态已就绪，按当前阶段任务推进",
-            artifact_ids,
-            applied=True,
-            has_execution_state=True,
-            has_tasks=_has_tasks(profile),
-            legacy=legacy,
-        )
+    if execution is not None:
+        problems = _upstream_problems(STAGE_EXECUTION, execution, artifact_ids)
+        if not problems:
+            artifact_ids[STAGE_KEYS[STAGE_EXECUTION]] = _artifact_id(execution)
+            return _result(
+                STAGE_EXECUTING,
+                "get_next_tasks",
+                "执行状态已就绪，按当前阶段任务推进",
+                artifact_ids,
+                applied=True,
+                has_execution_state=True,
+                has_tasks=has_tasks,
+                legacy=legacy,
+            )
 
-    if _has_tasks(profile):
-        return _result(
-            STAGE_EXECUTING,
-            "get_next_tasks",
-            "档案已有任务，按当前阶段任务推进",
-            artifact_ids,
-            applied=True,
-            has_tasks=True,
-            legacy=legacy,
-        )
-
+    reason = (
+        "已有任务属于旧执行方案，需按当前 ExecutionPlan 重新生成任务"
+        if has_tasks
+        else "ExecutionPlan 已应用，尚未生成任务与执行状态"
+    )
     return _result(
         STAGE_EXECUTION,
         "generate_tasks",
-        "ExecutionPlan 已应用，尚未生成任务与执行状态",
+        reason,
         artifact_ids,
         applied=True,
-        has_tasks=_has_tasks(profile),
+        has_tasks=has_tasks,
         legacy=legacy,
     )
 
@@ -404,6 +438,87 @@ def _core_stage_reason(profile: Any, stage: str) -> str:
     if stage == STAGE_GAP:
         return "尚未生成 GapReport"
     return "尚未生成 BaselinePlan"
+
+
+def _profile_stage_result(
+    profile: Any,
+    artifact_ids: dict[str, str],
+    *,
+    legacy: dict[str, bool],
+    has_tasks: bool,
+) -> dict[str, Any] | None:
+    """阶段 1 缺失 artifact 时的分流：采集卡 / 目标确认 / finalize。
+
+    返回 None 表示可以继续向后解析。
+    """
+    # 空档案还没有任何可采集内容：先走采集卡，而不是让用户 finalize 空档案。
+    if not _has_any_section(profile):
+        return _result(
+            STAGE_PROFILE,
+            "intake(section='bundle')",
+            "尚无档案内容，先采集基本信息",
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
+        )
+    # 目标未由用户确认时停在目标阶段；已有目标字段则请用户确认，
+    # 完全没有目标则先探索方向。legacy 档案按已确认处理。
+    if not _goal_confirmed(profile):
+        if _has_want(profile) or bool(getattr(profile, "target_jd", None)):
+            return _result(
+                STAGE_TARGET,
+                "intake(want)",
+                "目标已存在但尚未由用户确认",
+                artifact_ids,
+                legacy=legacy,
+                has_tasks=has_tasks,
+            )
+        return _result(
+            STAGE_TARGET,
+            "explore_goals",
+            "尚未确定目标岗位",
+            artifact_ids,
+            legacy=legacy,
+            has_tasks=has_tasks,
+        )
+    return _result(
+        STAGE_PROFILE,
+        "finalize_profile",
+        "尚未建立 ProfileSnapshot",
+        artifact_ids,
+        legacy=legacy,
+        has_tasks=has_tasks,
+    )
+
+
+def _artifact_field(artifact: dict[str, Any], field: str, where: str) -> str:
+    if where == "inputs":
+        meta = artifact.get("meta")
+        inputs = meta.get("inputs") if isinstance(meta, dict) else None
+        value = inputs.get(field) if isinstance(inputs, dict) else ""
+    else:
+        value = artifact.get(field)
+    return str(value or "").strip()
+
+
+def _upstream_problems(
+    stage: str,
+    artifact: dict[str, Any],
+    artifact_ids: dict[str, str],
+) -> list[str]:
+    """校验阶段 2-10 的上游引用；空上游 id 与不一致都视为不满足。"""
+    problems: list[str] = []
+    for upstream_stage, field, where in _UPSTREAM_REFS.get(stage, ()):
+        expected = artifact_ids.get(STAGE_KEYS[upstream_stage], "")
+        actual = _artifact_field(artifact, field, where)
+        upstream_label = f"{field}（{upstream_stage}）"
+        if not expected:
+            problems.append(f"缺少上游 {upstream_label}，不能推进")
+        elif not actual:
+            problems.append(f"{stage} 缺少 {upstream_label} 引用")
+        elif actual != expected:
+            problems.append(f"{stage} 的 {upstream_label} 与当前上游不一致")
+    return problems
 
 
 def _result(

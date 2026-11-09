@@ -29,7 +29,13 @@ from ...tools.tool_helpers import _parse_json_param
 from ..artifacts.models import ArtifactMeta, ExecutionPlan, PlanChange
 from ..artifacts.store import ArtifactStore
 from ..orchestrator import state_machine
-from .base import StageContext, StageResult
+from .base import (
+    StageContext,
+    StageResult,
+    clean_evidence_ids,
+    evidence_id_problems,
+    unknown_evidence_ids,
+)
 
 STAGE_ID = state_machine.STAGE_EXECUTION_PLAN
 REQUIRES = ("requirement_profile", "baseline_plan", "profile")
@@ -38,6 +44,9 @@ PRODUCES = "execution_plan"
 _FINISHED_STATUSES = (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
 _PHASE_TYPES = ("learn", "project", "intern", "research")
 _PRIORITIES = ("high", "medium", "low")
+
+# 应用执行版后必须先生成任务，ExecutionState 就绪后才是 get_next_tasks。
+_APPLIED_NEXT_STEPS = ["generate_tasks", "get_next_tasks"]
 
 _ALIGNMENT_METHODOLOGY: dict[str, Any] = {
     "name": "执行方案校准",
@@ -160,8 +169,14 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         return StageResult(status="failed", message=f"{exc.code}: {exc.message}")
 
 
-def validate(artifact: BaseModel) -> list[str]:
-    """校验 ExecutionPlan artifact 的结构与证据引用；返回问题列表。"""
+def validate(
+    artifact: BaseModel, known_evidence_ids: set[str] | None = None
+) -> list[str]:
+    """校验 ExecutionPlan 结构与证据引用。
+
+    ``known_evidence_ids`` 由调用方提供 RequirementProfile 中的真实 id 时，
+    未知 id 与空 id 都会被拒绝；save 路径复用同一校验函数。
+    """
     if not isinstance(artifact, ExecutionPlan):
         return ["artifact 必须是 ExecutionPlan"]
     issues: list[str] = []
@@ -171,8 +186,8 @@ def validate(artifact: BaseModel) -> list[str]:
         issues.append("requirement_profile_id 不能为空")
     issues.extend(_roadmap_issues(artifact.roadmap))
     for index, change in enumerate(artifact.changes):
-        if not _clean_evidence_ids(change.evidence_ids):
-            issues.append(f"changes[{index}] 缺少 evidence_ids")
+        problems = evidence_id_problems(change.evidence_ids, known_evidence_ids)
+        issues.extend(f"changes[{index}] {problem}" for problem in problems)
     if not artifact.diff_summary.strip():
         issues.append("diff_summary 不能为空")
     return issues
@@ -275,7 +290,9 @@ def _save(
 
     completed = _extract_completed_evidence(profile)
     removed = _pending_tasks(profile)
-    warnings = _evidence_warnings(changes, requirement)
+    # evidence_ids 已在 _assert_known_evidence 里统一校验：未知/空 id 直接拒绝落库，
+    # 因此这里不再保留永远不可达的「有未知 id」警告分支。
+    warnings: list[str] = []
     baseline_plan_id = _resolve_baseline_plan_id(store, profile_name, profile)
 
     meta = ArtifactMeta(
@@ -401,7 +418,7 @@ def _save(
             + ("职业地图已刷新。" if map_path else f"职业地图刷新失败（不阻断）：{map_error}")
             + "接下来调用 generate_tasks 生成当前阶段任务。"
         ),
-        "next_steps": ["get_next_tasks", "generate_tasks"],
+        "next_steps": list(_APPLIED_NEXT_STEPS),
     })
     return preview
 
@@ -459,23 +476,43 @@ def _check_requirement_chain(
 def _assert_known_evidence(
     changes: list[PlanChange], requirement: dict[str, Any]
 ) -> None:
-    """拒绝引用 RequirementProfile 之外 evidence_ids 的变更。"""
+    """拒绝空 evidence_ids 或引用 RequirementProfile 之外 id 的变更。
+
+    与 ``validate`` 共用 ``evidence_id_problems``，避免两套校验规则。
+    """
     known = _known_evidence_ids(requirement)
-    unknown = sorted(
-        {
-            evidence_id
-            for change in changes
-            for evidence_id in change.evidence_ids
-            if evidence_id not in known
-        }
-    )
-    if not unknown:
-        return
-    raise ExecutionPlanError(
-        "UNKNOWN_EVIDENCE_ID",
-        "变更引用了 RequirementProfile 中不存在的 evidence_ids，拒绝落库。",
-        {"unknown_evidence_ids": unknown, "available_evidence_ids": sorted(known)},
-    )
+    referenced: list[str] = []
+    for index, change in enumerate(changes):
+        problems = evidence_id_problems(change.evidence_ids, known)
+        if not problems:
+            referenced.extend(clean_evidence_ids(change.evidence_ids))
+            continue
+        if "不能为空" in problems[0]:
+            raise ExecutionPlanError(
+                "INVALID_CHANGES",
+                "每条变更都必须带非空 evidence_ids，否则拒绝落库。",
+                {
+                    "changes_index": index,
+                    "available_evidence_ids": sorted(known),
+                },
+            )
+        raise ExecutionPlanError(
+            "UNKNOWN_EVIDENCE_ID",
+            "变更引用了 RequirementProfile 中不存在的 evidence_ids，拒绝落库。",
+            {
+                "changes_index": index,
+                "unknown_evidence_ids": unknown_evidence_ids(
+                    clean_evidence_ids(change.evidence_ids), known
+                ),
+                "available_evidence_ids": sorted(known),
+            },
+        )
+    if not referenced:
+        raise ExecutionPlanError(
+            "INVALID_CHANGES",
+            "每条变更都必须带非空 evidence_ids，否则拒绝落库。",
+            {"available_evidence_ids": sorted(known)},
+        )
 
 
 def _resolve_baseline_plan_id(
@@ -610,8 +647,9 @@ def _applied_alignment_payload(
         "message": (
             "相同的执行方案（requirement_profile_id + roadmap + changes）已经应用过；"
             "本次不重复写入 plan_history / adjustments，也不重复删除任务。"
+            "接下来调用 generate_tasks 生成当前阶段任务。"
         ),
-        "next_steps": ["get_next_tasks", "generate_tasks"],
+        "next_steps": list(_APPLIED_NEXT_STEPS),
     }
 
 
@@ -682,7 +720,7 @@ def _parse_changes(raw: Any) -> list[PlanChange]:
         except ValidationError as exc:
             issues.append(f"{prefix}.type 不合法：{exc.errors()[0].get('msg', '')}")
             continue
-        evidence_ids = _clean_evidence_ids(change.evidence_ids)
+        evidence_ids = clean_evidence_ids(change.evidence_ids)
         if not evidence_ids:
             issues.append(f"{prefix} 缺少 evidence_ids——没有证据的变更不允许落库")
             continue
@@ -847,26 +885,11 @@ def _known_evidence_ids(requirement: dict[str, Any]) -> set[str]:
         for item in requirement.get(key) or []:
             if not isinstance(item, dict):
                 continue
-            ids.update(_clean_evidence_ids(item.get("evidence_ids")))
+            ids.update(clean_evidence_ids(item.get("evidence_ids")))
     for item in requirement.get("hard_requirements") or []:
         if isinstance(item, dict) and str(item.get("evidence_id") or "").strip():
             ids.add(str(item["evidence_id"]).strip())
     return ids
-
-
-def _evidence_warnings(changes: list[PlanChange], requirement: dict[str, Any]) -> list[str]:
-    referenced = [evidence_id for change in changes for evidence_id in change.evidence_ids]
-    if not referenced:
-        return []
-    known = _known_evidence_ids(requirement)
-    if not known:
-        return ["RequirementProfile 未包含 evidence_ids，无法核对变更引用来源"]
-    unknown = sorted({evidence_id for evidence_id in referenced if evidence_id not in known})
-    if not unknown:
-        return []
-    preview = "、".join(unknown[:5])
-    suffix = " 等" if len(unknown) > 5 else ""
-    return [f"变更引用了 RequirementProfile 中不存在的 evidence_ids：{preview}{suffix}（请核对来源）"]
 
 
 def _alignment_prompt(requirement_profile_id: str, requirement_summary: dict[str, Any]) -> dict[str, Any]:
@@ -874,7 +897,7 @@ def _alignment_prompt(requirement_profile_id: str, requirement_summary: dict[str
     for key in ("high_frequency", "company_specific", "interview_topics", "nice_to_have"):
         for item in requirement_summary.get(key) or []:
             if isinstance(item, dict):
-                known_ids.update(_clean_evidence_ids(item.get("evidence_ids")))
+                known_ids.update(clean_evidence_ids(item.get("evidence_ids")))
     for item in requirement_summary.get("hard_requirements") or []:
         if isinstance(item, dict) and str(item.get("evidence_id") or "").strip():
             known_ids.add(str(item["evidence_id"]).strip())
@@ -1007,12 +1030,6 @@ def _task_briefs(tasks: list[Any]) -> list[dict[str, str]]:
             "status": str(getattr(task, "status", "") or ""),
         })
     return briefs
-
-
-def _clean_evidence_ids(raw: Any) -> list[str]:
-    if not isinstance(raw, (list, tuple, set)):
-        return []
-    return [str(item).strip() for item in raw if str(item).strip()]
 
 
 def _as_int(value: Any) -> int:

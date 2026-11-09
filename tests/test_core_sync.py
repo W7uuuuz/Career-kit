@@ -187,9 +187,9 @@ def _sync_all() -> dict[str, str]:
         "mb": sync.sync_market_baseline(PROFILE_NAME),
         "gr": sync.sync_gap(PROFILE_NAME),
         "bp": sync.sync_baseline_plan(PROFILE_NAME),
-        "es": sync.sync_execution_state(PROFILE_NAME),
     }
     _save_applied_execution_plan()
+    ids["es"] = sync.sync_execution_state(PROFILE_NAME)
     ids["as"] = sync.sync_application_state(PROFILE_NAME)
     ids["rr"] = sync.sync_review(
         PROFILE_NAME,
@@ -438,19 +438,14 @@ def test_sync_gap_requires_resolvable_profile_snapshot(
     assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_PROFILE) == []
 
 
-def test_sync_gap_creates_profile_anchor_when_missing(data_dir: Path) -> None:
+def test_sync_gap_skips_half_artifact_when_market_missing(data_dir: Path) -> None:
     _save(CareerProfile(who={"name": "张三"}, gap={"match_score": 50}))
 
-    gap_id = sync.sync_gap(PROFILE_NAME)
-
-    assert gap_id.startswith("gr_")
-    gap = _load_artifact(gap_id)
-    profile_id = gap["profile_snapshot_id"]
-    assert profile_id.startswith("pf_")
-    assert _load_artifact(profile_id)["meta"]["stage"] == sync.STAGE_PROFILE
-    state = profile_store.load_profile(PROFILE_NAME).core_state
-    assert state[sync.KEY_PROFILE] == profile_id
-    assert state[sync.KEY_GAP] == gap_id
+    # 缺 TargetSpec/MarketBaseline 时只允许补 ProfileSnapshot 锚点，
+    # 不允许写 profile_snapshot_id 有值但 market_baseline_id 为空的半成品 GapReport。
+    assert sync.sync_gap(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_GAP) == []
+    assert sync.KEY_GAP not in profile_store.load_profile(PROFILE_NAME).core_state
 
 
 def test_sync_execution_state_requires_plan_or_baseline(data_dir: Path) -> None:
@@ -468,10 +463,7 @@ def test_sync_execution_state_omits_unapplied_execution_plan(
     _save(_full_profile())
     sync.sync_baseline_plan(PROFILE_NAME)
 
-    execution_id = sync.sync_execution_state(PROFILE_NAME)
-
-    assert execution_id.startswith("es_")
-    execution = _load_artifact(execution_id)
-    assert execution["execution_plan_id"] == ""
-    assert execution["meta"]["inputs"]["baseline_plan_id"]
-    assert "execution_plan_id" not in execution["meta"]["inputs"]
+    # 没有 applied ExecutionPlan 时绝不写 execution_plan_id 为空的半成品。
+    assert sync.sync_execution_state(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_EXECUTION) == []
+    assert sync.KEY_EXECUTION not in profile_store.load_profile(PROFILE_NAME).core_state

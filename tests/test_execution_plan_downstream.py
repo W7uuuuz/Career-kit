@@ -24,11 +24,17 @@ import src.tools.profile as profile_store
 from src import paths
 from src.core.artifacts.models import (
     ArtifactMeta,
+    BaselinePlan,
     CompanyEntry,
     CompanyPool,
     EvidenceRun,
+    ExecutionPlan,
+    ExecutionState,
+    GapReport,
     HardRequirement,
     JDEvidence,
+    MarketBaseline,
+    ProfileSnapshot,
     RequirementItem,
     RequirementProfile,
     TargetSpec,
@@ -54,10 +60,127 @@ def _meta(store: ArtifactStore, stage_id: str, prefix: str, inputs: dict[str, st
     )
 
 
+class _ProfileArtifact(ProfileSnapshot):
+    meta: ArtifactMeta
+
+
+class _TargetArtifact(TargetSpec):
+    meta: ArtifactMeta
+
+
+def _seed_upstream(store: ArtifactStore) -> dict[str, str]:
+    """只补阶段 1-5 上游，故意不建 CompanyPool，用于验证企业筛选是下一步。"""
+    profile_id = store.save(
+        _ProfileArtifact(
+            meta=_meta(store, state_machine.STAGE_PROFILE, "pf"),
+            name="张三",
+            who={"name": "张三"},
+            summary="测试档案",
+        )
+    )
+    target_id = store.save(
+        _TargetArtifact(
+            meta=_meta(
+                store,
+                state_machine.STAGE_TARGET,
+                "ts",
+                {"profile_id": profile_id},
+            ),
+            role="AI Agent 开发",
+            city="北京",
+        )
+    )
+    market_id = store.save(
+        MarketBaseline(
+            meta=_meta(
+                store,
+                state_machine.STAGE_MARKET,
+                "mb",
+                {"target_spec_id": target_id},
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
+        )
+    )
+    gap_id = store.save(
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP, "gr"),
+            profile_snapshot_id=profile_id,
+            market_baseline_id=market_id,
+            match_score=60,
+        )
+    )
+    baseline_id = store.save(
+        BaselinePlan(
+            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            gap_report_id=gap_id,
+            roadmap={"phases": [{"name": "基础", "milestones": []}]},
+        )
+    )
+    ids = {
+        "profile_id": profile_id,
+        "target_spec_id": target_id,
+        "market_baseline_id": market_id,
+        "gap_report_id": gap_id,
+        "baseline_plan_id": baseline_id,
+    }
+    # 写入 core_state，避免 get_workflow_status 回填出更新的 ProfileSnapshot 造成引用错位。
+    profile = profile_store.load_profile(PROFILE_NAME)
+    state = dict(profile.core_state or {})
+    state.update(ids)
+    profile.core_state = state
+    profile_store.save_profile(profile, PROFILE_NAME)
+    return ids
+
+
 def _seed_chain(store: ArtifactStore) -> dict[str, str]:
+    profile_id = store.save(
+        _ProfileArtifact(
+            meta=_meta(store, state_machine.STAGE_PROFILE, "pf"),
+            name="张三",
+            who={"name": "张三"},
+            summary="测试档案",
+        )
+    )
+    target_id = store.save(
+        _TargetArtifact(
+            meta=_meta(
+                store, state_machine.STAGE_TARGET, "ts",
+                {"profile_id": profile_id},
+            ),
+            role="AI Agent 开发",
+            city="北京",
+        )
+    )
+    market_id = store.save(
+        MarketBaseline(
+            meta=_meta(
+                store, state_machine.STAGE_MARKET, "mb",
+                {"target_spec_id": target_id},
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
+        )
+    )
+    gap_id = store.save(
+        GapReport(
+            meta=_meta(store, state_machine.STAGE_GAP, "gr"),
+            profile_snapshot_id=profile_id,
+            market_baseline_id=market_id,
+            match_score=60,
+        )
+    )
+    baseline_id = store.save(
+        BaselinePlan(
+            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+            gap_report_id=gap_id,
+            roadmap=_baseline_plan()["roadmap"],
+        )
+    )
     pool_id = store.save(
         CompanyPool(
-            meta=_meta(store, state_machine.STAGE_COMPANY_POOL, "cp"),
+            meta=_meta(
+                store, state_machine.STAGE_COMPANY_POOL, "cp",
+                {"baseline_plan_id": baseline_id},
+            ),
             target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
             companies=[
                 CompanyEntry(
@@ -170,7 +293,16 @@ def _seed_chain(store: ArtifactStore) -> dict[str, str]:
             interpretation={"summary": "RAG 与 Agent 工具调用是核心缺口"},
         )
     )
-    return {"pool_id": pool_id, "evidence_id": evidence_id, "requirement_id": requirement_id}
+    return {
+        "profile_id": profile_id,
+        "target_spec_id": target_id,
+        "market_baseline_id": market_id,
+        "gap_report_id": gap_id,
+        "baseline_plan_id": baseline_id,
+        "pool_id": pool_id,
+        "evidence_id": evidence_id,
+        "requirement_id": requirement_id,
+    }
 
 
 def _baseline_plan() -> dict[str, Any]:
@@ -252,6 +384,11 @@ def _seed_profile(chain: dict[str, str]) -> CareerProfile:
         ],
         core_state={
             "stage": "need_execution_plan",
+            "profile_id": chain["profile_id"],
+            "target_spec_id": chain["target_spec_id"],
+            "market_baseline_id": chain["market_baseline_id"],
+            "gap_report_id": chain["gap_report_id"],
+            "baseline_plan_id": chain["baseline_plan_id"],
             "company_pool_id": chain["pool_id"],
             "evidence_run_id": chain["evidence_id"],
             "requirement_profile_id": chain["requirement_id"],
@@ -360,6 +497,12 @@ def test_generate_tasks_after_alignment_adds_new_and_keeps_history(
     before = profile_store.load_profile(PROFILE_NAME)
     assert applied_workspace.result["applied"] is True
     assert {task.id for task in before.tasks} == {"task_001"}
+
+    # 新计划已应用但只有旧代际任务：下一步必须是 generate_tasks，不是 get_next_tasks。
+    action = state_machine.next_action(PROFILE_NAME)
+    assert action["stage"] == state_machine.STAGE_EXECUTION
+    assert action["next_tool"] == "generate_tasks"
+    assert action["artifact_ids"]["execution_state_id"] == ""
 
     payload = json.loads(task_tools.generate_tasks())
 
@@ -604,6 +747,7 @@ def test_workflow_status_plan_fit_does_not_override_core_v2(
         ],
     )
     profile_store.save_profile(profile, PROFILE_NAME)
+    _seed_upstream(ArtifactStore())
     monkeypatch.setattr(
         task_tools,
         "_plan_fit_result",
@@ -617,6 +761,7 @@ def test_workflow_status_plan_fit_does_not_override_core_v2(
     output = task_tools.get_workflow_status()
 
     next_line = next(line for line in output.splitlines() if line.startswith("**下一步**"))
+    # 上游 1-5 已齐、只缺 CompanyPool：主下一步必须企业筛选，plan_fit 不得覆盖。
     assert "select_target_companies" in next_line
     assert "collect_company_evidence" not in next_line
     # plan_fit 仍是提示：不覆盖主下一步，但失配检测与建议工具要照常展示。
@@ -663,12 +808,42 @@ def test_workflow_status_all_finished_without_company_pool_selects_companies(
         ],
     )
     profile_store.save_profile(profile, PROFILE_NAME)
+    _seed_upstream(ArtifactStore())
 
     output = task_tools.get_workflow_status()
 
     next_line = next(line for line in output.splitlines() if line.startswith("**下一步**"))
-    # 企业适配是执行前必做链路：缺 CompanyPool 时 core_v2 先要求企业筛选。
+    # 上游 1-5 已齐、只缺 CompanyPool：core_v2 要求企业筛选，不是 generate_tasks。
     assert "select_target_companies" in next_line
     assert "目标达成" not in output
     # 任务统计仍按档案事实展示。
     assert "总计：1" in output and "已完成：1" in output
+
+def test_old_execution_state_does_not_unlock_get_next_tasks(
+    applied_workspace: SimpleNamespace,
+) -> None:
+    store = applied_workspace.store
+    profile = profile_store.load_profile(PROFILE_NAME)
+    current_plan_id = profile.core_state["execution_plan_id"]
+    old_plan_id = store.save(
+        ExecutionPlan(
+            meta=_meta(store, state_machine.STAGE_EXECUTION_PLAN, "ep"),
+            requirement_profile_id=applied_workspace.requirement_id,
+            applied=True,
+        )
+    )
+    old_execution_id = store.save(
+        ExecutionState(
+            meta=_meta(store, state_machine.STAGE_EXECUTION, "es"),
+            execution_plan_id=old_plan_id,
+        )
+    )
+    profile.core_state["execution_state_id"] = old_execution_id
+    profile.core_state["execution_plan_id"] = current_plan_id
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    assert action["stage"] == state_machine.STAGE_EXECUTION
+    assert action["next_tool"] == "generate_tasks"
+    assert action["artifact_ids"]["execution_state_id"] == ""

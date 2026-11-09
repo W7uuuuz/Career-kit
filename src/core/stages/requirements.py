@@ -30,13 +30,16 @@ from ..artifacts.models import (
     RequirementProfile,
 )
 from ..orchestrator import state_machine
-from .base import StageContext, StageResult
+from .base import StageContext, StageResult, clean_evidence_ids
 
 STAGE_ID = state_machine.STAGE_REQUIREMENT
 REQUIRES = ("evidence_run",)
 PRODUCES = "requirement_profile"
 
 INTERPRETATION_KEYS = ("summary", "priorities", "company_notes", "risks", "notes")
+
+# 不依赖词边界：中文紧邻（如「参考JD999」）与大小写混写都要识别。
+_EVIDENCE_TOKEN_PATTERN = re.compile(r"(?i)(?:jd|iv)\d+")
 
 _WILSON_Z = 1.96
 _TOLERANCE = 1e-6
@@ -456,6 +459,51 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     )
 
 
+def known_evidence_ids(artifact: RequirementProfile) -> set[str]:
+    """RequirementProfile 中真实存在的 evidence id 集合（统计与硬门槛共用）。"""
+    ids: set[str] = set()
+    for items in (
+        artifact.high_frequency,
+        artifact.nice_to_have,
+        artifact.company_specific,
+        artifact.interview_topics,
+    ):
+        for item in items:
+            ids.update(clean_evidence_ids(item.evidence_ids))
+    for hard in artifact.hard_requirements:
+        if hard.evidence_id.strip():
+            ids.add(hard.evidence_id.strip())
+    return ids
+
+
+def _flatten_text(value: Any) -> str:
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_flatten_text(item) for item in value)
+    if isinstance(value, dict):
+        return " ".join(_flatten_text(item) for item in value.values())
+    return ""
+
+
+def _interpretation_problems(artifact: RequirementProfile) -> list[str]:
+    """interpretation 中一旦引用 JD/IV id，就必须是 RequirementProfile 里真实存在的。"""
+    text = " ".join(
+        _flatten_text(value) for value in artifact.interpretation.values()
+    )
+    tokens = sorted({token.upper() for token in _EVIDENCE_TOKEN_PATTERN.findall(text)})
+    if not tokens:
+        return []
+    known = known_evidence_ids(artifact)
+    unknown = sorted(token for token in tokens if token not in known)
+    if not unknown:
+        return []
+    return [
+        "interpretation 引用了不存在的 evidence_ids："
+        f"{unknown}（可用：{sorted(known) or '无'}）"
+    ]
+
+
 def _validate_item(item: RequirementItem, list_name: str) -> list[str]:
     issues: list[str] = []
     prefix = f"{list_name}.{item.term}"
@@ -525,6 +573,7 @@ def validate(artifact: BaseModel) -> list[str]:
         issues.append(
             f"interpretation 只允许 {list(INTERPRETATION_KEYS)}，拒绝字段：{extra_keys}"
         )
+    issues.extend(_interpretation_problems(artifact))
 
     for list_name, items in (
         ("high_frequency", artifact.high_frequency),
@@ -660,7 +709,8 @@ def build_analysis_prompt(artifact: RequirementProfile) -> str:
             "1. interpretation 只允许 summary / priorities / company_notes / risks / notes 五个键；",
             "   禁止写入 high_frequency、company_specific、interview_topics、hard_requirements、",
             "   nice_to_have、gaps、sample_size、confidence 等数字或列表字段。",
-            "2. 每条判断尽量引用 evidence_ids（如 JD001、IV002）；没有证据支撑就不要下结论。",
+            "2. interpretation 可以不引用 evidence_ids；一旦引用，必须使用上面统计里真实出现过的 id"
+            "（如 JD001、IV002）。引用不存在的 id 会被拒绝落库，不要编造。",
             "3. 使用「高频共性要求 / 单 JD 硬门槛 / 面经高频考点 / 公司差异化要求 / 加分项」口径，",
             "   不要使用「必备项」这类绝对说法。",
             "4. 置信度为 low 时必须明确说明样本不足，不下全局结论。",
@@ -677,6 +727,7 @@ __all__ = [
     "build_analysis_prompt",
     "build_requirement_profile",
     "compute_statistics",
+    "known_evidence_ids",
     "run",
     "summary_dict",
     "update_core_state",

@@ -128,16 +128,27 @@ def _save_alignment_artifacts(profile_name: str) -> dict[str, str]:
     from src.assets import kind_assets_dir
     from src.core.artifacts.models import (
         ArtifactMeta,
+        BaselinePlan,
         CompanyEntry,
         CompanyPool,
         EvidenceRun,
         ExecutionPlan,
+        ExecutionState,
+        GapReport,
         HardRequirement,
+        MarketBaseline,
+        ProfileSnapshot,
         RequirementItem,
         RequirementProfile,
         TargetSpec,
     )
     from src.core.artifacts.store import ArtifactStore
+
+    class _ProfileArtifact(ProfileSnapshot):
+        meta: ArtifactMeta
+
+    class _TargetArtifact(TargetSpec):
+        meta: ArtifactMeta
 
     store = ArtifactStore()
     report_dir = kind_assets_dir("evidence", profile_name)
@@ -149,10 +160,53 @@ def _save_alignment_artifacts(profile_name: str) -> dict[str, str]:
     json_path.write_text("{}", encoding="utf-8")
 
     target = TargetSpec(role="AI Agent", direction="AI Agent")
+    profile_id = store.save(_ProfileArtifact(
+        meta=ArtifactMeta(
+            id="pf_test", stage="profile", profile_name=profile_name,
+            created_at="2026-11-07T23:59:55",
+        ),
+        name="张三",
+        who={"name": "张三"},
+        summary="测试档案",
+    ))
+    target_id = store.save(_TargetArtifact(
+        meta=ArtifactMeta(
+            id="ts_test", stage="target", profile_name=profile_name,
+            created_at="2026-11-07T23:59:56",
+            inputs={"profile_id": profile_id},
+        ),
+        **target.model_dump(),
+    ))
+    market_id = store.save(MarketBaseline(
+        meta=ArtifactMeta(
+            id="mb_test", stage="market_baseline", profile_name=profile_name,
+            created_at="2026-11-07T23:59:57",
+            inputs={"target_spec_id": target_id},
+        ),
+        target_spec=target,
+    ))
+    gap_id = store.save(GapReport(
+        meta=ArtifactMeta(
+            id="gr_test", stage="gap", profile_name=profile_name,
+            created_at="2026-11-07T23:59:58",
+        ),
+        profile_snapshot_id=profile_id,
+        market_baseline_id=market_id,
+        match_score=60,
+    ))
+    baseline_id = store.save(BaselinePlan(
+        meta=ArtifactMeta(
+            id="bp_test", stage="baseline_plan", profile_name=profile_name,
+            created_at="2026-11-07T23:59:59",
+        ),
+        gap_report_id=gap_id,
+        roadmap={"phases": [{"name": "基础"}]},
+    ))
     pool_id = store.save(CompanyPool(
         meta=ArtifactMeta(
             id="cp_test", stage="company_pool", profile_name=profile_name,
             created_at="2026-11-08T00:00:00",
+            inputs={"baseline_plan_id": baseline_id},
         ),
         target_spec=target,
         companies=[
@@ -200,11 +254,24 @@ def _save_alignment_artifacts(profile_name: str) -> dict[str, str]:
         applied=True,
         diff_summary="新增 2 个任务",
     ))
+    execution_id = store.save(ExecutionState(
+        meta=ArtifactMeta(
+            id="es_test", stage="execution", profile_name=profile_name,
+            created_at="2026-11-08T00:00:04",
+        ),
+        execution_plan_id=plan_id,
+    ))
     return {
+        "profile": profile_id,
+        "target_spec": target_id,
+        "market_baseline": market_id,
+        "gap": gap_id,
+        "baseline_plan": baseline_id,
         "company_pool": pool_id,
         "evidence": evidence_id,
         "requirement": requirement_id,
         "execution_plan": plan_id,
+        "execution_state": execution_id,
     }
 
 
@@ -230,10 +297,16 @@ def test_build_state_alignment_reads_artifacts(temp_profile):
     ids = _save_alignment_artifacts(profile_name)
     profile.core_state = {
         "stage": "executing",
+        "profile_id": ids["profile"],
+        "target_spec_id": ids["target_spec"],
+        "market_baseline_id": ids["market_baseline"],
+        "gap_report_id": ids["gap"],
+        "baseline_plan_id": ids["baseline_plan"],
         "company_pool_id": ids["company_pool"],
         "evidence_run_id": ids["evidence"],
         "requirement_profile_id": ids["requirement"],
         "execution_plan_id": ids["execution_plan"],
+        "execution_state_id": ids["execution_state"],
     }
     profile_module.save_profile(profile)
 

@@ -394,6 +394,23 @@ def _roadmap_hash(parsed: dict) -> str:
 
 
 
+def _next_step_message(next_tool: str) -> str:
+    """按 resolve_progress 的 next_tool 生成与 next_steps 同源的下一步文案。"""
+    if next_tool == "select_target_companies":
+        return (
+            "接下来先做企业适配（执行前必做），把基线路线图校准为执行版："
+            "select_target_companies → collect_company_evidence → analyze_company_requirements "
+            "→ save_requirement_profile → plan_execution_alignment → save_execution_alignment；"
+            "完成后再 detail_current_phase → generate_tasks。"
+        )
+    if next_tool in {"intake(want)", "explore_goals"}:
+        return (
+            f"下一步先确认目标岗位（{next_tool}）：明确方向/城市/届别后，"
+            "再进入市场调研与企业适配。"
+        )
+    return f"下一步：{next_tool or '按 GUIDE 继续完善档案'}。"
+
+
 @mcp.tool()
 def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     """保存路线图到档案（只校验结构；质量项以建议形式返回，不阻断保存）。
@@ -597,11 +614,9 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             )
             + "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
-            "接下来先做企业适配（执行前必做），把基线路线图校准为执行版："
-            "select_target_companies → collect_company_evidence → analyze_company_requirements "
-            "→ save_requirement_profile → plan_execution_alignment → save_execution_alignment；"
-            "完成后再 detail_current_phase → generate_tasks。\n\n"
-            f"{guide_for(profile)}"
+            + _next_step_message(next_tool)
+            + "\n\n"
+            + f"{guide_for(profile)}"
         ),
         "next_steps": next_steps,
         "context": {
