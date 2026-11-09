@@ -1,8 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (2026-11-09)
 
-## v0.3.0 (2026-11-08)
+- **0.3 发布补充（2026-11-09）**：
+  - **Core v2 12 阶段工作流**：档案、目标、市场、差距、基线、企业池、证据、需求、执行版、执行、投递、复盘；artifact 状态机与 sync 层贯通。
+  - **企业适配**：目标企业筛选、JD/面经证据池、需求统计（频率/公司覆盖/Wilson 区间）、执行方案校准与计划失配检测。
+  - **P0 体验**：开屏改为定位/规划/执行三段；去掉市场调研等不必要确认；选项加推荐；阶段类型中文化。
+  - **P1/P2**：简历自我介绍式摸排、最终结果预期、路线图 3-6 段、毕业届/占位 JD 提示、第 10/11 步维护化与结束语、资产中心规划链路。
+  - **控制台升级**：从 http.server + vanilla JS 升级为 FastAPI + Vue 3 + Vite + TypeScript；保留 token 鉴权、SSE、任务编辑、投递登记、职业地图与资产入口。
+  - **BOSS 直聘**：改为 CDP 复用本地已登录 Chrome/Edge，旁听页面自身搜索接口获取明文薪资；研究阶段 list-only，详情交互式补抓；登录态 6 小时有效。
+  - **同步状态**：740+ 单测、E2E core、doctor、wheel 构建与真实 BOSS 搜索/详情验证通过。
 
 - **数据源扩容**：接入 18 家互联网企业（Moka / 北森 / 飞书）与唯品会独立 Moka 源，
   注册数据源 27 → 46；企业目录收录 64 家（42 家可自动抓取），`docs/scrapers.md` 同步。
@@ -38,7 +45,7 @@
     state_machine、guidance、`get_workflow_status` 统一按 12 阶段推进；阶段 11/12 为可选/周期阶段。
   - **BUG 修复（真实 E2E 记录）**：
     - `check_plan_fit` 增加技能别名与泛化软技能降级，修复执行版刚应用后误报 `major_drift`；
-    - `gather_research_data` 单源 20 秒 / 总预算 60 秒，源较多时提示拆批；
+    - `gather_research_data` 单源 25 秒 / 总预算 50 秒，源较多时提示拆批；
     - doctor 新增包版本检查，暴露 editable 元数据陈旧；
     - `collect_company_evidence` 新增 `fresh_jobs`，文案区分「新抓 / 复用 / 保留」；
     - `record_application` / `delete_application` 同步更新投递清单候选状态（applied / pending）；

@@ -3,7 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1
 #
 # Does three things: create a venv (pinned to Python 3.12 when uv is available)
-# -> install deps (including iv8, from the official PyPI) -> print the MCP
+# -> install deps from the official PyPI -> print the MCP
 # registration command using an ABSOLUTE interpreter path (avoids the classic
 # "bare `python` points at the wrong interpreter" trap).
 $ErrorActionPreference = "Stop"
@@ -11,7 +11,7 @@ $Root = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 Set-Location $Root
 
 $VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
-$Index = "https://pypi.org/simple"   # iv8 only exists on the official PyPI
+$Index = "https://pypi.org/simple"
 
 Write-Host ""
 Write-Host "== Career Kit install =="

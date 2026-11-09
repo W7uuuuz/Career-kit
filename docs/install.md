@@ -69,7 +69,7 @@ career-kit-serve --open
 | 现象 | 处理 |
 |------|------|
 | Windows 提示 `career-kit` 不是命令 | 重开终端，或执行 `python -m pipx ensurepath` |
-| `pipx` / `uvx` 报找不到 `career-kit`，或安装 `iv8` 失败 | 默认镜像未同步：pipx 加 `--pip-args="--index-url https://pypi.org/simple"`；uvx 加 `--default-index https://pypi.org/simple` |
+| `pipx` / `uvx` 报找不到 `career-kit` 或依赖版本不一致 | 默认镜像未同步：pipx 加 `--pip-args="--index-url https://pypi.org/simple"`；uvx 加 `--default-index https://pypi.org/simple` |
 | `No module named 'mcp'` | 注册使用了错误的解释器，改用 venv 绝对路径或 `uvx` |
 | 抓取报浏览器相关错误 | 飞书等源优先使用系统 Chrome / Edge；未安装时再执行 `playwright install chromium` 使用内置 Chromium |
 | BOSS 直聘提示需要登录 | 由 Agent 运行登录脚本并打开浏览器，用户只需扫码 |

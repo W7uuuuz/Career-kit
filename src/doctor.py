@@ -211,15 +211,15 @@ def check_browser() -> Check:
 
 
 def check_boss_browser() -> Check:
-    """BOSS 登录依赖 patchright + 系统 Chrome/Edge，与普通抓取的 Chromium 不同。"""
+    """BOSS CDP 依赖 websocket-client + 系统 Chrome/Edge。"""
     try:
-        import patchright  # noqa: F401
+        import websocket  # noqa: F401
     except Exception as exc:
         return Check(
             "BOSS 浏览器",
             WARN,
-            f"patchright 不可导入：{exc}",
-            "安装依赖：pip install -e .（patchright 已锁定版本）",
+            f"websocket-client 不可导入：{exc}",
+            "安装依赖：pip install -e .",
         )
 
     candidates = []

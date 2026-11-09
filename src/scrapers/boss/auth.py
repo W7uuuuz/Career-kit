@@ -110,18 +110,12 @@ def save_login_marker(cookies: dict[str, str] | None = None) -> None:
 
 
 def invalidate_auth(reason: str = "") -> None:
-    """销毁登录态（删除 state.json），并让 stoken 缓存一起失效。"""
+    """销毁登录态（删除 state.json）。"""
     try:
         AUTH_STATE_PATH.unlink()
     except FileNotFoundError:
         pass
     except OSError:
-        pass
-    try:
-        from .stoken import invalidate_stoken
-
-        invalidate_stoken()
-    except Exception:  # noqa: BLE001 - stoken 清理失败不应阻断登录态销毁
         pass
 
 

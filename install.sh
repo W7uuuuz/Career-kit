@@ -4,7 +4,7 @@
 #   bash install.sh
 #
 # Does three things: create a venv (pinned to Python 3.12 when uv is available)
-# -> install deps (including iv8, from the official PyPI) -> print the MCP
+# -> install deps from the official PyPI -> print the MCP
 # registration command using an ABSOLUTE interpreter path (avoids the classic
 # "bare `python` points at the wrong interpreter" trap).
 set -euo pipefail
@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 VENV_PY="$ROOT/.venv/bin/python"
-INDEX="https://pypi.org/simple"   # iv8 only exists on the official PyPI
+INDEX="https://pypi.org/simple"
 
 echo ""
 echo "== Career Kit install =="
