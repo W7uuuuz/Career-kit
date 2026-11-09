@@ -41,7 +41,8 @@ async def collect_company_evidence(
     - 抓取前只问一次是否把 BOSS 纳入采集，用户同意后传 boss_confirmed=true；
     - 未确认返回 CONFIRMATION_REQUIRED；确认但未登录返回 LOGIN_REQUIRED +
       next_tool=boss_login，直接调用 boss_login(action="login")，不再追问第二次；
-    - 登录成功后浏览器保持常开并复用，绝不把登录失败直接当抓取失败。
+    - 登录成功后窗口常驻、切成功页、不自动关闭；命令仅作兜底，
+      绝不把登录失败直接当抓取失败。
 
     Args:
         company_pool_id: 目标企业池 artifact id；空串取当前档案最新且已确认的企业池

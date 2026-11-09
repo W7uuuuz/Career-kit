@@ -622,9 +622,10 @@ def _evidence_guide(profile: Any) -> Guide:
         "名单已确认，我现在直接抓名单企业的真实 JD 与面经，每批约 30-90 秒。"
         "需要薪资行情就说一声，我补充 BOSS 直聘；名单要改也可以直接说。",
         options=["补充 BOSS 薪资", "名单要改"],
-        next_action="直接调用 collect_company_evidence，不要问是否开始；"
-                    "用户选补充 BOSS 时直接 boss_login(action='login')（未登录时），"
-                    "再传 include_boss=true, boss_confirmed=true；不要二次询问是否登录；"
+        next_action="用户选补充 BOSS 时，未登录先 boss_login(action='login')，"
+                    "登录成功后再传 include_boss=true, boss_confirmed=true 调 "
+                    "collect_company_evidence；不要二次询问是否登录；"
+                    "否则直接调用 collect_company_evidence，不要问是否开始；"
                     "名单要改则回到 select_target_companies",
         profile=profile,
     )

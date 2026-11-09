@@ -170,19 +170,32 @@ def _search_slug(
     return search_company_jobs(slug, **kwargs)
 
 
+def _supports_param(slug: str, name: str) -> bool:
+    """该源是否声明支持某个搜索参数（以 Scraper.PARAMS 为唯一事实源）。"""
+    from .scrapers.loader import list_scrapers
+
+    try:
+        return any(
+            item.get("id") == slug and name in (item.get("params") or {})
+            for item in list_scrapers()
+        )
+    except Exception:  # noqa: BLE001 - 注册表异常时按不支持处理，不臆测参数
+        return False
+
+
 def _search_official(
     slug: str,
     role: str,
     city: str,
     edu_condition: dict | None,
 ) -> dict[str, Any] | None:
-    """官方/BOSS 源按面试要求口径抓取；boss 支持 degree 学历过滤与薪资。"""
+    """官方/BOSS 源按面试要求口径抓取；学历筛选只发给声明支持 degree 的源。"""
     if not (role_main := _first_role_token(role)):
         return None
     kwargs: dict[str, Any] = {"keyword": role_main, "limit": 8}
     if city:
         kwargs["city"] = city
-    if slug == "boss" and edu_condition:
+    if edu_condition and _supports_param(slug, "degree"):
         words = education_search_words(edu_condition)
         degree = edu_condition.get("degree") or ""
         if degree == "硕士":

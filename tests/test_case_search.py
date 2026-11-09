@@ -237,6 +237,45 @@ def test_collect_cases_kind_filter_and_failures(monkeypatch):
     assert not result["sources"].get("local")
 
 
+def test_collect_cases_boss_does_not_forward_degree(monkeypatch):
+    """学历筛选只发给支持 degree 的源；BOSS 不支持 degree，不得透传。"""
+    import src.case_search as cs
+    import src.scrapers.boss.scraper as boss_scraper
+    import src.scrapers.github.scraper as gh_scraper
+    import src.scrapers.loader as loader
+    import src.scrapers.nowcoder.scraper as nc_scraper
+
+    captured: dict = {}
+
+    def fake_boss(self, **kwargs):
+        captured.update(kwargs)
+        return [{
+            "title": "AI Agent 工程师",
+            "url": "https://www.zhipin.com/job_detail/J1.html",
+            "salary": "25-45K",
+            "location": "上海",
+            "summary": "本科",
+            "source": "boss",
+        }]
+
+    monkeypatch.setattr(boss_scraper.Scraper, "search", fake_boss)
+    monkeypatch.setattr(nc_scraper.Scraper, "search", lambda self, **kw: [])
+    monkeypatch.setattr(gh_scraper.Scraper, "search", lambda self, **kw: [])
+    monkeypatch.setattr(loader, "_auto_write_knowledge", lambda *a, **k: None)
+    monkeypatch.setattr(
+        cs, "_search_local", lambda q: {"results": [], "count": 0, "knowledge_dir": "x"}
+    )
+
+    result = cs.collect_cases(
+        "AI Agent 开发", company="boss", city="上海", education="硕士"
+    )
+
+    assert captured.get("keyword") == "AI Agent"
+    assert captured.get("city") == "上海"
+    assert "degree" not in captured, "BOSS 不支持 degree，search_cases 不得透传"
+    assert result["sources"]["boss"] == 1
+
+
 def test_collect_cases_rejects_bad_education(monkeypatch):
     import src.case_search as cs
 

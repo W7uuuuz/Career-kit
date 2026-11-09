@@ -134,26 +134,70 @@ def auth_status() -> dict[str, Any]:
     """返回登录态诊断信息（不触发销毁）。"""
     state = _read_state()
     cookies = _state_cookies(state)
-    saved_at = state.get("saved_at_ts")
-    age = None if not isinstance(saved_at, (int, float)) else max(0.0, time.time() - float(saved_at))
+    current = validity()
     return {
         "exists": AUTH_STATE_PATH.exists(),
-        "mode": state.get("mode") or "cookie",
+        "mode": current["mode"],
         "has_wt2": bool(cookies.get("wt2")),
         "saved_at": state.get("saved_at", ""),
+        "age_seconds": current["age_seconds"],
+        "ttl_seconds": LOGIN_TTL_SECONDS,
+        "ttl_text": describe_ttl(),
+        "cdp_available": current["cdp_available"],
+        "expired": current["expired"],
+        "valid": current["valid"],
+        "reason": current["reason"],
+    }
+
+
+def validity() -> dict[str, Any]:
+    """登录态有效性的唯一判定：登录标记 + TTL + CDP 可用。
+
+    - 缺时间戳 / 超过 TTL → 无效且 expired=True（调用方可据此销毁标记）；
+    - CDP 标记但浏览器不可用 → 无效、expired=False（浏览器暂关不等于登录失效）；
+    - 旧版 cookie 登录态 → TTL 内且存在 wt2 才算有效。
+
+    只做只读判定，不删除 state.json；销毁由 ``has_valid_cookies`` 负责。
+    """
+    state = _read_state()
+    cookies = _state_cookies(state)
+    mode = state.get("mode") or "cookie"
+    saved_at = state.get("saved_at_ts")
+    age = (
+        None
+        if not isinstance(saved_at, (int, float))
+        else max(0.0, time.time() - float(saved_at))
+    )
+    cdp_available = cdp_backend_available()
+    result: dict[str, Any] = {
+        "valid": False,
+        "reason": "",
+        "expired": False,
+        "mode": mode,
+        "has_marker": AUTH_STATE_PATH.exists(),
+        "saved_at_ts": saved_at if isinstance(saved_at, (int, float)) else None,
         "age_seconds": age,
         "ttl_seconds": LOGIN_TTL_SECONDS,
         "ttl_text": describe_ttl(),
-        "cdp_available": cdp_backend_available(),
-        "expired": bool(
-            not isinstance(saved_at, (int, float))
-            or (age is not None and age >= LOGIN_TTL_SECONDS)
-            or (
-                (state.get("mode") or "cookie") == "cookie"
-                and not cookies.get("wt2")
-            )
-        ),
+        "cdp_available": cdp_available,
     }
+    if not isinstance(saved_at, (int, float)):
+        result.update(reason="missing_saved_at", expired=True)
+        return result
+    if age is not None and age >= LOGIN_TTL_SECONDS:
+        result.update(reason="ttl_expired", expired=True)
+        return result
+    if mode == "cdp":
+        if cdp_available:
+            result.update(valid=True, reason="ok")
+        else:
+            result.update(reason="cdp_unavailable")
+        return result
+    if cookies.get("wt2"):
+        result.update(valid=True, reason="ok")
+    else:
+        result.update(reason="missing_wt2", expired=True)
+    return result
 
 
 def is_env_anomaly_message(message: str) -> bool:
@@ -165,20 +209,13 @@ def is_env_anomaly_message(message: str) -> bool:
 def has_valid_cookies() -> bool:
     """检查登录标记是否存在且未过期，并确认 CDP 后端可用。
 
-    - CDP 登录标记（mode=cdp）：TTL 内且本机可连/可启动专用浏览器返回 True；
-    - 旧版 cookie 登录态：TTL 内且存在 wt2 返回 True。
-    过期或缺时间戳时立即销毁，避免静默使用失效登录态。
+    与 ``boss_tools.status.logged_in`` 共用 ``validity()`` 的同一判定。
+    过期或缺时间戳时立即销毁，避免静默使用失效登录态；
+    CDP 只是暂时不可用时不销毁标记（浏览器稍后仍可复用同一登录态）。
     """
-    state = _read_state()
-    saved_at = state.get("saved_at_ts")
-    if not isinstance(saved_at, (int, float)):
-        invalidate_auth("missing_saved_at")
-        return False
-    # 只信任 LOGIN_TTL_SECONDS；state.json 里的旧 ttl_seconds 不再覆盖常量。
-    if time.time() - float(saved_at) >= LOGIN_TTL_SECONDS:
-        invalidate_auth("ttl_expired")
-        return False
-
-    if (state.get("mode") or "cookie") == "cdp":
-        return cdp_backend_available()
-    return bool(_state_cookies(state).get("wt2"))
+    current = validity()
+    if current["valid"]:
+        return True
+    if current["reason"] in ("missing_saved_at", "ttl_expired"):
+        invalidate_auth(current["reason"])
+    return False

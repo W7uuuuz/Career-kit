@@ -76,6 +76,25 @@ def test_cdp_login_marker_requires_cdp_backend(auth_path, monkeypatch):
     assert auth_path.exists(), "浏览器暂不可用不应销毁登录标记"
 
 
+def test_validity_is_single_source_for_marker_ttl_and_cdp(auth_path, monkeypatch):
+    """validity() 统一「标记 + TTL + CDP 可用」；marker 有效但 CDP 不可用即无效。"""
+    assert auth.validity()["valid"] is False
+
+    auth.save_login_marker()
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: True)
+    ok = auth.validity()
+    assert ok["valid"] is True
+    assert ok["reason"] == "ok"
+    assert auth.has_valid_cookies() is True
+
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: False)
+    unavailable = auth.validity()
+    assert unavailable["valid"] is False
+    assert unavailable["reason"] == "cdp_unavailable"
+    assert auth.has_valid_cookies() is False
+    assert auth_path.exists(), "CDP 暂不可用不得销毁登录标记"
+
+
 def test_cdp_login_marker_expires(auth_path, monkeypatch):
     auth.save_login_marker()
     state = json.loads(auth_path.read_text(encoding="utf-8"))

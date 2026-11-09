@@ -23,7 +23,10 @@ def _login_command() -> str:
 
 def _status_payload(live: bool) -> dict[str, Any]:
     info = auth.auth_status()
-    logged_in = bool(info.get("exists")) and not info.get("expired")
+    # validity() 是唯一判定源：标记 + TTL + CDP 可用。
+    logged_in = bool(
+        info.get("valid", bool(info.get("exists")) and not info.get("expired"))
+    )
     payload: dict[str, Any] = {
         "action": "status",
         "logged_in": logged_in,
@@ -55,6 +58,8 @@ def _status_payload(live: bool) -> dict[str, Any]:
 def _login_payload(timeout: int) -> dict[str, Any]:
     result = boss_login_flow.login(timeout=timeout)
     ok = result.status is cdp.LoginProbeStatus.AVAILABLE
+    browser_launched = bool(getattr(result, "browser_launched", False))
+    browser_open = bool(getattr(result, "browser_open", False)) or cdp.is_cdp_ready()
     payload: dict[str, Any] = {
         "action": "login",
         "logged_in": ok,
@@ -64,22 +69,35 @@ def _login_payload(timeout: int) -> dict[str, Any]:
         "retryable": result.retryable,
         "ttl_seconds": auth.LOGIN_TTL_SECONDS,
         "ttl_text": auth.describe_ttl(),
-        "browser_kept_open": True,
+        "browser_launched": browser_launched,
+        "browser_kept_open": browser_open,
         "login_url": BOSS_LOGIN_URL,
     }
     if ok:
-        payload["next_step"] = (
-            "登录成功，浏览器窗口保持常驻，直接重试原抓取；"
-            "不需要再次追问用户是否登录。"
-        )
+        if browser_open:
+            payload["next_step"] = (
+                "登录成功，浏览器窗口保持常驻，直接重试原抓取；"
+                "不需要再次追问用户是否登录。"
+            )
+        else:
+            payload["next_step"] = (
+                "登录成功，但未能确认专用浏览器窗口仍在；直接重试原抓取，"
+                "抓取会自动复用同一登录态并在需要时拉起浏览器。"
+            )
     else:
-        payload["recovery"] = (
-            "登录页与浏览器保持打开，可继续扫码后重新调用 boss_login(action=\"login\")；"
-            "不再需要时调用 boss_login(action=\"close\") 关闭浏览器。"
-        )
+        if browser_open:
+            payload["recovery"] = (
+                "登录页与浏览器保持打开，可继续扫码后重新调用 boss_login(action=\"login\")；"
+                "不再需要时调用 boss_login(action=\"close\") 关闭浏览器。"
+            )
+        else:
+            payload["recovery"] = (
+                "本次未能拉起或保持专用浏览器窗口：先确认已安装 Chrome/Edge 且端口可用，"
+                "再调用 boss_login(action=\"login\") 重试；不需要时用 boss_login(action=\"close\")。"
+            )
         payload["login_action"] = login_action(_login_command())
         payload["next_step"] = (
-            "把失败原因转述给用户，并说明登录窗口仍开着，可继续扫码后重试。"
+            "把失败原因转述给用户，并说明登录窗口是否仍打开，可继续扫码或修复浏览器后重试。"
         )
     return payload
 

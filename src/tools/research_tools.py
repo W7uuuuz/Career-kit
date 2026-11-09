@@ -102,10 +102,12 @@ def research_market() -> str:
                       "jd_specs 目标公司 1 条 + 对照 2-4 条（优先同城、优先含薪来源），"
                       "case_query 带 role/education（五档四层写法如「双非本」）/company/city。"
                       "含 BOSS 源时必须先问过用户并传 boss_confirmed=true——否则工具会"
-                      "返回 CONFIRMATION_REQUIRED 让你去问；未登录会返回 LOGIN_REQUIRED，"
-                      "此时先问用户「我可以直接帮你打开登录窗口扫码，要现在登录吗」；"
-                      "同意后用 harness 的终端/Bash 运行登录脚本（用户只需扫码），"
-                      "不要把命令丢给用户手动执行，也不要直接宣布调研失败。"
+                      "返回 CONFIRMATION_REQUIRED 让你去问；确认后按 "
+                      "boss_login(action=\"status\") → 未就绪直接 boss_login(action=\"login\") → "
+                      "登录成功后再调用 gather_research_data，不要先跑批再补登录；"
+                      "若工具返回 ACTION_REQUIRED / LOGIN_REQUIRED，直接调用 "
+                      "boss_login(action=\"login\")，不要再问第二次是否登录。"
+                      "登录成功后窗口常驻、切成功页、不自动关闭，命令仅作兜底。"
                       "抓取阶段会逐条补抓岗位详情；未取得正文的岗位将被剔除。"
                       "BOSS 例外：研究阶段默认 list-only，保留薪资行、不补详情。"
                       "因此耗时主要来自其他来源的详情补抓；"
@@ -624,8 +626,10 @@ async def gather_research_data(
     - BOSS 例外：detail_status=list_only 的行保留薪资/公司/地点/技能，不补详情不剔除；
       list_only 数量进来源面板、counts 与数据缺口，需要全文时用 fetch_jd_detail 补抓
     - 任一源失败不中断；失败原因进报告「来源状态面板」如实展示
-    - BOSS 抓取前必须先问用户（boss_confirmed=true 才算确认）；登录缺失时先问
-      「是否现在登录」再决定，不得把登录失败直接当调研失败宣布
+    - BOSS 抓取前必须先问用户（boss_confirmed=true 才算确认）；含 BOSS 时先
+      boss_login(action="status")，未就绪直接 boss_login(action="login")，登录成功后
+      再调用 gather_research_data，不要先跑批再补登录；不再二次询问是否登录；
+      登录成功后窗口常驻、切成功页、不自动关闭，命令仅作兜底
     - 全部失败时返回可读错误并引导 import_jd / import_jd_file，绝不编造
     """
     try:

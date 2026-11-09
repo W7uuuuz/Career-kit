@@ -85,9 +85,11 @@ fetch_jd_detail(url="https://www.zhipin.com/job_detail/xxx.html")
 ## 注意事项
 
 1. **一次同意**：抓取前只问一次是否把 BOSS 纳入本次调研；同意后未登录时直接
-   调用 `boss_login(action="login")`，不再追问第二次。未确认返回
-   `CONFIRMATION_REQUIRED`，确认但未登录返回 `ACTION_REQUIRED` /
-   `next_tool=boss_login`。不得静默跳过该源或直接宣布失败。
+   调用 `boss_login(action="login")`，不再追问第二次。错误码按入口区分：
+   `gather_research_data` 未登录返回 `ACTION_REQUIRED`；
+   `collect_company_evidence` / `fetch_company_jobs` / `fetch_jd_detail`
+   未登录返回 `LOGIN_REQUIRED`；两者都带 `next_tool=boss_login`。
+   不得静默跳过该源或直接宣布失败。
 2. **登录态不伪装**：只有接口返回明文薪资才写登录标记；未登录/风控明确失败，
    不保存注定失效的状态。登录成功后浏览器窗口保持常开，由
    `boss_login(action="close")` 关闭。

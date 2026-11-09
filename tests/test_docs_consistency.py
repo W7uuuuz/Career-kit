@@ -361,3 +361,53 @@ def test_entry_tools_emit_guidance_blocks():
 
     task_tools = _read("src", "tools", "task_tools.py")
     assert "guide_for(profile)" in task_tools
+
+
+# ---------------------------------------------------------------------------
+# BOSS 模型可见文案
+# ---------------------------------------------------------------------------
+
+import re  # noqa: E402
+
+STALE_BOSS_COPY = (
+    (r"(?<!不)会自动关闭", "声称浏览器会自动关闭"),
+    (r"稍等，浏览器", "扫码后自动关闭的旧话术"),
+    (r"先问是否登录", "未登录时二次询问登录"),
+    (r"先问用户是否登录", "未登录时二次询问登录"),
+    (r"要现在登录吗", "二次询问是否现在登录"),
+    (r"先问「是否现在登录", "二次询问是否现在登录"),
+    (r"先问用户是否抓取/登录", "把抓取与登录拆成两次询问"),
+    (r"未登录先问是否扫码", "未登录时二次询问扫码"),
+)
+
+BOSS_VISIBLE_COPY_FILES = (
+    ("llms.txt",),
+    ("docs", "llms.txt"),
+    ("docs", "workflow.md"),
+    ("src", "tools", "session.py"),
+    ("src", "tools", "data_tools.py"),
+    ("src", "tools", "research_tools.py"),
+    ("src", "tools", "evidence_tools.py"),
+)
+
+
+def test_boss_visible_copy_has_no_stale_login_or_autoclose_wording():
+    """根 llms.txt / workflow / session.py 等不得保留「自动关闭」「先问是否登录」。"""
+    offenders = []
+    for rel in BOSS_VISIBLE_COPY_FILES:
+        text = _read(*rel)
+        for pattern, reason in STALE_BOSS_COPY:
+            if re.search(pattern, text):
+                offenders.append(f"{'/'.join(rel)}: {reason}")
+    assert not offenders, f"BOSS 旧话术未清理：{offenders}"
+
+
+def test_evidence_guide_boss_next_action_calls_login_directly():
+    """_evidence_guide 的 BOSS 分支：先 login 再 collect，且不二次询问。"""
+    from src.guidance import _evidence_guide
+
+    action = _evidence_guide(None).next_action
+    assert "boss_login(action='login')" in action
+    assert "collect_company_evidence" in action
+    assert action.index("boss_login") < action.index("collect_company_evidence")
+    assert "不要二次询问是否登录" in action

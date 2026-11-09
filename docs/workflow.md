@@ -81,8 +81,8 @@ evidence / requirement / execution_plan / execution / applications / review`；
 ```text
 1. research_market()                              # 方法论与 4 步模板
 2. 向用户播报调研菜单（抓哪家、耗时、报告落在哪），宣告即执行
-3. 名单含 BOSS 时先问一次是否抓取；同意后先 boss_login(status)，未就绪直接 login
-4. 登录成功后 gather_research_data(jd_specs, case_query, boss_confirmed)
+3. 名单含 BOSS 时先问一次是否纳入；确认后未登录直接 boss_login(action="login")
+4. gather_research_data(jd_specs, case_query, boss_confirmed)
    - 目标公司 1 家 + 同方向对照 2-4 家
    - 逐条补抓岗位详情；无详情岗位剔除并计入缺口
    - 单源 25 秒 / 总预算 50 秒；超过 2 个源建议拆批；失败不拖垮整批，已完成来源写断点缓存
@@ -96,9 +96,9 @@ evidence / requirement / execution_plan / execution / applications / review`；
 - 报告 100% 代码渲染自抓取数据，每条带来源链接、平台、抓取时间。
 - 任一源失败不中断，失败原因进来源状态面板；未获取内容写「未获取」，不编造。
 - 全部失败时返回 `MISSING_DATA`，引导 `import_jd` / `import_jd_file`。
-- BOSS 登录缺失时直接调用 `boss_login(action="login")`；登录页为
-  `https://www.zhipin.com/web/user/?ka=header-login`；扫码成功后窗口常驻复用，不自动关闭；
-  需要关闭时调用 `boss_login(action="close")`。
+- BOSS 登录缺失时直接调用 `boss_login(action="login")`（用户只需扫码），不二次询问是否登录。
+  登录页为 `https://www.zhipin.com/web/user/?ka=header-login`；成功后窗口常驻并切到
+  「登录成功」提示页，不自动关闭；需要关闭时调用 `boss_login(action="close")`，命令仅作兜底。
   研究阶段 BOSS 为 list-only（公司/地点/明文薪资/技能），详情在交互式 `fetch_jd_detail` 中补抓。
 
 ---

@@ -196,8 +196,9 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         nowcoder 返回面经，github 返回经验帖。
         失败时返回错误原因和恢复建议——此时如实告知用户，不要编造数据。
         BOSS 直聘需要登录：未登录会返回 LOGIN_REQUIRED + next_tool=boss_login——
-        直接调用 boss_login(action="login")（用户只需扫码），不要再问「是否现在登录」；
-        login_command 仅作兜底，不要把登录缺失直接当抓取失败宣布。
+        直接调用 boss_login(action="login")（用户只需扫码），不要再问第二次是否登录；
+        登录成功后窗口常驻、切成功页、不自动关闭，命令仅作兜底；
+        不要把登录缺失直接当抓取失败宣布。
     """
     try:
         params_dict = json.loads(params) if params else {}

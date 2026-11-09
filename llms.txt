@@ -37,10 +37,12 @@
 - **企业适配（阶段 6-9）** 建议在执行前完成；用户拒绝时可按基线版执行。
   每条执行方案变更必须带 `evidence_ids`，数字由代码计算，LLM 只写 `interpretation`。
 - **BOSS 补充源**：`collect_company_evidence(include_boss=true)` 可补充薪资与广度；
-  必须先问用户并传 `boss_confirmed=true`。BOSS 走 CDP 专用浏览器：登录命令
-  `python -m src.scrapers.boss.login`，登录页 `https://www.zhipin.com/web/user/?ka=header-login`；
-  扫码后稍等，浏览器会自动关闭。研究阶段 BOSS 默认 list-only（公司/地点/明文薪资/技能），
-  不因详情慢拖垮整批；未登录先问是否扫码，不得把登录失败当抓取失败。
+  必须先问用户并传 `boss_confirmed=true`。BOSS 走 CDP 专用浏览器：优先调用
+  `boss_login(action="login")`（用户只需扫码），登录命令仅作兜底。登录成功后窗口
+  常驻并切到「登录成功」提示页，不自动关闭；需要关闭时用 `boss_login(action="close")`。
+  确认但未登录时直接调用 `boss_login(action="login")`，不再二次询问是否登录；
+  研究阶段 BOSS 默认 list-only（公司/地点/明文薪资/技能），不因详情慢拖垮整批，
+  不得把登录失败当抓取失败。
 - **投递清单**：证据池/需求画像就绪后调用 `build_application_list`；城市硬筛、方向/技能/学历/档位打分，
   排除已投递，报告落 `~/CareerKit/<档案>/投递清单/`。
 - **计划失配检测**：证据刷新后、完成里程碑、周检视或用户主动问时调用 `check_plan_fit`；

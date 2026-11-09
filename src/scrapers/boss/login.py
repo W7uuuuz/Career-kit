@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import sys
 import time
+from dataclasses import replace
 from urllib.parse import quote
 
 from . import cdp
@@ -177,6 +178,7 @@ def login(
     cdp_port: int | None = None, timeout: float = POLL_TIMEOUT_SEC
 ) -> cdp.LoginProbeResult:
     """打开可见登录页等待扫码；成功后写标记并保持浏览器常驻。"""
+    was_ready = cdp.is_cdp_ready(cdp_port)
     try:
         cdp.ensure_cdp_browser(cdp_port)
         session = cdp.CDPSession(cdp_port)
@@ -184,7 +186,13 @@ def login(
         print(f"[!] {exc}")
         print("[!] 恢复建议：安装 Chrome 或 Edge 后重试；若端口被占用，"
               "可设置环境变量 CAREER_KIT_BOSS_CDP_PORT 换端口。")
-        return cdp.LoginProbeResult(cdp.LoginProbeStatus.RESPONSE_ERROR, message=str(exc))
+        return cdp.LoginProbeResult(
+            cdp.LoginProbeStatus.RESPONSE_ERROR,
+            message=str(exc),
+            browser_launched=False,
+            browser_open=cdp.is_cdp_ready(cdp_port),
+        )
+    launched = not was_ready
 
     login_target_id: str | None = None
     login_sid: str | None = None
@@ -220,6 +228,12 @@ def login(
         # 成功与失败都保留登录页与浏览器：浏览器常驻，失败时用户可继续扫码。
         with contextlib.suppress(Exception):
             session.close()
+
+    result = replace(
+        result,
+        browser_launched=launched,
+        browser_open=cdp.is_cdp_ready(cdp_port),
+    )
 
     if result.status is cdp.LoginProbeStatus.AVAILABLE:
         save_login_marker()

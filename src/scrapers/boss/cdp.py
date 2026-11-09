@@ -661,6 +661,10 @@ class LoginProbeResult:
     code: int | None = None
     message: str = ""
     retryable: bool = False
+    # 登录流程实际是否新拉起浏览器 / 结束后浏览器是否仍在运行；
+    # 供 boss_login 如实上报 browser_kept_open，启动失败不得声称窗口存在。
+    browser_launched: bool = False
+    browser_open: bool = False
 
 
 def classify_login_probe_response(

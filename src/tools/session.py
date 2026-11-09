@@ -38,8 +38,9 @@ WELCOME_PROMPT = """\
   `get_industry_snapshot` / `search_cases` / `search_knowledge`；抓不到就如实说「未获取」，
   必要时走 `import_jd` / `import_jd_file`。
 - 市场调研：`research_market` → `gather_research_data`；详情按需用 `read_research_details`。
-- BOSS 登录：抓 BOSS 前先 `boss_login(action="status")`；未就绪直接 `login`，
-  登录成功后再 `gather_research_data`；不要先跑批再补登录。`login_command` 仅兜底。
+- BOSS 登录：抓取前只问一次是否纳入；未登录时直接 `boss_login(action="login")`，
+  用户只需扫码，不要再问第二次是否登录。成功后窗口常驻、切成功页、不自动关闭；
+  需要关闭时用 `boss_login(action="close")`，命令仅作兜底。
 
 ## 分析、规划、执行
 - 分析：`analyze_gaps` → `save_gap_analysis`；给分前先说明口径（见 docs/rules）。

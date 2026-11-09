@@ -277,6 +277,7 @@ def test_login_reports_missing_browser(monkeypatch):
         raise cdp.BossCDPError("未检测到 Chrome 或 Edge")
 
     monkeypatch.setattr(login.cdp, "ensure_cdp_browser", _raise)
+    monkeypatch.setattr(login.cdp, "is_cdp_ready", lambda *a, **k: False)
     monkeypatch.setattr(
         login.cdp,
         "CDPSession",
@@ -286,6 +287,19 @@ def test_login_reports_missing_browser(monkeypatch):
     result = login.login(timeout=1)
 
     assert result.status is cdp.LoginProbeStatus.RESPONSE_ERROR
+    assert result.browser_open is False
+    assert result.browser_launched is False
+
+
+def test_login_reports_browser_open_state(monkeypatch):
+    monkeypatch.setattr(login, "save_login_marker", lambda *a, **k: None)
+    monkeypatch.setattr(login.cdp, "is_cdp_ready", lambda *a, **k: True)
+    _patch_login_flow(monkeypatch, _result(cdp.LoginProbeStatus.AVAILABLE))
+
+    result = login.login(timeout=5)
+
+    assert result.browser_open is True, "浏览器已在运行且登录后仍可用时必须如实上报"
+    assert result.browser_launched is False, "端口已就绪时不应声称新拉起浏览器"
 
 
 def test_boss_login_status_is_side_effect_free(monkeypatch):
@@ -293,7 +307,13 @@ def test_boss_login_status_is_side_effect_free(monkeypatch):
     monkeypatch.setattr(
         boss_tools.auth,
         "auth_status",
-        lambda: {"exists": True, "expired": False, "ttl_seconds": boss_tools.auth.LOGIN_TTL_SECONDS},
+        lambda: {
+            "exists": True,
+            "expired": False,
+            "valid": True,
+            "reason": "ok",
+            "ttl_seconds": boss_tools.auth.LOGIN_TTL_SECONDS,
+        },
     )
     monkeypatch.setattr(boss_tools.cdp, "is_cdp_ready", lambda *a, **k: True)
     monkeypatch.setattr(boss_tools.cdp, "cdp_browser_process_count", lambda: 1)
@@ -311,6 +331,53 @@ def test_boss_login_status_is_side_effect_free(monkeypatch):
     assert payload["ttl_text"] == boss_tools.auth.describe_ttl()
     assert "probe" not in payload
     assert calls["probe"] == 0, "status 默认不得做真实探测"
+
+
+def test_status_logged_in_false_when_marker_valid_but_cdp_unavailable(tmp_path, monkeypatch):
+    """标记有效但 CDP 不可用时，status.logged_in 必须与 has_valid_cookies 同源为 false。"""
+    state_path = tmp_path / "state.json"
+    monkeypatch.setattr(boss_tools.auth, "AUTH_STATE_PATH", state_path)
+    boss_tools.auth.save_login_marker()
+    monkeypatch.setattr(boss_tools.auth, "cdp_backend_available", lambda *a, **k: False)
+    monkeypatch.setattr(boss_tools.cdp, "is_cdp_ready", lambda *a, **k: False)
+    monkeypatch.setattr(boss_tools.cdp, "cdp_browser_process_count", lambda: 0)
+
+    payload = json.loads(boss_tools.boss_login(action="status"))
+
+    assert payload["logged_in"] is False
+    assert payload["auth"]["reason"] == "cdp_unavailable"
+    assert state_path.exists(), "登录标记仍在，只是当前 CDP 不可用"
+
+
+def test_login_payload_reports_browser_kept_open_only_when_open(monkeypatch):
+    monkeypatch.setattr(
+        boss_tools.boss_login_flow,
+        "login",
+        lambda *a, **k: cdp.LoginProbeResult(
+            cdp.LoginProbeStatus.AVAILABLE,
+            browser_launched=True,
+            browser_open=True,
+        ),
+    )
+    payload = json.loads(boss_tools.boss_login(action="login"))
+    assert payload["browser_kept_open"] is True
+    assert "保持常驻" in payload["next_step"]
+
+    monkeypatch.setattr(
+        boss_tools.boss_login_flow,
+        "login",
+        lambda *a, **k: cdp.LoginProbeResult(
+            cdp.LoginProbeStatus.RESPONSE_ERROR,
+            message="未检测到 Chrome 或 Edge",
+            browser_launched=False,
+            browser_open=False,
+        ),
+    )
+    monkeypatch.setattr(boss_tools.cdp, "is_cdp_ready", lambda *a, **k: False)
+
+    failed = json.loads(boss_tools.boss_login(action="login"))
+    assert failed["browser_kept_open"] is False
+    assert "保持打开" not in failed.get("recovery", "")
 
 
 def test_boss_login_success_does_not_stop_and_close_does(monkeypatch):

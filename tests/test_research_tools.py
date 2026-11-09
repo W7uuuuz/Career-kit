@@ -104,6 +104,20 @@ def test_research_market_returns_methodology_and_prior(temp_profile):
     assert "vendor" not in json.dumps(out)  # 无编造占位
 
 
+def test_research_market_boss_copy_uses_boss_login_without_second_ask(temp_profile):
+    """BOSS 模型可见文案：用户同意后直接 boss_login(login)，不再二次询问登录。"""
+    from src.server import research_market
+
+    out = json.loads(research_market())
+    text = json.dumps(out, ensure_ascii=False)
+
+    assert "boss_login" in text
+    assert "直接调用 boss_login" in text
+    assert "现在登录" not in text
+    assert "是否现在登录" not in text
+    assert "命令" in text and "兜底" in text
+
+
 def test_gather_research_data_writes_report_trio(temp_profile):
 
     loader = _FakeLoader({
