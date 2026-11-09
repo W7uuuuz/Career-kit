@@ -120,7 +120,8 @@ evidence / requirement / execution_plan / execution / applications / review`；
 
 **关键规则**：
 - 分析必须基于真实数据；无数据时引导用户导入 JD，绝不编造。
-- `skill_gaps` 带 `source`；`resume_red_flags` 带 `signal` / `risk` / `evidence_fix`。
+- `skill_gaps` 非空时每项必须带 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；
+  空 `skill_gaps` 允许保存但会给建议；`resume_red_flags` 带 `signal` / `risk` / `evidence_fix`。
 - 过程透明：每步产出用户看得见的中间结果，落盘前用户确认。
 - 换了目标 JD 后差距分析标记过期，必须先重新 `analyze_gaps`。
 
@@ -194,6 +195,8 @@ collect_company_evidence(
 
 **关键规则**：
 - 只抓已确认且可抓的企业；城市是硬筛选。
+- 目标城市非空时，`location` 为空的岗位按硬筛剔除，同时计入 `unknown_city`
+  与 `dropped_city`，并写入数据缺口（空 location 不能静默放行）。
 - 官方源 JD 必须抓到详情；无详情剔除并计入 `dropped_no_detail`。
 - BOSS 的 `detail_status=list_only` 行尊重来源声明：不补详情、不剔除，
   保留薪资/公司/地点/技能等列表字段，并计入 list-only 缺口；
@@ -298,6 +301,8 @@ delete_application(application_id)   # 仅录错/重复时
 
 **关键规则**：
 - 只记录用户口述的真实事实，不编造、不代用户估计状态。
+- 投递清单城市是硬筛：目标城市非空时 `location` 为空的候选剔除，并计入未知城市缺口；
+  目标城市为空时保留所有岗位。
 - 同公司+同岗位的活跃记录不重复新建；返回现有 `application_id`。
 - 转化率按事件历史统计：面试后被拒仍计入面试数；样本 <5 时降级为参考。
 - 进面试/拿 offer 是重大事件，按返回值提示触发 `trigger_insight(event)`。

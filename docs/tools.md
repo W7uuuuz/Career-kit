@@ -48,7 +48,7 @@
 |------|------|
 | `explore_goals` | 无目标时三轴定位（能力 × 兴趣 × 真实市场）并提出候选方向 |
 | `analyze_gaps` | 返回差距分析方法论上下文 |
-| `save_gap_analysis` | 保存分析结果（含内容质量门） |
+| `save_gap_analysis` | 保存分析结果；`skill_gaps` 非空时每项必须有 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；空列表允许保存并给建议；质量建议持久化到档案 |
 | `generate_roadmap` | 返回路线图方法论上下文（6 步工作流；审计为第二意见） |
 | `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图） |
 | `save_roadmap_audit` | 审计结果落库（PASS / PASS_WITH_NOTES / FAIL + issues/notes；按 `roadmap_hash` 绑定版本，不阻断定稿） |
@@ -59,7 +59,7 @@
 | 工具 | 作用 |
 |------|------|
 | `select_target_companies` | 阶段 6：按目标档/过渡档/行业筛选企业池；支持 include/exclude；未确认只生成推荐池，确认后才能进入采集 |
-| `collect_company_evidence` | 阶段 7：批量抓取目标企业 JD 与面经，城市硬筛、详情补抓、去重；单源失败不拖垮整批；产物落盘证据池报告；可选 `include_boss=true` 补充 BOSS 薪资与广度（需先确认并扫码登录）。BOSS 的 `detail_status=list_only` 行尊重来源声明：保留列表字段、不补详情、不剔除，并计入 list-only 缺口 |
+| `collect_company_evidence` | 阶段 7：批量抓取目标企业 JD 与面经，城市硬筛、详情补抓、去重；目标城市非空时 location 为空的岗位按硬筛剔除，并计入 `unknown_city` 与 `dropped_city`；单源失败不拖垮整批；产物落盘证据池报告；可选 `include_boss=true` 补充 BOSS 薪资与广度（需先确认并扫码登录）。BOSS 的 `detail_status=list_only` 行尊重来源声明：保留列表字段、不补详情、不剔除，并计入 list-only 缺口 |
 | `analyze_company_requirements` | 阶段 8：用代码统计 JD/面经频率、公司覆盖、Wilson 区间与逐条硬门槛，返回受约束的分析提示；置信度只按样本量计算 |
 | `save_requirement_profile` | 阶段 8：只保存 LLM 的定性解读；必须能从 EvidenceRun 复算统计，缺失或损坏时拒绝落库；数字、列表与 evidence_ids 由代码重算，interpretation 一旦引用证据 id 必须真实存在 |
 | `plan_execution_alignment` | 阶段 9：返回校准方法论、基线路线图、已完成能力与需求摘要，供设计执行版方案 |
@@ -75,7 +75,7 @@
 | `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点；phase_id 必须存在于当前路线图） |
 | `get_next_tasks` | 返回当前阶段下一步任务（关卡式） |
 | `checkin_task` | 打卡；完成自动沉淀能力证据 |
-| `build_application_list` | 从证据池批量筛选投递岗位：城市硬筛、方向/技能/学历/档位打分、排除已投递；生成投递清单报告并写入 ApplicationState.candidates |
+| `build_application_list` | 从证据池批量筛选投递岗位：城市硬筛（目标城市非空时 location 为空的岗位剔除并计入未知城市缺口）、方向/技能/学历/档位打分、排除已投递；生成投递清单报告并写入 ApplicationState.candidates |
 | `record_application` | 记录/更新投递进展（求职漏斗）；重复投递有去重保护 |
 | `delete_application` | 删除单条投递记录（录错/重复录入时用，不可恢复） |
 

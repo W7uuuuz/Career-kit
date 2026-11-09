@@ -247,7 +247,10 @@ def test_record_application_invalid_status(temp_profile):
 
     result = json.loads(record_application(company="字节", status="面试中"))
     assert result.get("isError") is True
-    assert result["code"] == "INVALID_SECTION"
+    assert result["code"] == "INVALID_PARAM"
+    assert set(result["details"]["allowed"]) == {
+        "applied", "screening", "interview", "offer", "rejected", "withdrawn",
+    }
 
 
 def test_record_application_empty_company(temp_profile):

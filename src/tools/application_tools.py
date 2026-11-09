@@ -52,9 +52,9 @@ def record_application(
     """
     if status not in VALID_STATUSES:
         return error_response(
-            "INVALID_SECTION",
+            "INVALID_PARAM",
             f"非法状态「{status}」，必须是 {sorted(VALID_STATUSES)} 之一",
-            {"received": status, "valid": sorted(VALID_STATUSES)},
+            {"received": status, "allowed": sorted(VALID_STATUSES)},
         )
 
     profile = load_profile()

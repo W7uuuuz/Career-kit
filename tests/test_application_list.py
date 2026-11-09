@@ -253,7 +253,7 @@ def _by_title(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {item["title"]: item for item in payload["candidates"]}
 
 
-def test_city_is_hard_filter_and_unknown_location_is_kept(data_dir: Path) -> None:
+def test_city_is_hard_filter_and_empty_location_is_dropped(data_dir: Path) -> None:
     _seed()
 
     payload = _build(city="北京", role="AI Agent 开发")
@@ -261,10 +261,17 @@ def test_city_is_hard_filter_and_unknown_location_is_kept(data_dir: Path) -> Non
     titles = [item["title"] for item in payload["candidates"]]
     assert "后端开发工程师" not in titles, "上海岗位应被城市硬筛剔除"
     assert "AI Agent 工程师" in titles, "北京岗位应保留"
-    by_title = _by_title(payload)
-    unknown = by_title["AI Agent 工程师（城市未知）"]
-    assert unknown["location"] == ""
-    assert "城市未知" in unknown["gaps"]
+    assert "AI Agent 工程师（城市未知）" not in titles, "空 location 在硬筛时必须剔除"
+    assert payload["dropped_city"] == 2, "上海与空 location 都计入城市剔除"
+    assert payload["unknown_city"] == 1, "空 location 计入未知城市缺口"
+
+
+def test_city_keep_keeps_empty_location_only_without_target() -> None:
+    from src.core.application_list import _city_keep
+
+    assert _city_keep("", "") == (True, False), "目标城市为空时保留所有岗位"
+    assert _city_keep("", "北京") == (False, True), "目标城市非空时空 location 剔除且标记未知"
+    assert _city_keep("北京", "北京") == (True, False)
 
 
 def test_role_skill_education_tier_and_salary_scoring(data_dir: Path) -> None:
@@ -331,13 +338,13 @@ def test_applied_candidates_excluded_by_default_and_included_on_request(data_dir
 
     default_payload = _build(top=30, min_score=0)
     assert "AI Agent 工程师（已投）" not in _by_title(default_payload)
-    assert default_payload["candidate_count"] == 4
+    assert default_payload["candidate_count"] == 3
 
     with_applied = _build(top=30, min_score=0, include_applied=True)
     applied = _by_title(with_applied)["AI Agent 工程师（已投）"]
     assert applied["status"] == "applied"
     assert applied["match_score"] == 82
-    assert with_applied["candidate_count"] == 5
+    assert with_applied["candidate_count"] == 4
 
 
 def test_candidates_persist_to_application_state_and_reports(data_dir: Path) -> None:

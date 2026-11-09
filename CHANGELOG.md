@@ -16,6 +16,10 @@
   - Artifact 阶段 2-10 强制上游引用；ExecutionState 只在 applied plan 后落库；
     新计划强制重新生成任务；`evidence_ids` 校验单源；需求统计拒绝草稿数字；
     证据阶段尊重 BOSS list-only。
+  - 质量建议持久化到档案并在 GUIDE 中提醒；`skill_gaps.source` 改为硬校验；
+    `generate_tasks` 重建时为历史完成任务补能力证据。
+  - 非法枚举统一返回 `INVALID_PARAM`；目标城市已设置时，空 `location` 岗位
+    在证据池与投递清单中按城市硬筛剔除并计入缺口。
   - 工具数 49 → 50。
 
 ## v0.3.0 (2026-11-09)

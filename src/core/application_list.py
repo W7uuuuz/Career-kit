@@ -153,9 +153,14 @@ def run(
 
     scored: list[tuple[int, int, ApplicationCandidate]] = []
     total_scored = 0
+    dropped_city = 0
+    unknown_city = 0
     for order, job in enumerate(evidence.jd_items):
-        keep, unknown_city = _city_keep(job.location, target.city)
+        keep, job_unknown_city = _city_keep(job.location, target.city)
+        if job_unknown_city:
+            unknown_city += 1
         if not keep:
+            dropped_city += 1
             continue
         status = _candidate_status(job, applied_keys)
         if status == "applied" and not include_applied:
@@ -167,7 +172,7 @@ def run(
             user_skills=user_skills,
             user_education=user_education,
             demand_terms=demand_terms,
-            unknown_city=unknown_city,
+            unknown_city=job_unknown_city,
         )
         candidate = _make_candidate(job, order, score, reasons, gaps, status)
         scored.append((score, order, candidate))
@@ -214,6 +219,8 @@ def run(
         "requirement_profile_id": requirement.meta.id if requirement else "",
         "candidate_count": len(selected),
         "total_scored": total_scored,
+        "dropped_city": dropped_city,
+        "unknown_city": unknown_city,
         "min_score": threshold,
         "top": [candidate.model_dump() for candidate in selected[:10]],
         "candidates": [candidate.model_dump() for candidate in selected],
@@ -549,12 +556,16 @@ def _candidate_key(candidate: ApplicationCandidate) -> tuple[str, ...]:
 
 
 def _city_keep(location: str, city: str) -> tuple[bool, bool]:
-    """返回 (是否保留, 是否城市未知)。城市未知保留但不加分。"""
+    """返回 (是否保留, 是否城市未知)。
+
+    目标城市非空、location 为空时视为不匹配：keep=False, unknown=True
+    （城市是硬筛，空 location 不能静默放行）；目标城市为空时保留所有岗位。
+    """
     raw = str(location or "").strip()
     if not str(city or "").strip():
         return True, False
     if not raw:
-        return True, True
+        return False, True
     normalized = _normalize_city(raw)
     if any(hint in normalized for hint in _REMOTE_HINTS):
         return True, False

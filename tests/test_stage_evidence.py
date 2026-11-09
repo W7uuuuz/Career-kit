@@ -72,6 +72,7 @@ def _pool(
     companies: list[CompanyEntry] | None = None,
     confirmed: bool = True,
     profile_name: str = PROFILE,
+    city: str = "北京",
 ) -> CompanyPool:
     entries = companies or [_company("bytedance", "字节跳动")]
     if not confirmed:
@@ -85,7 +86,7 @@ def _pool(
             created_at=datetime.now().isoformat(),
             validation={"confirmed": confirmed},
         ),
-        target_spec=TargetSpec(direction="AI 应用", role="AI Agent 开发", city="北京"),
+        target_spec=TargetSpec(direction="AI 应用", role="AI Agent 开发", city=city),
         companies=entries,
     )
 
@@ -205,15 +206,38 @@ def test_city_filter_url_dedupe_and_unknown_city(
     assert {item.title for item in run.jd_items} == {
         "AI Agent 工程师",
         "远程 Agent 工程师",
-        "未写地点岗位",
     }
     assert run.counts["raw_jobs"] == 5
-    assert run.counts["kept_jobs"] == 3
-    assert run.counts["dropped_city"] == 1
+    assert run.counts["kept_jobs"] == 2
+    assert run.counts["dropped_city"] == 2
     assert run.counts["unknown_city"] == 1
     assert run.counts["dropped_no_detail"] == 0
     assert all(item.detail_status == "ok" for item in run.jd_items)
     assert run.meta.source_status[0]["status"] == "ok"
+    assert any("未知城市" in gap for gap in run.gaps)
+
+
+def test_empty_location_kept_when_target_city_is_empty(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store, city=""))
+    jobs = {
+        "bytedance": {
+            "results": [
+                {"title": "未写地点岗位", "location": "", "url": "https://jobs/1",
+                 "description": "地点未知"},
+            ]
+        }
+    }
+    _patch_sources(monkeypatch, jobs)
+
+    result = _run(store)
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
+    assert [item.title for item in run.jd_items] == ["未写地点岗位"]
+    assert run.counts["dropped_city"] == 0
+    assert run.counts["unknown_city"] == 0
 
 
 def test_detail_fetch_success_and_drop_without_detail(

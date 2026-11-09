@@ -1154,8 +1154,8 @@ def test_save_roadmap_guides_execution_start(temp_profile, monkeypatch):
 
 # ============ 差距分析内容质量门（BUG-002/003 收尾：不编造落成代码） ============
 
-def test_gap_missing_source_is_advisory(temp_profile):
-    """skill_gaps 缺 source → 保存成功并给出建议。"""
+def test_gap_missing_source_is_rejected(temp_profile):
+    """skill_gaps 非空时每项必须有 source：缺失 → INVALID_PARAM 且不写档案。"""
     from src.server import save_gap_analysis
 
     bad = json.dumps({
@@ -1163,9 +1163,11 @@ def test_gap_missing_source_is_advisory(temp_profile):
         "skill_gaps": [{"skill": "RAG", "priority": "high"}],
     }, ensure_ascii=False)
     result = json.loads(save_gap_analysis(gap_json=bad))
-    assert result.get("isError") is not True
-    assert any(a["code"] == "gap_missing_source" for a in result["context"]["advisories"])
-    assert profile_module.load_profile().gap
+    assert result.get("isError") is True
+    assert result["code"] == "INVALID_PARAM"
+    assert result["details"]["index"] == 0
+    assert result["details"]["field"] == "source"
+    assert not profile_module.load_profile().gap, "校验失败不得写入档案"
 
 
 def test_gap_empty_gaps_is_advisory(temp_profile):
@@ -1304,3 +1306,62 @@ def test_fetch_company_jobs_boss_login_required_next_tool(temp_profile, monkeypa
     assert result["code"] == "LOGIN_REQUIRED"
     assert result["details"]["next_tool"] == "boss_login"
     assert "2 小时" not in result["message"]
+
+# ============ Wave 5：非法枚举统一 INVALID_PARAM ============
+
+def test_invalid_enums_return_invalid_param_with_allowed(temp_profile):
+    from src.server import checkin_task, export_dashboard, trigger_insight
+
+    insight = json.loads(trigger_insight(trigger_type="manual"))
+    assert insight.get("isError") is True
+    assert insight["code"] == "INVALID_PARAM"
+    assert set(insight["details"]["allowed"]) == {"stage_audit", "event"}
+
+    checkin = json.loads(checkin_task(task_id="task_001", status="doing"))
+    assert checkin.get("isError") is True
+    assert checkin["code"] == "INVALID_PARAM"
+    assert set(checkin["details"]["allowed"]) == {"completed", "skipped"}
+
+    dashboard = json.loads(export_dashboard(mode="timeline"))
+    assert dashboard.get("isError") is True
+    assert dashboard["code"] == "INVALID_PARAM"
+    assert set(dashboard["details"]["allowed"]) == {"progress", "roadmap"}
+
+    missing_task = json.loads(checkin_task(task_id="task_999", status="completed"))
+    assert missing_task.get("isError") is True
+    assert missing_task["code"] == "MISSING_DATA", "缺失资源仍用 MISSING_DATA"
+
+
+def test_generate_tasks_records_retained_completed_evidence(temp_profile):
+    """generate_tasks 重建时把保留的 completed 任务沉淀为能力证据（去重）。"""
+    from src.models import Task
+    from src.server import generate_tasks
+
+    p = profile_module.load_profile()
+    p.have = {"skills": ["Python"]}
+    p.plan = {"roadmap": {"phases": [
+        {"id": "phase_1", "name": "基础", "milestones": [
+            {"id": "m1", "name": "M1", "tasks": [{"name": "已完成任务"}]},
+        ]},
+        {"id": "phase_2", "name": "进阶", "milestones": [
+            {"id": "m2", "name": "M2", "tasks": [{"name": "待办任务"}]},
+        ]},
+    ]}}
+    p.tasks = [Task(
+        id="task_001", name="已完成任务", phase_id="phase_1",
+        milestone_id="m1", status="completed",
+        completed_at="2026-11-01T10:00:00",
+    )]
+    profile_module.save_profile(p)
+
+    first = json.loads(generate_tasks())
+    assert not first.get("isError"), first
+    saved = profile_module.load_profile()
+    evidence = saved.have.get("capability_evidence") or []
+    assert [item["task"] for item in evidence] == ["已完成任务"]
+
+    second = json.loads(generate_tasks())
+    assert not second.get("isError"), second
+    saved = profile_module.load_profile()
+    evidence = saved.have.get("capability_evidence") or []
+    assert [item["task"] for item in evidence] == ["已完成任务"], "重复重建不得重复追加"

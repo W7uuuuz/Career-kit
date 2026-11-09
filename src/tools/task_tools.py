@@ -106,6 +106,7 @@ def generate_tasks() -> str:
     from .task_manager import (
         create_tasks_from_roadmap,
         format_task_list,
+        record_capability_evidence,
     )
 
     profile = load_profile()
@@ -175,6 +176,12 @@ def generate_tasks() -> str:
         1 for t in old_tasks
         if t.id in final_ids and t.status in ("completed", "skipped", "in_progress")
     )
+
+    # 重建时保留的 completed 任务沉淀为能力证据；record_capability_evidence
+    # 按 task + completed_at 去重，重复调用不会重复追加。
+    for task in profile.tasks:
+        if task.status == "completed":
+            record_capability_evidence(profile, task)
 
     save_profile(profile)
 
@@ -535,6 +542,14 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
         record_capability_evidence,
     )
 
+    allowed_statuses = ("completed", "skipped")
+    if status not in allowed_statuses:
+        return error_response(
+            "INVALID_PARAM",
+            f"status 必须是 completed 或 skipped，收到的是「{status}」",
+            {"received": status, "allowed": list(allowed_statuses)},
+        )
+
     profile = load_profile()
 
     try:
@@ -628,9 +643,9 @@ def trigger_insight(trigger_type: str = "stage_audit", event_description: str = 
 
     if trigger_type not in VALID_TRIGGER_TYPES:
         return error_response(
-            "INVALID_SECTION",
+            "INVALID_PARAM",
             f"trigger_type 必须是 stage_audit/event，收到的是「{trigger_type}」",
-            {"received": trigger_type, "valid": list(VALID_TRIGGER_TYPES)},
+            {"received": trigger_type, "allowed": list(VALID_TRIGGER_TYPES)},
         )
 
     profile = load_profile()
@@ -1420,9 +1435,9 @@ def export_dashboard(mode: str = "progress") -> str:
 
     if mode != "progress":
         return error_response(
-            "INVALID_MODE",
+            "INVALID_PARAM",
             f"mode 必须是 progress/roadmap，收到的是「{mode}」",
-            {"received": mode, "valid": ["progress", "roadmap"]},
+            {"received": mode, "allowed": ["progress", "roadmap"]},
         )
 
     html = _render_progress_html(profile)

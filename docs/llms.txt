@@ -102,9 +102,12 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
 {"isError": true, "code": "ERROR_CODE", "message": "错误描述", "details": {}}
 ```
 
-常见错误码：`MISSING_DATA`、`INVALID_JSON`、`INVALID_SECTION`、`PROBING_REQUIRED`、
-`INCOMPLETE_ANALYSIS`、`ANALYSIS_FAILED`、`CONFIRMATION_REQUIRED`、`LOGIN_REQUIRED`、
-`PROFILE_IN_USE`、`INVALID_PARAM`。
+常见错误码：`MISSING_DATA`、`INVALID_JSON`、`INVALID_SECTION`、`INVALID_PARAM`、
+`PROBING_REQUIRED`、`INCOMPLETE_ANALYSIS`、`ANALYSIS_FAILED`、`CONFIRMATION_REQUIRED`、
+`GOAL_CONFIRMATION_REQUIRED`、`ACTION_REQUIRED`、`LOGIN_REQUIRED`、`PROFILE_IN_USE`。
+
+语义约定：`MISSING_DATA` 只表示缺资源/缺档案（不是非法枚举）；`INVALID_SECTION`
+只表示 section 名称非法；非法枚举/参数统一用 `INVALID_PARAM`，details 带 `allowed`。
 
 ## 用户资产目录
 

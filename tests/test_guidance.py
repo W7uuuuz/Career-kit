@@ -489,6 +489,18 @@ def test_warnings_surface_failed_sources():
     assert build_guide(profile).warnings
 
 
+def test_warnings_surface_persisted_advisories():
+    profile = _confirmed_profile()
+    profile.advisories = {
+        "gap": {"items": [{"code": "a"}, {"code": "b"}], "updated_at": "2026-11-09"},
+        "roadmap": {"items": [{"code": "c"}], "updated_at": "2026-11-09"},
+    }
+
+    notes = warnings(profile)
+    assert any("差距分析有 2 条质量建议" in note for note in notes)
+    assert any("路线图有 1 条质量建议" in note for note in notes)
+
+
 def test_user_brief_summarizes_three_phases():
     brief = user_brief()
 

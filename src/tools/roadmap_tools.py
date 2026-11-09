@@ -540,6 +540,11 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             if same:
                 profile.plan["current_detail"] = old_detail
     profile.audit = audit
+    profile.advisories = dict(profile.advisories or {})
+    profile.advisories["roadmap"] = {
+        "items": advisories,
+        "updated_at": datetime.now().isoformat(),
+    }
     if old_hash != new_hash:
         profile.audited_phases = []
     profile.plan_saved_at = datetime.now().isoformat()

@@ -383,6 +383,14 @@ def warnings(profile: Any) -> list[str]:
             notes.append(f"{len(failed)} 个数据源失败（{names}），缺口已写进报告")
     if getattr(profile, "gap_stale_at", ""):
         notes.append("目标 JD 已更新，旧差距分析过期，需要重新分析")
+    advisories = getattr(profile, "advisories", None)
+    if isinstance(advisories, dict):
+        gap_items = ((advisories.get("gap") or {}).get("items") or [])
+        roadmap_items = ((advisories.get("roadmap") or {}).get("items") or [])
+        if gap_items:
+            notes.append(f"差距分析有 {len(gap_items)} 条质量建议待处理")
+        if roadmap_items:
+            notes.append(f"路线图有 {len(roadmap_items)} 条质量建议待处理")
     return notes
 
 

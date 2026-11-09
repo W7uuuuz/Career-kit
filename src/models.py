@@ -170,6 +170,10 @@ class CareerProfile(BaseModel):
         default_factory=dict,
         description="路线图审计记录（第二意见，不阻断保存；按 roadmap_hash 与路线图绑定）",
     )
+    advisories: dict[str, Any] = Field(
+        default_factory=dict,
+        description="质量建议持久化：gap / roadmap 各含 items 与 updated_at",
+    )
 
     # TODO: 后续扩展 - 支持多个目标 JD 对比
     target_jd: dict[str, Any] = Field(default_factory=dict, description="目标岗位 JD 解析结果")

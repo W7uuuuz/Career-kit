@@ -573,13 +573,17 @@ def _normalize_city(text: Any) -> str:
 
 
 def _city_decision(location: str, city: str) -> tuple[bool, bool]:
-    """返回 (是否保留, 是否城市未知)。"""
+    """返回 (是否保留, 是否城市未知)。
+
+    目标城市为空时保留所有岗位；目标城市非空而 location 为空时视为不匹配：
+    keep=False, unknown=True（城市是硬筛，空 location 不能静默放行）。
+    """
     target = _normalize_city(city)
     raw_location = str(location or "").strip()
-    if not raw_location:
-        return True, True
     if not target:
         return True, False
+    if not raw_location:
+        return False, True
     normalized = _normalize_city(raw_location)
     if any(hint in normalized for hint in _REMOTE_HINTS):
         return True, False
@@ -607,11 +611,11 @@ async def _enrich_jobs(
             company = str(row.get("company") or "").strip() or default_company
             location = str(row.get("location") or "").strip()
             keep, unknown = _city_decision(location, city)
+            if unknown:
+                counts["unknown_city"] += 1
             if not keep:
                 counts["dropped_city"] += 1
                 continue
-            if unknown:
-                counts["unknown_city"] += 1
             url = str(row.get("url") or "").strip()
             title_key = (_norm_text(company), _norm_text(title), _norm_text(location))
             if url:
@@ -783,11 +787,11 @@ def _reuse_jobs(
             continue
         location = str(sample.get("location") or "").strip()
         keep, unknown = _city_decision(location, city)
+        if unknown:
+            counts["unknown_city"] += 1
         if not keep:
             counts["dropped_city"] += 1
             continue
-        if unknown:
-            counts["unknown_city"] += 1
         company_id, company, tier = _match_company(company_raw, pool)
         reused.append(
             JDEvidence(
@@ -1147,6 +1151,11 @@ def _build_gaps(
             gaps.append(f"{scope}来源 {status.get('source')} 无结果")
     if counts["dropped_city"]:
         gaps.append(f"城市硬筛剔除 {counts['dropped_city']} 条 JD（目标城市：{city or '不限'}）")
+    if counts.get("unknown_city"):
+        gaps.append(
+            f"其中 {counts['unknown_city']} 条 JD 地点未知（空 location），"
+            "已按城市硬筛剔除并计入未知城市缺口"
+        )
     if counts["dropped_no_detail"]:
         gaps.append(f"缺少岗位详情剔除 {counts['dropped_no_detail']} 条 JD")
     if counts.get("list_only"):

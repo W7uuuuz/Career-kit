@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from ..guidance import goal_confirmed, guide_for
 from ..mcp_app import mcp
 from ..models import JourneyEntry
@@ -355,6 +357,21 @@ def analyze_gaps() -> str:
     })
 
 
+def _missing_skill_gap_source(gap_data: dict) -> tuple[int, str] | None:
+    """skill_gaps 非空时每项必须有非空 skill 与 source（来源真实硬校验）。"""
+    gaps = gap_data.get("skill_gaps")
+    if not isinstance(gaps, list) or not gaps:
+        return None
+    for index, gap in enumerate(gaps):
+        if not isinstance(gap, dict):
+            return index, "skill"
+        if not str(gap.get("skill", "")).strip():
+            return index, "skill"
+        if not str(gap.get("source", "")).strip():
+            return index, "source"
+    return None
+
+
 def _validate_gap_content(gap_data: dict, have: dict) -> list[str]:
     """差距分析的结构校验（只保留会影响渲染/状态的硬错误）。
 
@@ -532,7 +549,10 @@ def save_gap_analysis(gap_json: str) -> str:
             "market_context": "..."       // 市场背景（来自真实抓取数据汇总）
         }
 
-    内容建议（不阻断保存）：skill_gaps 为空或缺来源、red_flags 字段不完整、
+    硬校验：skill_gaps 非空时每项必须带非空 skill 与 source（来源真实），
+    缺失返回 INVALID_PARAM 且不写入档案；空 skill_gaps 允许保存。
+
+    内容建议（不阻断保存）：skill_gaps 为空、red_flags 字段不完整、
     AI 作者身份未在 red_flags 提及、未知字段——都会作为 advisories 返回并持久化，
     由 LLM 与用户决定是否补充。
     """
@@ -554,6 +574,20 @@ def save_gap_analysis(gap_json: str) -> str:
             {"issues": structural_issues},
         )
 
+    missing_source = _missing_skill_gap_source(gap_data)
+    if missing_source is not None:
+        index, field = missing_source
+        return error_response(
+            "INVALID_PARAM",
+            f"skill_gaps[{index}] 缺少 {field}——每条技能差距必须标注真实来源"
+            "（抓取的 JD / 导入材料 / 用户自评），缺失时不写入档案。",
+            {
+                "index": index,
+                "field": field,
+                "allowed": ["skill", "source"],
+            },
+        )
+
     advisories = _collect_gap_advisories(gap_data, profile.have or {})
 
     # 先生成报告——格式非法时在此暴露，避免把半成品写进档案
@@ -561,6 +595,11 @@ def save_gap_analysis(gap_json: str) -> str:
 
     profile.gap = gap_data
     profile.gap_stale_at = ""  # 新分析覆盖旧 JD 的过期标记
+    profile.advisories = dict(profile.advisories or {})
+    profile.advisories["gap"] = {
+        "items": advisories,
+        "updated_at": datetime.now().isoformat(),
+    }
     profile.touch()
     save_profile(profile)
 

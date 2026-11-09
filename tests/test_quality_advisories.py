@@ -242,6 +242,45 @@ def test_gap_unknown_fields_are_reported(temp_profile):
     assert "experience_2" in out["message"]
 
 
+def test_gap_advisories_persist_to_profile(temp_profile):
+    from src.server import save_gap_analysis
+
+    out = json.loads(save_gap_analysis(json.dumps({
+        "match_score": 60,
+        "skill_gaps": [],
+    }, ensure_ascii=False)))
+    assert not out.get("isError"), out
+    profile = profile_module.load_profile()
+    stored = profile.advisories["gap"]
+    assert stored["items"], "差距建议应持久化到档案"
+    assert stored["updated_at"]
+    assert [a["code"] for a in stored["items"]] == [
+        a["code"] for a in out["context"]["advisories"]
+    ]
+
+
+def test_roadmap_advisories_persist_and_clear(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    with_advisory = {"roadmap": {"start_level": "小厂", "phases": [
+        {"type": "project", "name": "做项目", "kpi": {"metric": "完成", "target": "1个"}},
+    ]}}
+    out = json.loads(save_roadmap(json.dumps(with_advisory, ensure_ascii=False)))
+    assert any(a["code"] == "missing_resume_value" for a in out["context"]["advisories"])
+    profile = profile_module.load_profile()
+    assert profile.advisories["roadmap"]["items"], "路线图建议应持久化到档案"
+    assert profile.advisories["roadmap"]["updated_at"]
+
+    clean = {"roadmap": {"start_level": "小厂", "phases": [
+        {"type": "learn", "name": "基础学习", "kpi": {"metric": "完成", "target": "1个"}},
+    ]}}
+    out = json.loads(save_roadmap(json.dumps(clean, ensure_ascii=False)))
+    assert out["context"]["advisories"] == []
+    profile = profile_module.load_profile()
+    assert profile.advisories["roadmap"]["items"] == [], "新路线图无建议时应清空旧建议"
+
+
 def test_generate_roadmap_response_is_compacted(temp_profile):
     from src.server import generate_roadmap, save_gap_analysis
 

@@ -44,7 +44,7 @@ async def test_guards_and_recovery(sandbox):
         await driver.intake("have", HAVE)
         await driver.finalize()
 
-        # 差距分析：缺 source 为建议，不阻断保存
+        # 差距分析：skill_gaps.source 是硬校验，缺失必须拒绝且不写档案
         unsourced = {
             "match_score": 60,
             "skill_gaps": [{"skill": "LangGraph", "priority": "high"}],
@@ -53,10 +53,8 @@ async def test_guards_and_recovery(sandbox):
             "save_gap_analysis",
             {"gap_json": json.dumps(unsourced, ensure_ascii=False)},
         )
-        advised_data = advised.assert_ok().json()
-        assert any(
-            a["code"] == "gap_missing_source" for a in advised_data["context"]["advisories"]
-        )
+        advised.assert_error("INVALID_PARAM")
+        advised.assert_contains("source")
 
         # AI 作者身份：提示为 advisory
         no_flag = json.loads(json.dumps(GAP, ensure_ascii=False))
