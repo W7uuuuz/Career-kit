@@ -754,3 +754,15 @@ def test_cleared_core_state_ignores_stale_artifacts(workspace: SimpleNamespace) 
         "requirement_profile_id": "",
         "execution_plan_id": "",
     }
+
+
+def test_check_plan_fit_tool_rejects_invalid_trigger():
+    import json
+
+    from src.tools.plan_fit_tools import check_plan_fit as check_plan_fit_tool
+
+    payload = json.loads(check_plan_fit_tool("bad_trigger"))
+    assert payload["code"] == "INVALID_PARAM"
+    assert payload["details"]["allowed"] == [
+        "manual", "evidence_refresh", "milestone", "weekly_review",
+    ]

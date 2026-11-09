@@ -676,7 +676,7 @@ def save_roadmap_audit(audit_json: str) -> str:
         return error_response(
             "INVALID_PARAM",
             f"verdict 必须是 PASS / PASS_WITH_NOTES / FAIL，当前值：{verdict!r}",
-            {"verdict": verdict},
+            {"verdict": verdict, "allowed": ["PASS", "PASS_WITH_NOTES", "FAIL"]},
         )
     issues = data.get("issues") or []
     if verdict == "FAIL" and not issues:

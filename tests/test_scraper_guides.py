@@ -144,6 +144,19 @@ def test_knowledge_writer_does_not_mutate_input():
 # ---------------------------------------------------------------------------
 
 
+def test_platform_ids_match_companies_yaml():
+    """平台 id 唯一来源是 companies.yaml 的 platforms 段。"""
+    from src.scrapers import catalog
+
+    data = yaml.safe_load((SCRAPERS_DIR / "companies.yaml").read_text(encoding="utf-8"))
+    expected = {
+        str(item["id"]).lower()
+        for item in data.get("platforms", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    assert set(catalog.PLATFORM_IDS) == expected
+
+
 def test_alias_resolution_uses_single_entry():
     from src.scrapers.loader import resolve_company
 
@@ -242,7 +255,12 @@ def test_fetch_jd_detail_renders_guide_fields(monkeypatch):
         "department": "AI 平台",
         "job_type": "技术",
         "project": "2027 届校招",
+        "job_family": "研发族",
+        "job_category": "算法",
+        "education": "本科",
+        "experience": "1-3年",
         "boss_active_status": "在线",
+        "detail_status": "ok",
         "skills": ["Python", "RAG"],
         "description": "负责 Agent 开发",
         "requirements": "熟悉 LangGraph",
@@ -250,7 +268,10 @@ def test_fetch_jd_detail_renders_guide_fields(monkeypatch):
     monkeypatch.setattr(data_tools, "get_job_detail", lambda url, company=None: fake)
     out = asyncio.run(data_tools.fetch_jd_detail(url="https://example.com/job/1"))
 
-    for expected in ("AI 平台", "技术", "2027 届校招", "在线", "Python、RAG"):
+    for expected in (
+        "AI 平台", "校招", "2027 届校招", "研发族", "算法", "本科", "1-3年",
+        "在线", "ok", "Python、RAG",
+    ):
         assert expected in out, f"详情渲染缺少字段值：{expected}"
 
 

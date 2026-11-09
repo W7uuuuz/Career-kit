@@ -39,6 +39,14 @@ def check_plan_fit(trigger: str = "manual") -> str:
     - 用户同意后才调用 next_tool 指向的采集/校准工具；
     - 不要根据 signals 自行改写计划，也不要制造焦虑；只陈述事实与证据。
     """
+    allowed = list(_plan_fit.TRIGGERS)
+    if trigger not in allowed:
+        return error_response(
+            "INVALID_PARAM",
+            f"trigger 必须是 {allowed} 之一，收到的是「{trigger}」",
+            {"received": trigger, "allowed": allowed},
+        )
+
     profile_name = get_active_profile_name()
     try:
         result = _plan_fit.check_plan_fit(profile_name, trigger)

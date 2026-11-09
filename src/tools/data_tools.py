@@ -382,7 +382,12 @@ async def fetch_jd_detail(url: str, company: str = "") -> str:
         ("部门", "department"),
         ("岗位类别", "job_type"),
         ("招聘项目", "project"),
+        ("职位族", "job_family"),
+        ("职位类别", "job_category"),
+        ("学历要求", "education"),
+        ("经验要求", "experience"),
         ("招聘者状态", "boss_active_status"),
+        ("详情状态", "detail_status"),
         ("技能要求", "skills"),
     ):
         value = _field_text(result.get(key))

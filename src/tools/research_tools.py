@@ -948,7 +948,7 @@ def read_research_details(ids: str = "", kind: str = "jd", limit: int = 6) -> st
         return error_response(
             "INVALID_PARAM",
             "kind 只能是 jd（岗位）或 case（面经/发展路线）。",
-            {"kind": kind},
+            {"kind": kind, "allowed": ["jd", "case"]},
         )
 
     profile = load_profile()

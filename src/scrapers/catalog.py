@@ -18,7 +18,6 @@ COMPANIES_PATH = Path(__file__).parent / "companies.yaml"
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 TIER_ORDER: dict[str, int] = {"大厂": 4, "中厂": 3, "小厂": 2, "未收录": 1}
-PLATFORM_IDS: frozenset[str] = frozenset({"boss", "nowcoder", "github"})
 
 
 def _read_yaml(path: Path) -> Any:
@@ -27,6 +26,23 @@ def _read_yaml(path: Path) -> Any:
     except (OSError, yaml.YAMLError):
         return None
     return raw
+
+
+@lru_cache(maxsize=1)
+def _platform_ids() -> frozenset[str]:
+    """平台数据源 id 的唯一来源：companies.yaml 的 platforms 段。"""
+    data = _read_yaml(COMPANIES_PATH)
+    platforms = data.get("platforms") if isinstance(data, dict) else None
+    if not isinstance(platforms, list):
+        return frozenset()
+    return frozenset(
+        str(item["id"]).lower()
+        for item in platforms
+        if isinstance(item, dict) and item.get("id")
+    )
+
+
+PLATFORM_IDS: frozenset[str] = _platform_ids()
 
 
 @lru_cache(maxsize=1)

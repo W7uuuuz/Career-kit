@@ -29,6 +29,9 @@
     CompanyPool target、Review/Market 上游引用收紧。
   - 企业适配改为「推荐 + 可审计跳过」：记录
     `enterprise_alignment_skipped_at`，基线任务仍可执行；E2E core 恢复。
+  - 低优先级契约清理：llms 不再复制完整工作流；补全错误码文档与
+    `INVALID_PARAM.allowed`；平台 id 从 `companies.yaml` 派生；
+    `fetch_jd_detail` 渲染学历/经验/职位族/类别/详情状态。
   - 工具数 49 → 50。
 
 ## v0.3.0 (2026-11-09)

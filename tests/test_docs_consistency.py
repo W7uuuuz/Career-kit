@@ -337,6 +337,14 @@ def test_command_scripts_are_thin_and_guidance_driven():
         assert "按基线执行" in text and "跳过" in text, f"{rel} 缺少基线执行/跳过说明"
 
 
+def test_llms_does_not_duplicate_workflow_command_sequence():
+    """docs/llms.txt 只引用 workflow，不复制完整命令序列。"""
+    text = _read("docs", "llms.txt")
+    assert "career-kit://docs/workflow" in text
+    assert "start_session → parse_resume? → intake" not in text
+    assert "generate_tasks\n→ get_next_tasks" not in text
+
+
 def test_user_brief_is_single_source_of_truth():
     """首屏简介只由 guidance 定义；session.py 与命令剧本只引用。"""
     from src.guidance import user_brief

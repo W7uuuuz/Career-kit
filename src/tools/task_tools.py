@@ -886,7 +886,12 @@ def get_weekly_review(days: int = 7) -> str:
         return error_response(
             "INVALID_PARAM",
             f"days 越界：必须是 1-90 的整数，收到 {days!r}（默认 7，月度复盘传 30）。",
-            {"min": 1, "max": 90, "received": days if isinstance(days, (int, float, str)) else None},
+            {
+                "min": 1,
+                "max": 90,
+                "allowed": "1-90 的整数",
+                "received": days if isinstance(days, (int, float, str)) else None,
+            },
         )
     from .review import format_weekly_review, summarize_period
 

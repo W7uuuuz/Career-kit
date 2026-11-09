@@ -85,7 +85,7 @@ def save_requirement_profile(analysis_json: str) -> str:
             "INVALID_PARAM",
             "只允许 requirement_profile_id 与 interpretation 两个顶层字段；"
             f"数字与列表由代码生成，不能覆盖。拒绝字段：{extra_top}",
-            {"received": extra_top},
+            {"received": extra_top, "allowed": sorted(_ALLOWED_TOP_KEYS)},
         )
 
     profile_id = str(data.get("requirement_profile_id") or "").strip()
@@ -93,7 +93,7 @@ def save_requirement_profile(analysis_json: str) -> str:
         return error_response(
             "INVALID_PARAM",
             "缺少 requirement_profile_id——先调用 analyze_company_requirements 获取草稿 id",
-            {},
+            {"allowed": ["requirement_profile_id"]},
         )
 
     interpretation = data.get("interpretation")

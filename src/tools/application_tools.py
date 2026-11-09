@@ -83,9 +83,9 @@ def record_application(
     else:
         if not company.strip():
             return error_response(
-                "MISSING_DATA",
-                "company 不能为空——新建投递记录必须写明公司；更新既有记录请传 application_id。",
-                {"field": "company"},
+                "INVALID_PARAM",
+                "company 不能为空——新建投递记录时必须填写公司名，或对已有记录传入 application_id。",
+                {"field": "company", "allowed": ["非空公司名称"]},
             )
         dup = find_active_duplicate(profile, company, role)
         if dup and not allow_duplicate:

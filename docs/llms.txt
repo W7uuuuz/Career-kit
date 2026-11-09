@@ -59,21 +59,9 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 ## 工作流（唯一事实源：workflow.md）
 
-完整前置条件、输入输出与质量门以 `career-kit://docs/workflow` 为准；这里只给命令顺序。
+完整前置条件、输入输出、命令与质量门一律以 `career-kit://docs/workflow` 为准；这里只列 12 步名称。
 
-```
-start_session → parse_resume? → intake(who/have/want 或 bundle) → finalize_profile
-→ research_market → gather_research_data
-→ analyze_gaps → save_gap_analysis
-→ generate_roadmap → save_roadmap → save_roadmap_audit?
-→ select_target_companies → collect_company_evidence
-→ analyze_company_requirements → save_requirement_profile
-→ plan_execution_alignment → save_execution_alignment
-→ detail_current_phase → save_current_detail → generate_tasks
-→ get_next_tasks → checkin_task
-→ build_application_list? → record_application?
-→ get_weekly_review → check_plan_fit / trigger_insight → apply_insight
-```
+职业档案构建 → 目标岗位定位 → 市场基线调研 → 能力差距诊断 → 培养方案规划 → 目标企业筛选 → 岗位与面经采集 → 企业需求分析 → 执行方案校准 → 任务执行与打卡 → 求职投递管理 → 周期复盘与计划调整。
 
 关键纪律：
 - BUG021 摸排：技能必须带 `authorship` / `control_level`，整份简历写 `self_assessment`；AI 不得代填。
@@ -109,6 +97,10 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
 常见错误码：`MISSING_DATA`、`INVALID_JSON`、`INVALID_SECTION`、`INVALID_PARAM`、
 `PROBING_REQUIRED`、`INCOMPLETE_ANALYSIS`、`ANALYSIS_FAILED`、`CONFIRMATION_REQUIRED`、
 `GOAL_CONFIRMATION_REQUIRED`、`ACTION_REQUIRED`、`LOGIN_REQUIRED`、`PROFILE_IN_USE`。
+
+领域错误码：`REQUIREMENT_PROFILE_NOT_FOUND`、`INVALID_ARTIFACT`、`EVIDENCE_COLLECTION_FAILED`、
+`INSUFFICIENT_DATA`、`ARTIFACT_NOT_FOUND`、`COMPANY_SELECTION_FAILED`、`EVIDENCE_RUN_NOT_FOUND`、
+`INVALID_INTERPRETATION`、`INDUSTRY_NOT_SUPPORTED`、`INVALID_PROFILE`、`PLAN_FIT_FAILED`。
 
 语义约定：`MISSING_DATA` 只表示缺资源/缺档案（不是非法枚举）；`INVALID_SECTION`
 只表示 section 名称非法；非法枚举/参数统一用 `INVALID_PARAM`，details 带 `allowed`。

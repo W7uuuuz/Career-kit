@@ -258,7 +258,8 @@ def test_record_application_empty_company(temp_profile):
 
     result = json.loads(record_application(company="  "))
     assert result.get("isError") is True
-    assert result["code"] == "MISSING_DATA"
+    assert result["code"] == "INVALID_PARAM"
+    assert result["details"]["field"] == "company"
 
 
 def test_record_application_update_needs_no_company(temp_profile):
