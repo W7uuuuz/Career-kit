@@ -10,16 +10,53 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 SCRAPERS_DIR = Path(__file__).parent.parent / "src" / "scrapers"
+REPO_ROOT = Path(__file__).parent.parent
 
 
 def _registered_company_ids() -> list[str]:
     from src.scrapers.loader import list_scrapers
 
     return [s["id"] for s in list_scrapers()]
+
+
+def _guide_text(company_id: str) -> str:
+    return (SCRAPERS_DIR / company_id / "guide.md").read_text(encoding="utf-8")
+
+
+def _guide_params(company_id: str) -> dict[str, bool]:
+    """解析 guide 的「参数」表：返回 {参数名: 是否必填}。"""
+    section = _guide_text(company_id).split("## 参数", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    rows = [
+        [cell.strip() for cell in line.strip().strip("|").split("|")]
+        for line in section.splitlines()
+        if line.strip().startswith("|")
+    ]
+    if not rows:
+        raise AssertionError(f"{company_id}/guide.md 缺少参数表")
+    header = rows[0]
+    if "必填" not in header:
+        raise AssertionError(f"{company_id}/guide.md 参数表缺少「必填」列")
+    required_idx = header.index("必填")
+
+    params: dict[str, bool] = {}
+    for cells in rows[1:]:
+        name = cells[0].strip("`").strip()
+        if not name or set(name) <= set("-: "):
+            continue
+        value = cells[required_idx] if required_idx < len(cells) else ""
+        if value not in {"是", "否"}:
+            raise AssertionError(
+                f"{company_id}/guide.md 参数 {name} 的必填值不合法：{value!r}（只能是 是/否）"
+            )
+        params[name] = value == "是"
+    return params
 
 
 def test_every_registered_scraper_has_guide():
@@ -100,3 +137,154 @@ def test_knowledge_writer_does_not_mutate_input():
             assert payload == original
         finally:
             kw.KNOWLEDGE_DIR = original_dir
+
+
+# ---------------------------------------------------------------------------
+# 别名解析：companies.yaml + catalog.get_company 的唯一入口
+# ---------------------------------------------------------------------------
+
+
+def test_alias_resolution_uses_single_entry():
+    from src.scrapers.loader import resolve_company
+
+    assert resolve_company("美团") == "meituan"
+    assert resolve_company("Meituan") == "meituan"
+    assert resolve_company("meituan") == "meituan"
+    assert resolve_company("看准") == "boss"
+    assert resolve_company("字节") == "bytedance"
+    assert resolve_company("阿里") == "alibaba"
+
+    from src.case_search import resolve_company as case_resolve
+
+    assert case_resolve("美团") == "meituan"
+
+
+def test_get_scraper_guide_resolves_alias():
+    from src.tools.data_tools import get_scraper_guide
+
+    result = get_scraper_guide(company="美团")
+    assert "没有使用指南" not in result
+    assert "美团" in result
+
+
+def test_fetch_company_jobs_resolves_alias(monkeypatch):
+    import asyncio
+
+    import src.tools.data_tools as data_tools
+
+    captured: dict[str, str] = {}
+
+    def fake_search(company, **kwargs):
+        captured["company"] = company
+        return {"company": "美团", "results": [], "count": 0}
+
+    monkeypatch.setattr(data_tools, "search_company_jobs", fake_search)
+    out = asyncio.run(
+        data_tools.fetch_company_jobs(company="Meituan", params='{"keyword":"AI"}')
+    )
+    assert captured["company"] == "meituan"
+    assert "的 Scraper" not in out
+
+
+# ---------------------------------------------------------------------------
+# guide 语义：代表性源参数表 = PARAMS，关键参数确实改变请求
+# ---------------------------------------------------------------------------
+
+
+def test_representative_guide_params_match_params():
+    from src.scrapers.loader import get_scraper
+
+    for cid in ("boss", "bytedance", "nowcoder", "baidu", "tencent", "github"):
+        scraper = get_scraper(cid)
+        assert scraper is not None
+        guide_params = _guide_params(cid)
+        assert set(guide_params) == set(scraper.PARAMS), (
+            f"{cid} guide 参数表与 PARAMS 不一致："
+            f"guide={sorted(guide_params)} params={sorted(scraper.PARAMS)}"
+        )
+        for name, required in guide_params.items():
+            expected = bool(scraper.PARAMS[name].get("required"))
+            assert required is expected, (
+                f"{cid}.{name} 必填不一致：guide={required} PARAMS={expected}"
+            )
+
+
+def test_nowcoder_order_changes_search_url():
+    from src.scrapers.nowcoder.scraper import Scraper
+
+    scraper = Scraper()
+    url_create = scraper._build_search_url("Agent", "create", 1)
+    url_quality = scraper._build_search_url("Agent", "quality", 2)
+
+    assert "order=create" in url_create
+    assert "order=hot" in url_quality
+    assert "&page=2" in url_quality
+    assert url_create != url_quality
+
+    invalid = scraper.search(keyword="Agent", order="unknown")
+    assert invalid and invalid[0].get("error")
+
+
+# ---------------------------------------------------------------------------
+# fetch_jd_detail 渲染 guide 承诺的字段
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_jd_detail_renders_guide_fields(monkeypatch):
+    import asyncio
+
+    import src.tools.data_tools as data_tools
+
+    fake = {
+        "title": "AI Agent 工程师",
+        "company": "测试公司",
+        "location": "北京",
+        "department": "AI 平台",
+        "job_type": "技术",
+        "project": "2027 届校招",
+        "boss_active_status": "在线",
+        "skills": ["Python", "RAG"],
+        "description": "负责 Agent 开发",
+        "requirements": "熟悉 LangGraph",
+    }
+    monkeypatch.setattr(data_tools, "get_job_detail", lambda url, company=None: fake)
+    out = asyncio.run(data_tools.fetch_jd_detail(url="https://example.com/job/1"))
+
+    for expected in ("AI 平台", "技术", "2027 届校招", "在线", "Python、RAG"):
+        assert expected in out, f"详情渲染缺少字段值：{expected}"
+
+
+# ---------------------------------------------------------------------------
+# 单一事实源声明与 config 描述一致性
+# ---------------------------------------------------------------------------
+
+
+def test_docs_declare_single_source_of_truth():
+    docs = (REPO_ROOT / "docs" / "scrapers.md").read_text(encoding="utf-8")
+    readme = (SCRAPERS_DIR / "README.md").read_text(encoding="utf-8")
+
+    for text in (docs, readme):
+        for anchor in ("config.yaml", "companies.yaml", "PARAMS", "guide.md"):
+            assert anchor in text, f"单一事实源声明缺少 {anchor}"
+    assert "## 通用参数" not in docs
+    assert "通用参数与贡献流程以" not in readme
+
+
+def test_shein_oppo_config_descriptions_match_guides():
+    config = yaml.safe_load((SCRAPERS_DIR / "config.yaml").read_text(encoding="utf-8"))
+    shein = config["scrapers"]["shein"]["description"]
+    oppo = config["scrapers"]["oppo"]["description"]
+
+    for channel in ("社招", "校招", "实习", "不公开薪资"):
+        assert channel in shein, f"SHEIN config 描述缺少 {channel}"
+    assert "不公开薪资" in oppo
+    assert "部分岗位公开薪资" not in oppo
+
+    shein_guide = _guide_text("shein")
+    for channel in ("social", "campus", "intern"):
+        assert channel in shein_guide
+    assert "不公开薪资" in _guide_text("oppo")
+
+    docs = (REPO_ROOT / "docs" / "scrapers.md").read_text(encoding="utf-8")
+    assert "| `shein` | SHEIN | JD（不公开薪资） | 社招 / 校招 / 实习 |" in docs
+    assert "| `oppo` | OPPO | JD（不公开薪资） | 校招 / 国际化 / 博士项目 |" in docs

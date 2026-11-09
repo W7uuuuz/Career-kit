@@ -11,18 +11,20 @@ from __future__ import annotations
 
 import importlib
 import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from .base import CompanyScraper
-from .catalog import company_for_scraper, tier_for_scraper
+from .catalog import company_for_scraper, get_company, tier_for_scraper
 from .knowledge_writer import write_to_knowledge
 
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
+COMPANIES_PATH = Path(__file__).parent / "companies.yaml"
 
 # 缓存已加载的 Scraper 类
 _scraper_classes: dict[str, type[CompanyScraper]] = {}
@@ -44,6 +46,67 @@ def _load_config() -> dict[str, Any]:
                 raw["scrapers"] = {}
             _config = raw
     return _config
+
+
+@lru_cache(maxsize=1)
+def _platform_aliases() -> dict[str, str]:
+    """读取 companies.yaml 的 platforms 段：平台源（BOSS/牛客/GitHub）的别名。
+
+    企业别名统一由 catalog.get_company 读取 companies.yaml 的 companies 段；
+    平台不是企业，因此单独放在同一文件的 platforms 段，避免第二份别名表。
+    """
+    try:
+        data = yaml.safe_load(COMPANIES_PATH.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    items = data.get("platforms") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return {}
+    mapping: dict[str, str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        platform_id = str(item.get("id") or "").strip()
+        if not platform_id:
+            continue
+        names = [platform_id, item.get("name"), *(item.get("aliases") or [])]
+        for name in names:
+            key = str(name or "").strip().lower()
+            if key:
+                mapping[key] = platform_id
+    return mapping
+
+
+def resolve_company(identifier: str) -> str:
+    """别名 / 企业名 / 企业 id / scraper id → scraper id（唯一解析入口）。
+
+    顺序：注册表 id → 注册表显示名 → 平台别名（companies.yaml platforms）→
+    企业目录（companies.yaml + catalog.get_company 的 id/名称/别名/scraper）。
+    解析不到时原样返回，交由调用方给出「未找到 Scraper」的真实错误。
+    """
+    raw = (identifier or "").strip()
+    if not raw:
+        return ""
+    key = raw.lower()
+    config = _load_config().get("scrapers", {})
+
+    for scraper_id in config:
+        if key == scraper_id.lower():
+            return scraper_id
+    for scraper_id, info in config.items():
+        if key == str(info.get("name") or "").strip().lower():
+            return scraper_id
+
+    platform_id = _platform_aliases().get(key)
+    if platform_id:
+        return platform_id
+
+    company = get_company(raw)
+    if company:
+        available = company.get("available_scrapers") or []
+        if available:
+            return available[0]
+    return raw
 
 
 def _load_scraper_class(company: str) -> type[CompanyScraper] | None:
@@ -101,8 +164,8 @@ def _instantiate_scraper(company: str) -> CompanyScraper | None:
 
 
 def get_scraper(company: str) -> CompanyScraper | None:
-    """获取指定公司的 Scraper 实例。"""
-    return _instantiate_scraper(company)
+    """获取指定公司的 Scraper 实例（公司名/别名统一解析后再加载）。"""
+    return _instantiate_scraper(resolve_company(company))
 
 
 def list_scrapers() -> list[dict[str, Any]]:
@@ -221,6 +284,7 @@ def _auto_write_knowledge(company: str, data: Any, data_type: str | None = None)
 
 def search_company_jobs(company: str, **kwargs: Any) -> dict[str, Any]:
     """搜索指定公司的岗位。自动处理缓存、校验、知识库写入。"""
+    company = resolve_company(company)
     scraper = get_scraper(company)
     if scraper is None:
         config = _load_config()

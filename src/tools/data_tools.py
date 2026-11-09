@@ -9,14 +9,18 @@ import sys
 from ..guidance import login_action
 from ..mcp_app import mcp
 from ..scrapers import get_job_detail, list_scrapers, search_company_jobs
-from ..scrapers.loader import read_scraper_guide
+from ..scrapers.loader import read_scraper_guide, resolve_company
 from .errors import error_response
 from .plan_importer import parse_plan_file
 from .profile import load_profile
 from .tool_helpers import server_fingerprint_line
 
-# BOSS 登录是交互式关卡：命中登录缺失时要把问题交给用户，而不是直接判失败
-_BOSS_IDS = {"boss", "boss直聘", "zhipin", "看准"}
+
+def _field_text(value: object) -> str:
+    """详情字段渲染：列表拼接为顿号分隔，空值返回空串。"""
+    if isinstance(value, (list, tuple, set)):
+        return "、".join(str(item).strip() for item in value if str(item).strip())
+    return str(value or "").strip()
 
 
 @mcp.tool()
@@ -122,7 +126,7 @@ def get_scraper_guide(company: str) -> str:
         company: 企业 ID（通过 list_data_sources 获取）
             示例：bytedance
     """
-    guide = read_scraper_guide(company)
+    guide = read_scraper_guide(resolve_company(company))
     if guide is None:
         available = ", ".join(s["id"] for s in list_scrapers()) or "无"
         return (
@@ -205,8 +209,11 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
             {"raw": params[:200]},
         )
 
+    # 别名统一解析后再路由；数据源内部只认 scraper id
+    company_id = resolve_company(company)
+
     # BOSS 登录前置关卡：未登录时直接引导到 boss_login，不再问第二个问题
-    if company.strip().lower() in _BOSS_IDS:
+    if company_id == "boss":
         from ..scrapers.boss.auth import describe_ttl, has_valid_cookies
 
         if not has_valid_cookies():
@@ -231,7 +238,7 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
 
     # 抓取是阻塞 IO（含 Playwright 同步 API），移入工作线程执行，
     # 避免在事件循环线程内触发 "Sync API inside asyncio loop" 崩溃
-    result = await asyncio.to_thread(search_company_jobs, company, **params_dict)
+    result = await asyncio.to_thread(search_company_jobs, company_id, **params_dict)
 
     if result.get("error"):
         recovery = (
@@ -242,7 +249,7 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
             "重启 Agent 会话（opencode）即可切到新代码"
         )
         message = str(result["error"])
-        if company.strip().lower() in _BOSS_IDS and "登录" in message:
+        if company_id == "boss" and "登录" in message:
             # BOSS 未登录是交互关卡，不是抓取失败：直接引导 boss_login，不映射成 ANALYSIS_FAILED
             return error_response(
                 "LOGIN_REQUIRED",
@@ -337,14 +344,14 @@ async def fetch_jd_detail(url: str, company: str = "") -> str:
         岗位：标题、公司、地点、薪资（如有）、岗位描述全文、任职要求。
         面经：标题、面试问题与经验全文。
     """
+    # 同 fetch_company_jobs：公司别名统一解析后再路由
+    company_id = resolve_company(company) if company else ""
     # 同 fetch_company_jobs：阻塞抓取移入工作线程，规避事件循环内的同步 Playwright
-    result = await asyncio.to_thread(get_job_detail, url, company if company else None)
+    result = await asyncio.to_thread(get_job_detail, url, company_id or None)
 
     if result.get("error"):
         message = str(result["error"])
-        is_boss = (
-            company.strip().lower() in _BOSS_IDS or "zhipin.com" in (url or "")
-        )
+        is_boss = company_id == "boss" or "zhipin.com" in (url or "")
         if is_boss and "登录" in message:
             from ..scrapers.boss.auth import describe_ttl
 
@@ -371,6 +378,16 @@ async def fetch_jd_detail(url: str, company: str = "") -> str:
         lines.append(f"**地点**：{result['location']}")
     if result.get("salary"):
         lines.append(f"**薪资**：{result['salary']}")
+    for label, key in (
+        ("部门", "department"),
+        ("岗位类别", "job_type"),
+        ("招聘项目", "project"),
+        ("招聘者状态", "boss_active_status"),
+        ("技能要求", "skills"),
+    ):
+        value = _field_text(result.get(key))
+        if value:
+            lines.append(f"**{label}**：{value}")
     lines.append("")
 
     if result.get("description"):

@@ -1,9 +1,15 @@
 # 企业数据源
 
-> Career Kit 已收录的企业数据源。教程的唯一事实源是各 scraper 包内的 `guide.md`。
+> Career Kit 已收录的企业数据源。单一事实源：
+> - 注册 = `src/scrapers/config.yaml`
+> - 企业元数据与别名 = `src/scrapers/companies.yaml`（查询入口 `catalog.get_company`）
+> - 参数 = 各源 `scraper.py` 的 `PARAMS`
+> - 教程 = 各源包内的 `guide.md`
 >
-> 当前注册 46 个数据源（43 个企业招聘源 + BOSS 直聘 + 牛客 + GitHub），
-> 企业目录收录 64 家，其中 42 家可自动抓取。
+> 本文档只做索引与链接，不复制通用参数表。
+>
+> 当前注册 58 个数据源（55 个企业招聘源 + BOSS 直聘 + 牛客 + GitHub），
+> 企业目录收录 68 家，其中 54 家可自动抓取。
 
 ## 已收录企业
 
@@ -59,9 +65,9 @@
 | `tongcheng` | 同程旅行 | JD | 社招 | [guide](../src/scrapers/tongcheng/guide.md) |
 | `youzan` | 有赞 | JD | 社招 | [guide](../src/scrapers/youzan/guide.md) |
 | `megvii` | 旷视科技 | JD | 社招 | [guide](../src/scrapers/megvii/guide.md) |
-| `shein` | SHEIN | JD | 社招 | [guide](../src/scrapers/shein/guide.md) |
+| `shein` | SHEIN | JD（不公开薪资） | 社招 / 校招 / 实习 | [guide](../src/scrapers/shein/guide.md) |
 | `shopee` | Shopee | JD | 社招 | [guide](../src/scrapers/shopee/guide.md) |
-| `oppo` | OPPO | JD | 校招/国际化/博士 | [guide](../src/scrapers/oppo/guide.md) |
+| `oppo` | OPPO | JD（不公开薪资） | 校招 / 国际化 / 博士项目 | [guide](../src/scrapers/oppo/guide.md) |
 | `vivo` | vivo | JD | 社招 | [guide](../src/scrapers/vivo/guide.md) |
 | `douban` | 豆瓣 | JD | 社招/校招/实习 | [guide](../src/scrapers/douban/guide.md) |
 | `momo` | 陌陌 | JD | 社招 | [guide](../src/scrapers/momo/guide.md) |
@@ -98,17 +104,6 @@
 3. fetch_company_jobs(company="boss", params='{"keyword":"Python"}')
 4. fetch_jd_detail(url="https://...")                   # 获取详情
 ```
-
-## 通用参数
-
-| 参数 | 说明 | 示例 |
-|------|------|------|
-| `keyword` | 搜索关键词 | `"Python"`, `"AI Agent"` |
-| `city` | 城市名 | `"上海"`, `"北京"` |
-| `scope` | 招聘类型（新增源支持） | `"social"`, `"campus"`, `"intern"` |
-| `limit` | 返回数量上限 | `10`, `20` |
-
-各源实际支持的参数以 `list_data_sources` 返回为准；`params` 只传列出的参数。
 
 ## 数据用途
 

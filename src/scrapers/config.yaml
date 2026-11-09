@@ -427,7 +427,7 @@ scrapers:
     name: SHEIN
     module: shein.scraper
     class: Scraper
-    description: SHEIN 社会招聘（官方公开接口），公开 JSON，社招，不公开薪资
+    description: SHEIN 招聘（官方公开接口），公开 JSON，社招/校招/实习，不公开薪资
     url_patterns:
       - "careers.shein.com"
 
@@ -444,7 +444,7 @@ scrapers:
     name: OPPO
     module: oppo.scraper
     class: Scraper
-    description: OPPO 招聘（官方公开接口），校招/国际化/博士项目，部分岗位公开薪资
+    description: OPPO 招聘（官方公开接口），校招/国际化/博士项目，不公开薪资
     url_patterns:
       - "careers.oppo.com"
 

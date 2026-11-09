@@ -501,3 +501,16 @@ companies:
     industry: 互联网
     aliases: [好未来, 学而思, TAL]
     scrapers: [tal]
+
+# 平台级数据源别名（不是企业，不参与企业目录/档位统计）。
+# 与企业别名同放在本文件，保证别名只有一个事实源。
+platforms:
+  - id: boss
+    name: BOSS直聘
+    aliases: [boss, boss直聘, zhipin, 看准, 看准网]
+  - id: nowcoder
+    name: 牛客网
+    aliases: [nowcoder, 牛客, 牛客网]
+  - id: github
+    name: GitHub 经验帖
+    aliases: [github, github经验帖, 经验帖]

@@ -104,6 +104,35 @@ def test_tencent_social_search_and_detail(monkeypatch):
     assert detail["company"] == "腾讯"
 
 
+def test_tencent_social_limit_paginates(monkeypatch):
+    calls: list[tuple[int, int]] = []
+
+    def fake_request(client, method, url, **kwargs):
+        assert url.endswith("/post/Query")
+        params = kwargs["params"]
+        page = int(params["pageIndex"])
+        size = int(params["pageSize"])
+        calls.append((page, size))
+        posts = [
+            {
+                "PostId": f"p{page}-{index}",
+                "RecruitPostName": f"AI 工程师 {page}-{index}",
+                "LocationName": "深圳",
+                "BGName": "CSIG",
+                "Responsibility": "负责 AI 平台研发",
+                "PostURL": f"http://careers.tencent.com/jobdesc.html?postId=p{page}-{index}",
+            }
+            for index in range(size)
+        ]
+        return {"Code": 200, "Data": {"Posts": posts}}
+
+    monkeypatch.setattr(tencent, "request_json", fake_request)
+    rows = tencent.Scraper().search(keyword="AI", scope="social", limit=25)
+
+    assert calls == [(1, 20), (2, 5)]
+    assert len(rows) == 25
+
+
 def test_tencent_campus_scope_mapping(monkeypatch):
     def fake_request(client, method, url, **kwargs):
         if url.endswith("/getProjectMapping"):
@@ -198,6 +227,35 @@ def test_baidu_city_filter(monkeypatch):
     monkeypatch.setattr(baidu, "request_json", lambda *a, **k: payload)
     rows = baidu.Scraper().search(keyword="AI", city="上海", limit=5)
     assert [r["title"] for r in rows] == ["上海岗"]
+
+
+def test_baidu_limit_paginates_without_city(monkeypatch):
+    calls: list[int] = []
+
+    def fake_request(client, method, url, **kwargs):
+        assert url.endswith("/getPostListNew")
+        page = int(kwargs["data"]["curPage"])
+        calls.append(page)
+        count = 20 if page == 1 else 5
+        rows = [
+            {
+                "postId": f"b{page}-{index}",
+                "name": f"AI 岗位 {page}-{index}",
+                "workPlace": "北京市",
+                "bgShortName": "MEG",
+            }
+            for index in range(count)
+        ]
+        return {
+            "status": "ok",
+            "data": {"hasNextPage": page == 1, "list": rows},
+        }
+
+    monkeypatch.setattr(baidu, "request_json", fake_request)
+    rows = baidu.Scraper().search(keyword="AI", scope="social", limit=25)
+
+    assert calls == [1, 2]
+    assert len(rows) == 25
 
 
 # ---------------------------------------------------------------------------

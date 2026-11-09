@@ -53,7 +53,7 @@ class Scraper(CompanyScraper):
         "keyword": {"required": False, "description": "搜索关键词（如 \"AI\"、\"后端\"）"},
         "city": {"required": False, "description": "城市名（如 \"深圳\"、\"北京\"），未匹配时不加城市过滤"},
         "scope": {"required": False, "description": "招聘类型：social=社招(默认), campus=校招, intern=实习"},
-        "limit": {"required": False, "description": "返回数量上限，默认 20"},
+        "limit": {"required": False, "description": "返回数量上限，默认 20，最大 100（社招自动翻页，每页最多 20）"},
     }
 
     def supports_url(self, url: str) -> bool:
@@ -87,34 +87,44 @@ class Scraper(CompanyScraper):
 
     def _search_social(self, keyword: str, city: str, limit: int) -> list[dict[str, Any]]:
         city_code = SOCIAL_CITY_CODES.get(city, "")
-        params = {
-            "timestamp": _timestamp(),
-            "countryId": "",
-            "cityId": city_code,
-            "bgIds": "",
-            "productId": "",
-            "categoryId": "",
-            "parentCategoryId": "",
-            "attrId": "1",
-            "keyword": keyword,
-            "pageIndex": "1",
-            "pageSize": str(min(limit, 20)),
-            "language": "zh-cn",
-            "area": "cn",
-        }
+        collected: list[dict[str, Any]] = []
+        page_index = 1
         try:
             with make_client() as client:
-                payload = request_json(client, "GET", SOCIAL_QUERY, params=params)
+                while len(collected) < limit:
+                    page_size = min(20, limit - len(collected))
+                    params = {
+                        "timestamp": _timestamp(),
+                        "countryId": "",
+                        "cityId": city_code,
+                        "bgIds": "",
+                        "productId": "",
+                        "categoryId": "",
+                        "parentCategoryId": "",
+                        "attrId": "1",
+                        "keyword": keyword,
+                        "pageIndex": str(page_index),
+                        "pageSize": str(page_size),
+                        "language": "zh-cn",
+                        "area": "cn",
+                    }
+                    payload = request_json(client, "GET", SOCIAL_QUERY, params=params)
+                    if payload.get("Code") != 200:
+                        return [{"error": f"腾讯社招接口返回错误：{payload.get('Code')}"}]
+
+                    posts = (payload.get("Data") or {}).get("Posts") or []
+                    if not posts:
+                        break
+                    collected.extend(self._format_social_post(p) for p in posts)
+                    if len(posts) < page_size:
+                        break
+                    page_index += 1
         except ScraperHttpError as exc:
             return [{"error": f"腾讯社招接口请求失败：{exc}"}]
 
-        if payload.get("Code") != 200:
-            return [{"error": f"腾讯社招接口返回错误：{payload.get('Code')}"}]
-
-        posts = (payload.get("Data") or {}).get("Posts") or []
-        if not posts:
+        if not collected:
             return [{"error": "未找到相关岗位", "keyword": keyword}]
-        return [self._format_social_post(p) for p in posts[:limit]]
+        return collected[:limit]
 
     def _search_campus(
         self, keyword: str, city: str, scope: str, limit: int

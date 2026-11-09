@@ -94,6 +94,36 @@ def test_github_scraper_query_and_parse(monkeypatch):
     assert row["date"] == "2026-03-01"
 
 
+def test_github_filter_company_survives_education(monkeypatch):
+    from src.scrapers.github.scraper import Scraper
+
+    _noop_patch_caches(monkeypatch)
+    s = Scraper()
+    captured = {}
+
+    def fake_request(url, params=None):
+        captured["params"] = params
+        return {
+            "items": [
+                {
+                    "title": "27届双非本 字节后端 offer 复盘",
+                    "html_url": "https://github.com/a/b/issues/1",
+                    "body": "面经：HTTP 缓存",
+                    "created_at": "2026-03-01T00:00:00Z",
+                    "reactions": {"total_count": 1},
+                    "repository_url": "https://api.github.com/repos/a/b",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(s, "_request", fake_request)
+    s.search(keyword="后端", education="双非", filter_company="字节")
+
+    q = captured["params"]["q"]
+    assert "双非" in q, "education 应进入查询"
+    assert '"字节"' in q, "filter_company 不能因 education 同时传而被丢弃"
+
+
 def test_github_scraper_detail_and_errors(monkeypatch):
     from src.scrapers.github.scraper import Scraper
 
@@ -164,6 +194,25 @@ def test_collect_cases_grouping_ranking_dedupe(monkeypatch):
     req = [c for c in cases if c["kind"] == "interview_requirements" and c.get("salary")]
     assert req and req[0]["salary"] == "20-35K"
     assert "warnings" in result and result["sources"]["local"] == 0
+
+
+def test_collect_cases_routes_company_alias(monkeypatch):
+    import src.case_search as cs
+    import src.scrapers.loader as loader
+
+    calls: list[str] = []
+
+    def fake_loader_search(company, **kwargs):
+        calls.append(company)
+        return _loader_resp([])
+
+    monkeypatch.setattr(loader, "search_company_jobs", fake_loader_search)
+    monkeypatch.setattr(
+        cs, "_search_local", lambda q: {"results": [], "count": 0, "knowledge_dir": "x"}
+    )
+
+    cs.collect_cases("AI Agent 开发", company="美团")
+    assert "meituan" in calls, "search_cases 应通过统一别名入口路由到 meituan"
 
 
 def test_collect_cases_kind_filter_and_failures(monkeypatch):

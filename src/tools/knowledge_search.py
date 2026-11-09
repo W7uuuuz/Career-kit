@@ -8,11 +8,19 @@
 
 from __future__ import annotations
 
+import re
+from functools import lru_cache
 from typing import Any
 
 from ..paths import KNOWLEDGE_DIR
+from ..scrapers.loader import (
+    list_scrapers,
+    resolve_company as _resolve_company,
+)
 
 SUPPORTED_EXTENSIONS = {".md", ".txt", ".json"}
+
+_QUERY_SPLIT_RE = re.compile(r"[\s,，。.、;；:：!！?？()（）\[\]【】]+")
 
 # 通用搜索词——提取关键词时跳过
 _STOP_WORDS = frozenset({
@@ -22,16 +30,42 @@ _STOP_WORDS = frozenset({
     "前辈", "候选", "画像", "准备", "通过",
 })
 
-# 公司别名 → 知识库目录名
-_COMPANY_ALIASES = {
-    "字节": "bytedance",
-    "bytedance": "bytedance",
-    "字节跳动": "bytedance",
-    "boss": "boss",
-    "boss直聘": "boss",
-    "牛客": "nowcoder",
-    "nowcoder": "nowcoder",
-}
+def resolve_company(company: str) -> str:
+    """公司别名 → 知识库来源目录名（唯一入口在 scrapers.loader.resolve_company）。
+
+    知识库目录按 scraper id 组织（jds/<scraper>/、interviews/<scraper>/），
+    别名来源统一后，「美团 / Meituan」都会落到同一个 meituan 目录。
+    """
+    return _resolve_company(company)
+
+
+@lru_cache(maxsize=1)
+def _known_source_ids() -> set[str]:
+    """已注册数据源 id（小写），用于区分「已知公司别名」与普通关键词。"""
+    return {str(item["id"]).lower() for item in list_scrapers()}
+
+
+def _company_sources_for_query(query: str) -> set[str]:
+    """查询中的公司/平台别名 → canonical 来源目录名。
+
+    只收录能解析到已注册数据源的 token；普通关键词（如 AI、工程师）
+    解析后不在注册表内，不会进入来源匹配，避免影响原检索评分。
+    """
+    known = _known_source_ids()
+    sources: set[str] = set()
+    for token in _QUERY_SPLIT_RE.split(str(query).lower()):
+        token = token.strip()
+        if len(token) < 2 or token in _STOP_WORDS:
+            continue
+        canonical = resolve_company(token).lower()
+        if canonical in known:
+            sources.add(canonical)
+    return sources
+
+
+def _source_dirs(rel_path: str) -> set[str]:
+    """知识库相对路径中的来源目录（jds/meituan/x.json → meituan）。"""
+    return {part.lower() for part in rel_path.split("/")[:-1] if part}
 
 
 def _query_token_specs(query: str) -> list[dict]:
@@ -43,8 +77,6 @@ def _query_token_specs(query: str) -> list[dict]:
     复测 BUG：无意义长查询曾靠零散 2-gram 堆到 3.9 分混过阈值，降权后
     废词查询总分 < 1.2，被 MIN_RELEVANCE 挡住。
     """
-    import re
-
     specs: dict[str, dict] = {}
 
     def _add(text: str, weight: float, filename_ok: bool) -> None:
@@ -58,7 +90,7 @@ def _query_token_specs(query: str) -> list[dict]:
         spec["weight"] = max(spec["weight"], weight)
         spec["filename_ok"] = spec["filename_ok"] or filename_ok
 
-    tokens = re.split(r"[\s,，。.、;；:：!！?？()（）\[\]【】]+", str(query).lower())
+    tokens = _QUERY_SPLIT_RE.split(str(query).lower())
     for token in tokens:
         if not token:
             continue
@@ -97,6 +129,7 @@ def search_knowledge(query: str, limit: int = 5) -> dict[str, Any]:
 
     query_lower = query.lower()
     token_specs = _query_token_specs(query)
+    company_sources = _company_sources_for_query(query)
 
     results = []
     for file_path in KNOWLEDGE_DIR.rglob("*"):
@@ -121,6 +154,10 @@ def search_knowledge(query: str, limit: int = 5) -> dict[str, Any]:
                 score += 2.0
         if len(query_lower) >= 2 and query_lower in content_lower:
             score += 1.0
+        # 公司/平台别名按 canonical 来源目录匹配：美团/Meituan 都命中
+        # jds/meituan，字节命中 jds/bytedance，看准命中 jds/boss。
+        if company_sources and company_sources & _source_dirs(rel_path):
+            score += 2.0
 
         if score > 0:
             results.append({

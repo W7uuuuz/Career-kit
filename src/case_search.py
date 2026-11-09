@@ -26,19 +26,8 @@ from .education import (
     normalize_education_tag,
 )
 from .paths import KNOWLEDGE_DIR
+from .scrapers.loader import resolve_company as _resolve_company
 from .tools.knowledge_search import search_knowledge as _search_local
-
-# 公司别名 → 官方源 scraper id（search_cases 的 company 参数路由用）
-_COMPANY_ALIASES: dict[str, str] = {
-    "字节": "bytedance",
-    "字节跳动": "bytedance",
-    "腾讯": "tencent",
-    "百度": "baidu",
-    "阿里": "alibaba",
-    "阿里巴巴": "alibaba",
-    "boss": "boss",
-    "boss直聘": "boss",
-}
 
 _RECENT_DAYS = 730  # 近两年新鲜度全额分，之后线性衰减
 
@@ -60,10 +49,8 @@ _REQUIREMENT_HINTS = (
 
 
 def resolve_company(company: str) -> str:
-    """公司别名 → 源 slug（未知名字原样返回，交给调用方自行处理）。"""
-    if not company:
-        return ""
-    return _COMPANY_ALIASES.get(company.lower().strip(), company.strip())
+    """公司别名 → 源 slug（唯一入口在 scrapers.loader.resolve_company）。"""
+    return _resolve_company(company)
 
 
 def collect_cases(
@@ -147,7 +134,7 @@ def collect_cases(
 
     # ---- 源 4：company 匹配的官方/BOSS 源（面试要求） ----
     if company:
-        slug = _COMPANY_ALIASES.get(company.lower(), "")
+        slug = resolve_company(company)
         if slug and slug not in {"nowcoder", "github"}:
             _feed(slug, _search_official(slug, role, city, edu_condition))
 

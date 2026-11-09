@@ -19,13 +19,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..case_search import collect_cases, resolve_company
+from ..case_search import collect_cases
 from ..guidance import login_action
 from ..mcp_app import mcp
 from ..research_digest import render_digest_lines
 from ..research_report import build_report, save_report
 from ..scrapers.boss.auth import has_valid_cookies as boss_has_valid_cookies
-from ..scrapers.loader import get_job_detail, search_company_jobs
+from ..scrapers.loader import (
+    get_job_detail,
+    resolve_company,
+    search_company_jobs,
+)
 from . import profile as profile_store
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
@@ -34,7 +38,6 @@ from .tool_helpers import _json
 
 _MAX_SPECS = 6
 _CASE_DEFAULT_LIMIT = 12
-_BOSS_ALIASES = {"boss", "boss直聘", "zhipin", "看准"}
 _ROSTER_MAX = 15
 _ROSTER_CASE_MAX = 8
 _BRIEF_LIMIT = 60
@@ -217,10 +220,10 @@ def _uses_boss(specs: list[dict[str, Any]], query: dict[str, Any]) -> bool:
     names = [str(spec.get("company") or "") for spec in specs]
     names.append(str(query.get("company") or ""))
     for name in names:
-        cleaned = name.strip().lower()
+        cleaned = name.strip()
         if not cleaned:
             continue
-        if cleaned in _BOSS_ALIASES or resolve_company(cleaned) == "boss":
+        if resolve_company(cleaned) == "boss":
             return True
     return False
 

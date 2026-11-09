@@ -1,8 +1,12 @@
 # 企业数据源
 
-社区驱动的企业招聘数据源。企业清单、通用参数与贡献流程以
-[docs/scrapers.md](../../docs/scrapers.md) 为唯一事实源；本文件只保留源索引。
+社区驱动的企业招聘数据源。单一事实源：
+- 注册 = `config.yaml`
+- 企业元数据与别名 = `companies.yaml`（查询入口 `catalog.get_company`）
+- 参数 = 各源 `scraper.py` 的 `PARAMS`
+- 教程 = 各源包内的 `guide.md`
 
+本文件与 [docs/scrapers.md](../../docs/scrapers.md) 只做索引与链接，不复制通用参数表。
 企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
 查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
 企业目录收录 68 家，其中 54 家可自动抓取；其余标注为需手动投递。
@@ -61,9 +65,9 @@
 | `tongcheng` | 同程旅行 | JD | 社招 |
 | `youzan` | 有赞 | JD | 社招 |
 | `megvii` | 旷视科技 | JD | 社招 |
-| `shein` | SHEIN | JD | 社招 |
+| `shein` | SHEIN | JD（不公开薪资） | 社招 / 校招 / 实习 |
 | `shopee` | Shopee | JD | 社招 |
-| `oppo` | OPPO | JD | 校招/国际化/博士 |
+| `oppo` | OPPO | JD（不公开薪资） | 校招 / 国际化 / 博士项目 |
 | `vivo` | vivo | JD | 社招 |
 | `douban` | 豆瓣 | JD | 社招/校招/实习 |
 | `momo` | 陌陌 | JD | 社招 |

@@ -87,9 +87,11 @@ class Scraper(CompanyScraper):
             return [{"error": "搜索关键词不能为空"}]
 
         query_parts = [keyword, "(" + " OR ".join(_INTENT_WORDS) + ")"]
+        # education 与 filter_company 可以同时生效：公司约束不能被学历条件吞掉。
+        # 两者都是隐式 AND、不增加找 OR/NOT 运算符，仍在 GitHub 的 5 个运算符上限内。
         if education and (education not in keyword):
             query_parts.append(education)
-        elif company and (company not in keyword):
+        if company and (company not in keyword):
             query_parts.append(f'"{company}"')
         query = " ".join(query_parts)
         q = f"{query} type:issue"

@@ -47,7 +47,7 @@ class Scraper(CompanyScraper):
         "keyword": {"required": False, "description": "搜索关键词（如 \"AI\"、\"算法\"）"},
         "city": {"required": False, "description": "城市名（如 \"北京\"），对结果做本地过滤"},
         "scope": {"required": False, "description": "招聘类型：social=社招(默认), campus=校招, intern=实习"},
-        "limit": {"required": False, "description": "返回数量上限，默认 20"},
+        "limit": {"required": False, "description": "返回数量上限，默认 20，最大 100"},
     }
 
     def supports_url(self, url: str) -> bool:
@@ -81,7 +81,10 @@ class Scraper(CompanyScraper):
     ) -> list[dict[str, Any]]:
         collected: list[dict[str, Any]] = []
         page = 1
-        max_pages = 10 if city else 1
+        # 服务端 pageSize 上限 20；按 limit 翻页，city 本地过滤需要额外页数余量
+        pages_needed = max(1, (limit + MAX_PAGE_SIZE - 1) // MAX_PAGE_SIZE)
+        max_pages = max(10, pages_needed * 3) if city else pages_needed
+        max_pages = min(max_pages, 50)
 
         try:
             with make_client() as client:

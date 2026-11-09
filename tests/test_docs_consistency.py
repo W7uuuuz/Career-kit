@@ -230,6 +230,41 @@ def test_source_counts_match_registered_sources():
         assert not missing, f"{rel} 缺少最新数据源口径：{missing}"
 
 
+def _scrapers_doc_table_ids(text: str) -> list[str]:
+    """解析 docs/scrapers.md 的「已收录企业」表，返回 ID 列。"""
+    section = text.split("## 已收录企业", 1)[1].split("\n> ", 1)[0]
+    ids: list[str] = []
+    for line in section.splitlines():
+        if line.startswith("| `"):
+            parts = line.split("`")
+            if len(parts) >= 2 and parts[1].strip():
+                ids.append(parts[1].strip())
+    return ids
+
+
+def test_scrapers_docs_and_llms_source_counts_match_registry():
+    """docs/scrapers.md 与 docs/llms.txt 的数据源计数、表格行数与注册表一致。"""
+    total, company_sources, companies, scrapable = _source_caliber()
+    config = yaml.safe_load(
+        (REPO_ROOT / "src" / "scrapers" / "config.yaml").read_text(encoding="utf-8")
+    )
+
+    docs = _read("docs", "scrapers.md")
+    assert f"{total} 个数据源" in docs
+    assert f"{company_sources} 个企业招聘源" in docs
+    assert f"{companies} 家" in docs
+    assert f"{scrapable} 家可自动抓取" in docs
+
+    table_ids = _scrapers_doc_table_ids(docs)
+    assert len(table_ids) == total, f"docs/scrapers.md 表格行数 {len(table_ids)} != 注册数 {total}"
+    assert set(table_ids) == set(config["scrapers"]), "docs/scrapers.md 表格与注册表不一致"
+
+    llms = _read("docs", "llms.txt")
+    assert f"{total} 个已收录源" in llms
+    assert f"企业目录收录 {companies} 家" in llms
+    assert f"{scrapable} 家可自动抓取" in llms
+
+
 def test_companies_yaml_covers_registered_scrapers():
     """每个非平台 scraper 都必须在 companies.yaml 有企业映射。"""
     config = yaml.safe_load(

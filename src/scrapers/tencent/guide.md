@@ -38,4 +38,5 @@ fetch_company_jobs(company="tencent", params='{"keyword":"算法","scope":"inter
    `scope=campus/intern` 走 `join.qq.com`
 2. 校招/实习的 scope 通过 `getProjectMapping` 动态解析，不硬编码项目 ID
 3. 详情页 URL 会被自动路由；社招与校招分别使用各自的详情接口
-4. 接口失败时返回明确错误，不要编造岗位或薪资
+4. 社招接口每页最多 20 条，`limit > 20` 时自动翻页；校招接口单页最多 100 条
+5. 接口失败时返回明确错误，不要编造岗位或薪资

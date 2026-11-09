@@ -25,6 +25,9 @@ from ..base import CompanyScraper
 
 SEARCH_URL = "https://www.nowcoder.com/search/all?query={query}&type=all&subType=818"
 
+# 牛客搜索接口的排序值：create=最新，hot=最热（对外参数 quality）
+ORDER_MAP = {"create": "create", "quality": "hot"}
+
 _SNIPPET_HYDRATE_MAX = 8  # snippet 缺失时逐条补水的条数上限（控制耗时）
 _SNIPPET_UNAVAILABLE = "摘要未获取（点开 url 或 fetch_jd_detail 查看详情）"
 
@@ -74,9 +77,16 @@ class Scraper(CompanyScraper):
         keyword = kwargs.get("keyword", "")
         company = kwargs.get("filter_company", "")
         is_intern = kwargs.get("is_intern", False)
-        order = kwargs.get("order", "create")
-        page = kwargs.get("page", 1)
-        limit = kwargs.get("limit", 20)
+        order = str(kwargs.get("order") or "create").strip().lower()
+        page = int(kwargs.get("page") or 1)
+        limit = int(kwargs.get("limit") or 20)
+
+        if order not in ORDER_MAP:
+            return [{
+                "error": (
+                    f"order 必须是 create（最新）或 quality（最热），收到：{order}"
+                )
+            }]
 
         # 构造搜索词：公司 + 关键词 + 实习/开发
         parts = []
@@ -155,11 +165,18 @@ class Scraper(CompanyScraper):
         """)
         return p, browser, context
 
-    def _search_via_playwright(self, query: str, order: str, page: int, limit: int) -> list[dict[str, Any]]:
-        """通过 Playwright DOM 抓取搜索结果页。"""
+    @staticmethod
+    def _build_search_url(query: str, order: str, page: int) -> str:
+        """把 order/page 映射进搜索 URL（order 必须真正改变请求）。"""
         search_url = SEARCH_URL.format(query=quote(query))
+        search_url += f"&order={ORDER_MAP[order]}"
         if page > 1:
             search_url += f"&page={page}"
+        return search_url
+
+    def _search_via_playwright(self, query: str, order: str, page: int, limit: int) -> list[dict[str, Any]]:
+        """通过 Playwright DOM 抓取搜索结果页。"""
+        search_url = self._build_search_url(query=query, order=order, page=page)
 
         try:
             p, browser, context = self._launch_browser()

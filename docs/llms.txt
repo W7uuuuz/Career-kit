@@ -45,7 +45,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 | 数据源 | 内容 | 获取方式 |
 |--------|------|----------|
-| 企业数据源（46 个已收录源） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
+| 企业数据源（58 个已收录源） | 真实 JD、薪资、面经 | `fetch_company_jobs` / `fetch_jd_detail` |
 | 行业快照 | 行业地图、岗位卡、招聘样本与薪资、相关专业 | `get_industry_snapshot`（扫盲子流程，默认互联网/软件；支持能源动力、电子/半导体/通信） |
 | GitHub 经验帖 | 秋招成功经验/面经（学历自述） | `search_cases`（聚合）或 `fetch_company_jobs(company="github")` |
 | 本地知识库 | scraper 自动写入 + 用户积累资料 | `search_knowledge` |
@@ -53,7 +53,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 分析或规划前必须至少调用一次 `search_cases` 或 `fetch_company_jobs`。
 数据不可用时如实告知，并引导 `import_jd` / `import_jd_file` 导入用户手头 JD，不要编造。
-企业目录收录 64 家，其中 42 家可自动抓取；未接入源标为需手动投递。
+企业目录收录 68 家，其中 54 家可自动抓取；未接入源标为需手动投递。
 
 ## 工作流（唯一事实源：workflow.md）
 

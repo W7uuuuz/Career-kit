@@ -387,3 +387,50 @@ class TestFormatInterviewMarkdown:
         md = _format_interview_markdown(item)
         assert "Python" in md
         assert "算法" in md
+
+
+# ---------------------------------------------------------------------------
+# 知识库检索：公司别名统一走 loader.resolve_company
+# ---------------------------------------------------------------------------
+
+
+def test_knowledge_search_company_alias_uses_loader(tmp_path, monkeypatch):
+    import src.tools.knowledge_search as ks
+    from src.scrapers.loader import resolve_company as loader_resolve
+
+    assert ks.resolve_company("美团") == loader_resolve("美团") == "meituan"
+    assert ks.resolve_company("Meituan") == "meituan"
+    assert ks.resolve_company("字节") == loader_resolve("字节") == "bytedance"
+    assert ks.resolve_company("看准") == "boss"
+
+    meituan = tmp_path / "jds" / "meituan" / "2026-01-01_平台工程师.json"
+    bytedance = tmp_path / "jds" / "bytedance" / "2026-01-01_Agent工程师.json"
+    boss = tmp_path / "jds" / "boss" / "2026-01-01_后端工程师.json"
+    meituan.parent.mkdir(parents=True)
+    bytedance.parent.mkdir(parents=True)
+    boss.parent.mkdir(parents=True)
+    meituan.write_text('{"title": "平台工程师", "description": "负责平台研发"}', encoding="utf-8")
+    bytedance.write_text('{"title": "Agent工程师", "description": "负责 Agent 开发"}', encoding="utf-8")
+    boss.write_text('{"title": "后端工程师", "description": "负责后端开发"}', encoding="utf-8")
+
+    monkeypatch.setattr(ks, "KNOWLEDGE_DIR", tmp_path)
+
+    # 别名解析到同一 canonical 来源目录：内容不含公司名也能命中
+    for alias, expected in (
+        ("美团", "jds/meituan/2026-01-01_平台工程师.json"),
+        ("Meituan", "jds/meituan/2026-01-01_平台工程师.json"),
+        ("字节", "jds/bytedance/2026-01-01_Agent工程师.json"),
+        ("看准", "jds/boss/2026-01-01_后端工程师.json"),
+    ):
+        result = ks.search_knowledge(alias)
+        assert result["count"] >= 1, f"{alias} 未命中 canonical 来源"
+        assert result["results"][0]["source"] == expected
+
+    empty = ks.search_knowledge("")
+    assert empty["results"] == []
+    assert empty["count"] == 0
+
+    # 无公司关键词的普通检索保持原行为
+    normal = ks.search_knowledge("Agent")
+    assert normal["count"] == 1
+    assert normal["results"][0]["source"] == "jds/bytedance/2026-01-01_Agent工程师.json"
