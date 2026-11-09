@@ -4,7 +4,8 @@
 
 - **设计一致性修复（2026-11-09）**：
   - 建档首轮合并为「简历或 4 项采集卡」，事实可一次采集，用户亲口陈述即确认；
-    `finalize_profile` 不再代替用户确认目标。
+    `finalize_profile` 不再代替用户确认目标；移除采集卡中的内部意图文案。
+  - BOSS 流程明确「先 boss_login，再 gather_research_data」，避免先批量抓取再补登录。
   - 下一步统一由 `resolve_progress` 派生；企业适配改为执行前必做；
     `gap_stale_at` 强制回到差距分析。
   - BOSS 直聘新增 `boss_login(status/login/close)`：登录页/探测页/抓取页隔离，

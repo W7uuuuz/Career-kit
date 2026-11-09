@@ -548,9 +548,10 @@ def test_render_guide_has_one_question_and_no_internal_ids():
     guide = build_guide(CareerProfile())
     text = render_guide(guide)
 
-    assert "位置：" in text and "本轮采集" in text
+    assert "位置：" in text and "本轮需要你提供" in text
     assert "转述纪律" in text
     assert "不要追加第二个决策" in text
+    assert "少打扰" not in text and "一次问完" not in text
     assert "JD01" in text  # 只作为禁用示例出现，不代表允许展示
 
 
@@ -753,6 +754,34 @@ def test_market_guide_matches_research_market_four_step_template():
     profile_module.save_profile(profile, PROFILE_NAME)
     market_context = research_market()
     assert all(name in market_context for name in steps)
+
+
+def test_market_guide_orders_boss_login_before_gather():
+    """含 BOSS 的调研必须先登录再批量抓取，不能先跑批再补登录。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+
+    guide = build_guide(profile)
+    assert guide.status == "market"
+    action = guide.next_action
+    assert "boss_login" in action
+    assert "不要先跑批" in action
+    assert action.index("boss_login") < action.index("gather_research_data")
+
+
+def test_goal_guide_does_not_ask_to_reconfirm_user_stated_facts():
+    """用户已亲口说过的目标字段只确认缺失项，不要求再问一遍。"""
+    profile = CareerProfile()
+    mark_brief_shown(profile)
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+
+    guide = build_guide(profile)
+    assert guide.status == "goal"
+    assert "再问一遍" not in guide.next_action
+    assert "再重复询问" in guide.next_action
 
 
 def test_evidence_and_requirement_guides_start_without_confirmation_pause():

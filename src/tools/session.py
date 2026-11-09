@@ -12,7 +12,7 @@ WELCOME_PROMPT = """\
 
 ## 单一事实源
 - 用户文案：只转述工具返回的 `[USER_BRIEF]` / `[GUIDE]`；每轮最多一个决策，
-  事实字段可以合并成一张清单一次问完。
+  事实字段可一次采集。
 - 完整流程：以 `career-kit://docs/workflow` 为准；本手册不重复前置条件与输出细节。
 - 规则口径：`career-kit://docs/rules`；工具返回与对话记忆冲突时，以工具返回为准。
 
@@ -38,8 +38,8 @@ WELCOME_PROMPT = """\
   `get_industry_snapshot` / `search_cases` / `search_knowledge`；抓不到就如实说「未获取」，
   必要时走 `import_jd` / `import_jd_file`。
 - 市场调研：`research_market` → `gather_research_data`；详情按需用 `read_research_details`。
-- BOSS 登录：先问用户是否抓取/登录；同意后用 harness 运行 `login_command`，
-  用户只需扫码，不要把命令丢给用户手动执行。
+- BOSS 登录：抓 BOSS 前先 `boss_login(action="status")`；未就绪直接 `login`，
+  登录成功后再 `gather_research_data`；不要先跑批再补登录。`login_command` 仅兜底。
 
 ## 分析、规划、执行
 - 分析：`analyze_gaps` → `save_gap_analysis`；给分前先说明口径（见 docs/rules）。

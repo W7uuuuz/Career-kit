@@ -195,10 +195,9 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         boss 返回岗位（含薪资范围）；其余 JD 源不公开薪资（见各源 guide）；
         nowcoder 返回面经，github 返回经验帖。
         失败时返回错误原因和恢复建议——此时如实告知用户，不要编造数据。
-        BOSS 直聘需要登录：未登录会返回 LOGIN_REQUIRED（附问题与登录命令）——
-        先问用户「我可以直接帮你打开登录窗口扫码，要现在登录吗」；
-        用户同意后用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），
-        不要把命令丢给用户手动执行，也不要把登录缺失直接当抓取失败宣布。
+        BOSS 直聘需要登录：未登录会返回 LOGIN_REQUIRED + next_tool=boss_login——
+        直接调用 boss_login(action="login")（用户只需扫码），不要再问「是否现在登录」；
+        login_command 仅作兜底，不要把登录缺失直接当抓取失败宣布。
     """
     try:
         params_dict = json.loads(params) if params else {}

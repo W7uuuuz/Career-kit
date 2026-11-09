@@ -135,9 +135,8 @@ FAMILIARITY_OPTIONS: tuple[str, ...] = (
     "已经有明确目标",
 )
 
-# 首轮采集卡：只有一个决策（给简历 / 一次回 4 项），事实字段一次问完。
+# 首轮采集卡：只有一个决策（给简历 / 一次回 4 项）。
 INTAKE_CARD = (
-    "为了少打扰你，这一步尽量一次问完：\n"
     "有简历就直接发我（文件或路径），我会读出学历、届别、经历和技能；\n"
     "没有简历，就一次回我 4 项：\n"
     "1) 方向/岗位（不确定写「不知道」）\n"
@@ -569,8 +568,10 @@ def _market_guide(profile: Any) -> Guide:
         "market",
         "我现在按档案里的目标和城市开始调研：抓真实岗位和同背景经历。"
         "大约 30-50 秒；有要增减的公司直接说。",
-        next_action="直接走 research_market → gather_research_data，不要问是否开始；"
-                    "用户提出增减公司时先调整范围再抓取",
+        next_action="若调研范围含 BOSS：先 boss_login(action='status')，未就绪直接 "
+                    "boss_login(action='login')，登录成功后再 gather_research_data；"
+                    "不要先跑批再补登录。否则直接走 research_market → gather_research_data，"
+                    "不要问是否开始；用户提出增减公司时先调整范围再抓取",
         profile=profile,
     )
 
@@ -622,7 +623,8 @@ def _evidence_guide(profile: Any) -> Guide:
         "需要薪资行情就说一声，我补充 BOSS 直聘；名单要改也可以直接说。",
         options=["补充 BOSS 薪资", "名单要改"],
         next_action="直接调用 collect_company_evidence，不要问是否开始；"
-                    "用户选补充 BOSS 时先问是否登录并传 include_boss=true, boss_confirmed=true；"
+                    "用户选补充 BOSS 时直接 boss_login(action='login')（未登录时），"
+                    "再传 include_boss=true, boss_confirmed=true；不要二次询问是否登录；"
                     "名单要改则回到 select_target_companies",
         profile=profile,
     )
@@ -764,7 +766,7 @@ def build_guide(profile: Any) -> Guide:
             next_action=(
                 "用户没有方向 → explore_goals；用户给出方向 → "
                 "intake(section='want', data 里带 user_confirmed=true)；"
-                "用户已亲口说过的方向/城市/届别再问一遍"
+                "用户已亲口说过的方向/城市/届别再重复询问"
             ),
             profile=profile,
         )
@@ -819,7 +821,7 @@ def render_guide(guide: Guide) -> str:
         lines.append(f"结果怎么读：{guide.how_to_read}")
     if guide.options:
         if guide.kind == "intake":
-            lines.append(f"本轮采集（事实可以合并成一张清单一次问完）：{guide.ask}")
+            lines.append(f"本轮需要你提供：{guide.ask}")
         else:
             lines.append(f"本轮只问一个决策：{guide.ask}")
         lines.append("可选回答：" + " / ".join(guide.options))

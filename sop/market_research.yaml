@@ -40,6 +40,8 @@ methodology:
     - id: bulk_gather
       name: 批量抓取
       guidance: |
+        含 BOSS 时先 boss_login(status)，未就绪直接 boss_login(login)；
+        登录成功后再调用 gather_research_data，不要先跑批再补登录。
         一次调用 gather_research_data 完成（不得散抓多轮）：
         - jd_specs：目标公司 1 条（有官方源进官方源）+ 对照 2-4 条（BOSS/官方可用源，
           优先同城同岗位方向）
