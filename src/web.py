@@ -753,6 +753,9 @@ class UvicornServer:
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self._sock.bind(address)
+            # 先 listen：测试/调用方在后台线程真正进入 uvicorn 前就可能连接，
+            # 已 listen 的 socket 会先进入 backlog，避免 Linux 上偶发 Connection refused。
+            self._sock.listen(128)
         except OSError:
             self._sock.close()
             raise
