@@ -2,7 +2,7 @@
 
 社区驱动的企业招聘数据源。单一事实源：
 - 注册 = `config.yaml`
-- 企业元数据与别名 = `companies.yaml`（查询入口 `catalog.get_company`）
+- 企业元数据与别名 = `companies.yaml`（统一查询入口 `loader.resolve_company`；`catalog.get_company` 只覆盖企业名）
 - 参数 = 各源 `scraper.py` 的 `PARAMS`
 - 教程 = 各源包内的 `guide.md`
 

@@ -33,7 +33,7 @@ class Scraper(CompanyScraper):
         "city": {"required": False, "description": "城市名（如 \"杭州\"、\"北京\"）"},
         "scope": {"required": False, "description": "招聘类型：campus=校招(默认), intern=实习, all=全部"},
         "category": {"required": False, "description": "职位类别代码（可选，原样传给阿里 subCategories）"},
-        "limit": {"required": False, "description": "返回数量上限，默认 20"},
+        "limit": {"required": False, "description": "返回数量上限，默认 20，最大 100"},
     }
 
     def supports_url(self, url: str) -> bool:

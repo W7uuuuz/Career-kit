@@ -99,7 +99,7 @@ class CompanyScraper(ABC):
         Args:
             **kwargs: 搜索参数，由各实现自定义。
                 常见参数：keyword, city, department, job_type 等
-                具体支持哪些参数见 config.yaml 中的 params 定义。
+                具体支持哪些参数见该源 scraper 的 PARAMS 类属性。
 
         Returns:
             岗位列表，每项为一个 dict。

@@ -59,7 +59,6 @@ class Scraper(CompanyScraper):
         Args:
             keyword: 搜索关键词
             city: 城市名
-            job_type: 岗位类别（可选）
             limit: 返回数量上限，默认 20
 
         Returns:

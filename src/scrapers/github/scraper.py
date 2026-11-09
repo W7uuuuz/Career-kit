@@ -55,7 +55,7 @@ class Scraper(CompanyScraper):
         "filter_company": {"required": False, "description": "公司名（如 \"字节\"），作为必中条件拼进查询——结果必须提及该公司"},
         "order": {"required": False, "description": "排序：created=最新(默认), best=综合相关"},
         "page": {"required": False, "description": "页码，默认 1"},
-        "limit": {"required": False, "description": "返回数量上限，默认 20"},
+        "limit": {"required": False, "description": "返回数量上限，默认 20，最大 30"},
     }
 
     search_cache_ttl = 3600

@@ -11,7 +11,7 @@
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| keyword | 是 | 搜索关键词，如 `"AI Agent"`、`"后端"`；工具自动拼接「秋招/春招/面经/offer/实习」意图词与「双非/985/211」学历词 |
+| keyword | 是 | 搜索关键词，如 `"AI Agent"`、`"后端"`；工具按「秋招/春招/面经/offer」意图词组合查询；传入 `education` 时再追加学历词，标题筛选还会覆盖实习/校招等词 |
 | education | 否 | 学历档位词，如 `"双非"`、`"985硕"`、`"二本"`——同时参与搜索与打标 |
 | filter_company | 否 | 公司名称，如 `"字节"`——作为必中条件拼进查询；与 `education` 同时传时两者都生效 |
 | order | 否 | `"created"`（默认，最新）或 `"best"`（综合相关） |
@@ -31,7 +31,7 @@ fetch_company_jobs(company="github", params='{"keyword": "AI Agent", "education"
 | title | 经验帖标题（通常含公司/学历/结果） |
 | url | issue 详情页链接（可传给 fetch_jd_detail） |
 | date | issue 创建日期 |
-| snippet | 正文摘要（前 300 字） |
+| snippet | 正文摘要（前 500 字） |
 | education_tag | 归一化学历标签（「双非本」「211硕」等） |
 | reactions | 帖子点赞数——高赞通常质量更高 |
 | source | `github` |

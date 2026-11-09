@@ -132,7 +132,8 @@
 |------|------|
 | 建档 | `src/tools/session_tools.py`（简历解析在 `resume_parser.py`） |
 | 档案管理 | `src/tools/profile_tools.py`（领域层 `profile.py`） |
-| 数据获取 | `src/tools/data_tools.py`、`src/tools/knowledge_search.py`、`src/tools/research_tools.py`、`src/tools/case_tools.py`、`src/scrapers/` |
+| 数据获取 | `src/tools/data_tools.py`、`src/tools/boss_tools.py`、`src/tools/knowledge_search.py`、`src/tools/research_tools.py`、`src/tools/case_tools.py`、`src/scrapers/` |
 | 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`、`src/tools/resource_catalog.py`（`import_plan` 在 `data_tools.py`） |
-| 任务与漏斗 | `src/tools/task_tools.py`、`src/tools/application_tools.py`（领域层 `task_manager.py`、`application_tracker.py`） |
+| 企业适配 | `src/tools/company_selection_tools.py`、`src/tools/evidence_tools.py`、`src/tools/requirement_tools.py`、`src/tools/execution_plan_tools.py`、`src/tools/plan_fit_tools.py`（领域层 `src/core/`） |
+| 任务与漏斗 | `src/tools/task_tools.py`、`src/tools/application_tools.py`、`src/tools/application_list_tools.py`（领域层 `task_manager.py`、`application_tracker.py`） |
 | 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py`、`src/tools/industry_tools.py`（周检视领域层 `review.py`） |

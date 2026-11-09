@@ -92,3 +92,19 @@ def test_check_package_version_not_installed(monkeypatch):
     check = doctor.check_package_version()
     assert check.status == doctor.WARN
     assert "未以包形式安装" in check.detail
+
+
+def test_expected_package_version_matches_metadata_files():
+    """doctor 的预期版本必须与 pyproject.toml / server.json 一致。"""
+    import json
+    import tomllib
+    from pathlib import Path
+
+    from src import doctor
+
+    root = Path(__file__).resolve().parents[1]
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    server = json.loads((root / "server.json").read_text(encoding="utf-8"))
+    assert pyproject["project"]["version"] == doctor.EXPECTED_PACKAGE_VERSION
+    assert server["version"] == doctor.EXPECTED_PACKAGE_VERSION
+    assert server["packages"][0]["version"] == doctor.EXPECTED_PACKAGE_VERSION
