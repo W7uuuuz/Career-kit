@@ -37,6 +37,9 @@ dependencies = [
     "python-docx>=1.1.0",
     "pyyaml>=6.0",
     "httpx>=0.25.0",
+    # 本地控制台：FastAPI 应用 + uvicorn 服务（仅监听本机，不引入云依赖）
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
     "cryptography>=42.0",
     "playwright>=1.40.0",
     # BOSS CDP 接入：WebSocket 客户端（连接本地 Chrome/Edge 的 DevTools）

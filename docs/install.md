@@ -58,6 +58,8 @@ career-kit-serve --open
 "<venv-python>" -m src.web --open
 ```
 
+控制台后端为 FastAPI（uvicorn）应用，前端为 Vue 单页应用，构建产物放在
+`src/web_ui/dist`；缺失构建产物时访问 `/` 会返回 503 与构建提示。
 仅监听 `127.0.0.1`，用于查看路线图与任务详情（怎么做 / 资源 / 完成标准）
 并直接打卡；也支持编辑任务、登记投递、按方向筛选调研报告，并通过 SSE
 自动刷新。打卡写入同一份 SQLite 档案，MCP 下次运行时即可读取。

@@ -13,18 +13,23 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import mimetypes
-import queue
 import secrets
+import socket
 import sys
 import threading
 import webbrowser
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import quote
+
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from .assets import INDEX_FILENAME, get_assets_root, kind_assets_dir
 from .core.artifacts.store import ArtifactStore
@@ -49,9 +54,8 @@ from .tools.task_manager import (
 )
 
 WEB_DIR = Path(__file__).parent / "web_ui"
-INDEX_FILE = WEB_DIR / "index.html"
-APP_JS = WEB_DIR / "app.js"
-STYLE_CSS = WEB_DIR / "style.css"
+# Vue 构建产物目录（运行时从静态目录提供前端：/ 与 /assets/*）
+DIST_DIR = WEB_DIR / "dist"
 
 
 # ---------------------------------------------------------------------------
@@ -83,14 +87,21 @@ def _asset_url(path: str | Path) -> str:
     return "/api/asset?path=" + quote(str(path), safe="")
 
 
-_SUBSCRIBERS: set[queue.Queue[str]] = set()
+# SSE 订阅者挂在 app.state 上；这里只保留集合锁，兼容线程池里触发的广播
 _SUBSCRIBERS_LOCK = threading.Lock()
 
 
-def _broadcast_refresh() -> None:
+def _broadcast_refresh(app: FastAPI) -> None:
+    """写操作完成后通知所有 SSE 连接（可从线程池线程调用）。"""
+    loop = getattr(app.state, "loop", None)
     with _SUBSCRIBERS_LOCK:
-        for subscriber in list(_SUBSCRIBERS):
-            subscriber.put("refresh")
+        subscribers = list(getattr(app.state, "subscribers", ()))
+    for subscriber in subscribers:
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(subscriber.put_nowait, "refresh")
+        else:
+            with suppress(Exception):
+                subscriber.put_nowait("refresh")
 
 
 def _run_sync(fn_name: str) -> str:
@@ -498,200 +509,291 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _json_response(handler: BaseHTTPRequestHandler, status: int, data: Any) -> None:
-    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
+_STATIC_BUILD_HINT = (
+    "前端尚未构建：未找到 src/web_ui/dist/index.html。\n"
+    "请在仓库根目录构建 Vue 前端（产物输出到 src/web_ui/dist），"
+    "或参考 docs/install.md 的本地控制台说明。"
+)
 
 
-def _text_response(handler: BaseHTTPRequestHandler, status: int, body: bytes, ctype: str) -> None:
-    handler.send_response(status)
-    handler.send_header("Content-Type", ctype)
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
+def _check_token(request: Request) -> JSONResponse | None:
+    """API token 校验：支持 X-CK-Token 头或 ?token= 查询参数。"""
+    expected = request.app.state.token
+    if request.headers.get("X-CK-Token", "") == expected:
+        return None
+    if request.query_params.get("token", "") == expected:
+        return None
+    return JSONResponse(status_code=403, content={"error": "invalid token"})
 
 
-def create_handler(token: str) -> type[BaseHTTPRequestHandler]:
-    class Handler(BaseHTTPRequestHandler):
-        server_version = "CareerKitWeb/0.1"
+async def _json_body(request: Request) -> tuple[dict[str, Any], JSONResponse | None]:
+    try:
+        raw = await request.body()
+        data = json.loads(raw.decode("utf-8") or "{}")
+    except (ValueError, UnicodeDecodeError):
+        return {}, JSONResponse(status_code=400, content={"error": "invalid json"})
+    return (data if isinstance(data, dict) else {}), None
 
-        def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
-            if "/api/" in str(args[0] if args else ""):
-                sys.stderr.write("[career-kit] %s\n" % (fmt % args))
 
-        def _authorized(self) -> bool:
-            if self.headers.get("X-CK-Token", "") == token:
-                return True
-            query = parse_qs(urlparse(self.path).query)
-            return query.get("token", [""])[0] == token
+def _do_checkin(body: dict[str, Any]) -> dict[str, Any]:
+    task_id = str(body.get("task_id") or "").strip()
+    if not task_id:
+        raise ValueError("task_id required")
+    status = str(body.get("status") or "completed")
+    amount = float(body.get("amount") or 0)
+    if status == "pending":
+        undo_task(task_id)
+        return build_state()
+    with profile_lock():
+        profile, _ = do_checkin(load_profile(), task_id, status=status, amount=amount)
+        task = profile.get_task(task_id)
+        if task and task.status == "completed":
+            record_capability_evidence(profile, task)
+        save_profile(profile)
+    sync_warning = _run_sync("sync_execution_state")
+    state = build_state(profile)
+    if sync_warning:
+        state["sync_warning"] = sync_warning
+    return state
 
-        def _json_body(self) -> dict[str, Any]:
-            length = int(self.headers.get("Content-Length", "0") or 0)
-            raw = self.rfile.read(length) if length else b"{}"
-            data = json.loads(raw.decode("utf-8") or "{}")
-            return data if isinstance(data, dict) else {}
 
-        def do_GET(self) -> None:  # noqa: N802
-            path = urlparse(self.path).path
-            if path in ("/", "/index.html"):
-                html = INDEX_FILE.read_text(encoding="utf-8")
-                html = html.replace("__CK_TOKEN__", token)
-                _text_response(self, 200, html.encode("utf-8"), "text/html; charset=utf-8")
-                return
-            if path == "/app.js":
-                _text_response(self, 200, APP_JS.read_bytes(), "application/javascript; charset=utf-8")
-                return
-            if path == "/style.css":
-                _text_response(self, 200, STYLE_CSS.read_bytes(), "text/css; charset=utf-8")
-                return
-            if path == "/roadmap":
-                if not self._authorized():
-                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
-                    return
-                host, port = self.server.server_address[:2]
-                html = render_roadmap_map(load_profile())
-                html = html.replace(
-                    "__CK_API_BASE__", f"http://{host}:{port}"
-                ).replace("__CK_TOKEN__", token)
-                _text_response(
-                    self, 200, html.encode("utf-8"), "text/html; charset=utf-8"
-                )
-                return
-            if path == "/api/health":
-                _json_response(self, 200, {"ok": True})
-                return
-            if path == "/api/state":
-                if not self._authorized():
-                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
-                    return
-                try:
-                    state = build_state()
-                except Exception as exc:  # noqa: BLE001 - 状态构建失败要返回可读 JSON
-                    _json_response(
-                        self,
-                        500,
-                        {"error": f"状态构建失败：{exc}"},
-                    )
-                    return
-                _json_response(self, 200, state)
-                return
-            if path == "/api/events":
-                if not self._authorized():
-                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
-                    return
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Connection", "keep-alive")
-                self.end_headers()
-                subscriber: queue.Queue[str] = queue.Queue()
-                with _SUBSCRIBERS_LOCK:
-                    _SUBSCRIBERS.add(subscriber)
-                try:
-                    while True:
-                        try:
-                            message = subscriber.get(timeout=15)
-                            payload = f"data: {message}\n\n"
-                        except queue.Empty:
-                            payload = ": ping\n\n"
-                        self.wfile.write(payload.encode("utf-8"))
-                        self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass
-                finally:
-                    with _SUBSCRIBERS_LOCK:
-                        _SUBSCRIBERS.discard(subscriber)
-                return
-            if path == "/api/asset":
-                if not self._authorized():
-                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
-                    return
-                raw = parse_qs(urlparse(self.path).query).get("path", [""])[0]
-                target = Path(unquote(raw)).resolve()
-                root = get_assets_root().resolve()
-                try:
-                    target.relative_to(root)
-                except ValueError:
-                    _json_response(self, HTTPStatus.FORBIDDEN, {"error": "asset outside root"})
-                    return
-                if not target.is_file():
-                    _json_response(self, 404, {"error": "asset not found"})
-                    return
-                ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-                _text_response(self, 200, target.read_bytes(), ctype)
-                return
-            _json_response(self, 404, {"error": "not found"})
+def _do_task(body: dict[str, Any]) -> dict[str, Any]:
+    task_id = str(body.get("task_id") or "").strip()
+    if not task_id:
+        raise ValueError("task_id required")
+    return update_task(task_id, body)
 
-        def do_POST(self) -> None:  # noqa: N802
-            path = urlparse(self.path).path
-            if path not in ("/api/checkin", "/api/task", "/api/application"):
-                _json_response(self, 404, {"error": "not found"})
-                return
-            if not self._authorized():
-                _json_response(self, HTTPStatus.FORBIDDEN, {"error": "invalid token"})
-                return
+
+def _static_file(relative: str) -> Response:
+    """从 dist 目录读取静态文件；越界与缺失统一按 404，未构建返回 503。"""
+    root = DIST_DIR
+    if not root.is_dir():
+        return PlainTextResponse(_STATIC_BUILD_HINT, status_code=503)
+    root_resolved = root.resolve()
+    target = (root_resolved / relative).resolve()
+    try:
+        target.relative_to(root_resolved)
+    except ValueError:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+    if not target.is_file():
+        return JSONResponse(status_code=404, content={"error": "not found"})
+    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    return Response(content=target.read_bytes(), media_type=ctype)
+
+
+def create_app(token: str) -> FastAPI:
+    """构建 FastAPI 应用；token 与 SSE 订阅者挂在 app.state 上。"""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.loop = asyncio.get_running_loop()
+        yield
+
+    app = FastAPI(
+        title="Career Kit 控制台",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
+    app.state.token = token
+    app.state.subscribers = set()
+    app.state.loop = None
+
+    @app.get("/api/health")
+    def api_health() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.get("/api/state")
+    def api_state(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        try:
+            return build_state()
+        except Exception as exc:  # noqa: BLE001 - 状态构建失败要返回可读 JSON
+            return JSONResponse(
+                status_code=500, content={"error": f"状态构建失败：{exc}"}
+            )
+
+    @app.get("/api/events")
+    async def api_events(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        subscriber: asyncio.Queue[str] = asyncio.Queue()
+        with _SUBSCRIBERS_LOCK:
+            request.app.state.subscribers.add(subscriber)
+
+        async def stream() -> Any:
             try:
-                body = self._json_body()
-            except (ValueError, TypeError):
-                _json_response(self, 400, {"error": "invalid json"})
-                return
-
-            try:
-                if path == "/api/task":
-                    task_id = str(body.get("task_id") or "").strip()
-                    if not task_id:
-                        _json_response(self, 400, {"error": "task_id required"})
-                        return
-                    state = update_task(task_id, body)
-                elif path == "/api/application":
-                    state = add_application_entry(body)
-                else:
-                    task_id = str(body.get("task_id") or "").strip()
-                    status = str(body.get("status") or "completed")
-                    amount = float(body.get("amount") or 0)
-                    if not task_id:
-                        _json_response(self, 400, {"error": "task_id required"})
-                        return
-                    if status == "pending":
-                        undo_task(task_id)
-                        state = build_state()
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        message = await asyncio.wait_for(subscriber.get(), timeout=15)
+                    except TimeoutError:
+                        yield ": ping\n\n"
                     else:
-                        with profile_lock():
-                            profile, _ = do_checkin(
-                                load_profile(), task_id, status=status, amount=amount
-                            )
-                            task = profile.get_task(task_id)
-                            if task and task.status == "completed":
-                                record_capability_evidence(profile, task)
-                            save_profile(profile)
-                        sync_warning = _run_sync("sync_execution_state")
-                        state = build_state(profile)
-                        if sync_warning:
-                            state["sync_warning"] = sync_warning
-            except ValueError as exc:
-                _json_response(self, 400, {"error": str(exc)})
-                return
+                        yield f"data: {message}\n\n"
+            finally:
+                with _SUBSCRIBERS_LOCK:
+                    request.app.state.subscribers.discard(subscriber)
 
-            _broadcast_refresh()
-            _json_response(self, 200, {"ok": True, "state": state})
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "Connection": "keep-alive"},
+        )
 
-    return Handler
+    @app.get("/api/asset")
+    def api_asset(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        target = Path(request.query_params.get("path", "")).resolve()
+        root = get_assets_root().resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return JSONResponse(
+                status_code=403, content={"error": "asset outside root"}
+            )
+        if not target.is_file():
+            return JSONResponse(status_code=404, content={"error": "asset not found"})
+        ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        return Response(content=target.read_bytes(), media_type=ctype)
+
+    @app.get("/roadmap")
+    def roadmap(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        base = f"{request.url.scheme}://{request.url.netloc}"
+        html = render_roadmap_map(load_profile())
+        html = html.replace("__CK_API_BASE__", base).replace("__CK_TOKEN__", token)
+        return Response(content=html, media_type="text/html; charset=utf-8")
+
+    @app.get("/")
+    @app.get("/index.html")
+    def index() -> Any:
+        path = DIST_DIR / "index.html"
+        if not path.is_file():
+            return PlainTextResponse(_STATIC_BUILD_HINT, status_code=503)
+        html = path.read_text(encoding="utf-8").replace("__CK_TOKEN__", token)
+        return Response(content=html, media_type="text/html; charset=utf-8")
+
+    @app.get("/assets/{asset_path:path}")
+    def assets(asset_path: str) -> Any:
+        return _static_file(f"assets/{asset_path}")
+
+    @app.post("/api/checkin")
+    async def api_checkin(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        try:
+            state = await run_in_threadpool(_do_checkin, body)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        _broadcast_refresh(request.app)
+        return {"ok": True, "state": state}
+
+    @app.post("/api/task")
+    async def api_task(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        try:
+            state = await run_in_threadpool(_do_task, body)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        _broadcast_refresh(request.app)
+        return {"ok": True, "state": state}
+
+    @app.post("/api/application")
+    async def api_application(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        try:
+            state = await run_in_threadpool(add_application_entry, body)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        _broadcast_refresh(request.app)
+        return {"ok": True, "state": state}
+
+    return app
 
 
-def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[ThreadingHTTPServer, str]:
+class UvicornServer:
+    """把 uvicorn 包装成 http.server 的调用方式，保持 create_server 契约。
+
+    - serve_forever() 可在后台线程运行；shutdown() 只置退出标记；
+    - server_address 暴露真实 (host, port)，port=0 时是系统分配的端口；
+    - 自己先 bind 拿到端口，再把 socket 交给 uvicorn，避免端口选择竞态。
+    """
+
+    def __init__(self, app: FastAPI, host: str, port: int) -> None:
+        family, socktype, proto, _, address = socket.getaddrinfo(
+            host, port, type=socket.SOCK_STREAM
+        )[0]
+        self._sock = socket.socket(family, socktype, proto)
+        # Windows 上 SO_REUSEADDR 会允许重复绑定同一端口，导致「占用顺延」失效
+        if sys.platform != "win32":
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            self._sock.bind(address)
+        except OSError:
+            self._sock.close()
+            raise
+        self.server_address = self._sock.getsockname()[:2]
+        self._server = uvicorn.Server(
+            uvicorn.Config(
+                app,
+                host=str(self.server_address[0]),
+                port=int(self.server_address[1]),
+                log_level="warning",
+                access_log=False,
+            )
+        )
+        self._thread: threading.Thread | None = None
+        self._stopped = threading.Event()
+
+    def serve_forever(self) -> None:
+        self._thread = threading.current_thread()
+        try:
+            self._server.run(sockets=[self._sock])
+        finally:
+            self._stopped.set()
+
+    def shutdown(self) -> None:
+        self._server.should_exit = True
+        if self._thread is not None and self._thread is not threading.current_thread():
+            self._stopped.wait(timeout=5)
+
+    def server_close(self) -> None:
+        with suppress(OSError):
+            self._sock.close()
+
+
+def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[UvicornServer, str]:
     """创建服务器；端口占用时自动顺延。返回 (server, token)。"""
     token = secrets.token_urlsafe(18)
+    app = create_app(token)
     last_error: OSError | None = None
     for candidate in range(port, port + 10):
         try:
-            server = ThreadingHTTPServer((host, candidate), create_handler(token))
-            server.daemon_threads = True
-            return server, token
+            return UvicornServer(app, host, candidate), token
         except OSError as exc:
             last_error = exc
             continue

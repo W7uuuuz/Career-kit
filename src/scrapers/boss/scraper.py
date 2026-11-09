@@ -176,8 +176,8 @@ class Scraper(CompanyScraper):
             return {"error": message, "url": url}
 
         result = {
-            "title": "",
-            "company": "",
+            "title": detail.get("title", ""),
+            "company": detail.get("company", ""),
             "location": "",
             "salary": "",
             "description": detail.get("description", ""),

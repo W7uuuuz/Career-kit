@@ -145,7 +145,7 @@ career-kit-doctor
 
 全部通过后，在新会话中对 Agent 说「调用 start_session」，收到「欢迎使用 Career Kit」即接入成功。
 
-> 源码安装 / 一键安装脚本 / 本地控制台 / 常见问题，见[安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)。
+> 源码安装 / 一键安装脚本 / 本地控制台（FastAPI + Vue）/ 常见问题，见[安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)。
 
 ## 文档
 

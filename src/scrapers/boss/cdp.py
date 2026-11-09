@@ -470,8 +470,19 @@ EXTRACT_DETAIL_JS = """
             jd = text;
         }
     }
+    var titleEl = document.querySelector('.job-banner .name, .job-name, h1');
+    var companyEl = document.querySelector(
+        '.job-banner .company-info .name, .company-info .name, .company-name'
+    );
+    var title = titleEl ? titleEl.innerText.trim() : '';
+    var company = companyEl ? companyEl.innerText.trim() : '';
+    var titleParts = (document.title || '').split('-');
+    if (!title && titleParts.length) title = titleParts[0].trim();
+    if (!company && titleParts.length > 1) company = titleParts[1].trim();
     return JSON.stringify({
         jd: jd,
+        title: title,
+        company: company,
         page_text: pageText.substring(0, 12000),
         tags: tags,
         url: location.href
@@ -901,6 +912,8 @@ def scrape_detail(
                 if str(item).strip()
             ]
             return {
+                "title": str(extracted.get("title") or "").strip(),
+                "company": str(extracted.get("company") or "").strip(),
                 "description": fields["jd"],
                 "requirements": "",
                 "boss_active_status": fields["boss_active_status"],

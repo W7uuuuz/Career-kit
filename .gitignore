@@ -43,3 +43,8 @@ site/
 
 # 演示视频 / GIF / 录屏等媒体素材（不入库）
 artifacts/media/
+
+# Web 前端：构建产物入库（后端从 src/web_ui/dist 提供页面），依赖不入库
+!src/web_ui/dist/
+!src/web_ui/dist/**
+web/node_modules/

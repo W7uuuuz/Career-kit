@@ -276,11 +276,14 @@ def test_build_state_alignment_falls_back_to_latest(temp_profile):
 
 
 def test_index_page_contains_alignment_card():
-    from src.web import INDEX_FILE
+    from src.web import DIST_DIR
 
-    html = INDEX_FILE.read_text(encoding="utf-8")
-    assert "企业适配" in html
-    assert 'id="alignment"' in html
+    html = (DIST_DIR / "index.html").read_text(encoding="utf-8")
+    assert '<div id="app">' in html
+    scripts = list((DIST_DIR / "assets").glob("*.js"))
+    assert scripts, "Vue 构建产物缺失"
+    bundle = scripts[0].read_text(encoding="utf-8")
+    assert "企业适配" in bundle
 
 
 def test_task_edit_and_application_entry(temp_profile):
@@ -325,7 +328,18 @@ def test_task_edit_and_application_entry(temp_profile):
         thread.join(timeout=5)
 
 
-def test_server_requires_token_and_writes_checkin(temp_profile):
+def test_server_requires_token_and_writes_checkin(temp_profile, monkeypatch, tmp_path):
+    import src.web as web
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text(
+        "<!doctype html><title>Career Kit 控制台</title>__CK_TOKEN__",
+        encoding="utf-8",
+    )
+    (dist / "assets" / "app.js").write_text("fetch('api/checkin')", encoding="utf-8")
+    monkeypatch.setattr(web, "DIST_DIR", dist)
+
     profile_module.save_profile(_profile())
     server, token = create_server(port=0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -339,7 +353,7 @@ def test_server_requires_token_and_writes_checkin(temp_profile):
         with urllib.request.urlopen(f"{base}/") as res:
             html = res.read().decode("utf-8")
         assert token in html and "Career Kit 控制台" in html
-        with urllib.request.urlopen(f"{base}/app.js") as res:
+        with urllib.request.urlopen(f"{base}/assets/app.js") as res:
             assert "api/checkin" in res.read().decode("utf-8")
 
         with pytest.raises(urllib.error.HTTPError) as exc:
@@ -368,6 +382,26 @@ def test_server_requires_token_and_writes_checkin(temp_profile):
             data = json.loads(res.read())
         assert data["ok"] is True
         assert data["state"]["phases"][0]["tasks"][0]["checkin_progress"] == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_missing_dist_returns_build_hint(temp_profile, monkeypatch, tmp_path):
+    import src.web as web
+
+    monkeypatch.setattr(web, "DIST_DIR", tmp_path / "missing-dist")
+    server, _token = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(f"{base}/")
+        assert exc.value.code == 503
+        assert "前端尚未构建" in exc.value.read().decode("utf-8")
     finally:
         server.shutdown()
         server.server_close()
