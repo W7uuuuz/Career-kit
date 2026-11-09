@@ -14,6 +14,9 @@
 标签页隔离：
     登录标签页是用户可见界面，探测与抓取一律使用后台标签页；
     登录标签页只导航一次，绝不被探测逻辑复用或改写。
+多窗口：
+    创建登录页后两轮清扫其它恢复的 page target，只保留唯一的登录窗口并激活；
+    成功与失败都不关闭该登录页，浏览器保持常驻。
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import sys
 import time
+from urllib.parse import quote
 
 from . import cdp
 from .auth import describe_ttl, save_login_marker
@@ -30,6 +34,78 @@ POLL_INTERVAL_SEC = 2.0
 POLL_TIMEOUT_SEC = 300.0
 LOGIN_PROBE_MAX_INTERVAL = 15
 LOGIN_PROBE_MAX_TRANSIENT_ERRORS = 2
+# 清理旧标签页的两轮清扫间隔：覆盖 Chrome 恢复会话时晚到的页面。
+TARGET_SWEEP_DELAY = 0.4
+
+
+def _page_targets(session: cdp.CDPSession) -> list[dict]:
+    try:
+        targets = session.send("Target.getTargets").get("result", {}).get("targetInfos", [])
+    except Exception:  # noqa: BLE001 - 枚举失败时本轮不清扫
+        return []
+    return [
+        info
+        for info in targets
+        if isinstance(info, dict) and info.get("type") == "page"
+    ]
+
+
+def _close_other_pages(
+    session: cdp.CDPSession,
+    keep_target_id: str,
+    sweeps: int = 2,
+    delay: float | None = None,
+) -> list[str]:
+    """关闭除登录页外的其它 page target，两轮清扫以覆盖晚到的恢复标签页。
+
+    只处理 ``type=page``；跳过 devtools:// 与登录页自身；单个 target 失败不中断。
+    """
+    pause = TARGET_SWEEP_DELAY if delay is None else delay
+    closed: list[str] = []
+    for index in range(max(1, sweeps)):
+        for info in _page_targets(session):
+            target_id = str(info.get("targetId") or "")
+            if not target_id or target_id == keep_target_id:
+                continue
+            if str(info.get("url") or "").startswith("devtools://"):
+                continue
+            try:
+                session.send("Target.closeTarget", {"targetId": target_id})
+                closed.append(target_id)
+            except Exception:  # noqa: BLE001 - 单个旧标签关闭失败不阻断登录
+                continue
+        if index < max(1, sweeps) - 1 and pause > 0:
+            time.sleep(pause)
+    return closed
+
+
+def _focus_login_page(
+    session: cdp.CDPSession, target_id: str, sid: str
+) -> None:
+    """把登录页激活到前台，保证用户看到并聚焦唯一的扫码窗口。"""
+    with contextlib.suppress(Exception):
+        session.send("Target.activateTarget", {"targetId": target_id})
+    with contextlib.suppress(Exception):
+        session.send("Page.bringToFront", {}, sid)
+
+
+LOGIN_SUCCESS_HTML = (
+    "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+    "<title>BOSS 登录成功</title></head>"
+    "<body style=\"font-family:system-ui,sans-serif;max-width:560px;"
+    "margin:12vh auto;padding:0 24px;line-height:1.7;color:#1f2329;\">"
+    "<h1 style=\"font-size:22px;\">BOSS 登录成功</h1>"
+    "<p>此窗口用于 Career Kit 后续抓取，可保持打开；"
+    "不要关闭专用浏览器，抓取会自动复用。</p>"
+    "<p>需要关闭浏览器时，对 Agent 说「关闭 BOSS 浏览器」"
+    "或调用 boss_login(action=\"close\")。</p>"
+    "</body></html>"
+)
+
+
+def _login_success_url() -> str:
+    """登录成功提示页：纯内联 data URL，无外部资源。"""
+    return "data:text/html;charset=utf-8," + quote(LOGIN_SUCCESS_HTML)
 
 
 def _wait_for_login(
@@ -111,13 +187,17 @@ def login(
         return cdp.LoginProbeResult(cdp.LoginProbeStatus.RESPONSE_ERROR, message=str(exc))
 
     login_target_id: str | None = None
+    login_sid: str | None = None
     result = cdp.LoginProbeResult(
         cdp.LoginProbeStatus.RESPONSE_ERROR, message="登录未开始"
     )
     try:
         login_target_id, login_sid = cdp.create_page_session(session, background=False)
         session.send("Page.navigate", {"url": cdp.LOGIN_URL}, login_sid)
-        print("[login] 即将弹出专用浏览器，请忽略默认新标签页并直接扫码；"
+        # Chrome 恢复会话时可能带出旧标签页：清扫两轮只保留登录页，再激活它。
+        _close_other_pages(session, login_target_id)
+        _focus_login_page(session, login_target_id, login_sid)
+        print("[login] 即将打开专用登录窗口，请扫码；"
               f"（最长等待 {int(timeout)} 秒）")
         result = _wait_for_login(session, timeout=timeout)
     except (TimeoutError, OSError) as exc:
@@ -133,10 +213,11 @@ def login(
             retryable=True,
         )
     finally:
-        # 成功后关闭登录标签页；失败时保留登录页与浏览器，方便继续扫码。
-        if result.status is cdp.LoginProbeStatus.AVAILABLE and login_target_id is not None:
+        # 成功后把保留的登录页切到明确的成功提示页，避免停留在扫码页误导用户。
+        if result.status is cdp.LoginProbeStatus.AVAILABLE and login_sid is not None:
             with contextlib.suppress(Exception):
-                session.send("Target.closeTarget", {"targetId": login_target_id})
+                session.send("Page.navigate", {"url": _login_success_url()}, login_sid)
+        # 成功与失败都保留登录页与浏览器：浏览器常驻，失败时用户可继续扫码。
         with contextlib.suppress(Exception):
             session.close()
 
@@ -144,7 +225,7 @@ def login(
         save_login_marker()
         print(
             f"[login] OK 登录成功，已写入登录标记（{describe_ttl()}内有效）。"
-            "浏览器窗口保持打开，后续抓取自动复用；"
+            "窗口已切到登录成功页；浏览器窗口保持打开，后续抓取自动复用；"
             "需要关闭时用 boss_login(action=\"close\")。"
         )
     elif result.status is cdp.LoginProbeStatus.RESTRICTED:

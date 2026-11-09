@@ -78,6 +78,8 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
 - 目标由用户确认：用户亲口说出的方向/城市/届别即视为确认（`intake(..., user_confirmed=true)`）；推断目标只能候选。
 - 首轮采集：优先邀请简历；没有简历就一次回 4 项，事实可合并，不追加第二个决策。
 - BOSS：抓取前只问一次；同意后先 `boss_login(action="status")`，未就绪再直接 `boss_login(action="login")`，用户只扫码。
+  登录只打开一个专用窗口（清理恢复的旧标签页），成功后窗口保持；不会出现多个扫码页。
+  成功登录后窗口会切到「登录成功」提示页，不会停在登录页。
 - 数据真实：没抓到就写「未获取」；失败源如实展示。
 - 企业适配（执行前必做校准）：select_target_companies → collect_company_evidence →
   analyze_company_requirements → save_requirement_profile → plan_execution_alignment →

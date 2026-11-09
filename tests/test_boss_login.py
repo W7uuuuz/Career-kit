@@ -34,12 +34,19 @@ class FakeClock:
 
 
 class FakeSession:
-    def __init__(self) -> None:
+    def __init__(self, targets: list[dict] | None = None) -> None:
         self.sent: list[tuple] = []
         self.closed = False
+        self.targets = list(targets or [])
 
     def send(self, method, params=None, sid=None, timeout=30):
         self.sent.append((method, params, sid))
+        if method == "Target.getTargets":
+            return {"result": {"targetInfos": [dict(t) for t in self.targets]}}
+        if method == "Target.closeTarget":
+            target_id = (params or {}).get("targetId")
+            self.targets = [t for t in self.targets if t.get("targetId") != target_id]
+            return {}
         return {}
 
     def close(self) -> None:
@@ -95,17 +102,24 @@ def test_wait_for_login_stops_immediately_on_restricted(monkeypatch):
     assert clock.sleeps == []
 
 
-def _patch_login_flow(monkeypatch, probe_result):
-    session = FakeSession()
+def _patch_login_flow(monkeypatch, probe_result, restored_targets=None):
+    session = FakeSession(targets=list(restored_targets or []))
     created: list[bool] = []
     probe_sids: list[str] = []
+    monkeypatch.setattr(login, "TARGET_SWEEP_DELAY", 0)
     monkeypatch.setattr(login.cdp, "ensure_cdp_browser", lambda *a, **k: None)
     monkeypatch.setattr(login.cdp, "CDPSession", lambda *a, **k: session)
 
     def _create(_session, background=True):
         created.append(background)
         if background:
+            session.targets.append(
+                {"targetId": "probe-target", "type": "page", "url": "about:blank"}
+            )
             return "probe-target", "probe-sid"
+        session.targets.append(
+            {"targetId": "login-target", "type": "page", "url": "about:blank"}
+        )
         return "login-target", "login-sid"
 
     def _probe(_session, sid, **kwargs):
@@ -130,9 +144,13 @@ def test_login_opens_visible_page_and_probes_in_separate_target(monkeypatch):
     assert result.status is cdp.LoginProbeStatus.AVAILABLE
     assert created[0] is False, "登录页必须是可见标签页"
     assert True in created, "探测必须使用独立后台标签页"
-    navigations = [item for item in session.sent if item[0] == "Page.navigate"]
-    assert len(navigations) == 1, "登录页只导航一次"
-    assert navigations[0][2] == "login-sid"
+    login_navigations = [
+        item
+        for item in session.sent
+        if item[0] == "Page.navigate" and item[1].get("url") == cdp.LOGIN_URL
+    ]
+    assert len(login_navigations) == 1, "登录页只导航一次到 LOGIN_URL"
+    assert login_navigations[0][2] == "login-sid"
     assert set(probe_sids) == {"probe-sid"}, "探测必须使用后台页，绝不传登录页 sid"
     assert "login-sid" not in probe_sids
 
@@ -158,7 +176,23 @@ def test_login_success_saves_marker_keeps_browser(monkeypatch):
     closed_targets = [
         item[1]["targetId"] for item in session.sent if item[0] == "Target.closeTarget"
     ]
-    assert "login-target" in closed_targets, "成功后只关闭登录标签页"
+    assert "login-target" not in closed_targets, "成功后必须保留登录页，浏览器才能常驻"
+    assert any(t.get("targetId") == "login-target" for t in session.targets)
+
+    success_navs = [
+        item
+        for item in session.sent
+        if item[0] == "Page.navigate"
+        and str(item[1].get("url") or "").startswith("data:text/html;charset=utf-8,")
+    ]
+    assert len(success_navs) == 1, "成功后必须切到登录成功提示页"
+    assert success_navs[0][2] == "login-sid"
+    from urllib.parse import unquote
+
+    decoded = unquote(success_navs[0][1]["url"])
+    assert "BOSS 登录成功" in decoded
+    assert "boss_login(action=\"close\")" in decoded
+    assert "data:text/html;charset=utf-8," in success_navs[0][1]["url"]
 
 
 def test_login_failure_keeps_login_page_and_browser(monkeypatch):
@@ -183,6 +217,59 @@ def test_login_failure_keeps_login_page_and_browser(monkeypatch):
         item[1]["targetId"] for item in session.sent if item[0] == "Target.closeTarget"
     ]
     assert "login-target" not in closed_targets, "失败时保留登录页供继续扫码"
+    assert any(t.get("targetId") == "login-target" for t in session.targets)
+    success_navs = [
+        item
+        for item in session.sent
+        if item[0] == "Page.navigate"
+        and str(item[1].get("url") or "").startswith("data:text/html")
+    ]
+    assert success_navs == [], "失败时不得导航到成功页"
+
+
+def test_login_closes_other_restored_pages(monkeypatch):
+    """Chrome 恢复会话带出的旧标签页必须被清理，只留登录页；devtools 除外。"""
+    monkeypatch.setattr(login, "save_login_marker", lambda *a, **k: None)
+    restored = [
+        {"targetId": "old-1", "type": "page", "url": "https://www.zhipin.com/"},
+        {"targetId": "old-2", "type": "page", "url": "about:blank"},
+        {"targetId": "devtools", "type": "page", "url": "devtools://inspect"},
+        {"targetId": "worker", "type": "service_worker", "url": "https://x"},
+    ]
+    session, _created, _probe_sids = _patch_login_flow(
+        monkeypatch,
+        _result(cdp.LoginProbeStatus.RESTRICTED, code=37, message="安全校验"),
+        restored_targets=restored,
+    )
+
+    login.login(timeout=5)
+
+    closed = [
+        item[1]["targetId"] for item in session.sent if item[0] == "Target.closeTarget"
+    ]
+    assert "old-1" in closed and "old-2" in closed
+    assert "devtools" not in closed, "不得关闭 devtools target"
+    assert "worker" not in closed, "只清理 page target"
+    assert "login-target" not in closed
+    remaining = {t.get("targetId") for t in session.targets}
+    assert "login-target" in remaining
+    assert "old-1" not in remaining and "old-2" not in remaining
+
+
+def test_login_focuses_the_only_login_page(monkeypatch):
+    monkeypatch.setattr(login, "save_login_marker", lambda *a, **k: None)
+    session, _created, _probe_sids = _patch_login_flow(
+        monkeypatch, _result(cdp.LoginProbeStatus.RESTRICTED, code=37, message="安全校验")
+    )
+
+    login.login(timeout=5)
+
+    assert (
+        "Target.activateTarget",
+        {"targetId": "login-target"},
+        None,
+    ) in session.sent
+    assert ("Page.bringToFront", {}, "login-sid") in session.sent
 
 
 def test_login_reports_missing_browser(monkeypatch):

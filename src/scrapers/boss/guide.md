@@ -59,8 +59,10 @@ fetch_jd_detail(url="https://www.zhipin.com/job_detail/xxx.html")
    `https://www.zhipin.com/web/user/?ka=header-login`，用户只需扫码。
    探测使用独立的后台标签页，不会导航或复用户可见的登录页。
    只有接口返回明文薪资才算登录成功，随后写入登录标记（6 小时有效）。
-3. 登录成功后专用浏览器窗口**保持常驻**，后续抓取复用同一个后台浏览器，
-   不需要反复唤起登录。需要关闭时调用 `boss_login(action="close")`。
+3. 登录只打开**一个专用窗口**：流程会清理浏览器恢复会话时带出的旧标签页并激活
+   唯一登录页，不会再出现多个扫码页。登录成功后该窗口会切到「登录成功」提示页，
+   不会停在登录页；窗口**保持常驻**，后续抓取复用，不需要反复唤起登录。
+   需要关闭时调用 `boss_login(action="close")`。
 4. 专用 profile：`~/.career-kit/cache/boss/cdp-profile`。
    不会读取或写入 `~/.boss-zhipin-scraper`，也不会抢用户主浏览器。
 5. CDP 端口默认 `9222`，可用环境变量 `CAREER_KIT_BOSS_CDP_PORT` 覆盖。
