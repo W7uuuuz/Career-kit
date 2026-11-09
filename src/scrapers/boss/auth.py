@@ -22,7 +22,18 @@ AUTH_STATE_PATH = CACHE_DIR / "boss" / "auth" / "state.json"
 
 # 登录态 TTL：6 小时。CDP 复用真实登录态，但产品仍按保守有效期处理，
 # 避免「请求能发出去但返回风控/空数据」的静默失效。
+# 本常量是 BOSS 登录有效期的唯一事实源；state.json 里的旧 ttl_seconds 不再生效。
 LOGIN_TTL_SECONDS = 6 * 60 * 60
+
+
+def login_ttl_hours() -> int:
+    """登录态有效期（小时），由 LOGIN_TTL_SECONDS 派生。"""
+    return max(1, LOGIN_TTL_SECONDS // 3600)
+
+
+def describe_ttl() -> str:
+    """用户可见的登录有效期文案，唯一来源为 LOGIN_TTL_SECONDS。"""
+    return f"{login_ttl_hours()} 小时"
 
 # API 风控/环境异常标记：命中后登录态不可继续使用。
 _ENV_ANOMALY_MARKERS = ("环境存在异常", "环境异常")
@@ -132,6 +143,7 @@ def auth_status() -> dict[str, Any]:
         "saved_at": state.get("saved_at", ""),
         "age_seconds": age,
         "ttl_seconds": LOGIN_TTL_SECONDS,
+        "ttl_text": describe_ttl(),
         "cdp_available": cdp_backend_available(),
         "expired": bool(
             not isinstance(saved_at, (int, float))
@@ -162,9 +174,8 @@ def has_valid_cookies() -> bool:
     if not isinstance(saved_at, (int, float)):
         invalidate_auth("missing_saved_at")
         return False
-    ttl = state.get("ttl_seconds")
-    ttl_seconds = float(ttl) if isinstance(ttl, (int, float)) else LOGIN_TTL_SECONDS
-    if time.time() - float(saved_at) >= ttl_seconds:
+    # 只信任 LOGIN_TTL_SECONDS；state.json 里的旧 ttl_seconds 不再覆盖常量。
+    if time.time() - float(saved_at) >= LOGIN_TTL_SECONDS:
         invalidate_auth("ttl_expired")
         return False
 

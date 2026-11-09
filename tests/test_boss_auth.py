@@ -130,3 +130,47 @@ def test_detail_cdp_error_returns_error(auth_path, monkeypatch):
     result = scraper.Scraper().get_detail("https://www.zhipin.com/job_detail/x.html")
 
     assert result["error"] == "页面未渲染出 JD"
+
+
+def test_old_state_ttl_does_not_override_constant(auth_path, monkeypatch):
+    """state.json 里的旧 ttl_seconds 不再覆盖 LOGIN_TTL_SECONDS。"""
+    auth.save_login_marker()
+    state = json.loads(auth_path.read_text(encoding="utf-8"))
+    # 旧版本写入的 2 小时 TTL + 3 小时前的登录时间：按常量 6 小时仍应有效。
+    state["ttl_seconds"] = 2 * 60 * 60
+    state["saved_at_ts"] = time.time() - 3 * 60 * 60
+    auth_path.write_text(json.dumps(state), encoding="utf-8")
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: True)
+
+    assert auth.has_valid_cookies() is True, "旧 ttl_seconds 不得覆盖 6 小时常量"
+
+
+def test_describe_ttl_derives_from_constant():
+    assert auth.describe_ttl() == f"{auth.LOGIN_TTL_SECONDS // 3600} 小时"
+    assert auth.describe_ttl() == "6 小时"
+
+
+BOSS_VISIBLE_FILES = (
+    ("src", "scrapers", "boss", "scraper.py"),
+    ("src", "scrapers", "boss", "guide.md"),
+    ("src", "tools", "data_tools.py"),
+    ("src", "tools", "research_tools.py"),
+    ("src", "tools", "evidence_tools.py"),
+    ("docs", "scrapers.md"),
+    ("docs", "tools.md"),
+    ("docs", "llms.txt"),
+)
+
+
+def test_boss_visible_text_has_no_stale_two_hour_ttl():
+    """BOSS 可见文案不得出现「2 小时」，避免与 LOGIN_TTL_SECONDS 矛盾。"""
+    root = Path(__file__).parent.parent
+    offenders = []
+    for rel in BOSS_VISIBLE_FILES:
+        text = root.joinpath(*rel).read_text(encoding="utf-8")
+        if "2 小时" in text:
+            offenders.append("/".join(rel))
+    assert not offenders, f"BOSS 文案仍含旧 TTL：{offenders}"
+
+    guide = root.joinpath("src", "scrapers", "boss", "guide.md").read_text(encoding="utf-8")
+    assert auth.describe_ttl() in guide, "guide 的 TTL 文案应由 LOGIN_TTL_SECONDS 派生"

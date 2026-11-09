@@ -38,6 +38,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
+from ...guidance import BOSS_LOGIN_URL
 from ...paths import CACHE_DIR
 
 try:  # websocket-client 是运行依赖；导入失败时仍允许测试纯函数
@@ -48,7 +49,8 @@ except ImportError:  # pragma: no cover - 依赖缺失时由 CDPSession 明确�
 log = logging.getLogger("career_kit.boss.cdp")
 
 API_JOB_LIST_PATH = "/wapi/zpgeek/search/joblist.json"
-LOGIN_URL = "https://www.zhipin.com/web/user/?ka=header-login"
+# 登录页 URL 只保留在 guidance 一处，这里引用同一常量。
+LOGIN_URL = BOSS_LOGIN_URL
 LOGIN_PROBE_QUERY = "Java"
 LOGIN_PROBE_CITY = "101020100"
 LOGIN_PROBE_TARGETS = (
@@ -788,7 +790,7 @@ def _gate_first_response(data: Any) -> None:
         return
     if result.status is LoginProbeStatus.UNAUTHENTICATED:
         raise LoginGateError(
-            "未检测到 BOSS 直聘登录态。请先运行登录命令扫码，或先在专用浏览器中登录 zhipin.com。"
+            "未检测到 BOSS 直聘登录态。请调用 boss_login(action=\"login\") 扫码登录后再试。"
         )
     if result.status is LoginProbeStatus.RESTRICTED:
         raise LoginGateError(
@@ -819,7 +821,7 @@ def scrape_list(
     all_jobs: list[dict[str, Any]] = []
     seen: set[str] = set()
     try:
-        target_id, sid = attach_existing_page(cdp, background=True)
+        target_id, sid = create_page_session(cdp, background=True)
         capture = NetworkJoblistCapture(cdp, sid)
         capture.enable()
         for page in range(1, pages + 1):
@@ -885,7 +887,7 @@ def scrape_detail(
     target_id: str | None = None
     last_error: Exception | None = None
     try:
-        target_id, sid = attach_existing_page(cdp, background=True)
+        target_id, sid = create_page_session(cdp, background=True)
         cdp.send("Page.navigate", {"url": url}, sid)
         for attempt in range(max(1, attempts)):
             time.sleep(2.0 if attempt == 0 else 2.5)
@@ -1161,6 +1163,17 @@ def _terminate_process(pid: int) -> None:
         return
     with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
+
+
+def cdp_browser_process_count() -> int:
+    """统计使用 Career Kit 专用 profile 的浏览器进程数（只读，不启动）。"""
+    target = normalize_profile_path(str(CDP_DATA_DIR))
+    return sum(
+        1
+        for _pid, command in _iter_browser_processes()
+        if (path := extract_user_data_dir(command))
+        and normalize_profile_path(path) == target
+    )
 
 
 def stop_cdp_browser() -> int:

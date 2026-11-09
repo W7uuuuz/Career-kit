@@ -54,7 +54,7 @@ def test_research_market_instructs_asking_boss_first(temp_profile):
     assert "BOSS" in scope_step["action"] and "问" in scope_step["action"]
     assert "boss_confirmed" in scope_step["action"]
     assert "boss_confirmed" in out["instructions"]
-    assert "LOGIN_REQUIRED" in out["instructions"]
+    assert "ACTION_REQUIRED" in out["instructions"]
 
 
 # ============ gather_research_data 确认 / 登录关卡 ============
@@ -70,8 +70,9 @@ def test_gather_requires_boss_confirmation(temp_profile, monkeypatch):
     )))
     assert result["isError"] is True
     assert result["code"] == "CONFIRMATION_REQUIRED"
-    assert "BOSS" in result["message"] and "问用户" in result["message"]
+    assert "BOSS" in result["message"] and "同意" in result["message"]
     assert result["details"]["question"]
+    assert result["details"]["login_tool"] == "boss_login"
     assert any("boss_confirmed=true" in opt for opt in result["details"]["options"])
     # 不落盘
     assert not (temp_profile / "CareerKit").exists()
@@ -91,8 +92,10 @@ def test_gather_login_required_when_boss_not_logged_in(temp_profile, monkeypatch
         boss_confirmed=True,
     )))
     assert result["isError"] is True
-    assert result["code"] == "LOGIN_REQUIRED"
-    assert "打开登录窗口" in result["details"]["question"]
+    assert result["code"] == "ACTION_REQUIRED"
+    assert result["details"]["next_tool"] == "boss_login"
+    assert result["details"]["action"] == "boss_login"
+    assert "question" not in result["details"], "确认后不得再问第二次是否登录"
     assert "src.scrapers.boss.login" in result["details"]["login_command"]
     assert result["details"]["harness_can_run"] is True
     assert "harness" in result["details"]["agent_action"]
@@ -122,7 +125,7 @@ def test_gather_boss_unlogged_fails_fast_before_other_sources(temp_profile, monk
         boss_confirmed=True,
     )))
     assert result["isError"] is True
-    assert result["code"] == "LOGIN_REQUIRED"
+    assert result["code"] == "ACTION_REQUIRED"
     assert calls == [], "登录预检失败时不应先抓其他源"
     assert "src.scrapers.boss.login" in result["details"]["login_command"]
     assert "断点缓存" in result["details"]["resume_hint"]
@@ -194,12 +197,14 @@ def test_fetch_company_jobs_boss_login_surfaces_question(temp_profile, monkeypat
     result = json.loads(asyncio.run(data_tools.fetch_company_jobs(company="boss")))
     assert result["isError"] is True
     assert result["code"] == "LOGIN_REQUIRED"
-    assert "打开登录窗口" in result["details"]["question"]
+    assert result["details"]["next_tool"] == "boss_login"
+    assert result["details"]["action"] == "boss_login"
+    assert "question" not in result["details"], "用户已提出抓取 BOSS，不再问第二次"
     assert "src.scrapers.boss.login" in result["details"]["login_command"]
     assert result["details"]["harness_can_run"] is True
     assert "harness" in result["details"]["agent_action"]
     assert "import_jd" in result["details"]["recovery"]
-    assert "harness" in result["details"]["rule"]
+    assert "boss_login" in result["details"]["rule"]
 
 
 def test_fetch_company_jobs_non_boss_unaffected(temp_profile, monkeypatch):

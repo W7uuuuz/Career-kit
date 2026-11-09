@@ -205,25 +205,27 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
             {"raw": params[:200]},
         )
 
-    # BOSS 登录前置关卡：未登录时先让用户决定「是否现在登录」，不要抓完再报失败
+    # BOSS 登录前置关卡：未登录时直接引导到 boss_login，不再问第二个问题
     if company.strip().lower() in _BOSS_IDS:
-        from ..scrapers.boss.auth import has_valid_cookies
+        from ..scrapers.boss.auth import describe_ttl, has_valid_cookies
 
         if not has_valid_cookies():
             return error_response(
                 "LOGIN_REQUIRED",
-                "BOSS 直聘尚未登录（cookies 不存在或已超过 2 小时有效期）——"
-                "该源需要扫码登录一次，登录态按 2 小时有效期管理。",
+                "BOSS 直聘尚未登录（登录标记不存在或已过期）——"
+                f"该源需要扫码登录一次，登录态按 {describe_ttl()}有效期管理。",
                 {
                     **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
-                    "question": "BOSS 直聘登录态不可用，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
+                    "action": "boss_login",
+                    "reason": "not_logged_in",
+                    "next_tool": "boss_login",
                     "after_login": "登录成功后重试 fetch_company_jobs(company=\"boss\", ...)",
                     "recovery": (
                         "用户不想登录时改用其他数据源（bytedance/nowcoder 等），"
                         "或用 import_jd / import_jd_file 导入用户手头的真实 JD"
                     ),
-                    "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
-                            "不要把命令丢给用户手动执行",
+                    "rule": "用户已提出抓取 BOSS，直接调用 boss_login(action=\"login\")，"
+                            "不要再问「是否现在登录」；登录成功后浏览器保持常开并重试。",
                 },
             )
 
@@ -241,21 +243,22 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         )
         message = str(result["error"])
         if company.strip().lower() in _BOSS_IDS and "登录" in message:
-            # BUG（实测）：BOSS 未登录时直接报失败，LLM 默认当「源不可用」跳过。
-            # 正确流程是把「是否现在登录」交给用户决定，登录成功即可重试
+            # BOSS 未登录是交互关卡，不是抓取失败：直接引导 boss_login，不映射成 ANALYSIS_FAILED
             return error_response(
                 "LOGIN_REQUIRED",
                 f"{message}\n\n{server_fingerprint_line()}\n"
-                "BOSS 直聘登录态不可用（未登录、超过 2 小时或已被风控销毁）——"
-                "先问用户：我可以直接帮你打开登录窗口扫码，要现在登录吗？"
-                "同意则用 harness 运行登录脚本，登录成功后重试 / 走 gather_research_data "
-                "时带 boss_confirmed=true；不同意（改用其他数据源或导入手头 JD）。",
+                "BOSS 直聘登录态不可用（未登录或已被风控销毁）——"
+                "直接调用 boss_login(action=\"login\") 扫码登录，登录成功后重试；"
+                "走 gather_research_data 时带 boss_confirmed=true。"
+                "不同意时改用其他数据源或导入手头 JD。",
                 {
                     **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
-                    "question": "BOSS 直聘登录态不可用，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
+                    "action": "boss_login",
+                    "reason": "not_logged_in",
+                    "next_tool": "boss_login",
                     "recovery": recovery,
-                    "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
-                            "不要把命令丢给用户手动执行",
+                    "rule": "用户已提出抓取 BOSS，直接调用 boss_login(action=\"login\")，"
+                            "不要再问「是否现在登录」；登录成功后浏览器保持常开并重试。",
                 },
             )
         # BUG-014：错误信息附带 [服务自检] 行——报错里的解释器路径属于旧实例时，
@@ -338,7 +341,28 @@ async def fetch_jd_detail(url: str, company: str = "") -> str:
     result = await asyncio.to_thread(get_job_detail, url, company if company else None)
 
     if result.get("error"):
-        return error_response("ANALYSIS_FAILED", result["error"], {"url": url})
+        message = str(result["error"])
+        is_boss = (
+            company.strip().lower() in _BOSS_IDS or "zhipin.com" in (url or "")
+        )
+        if is_boss and "登录" in message:
+            from ..scrapers.boss.auth import describe_ttl
+
+            return error_response(
+                "LOGIN_REQUIRED",
+                f"{message}\n\nBOSS 直聘详情页需要有效登录态（{describe_ttl()}）。"
+                "直接调用 boss_login(action=\"login\") 扫码登录后重试，"
+                "不要映射成 ANALYSIS_FAILED，也不要让用户手动复制命令。",
+                {
+                    **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                    "action": "boss_login",
+                    "reason": "not_logged_in",
+                    "next_tool": "boss_login",
+                    "url": url,
+                    "after_login": "登录成功后重试 fetch_jd_detail(url=...)",
+                },
+            )
+        return error_response("ANALYSIS_FAILED", message, {"url": url})
 
     lines = [f"## {result.get('title', '岗位详情')}"]
     if result.get("company"):

@@ -477,12 +477,13 @@ def test_login_action_points_to_harness():
 
     assert data["harness_can_run"] is True
     assert data["login_url"] == BOSS_LOGIN_URL == "https://www.zhipin.com/web/user/?ka=header-login"
-    assert "harness" in data["agent_action"]
+    assert data["login_tool"] == "boss_login"
+    assert "boss_login" in data["agent_action"]
     assert "不要把命令丢给用户" in data["agent_action"]
     assert "同一会话只提示一次" in data["agent_action"]
     assert "扫码" in data["user_instruction"]
     assert "右上角" in data["user_instruction"]
-    assert "浏览器会自动关闭" in data["user_instruction"]
+    assert "不会自动关闭" in data["user_instruction"]
     assert "打断这次会话" in data["user_instruction"]
 
 

@@ -547,9 +547,9 @@ def test_step8_mcp_tools_registered():
         # 档案管理
         "list_profiles", "switch_profile", "delete_profile",
         "list_trash", "restore_profile",
-        # 数据获取与分析
+        # 数据获取与分析（含 BOSS 会话）
         "list_data_sources", "get_scraper_guide", "fetch_company_jobs",
-        "fetch_jd_detail", "search_knowledge", "search_cases",
+        "fetch_jd_detail", "boss_login", "search_knowledge", "search_cases",
         "research_market", "gather_research_data", "read_research_details",
         "get_industry_snapshot",
         "explore_goals", "analyze_gaps", "save_gap_analysis",

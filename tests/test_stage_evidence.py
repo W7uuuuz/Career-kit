@@ -713,7 +713,8 @@ async def test_mcp_tool_boss_requires_confirmation(
     payload = json.loads(raw)
     assert payload["isError"] is True
     assert payload["code"] == "CONFIRMATION_REQUIRED"
-    assert "是否抓取 BOSS 直聘" in payload["details"]["question"]
+    assert "BOSS 直聘" in payload["details"]["question"]
+    assert payload["details"]["login_tool"] == "boss_login"
     assert "src.scrapers.boss.login" in payload["details"]["login_command"]
     assert "user_instruction" in payload["details"]
 
@@ -731,7 +732,9 @@ async def test_mcp_tool_boss_requires_login(
     payload = json.loads(raw)
     assert payload["isError"] is True
     assert payload["code"] == "LOGIN_REQUIRED"
-    assert "要现在登录吗" in payload["details"]["question"]
+    assert payload["details"]["next_tool"] == "boss_login"
+    assert payload["details"]["action"] == "boss_login"
+    assert "question" not in payload["details"]
     assert "src.scrapers.boss.login" in payload["details"]["login_command"]
 
 

@@ -77,10 +77,12 @@
 > `playwright install chromium`。
 >
 > BOSS 直聘通过 CDP 连接本地已登录的 Chrome / Edge，旁听页面自身的搜索接口，
-> 返回**明文薪资**；不注入 XHR、不回退 Chromium。登录命令为
-> `python -m src.scrapers.boss.login`（专用 profile：
+> 返回**明文薪资**；不注入 XHR、不回退 Chromium。登录用
+> `boss_login(action="login")`：用户只扫码，登录成功后专用浏览器窗口保持常驻，
+> 后续抓取自动复用；需要关闭时用 `boss_login(action="close")`。专用 profile：
 > `~/.career-kit/cache/boss/cdp-profile`，CDP 端口默认 9222，可用
-> `CAREER_KIT_BOSS_CDP_PORT` 覆盖）。研究阶段 BOSS 默认 **list-only**：保留薪资、
+> `CAREER_KIT_BOSS_CDP_PORT` 覆盖。登录态有效期 6 小时（唯一来源
+> `LOGIN_TTL_SECONDS`）。研究阶段 BOSS 默认 **list-only**：保留薪资、
 > 公司、地点、技能标签与福利，不逐条补 JD；需要全文时用 `fetch_jd_detail(url)`
 > 交互式补抓。失败原因会如实写入报告来源状态与数据缺口。
 
@@ -126,7 +128,7 @@
 
 | 渠道 | 薪资形态 | 是否需登录 | 抓取风险 | 状态 |
 |------|----------|------------|----------|------|
-| BOSS 直聘（`boss`） | 列表明文薪资（`salaryDesc`，如 `25-45K·16薪`） | 需扫码登录（登录态约 2 小时） | 中高：风控、环境异常、登录态失效 | 已接入，当前主要含薪来源 |
+| BOSS 直聘（`boss`） | 列表明文薪资（`salaryDesc`，如 `25-45K·16薪`） | 需扫码登录（`boss_login`，登录态 6 小时，窗口常驻复用） | 中高：风控、环境异常、登录态失效 | 已接入，当前主要含薪来源 |
 | 企业官网 / ATS（其余已注册源） | 多数不公开；少数岗位在接口字段里带薪资（如北森 `Salary`、同程 `salaryRange`、有赞 `salaryText`、飞书 `min_salary/max_salary`、Moka/大易个别字段） | 否 | 低至中 | 已接入；有值就保留，无值如实留空 |
 
 说明：

@@ -172,3 +172,83 @@ def test_get_detail_maps_cdp_detail(monkeypatch):
 def test_get_detail_rejects_non_boss_url():
     result = scraper.Scraper().get_detail("https://example.com/job/1")
     assert "非 BOSS" in result["error"]
+
+
+class _StopScrape(Exception):
+    pass
+
+
+class _FakeSession:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def send(self, *args, **kwargs):
+        return {}
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _patch_scrape_to_stop_at_page(monkeypatch):
+    calls: list[bool] = []
+    monkeypatch.setattr(cdp, "ensure_cdp_browser", lambda *a, **k: None)
+    monkeypatch.setattr(cdp, "CDPSession", lambda *a, **k: _FakeSession())
+    monkeypatch.setattr(cdp, "attach_existing_page", lambda *a, **k: pytest.fail(
+        "抓取不得复用 attach_existing_page"
+    ))
+
+    def _create(_session, background=True):
+        calls.append(background)
+        raise _StopScrape("created background page")
+
+    monkeypatch.setattr(cdp, "create_page_session", _create)
+    return calls
+
+
+def test_scrape_list_uses_background_page(monkeypatch):
+    calls = _patch_scrape_to_stop_at_page(monkeypatch)
+
+    with pytest.raises(_StopScrape):
+        cdp.scrape_list("Python", city="", limit=1)
+
+    assert calls == [True], "列表抓取必须创建后台标签页"
+
+
+def test_scrape_detail_uses_background_page(monkeypatch):
+    calls = _patch_scrape_to_stop_at_page(monkeypatch)
+
+    with pytest.raises(_StopScrape):
+        cdp.scrape_detail("https://www.zhipin.com/job_detail/x.html")
+
+    assert calls == [True], "详情抓取必须创建后台标签页"
+
+
+def test_boss_unsupported_params_are_explicit(monkeypatch):
+    """experience/degree/salary 未实现时必须显式报错，不能静默忽略。"""
+    monkeypatch.setattr(scraper, "has_valid_cookies", lambda: True)
+    monkeypatch.setattr(scraper.Scraper, "_make_cache", lambda self, ns: FakeCache())
+
+    for name in ("experience", "degree", "salary"):
+        rows = scraper.Scraper().search(keyword="AI Agent", **{name: "任意值"})
+        assert "不支持参数" in rows[0]["error"]
+        assert name in rows[0]["error"]
+
+    params = scraper.Scraper.PARAMS
+    assert "experience" not in params
+    assert "degree" not in params
+    assert "salary" not in params
+
+
+def test_boss_guide_and_params_stay_in_sync():
+    """guide 不得再宣称 experience/degree/salary，避免 PARAMS 与文档漂移。"""
+    guide = (
+        Path(__file__).parent.parent
+        / "src"
+        / "scrapers"
+        / "boss"
+        / "guide.md"
+    ).read_text(encoding="utf-8")
+    assert "| experience |" not in guide
+    assert "| degree |" not in guide
+    assert "| salary | 否 |" not in guide
+    assert "boss_login" in guide

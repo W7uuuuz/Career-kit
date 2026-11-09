@@ -68,7 +68,7 @@ You: I got a big-tech interview.
 Career Kit: event-triggered insight → re-evaluate the plan → adjust tasks
 ```
 
-Under the hood: 49 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, company alignment, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
+Under the hood: 50 MCP tools covering onboarding, profile management, data acquisition (including market research), analysis and planning, company alignment, tasks and funnel, and insight generation. Full list and call timing in [tools.md](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md).
 
 ## Compared with other job-hunting tools
 
@@ -149,7 +149,7 @@ Then say "call start_session" to your agent in a new session; "Welcome to Career
 - [LLM usage guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)
 - [Workflow](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)
 - [Install guide](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md): source install, one-click script, local console, troubleshooting
-- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 49 MCP tools
+- [Tools](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md): the single source of truth for the 50 MCP tools
 - [Data sources](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)
 - [Knowledge base](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)
 - [Examples](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)

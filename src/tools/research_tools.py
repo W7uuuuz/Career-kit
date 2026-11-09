@@ -146,12 +146,12 @@ def research_market() -> str:
     instructions = (
         "步骤预告：先向用户报 4 步菜单（①范围宣告 ②批量抓取 ③报告落地 ④衔接分析），"
         "报完再执行。\n"
-        "BOSS 源纪律：名单含 BOSS 直聘时，抓取前必须询问用户「是否抓取 BOSS 直聘"
-        "（我可以直接帮你打开登录窗口扫码）」——用户同意后传 boss_confirmed=true；"
-        "不同意则更换来源，不得静默跳过。若工具返回 LOGIN_REQUIRED / "
-        "CONFIRMATION_REQUIRED，将问题转问用户；用户同意登录后，"
-        "用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），"
-        "不要把命令丢给用户手动执行，也不得自行判定调研失败。\n"
+        "BOSS 源纪律：名单含 BOSS 直聘时，抓取前只问一次「是否把 BOSS 加入调研"
+        "（如需登录我会直接打开登录窗口，你只需扫码）」——同意后传 boss_confirmed=true；"
+        "不同意则更换来源，不得静默跳过。若返回 CONFIRMATION_REQUIRED 才问用户；"
+        "返回 ACTION_REQUIRED / next_tool=boss_login 时直接调用 "
+        "boss_login(action=\"login\")，不要再问第二次是否登录，"
+        "也不得自行判定调研失败。\n"
         "详情纪律：工具为每条岗位补抓正文；未取得详情的岗位将被剔除并计入数据缺口。"
         "BOSS 研究阶段默认 list-only：不补详情、不剔除，保留薪资行，"
         "数据缺口会写明「BOSS 仅列表数据，未抓 JD 详情」。"
@@ -605,10 +605,10 @@ async def gather_research_data(
         direction: 报告标题与档案归档使用的方向名（默认取 case_query.role）
         city: 报告上下文城市（默认取 case_query.city / want / who）
         boss_confirmed: 范围含 BOSS 直聘时必须先问用户，用户同意后传 true。
-             BOSS 需要扫码登录（登录态 2 小时有效）；未确认会返回 CONFIRMATION_REQUIRED
-            让你先去问用户；确认但未登录会在抓取前直接返回 LOGIN_REQUIRED（不浪费整批抓取），
-            让你问用户是否现在登录。用户同意后用 harness 的终端/Bash 直接运行
-            login_command（用户只需扫码），不要把命令丢给用户手动执行。
+             「是否抓 BOSS」与「是否扫码登录」合并为一次同意：未确认返回
+             CONFIRMATION_REQUIRED；确认但未登录返回 ACTION_REQUIRED
+             （next_tool=boss_login），不再追问第二次。用户同意后直接调用
+             boss_login(action="login")（用户只需扫码），登录成功后浏览器保持常开。
 
     Returns:
         汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（index.html 资产总览入口） +
@@ -658,40 +658,50 @@ async def gather_research_data(
         )
 
     # BOSS 登录确认：抓取前先做一次轻量登录态探测，避免先跑完其他源才发现
-    # BOSS 不可用（P2-9）。未登录直接返回 LOGIN_REQUIRED，不浪费整批抓取。
+    # BOSS 不可用（P2-9）。一次同意同时覆盖「抓 BOSS」与「扫码登录」。
     uses_boss = _uses_boss(specs, query)
     boss_unlogged = uses_boss and not boss_has_valid_cookies()
     if uses_boss and not boss_confirmed:
         return error_response(
             "CONFIRMATION_REQUIRED",
-            "调研范围含 BOSS 直聘：该源需要扫码登录（登录态 2 小时有效），"
-            "抓取前必须先问用户是否进行 BOSS 抓取。",
+            "调研范围含 BOSS 直聘：同意抓取即可，若尚未登录我会打开登录窗口（可能需要扫码）；"
+            "下一次调用直接复用同一会话。",
             {
                 **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
-                "question": "是否抓取 BOSS 直聘？我可以直接帮你打开登录窗口，你只需扫码（登录态 2 小时有效）。",
+                "login_tool": "boss_login",
+                "question": "是否把 BOSS 直聘加入本次调研？如需登录，我会直接打开登录窗口，你只需扫码。",
                 "options": [
-                    "同意：用 harness 运行登录脚本，扫码后带 boss_confirmed=true 重新调用 gather_research_data",
+                    "同意：带 boss_confirmed=true 重新调用；若未登录先调用 boss_login(action=\"login\")",
                     "不同意：从 jd_specs / case_query 移除 boss 后重跑，其他源照常抓取",
                 ],
-                "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
-                        "不要把命令丢给用户手动执行；不得静默跳过 BOSS 或直接宣布失败",
+                "rule": "只问一次；同意后直接调用 boss_login(action=\"login\")（未登录时），"
+                        "不要再问第二个「是否现在登录」；不得静默跳过 BOSS 或直接宣布失败",
             },
         )
 
     if uses_boss and boss_unlogged:
         return error_response(
-            "LOGIN_REQUIRED",
-            "BOSS 直聘登录态不可用（未登录或超过 2 小时）：本次没有启动抓取，"
-            "避免先跑完其他源才发现登录问题。先问用户是否现在登录；"
-            "也可以移除 BOSS 源后先抓其他来源。",
+            "ACTION_REQUIRED",
+            "BOSS 直聘已确认抓取但尚未登录：直接调用 boss_login(action=\"login\") 扫码，"
+            "登录成功后浏览器保持常开，再带 boss_confirmed=true 重跑本工具。"
+            "不需要再问用户是否登录。",
             {
                 **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
-                "question": "BOSS 直聘未登录，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
+                "action": "boss_login",
+                "reason": "not_logged_in",
+                "next_tool": "boss_login",
+                "resume": {
+                    "boss_confirmed": True,
+                    "jd_specs": specs,
+                    "case_query": query,
+                    "direction": direction,
+                    "city": city,
+                },
                 "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
                 "alternative": "不想登录时，把 jd_specs / case_query 里的 boss 移除后重跑，其他源照常抓取",
                 "resume_hint": "已完成来源会写入断点缓存，登录后重跑会自动续抓，不必从头再来",
-                "rule": "先问用户是否现在登录；同意后用 harness 直接运行 login_command，"
-                        "不要把命令丢给用户手动执行；不得把登录失败直接当调研失败宣布",
+                "rule": "用户已同意抓取 BOSS，直接调用 boss_login(action=\"login\")，"
+                        "不要再问「是否现在登录」；不得把登录失败直接当调研失败宣布",
             },
         )
 
@@ -729,14 +739,16 @@ async def gather_research_data(
             return error_response(
                 "LOGIN_REQUIRED",
                 f"{reason}其他来源本次也没有可用数据。"
-                "可先扫码登录后重试，或改用其他数据源/导入 JD。",
+                "直接调用 boss_login(action=\"login\") 扫码后重试，或改用其他数据源/导入 JD。",
                 {
                     **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
-                    "question": "BOSS 直聘登录态不可用，我可以直接帮你打开登录窗口扫码，要现在登录吗？",
+                    "action": "boss_login",
+                    "reason": "not_logged_in",
+                    "next_tool": "boss_login",
                     "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
                     "source_status": report.get("source_status") or [],
-                    "rule": "先问用户是否现在登录；同意后用 harness 直接运行 login_command，"
-                            "不要把命令丢给用户手动执行",
+                    "rule": "用户已同意抓取 BOSS，直接调用 boss_login(action=\"login\")，"
+                            "不要再问「是否现在登录」",
                 },
             )
         return error_response(
@@ -781,12 +793,11 @@ async def gather_research_data(
             f"\n\n本轮源较多（{actual_source_count} 个），已在 {_TOTAL_BUDGET:.0f} 秒预算内返回；"
             "未完成来源已写断点缓存，重跑会续抓；下次建议拆批。"
         )
-    login_command = f'"{sys.executable}" -m src.scrapers.boss.login'
     if boss_auth_lost:
         message += (
             "\n\nBOSS 直聘：登录态已过期或触发环境异常，已被销毁。"
-            "需要补全时，先问用户是否现在登录；同意后直接用 harness 运行 "
-            f"{login_command}（用户只需扫码），再带 boss_confirmed=true 重跑。"
+            "需要补全时直接调用 boss_login(action=\"login\")（用户只需扫码），"
+            "登录成功后浏览器保持常开，再带 boss_confirmed=true 重跑。"
         )
     return message
 

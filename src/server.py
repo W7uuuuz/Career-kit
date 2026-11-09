@@ -5,6 +5,7 @@ from .mcp_app import mcp
 from .tools.analysis_tools import analyze_gaps, explore_goals, save_gap_analysis
 from .tools.application_list_tools import build_application_list
 from .tools.application_tools import delete_application, record_application
+from .tools.boss_tools import boss_login
 from .tools.case_tools import search_cases
 from .tools.company_selection_tools import select_target_companies
 from .tools.dashboard import (

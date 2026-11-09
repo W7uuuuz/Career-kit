@@ -874,3 +874,32 @@ def test_boss_list_only_rows_kept_and_reported(temp_profile):
     assert report["source_status"][0]["list_only"] == 1
     assert any("仅列表数据" in gap["missing"] for gap in report["gaps"])
     assert report["jd_samples"][0]["detail_status"] == "list_only"
+
+
+def test_gather_boss_consent_is_single_round(temp_profile):
+    """BOSS 只问一次：未确认返回 CONFIRMATION_REQUIRED；确认未登录直接 ACTION_REQUIRED。"""
+    import src.tools.research_tools as rt
+
+    specs = [{"company": "boss", "limit": 3}]
+    original_auth = rt.boss_has_valid_cookies
+    rt.boss_has_valid_cookies = lambda: False
+    try:
+        first = json.loads(asyncio.run(rt.gather_research_data(json.dumps(specs), "")))
+        assert first["code"] == "CONFIRMATION_REQUIRED"
+        assert first["details"]["login_tool"] == "boss_login"
+
+        second = json.loads(
+            asyncio.run(
+                rt.gather_research_data(json.dumps(specs), "", boss_confirmed=True)
+            )
+        )
+    finally:
+        rt.boss_has_valid_cookies = original_auth
+
+    assert second["code"] == "ACTION_REQUIRED"
+    details = second["details"]
+    assert details["action"] == "boss_login"
+    assert details["reason"] == "not_logged_in"
+    assert details["next_tool"] == "boss_login"
+    assert details["resume"]["boss_confirmed"] is True
+    assert "question" not in details, "确认后不得再问第二个是否登录问题"

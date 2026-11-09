@@ -16,10 +16,10 @@ BOSS 是补充源：
 |------|------|------|
 | keyword | 是 | 搜索关键词，如 `"Python"`、`"AI Agent"` |
 | city | 否 | 城市名（`"北京"`、`"上海"`、`"全国"`）或 9 位城市代码 |
-| experience | 否 | 经验要求，如 `"1-3年"`、`"3-5年"`、`"不限"` |
-| degree | 否 | 学历要求，如 `"本科"`、`"硕士"`、`"不限"` |
-| salary | 否 | 薪资范围，如 `"15-25K"`、`"30-50K"` |
 | limit | 否 | 返回数量上限，默认 20 |
+
+`experience` / `degree` / `salary` 暂不支持：BOSS 搜索接口需要经过校验的筛选码，
+本源未实现可靠映射。传入这些参数会返回明确的「不支持」错误，不会被静默忽略。
 
 ## 调用示例
 
@@ -48,47 +48,50 @@ fetch_jd_detail(url="https://www.zhipin.com/job_detail/xxx.html")
 ## 首次设置与登录
 
 1. 确保已安装 **Google Chrome 或 Microsoft Edge**（工具不回退 Chromium）。
-2. 运行登录命令（**优先由 Agent 的 harness 直接执行**，用户只需扫码）：
+2. 用户同意抓取 BOSS 后，Agent 先调用 `boss_login(action="status")`；未就绪时
+   直接调用 `boss_login(action="login")`：
 
    ```
-   "<venv-python>" -m src.scrapers.boss.login
+   boss_login(action="login")
    ```
 
-   工具会启动 **Career Kit 专用浏览器**，打开
-   `https://www.zhipin.com/web/user/?ka=header-login`，等待扫码；会复用浏览器启动时
-   的默认标签页，若仍看到默认新标签页请忽略它，直接在登录页扫码。确认接口能返回
-   明文薪资后写入登录标记（6 小时有效），并**自动关闭专用浏览器**。
-
-3. 专用 profile：`~/.career-kit/cache/boss/cdp-profile`。
+   工具会启动 **Career Kit 专用浏览器**，打开可见登录页
+   `https://www.zhipin.com/web/user/?ka=header-login`，用户只需扫码。
+   探测使用独立的后台标签页，不会导航或复用户可见的登录页。
+   只有接口返回明文薪资才算登录成功，随后写入登录标记（6 小时有效）。
+3. 登录成功后专用浏览器窗口**保持常驻**，后续抓取复用同一个后台浏览器，
+   不需要反复唤起登录。需要关闭时调用 `boss_login(action="close")`。
+4. 专用 profile：`~/.career-kit/cache/boss/cdp-profile`。
    不会读取或写入 `~/.boss-zhipin-scraper`，也不会抢用户主浏览器。
-4. CDP 端口默认 `9222`，可用环境变量 `CAREER_KIT_BOSS_CDP_PORT` 覆盖。
-5. 调研抓取时若专用浏览器未启动，会**自动拉起**同一 profile。
+5. CDP 端口默认 `9222`，可用环境变量 `CAREER_KIT_BOSS_CDP_PORT` 覆盖。
+6. 调研抓取时若专用浏览器未启动，会**自动拉起**同一 profile；
+   抓取只使用后台标签页，不操作用户可见页。
 
 ## 错误处理
 
 | 错误 | 原因 | 解决 |
 |------|------|------|
-| `需要登录 BOSS 直聘` | 登录标记不存在、超过 6 小时或 CDP 后端不可用 | 重新运行登录命令扫码 |
-| `未检测到可用登录态` | 浏览器未登录 / 登录态失效 | 扫码登录后重试 |
+| `需要登录 BOSS 直聘` | 登录标记不存在、超过 6 小时或 CDP 后端不可用 | 调用 `boss_login(action="login")` 扫码 |
+| `未检测到可用登录态` | 浏览器未登录 / 登录态失效 | `boss_login(action="login")` 后重试 |
 | `BOSS 接口返回限制状态` | 风控/验证/访问频繁 | 先在浏览器完成验证，稍后再试；关闭代理/VPN |
 | `未捕获到 BOSS 搜索响应` | 页面未加载、未登录或风控 | 确认专用浏览器能打开搜索页；稍后重试 |
 | `未检测到 Chrome 或 Edge` | 未安装受支持浏览器 | 安装 Chrome/Edge，不要用 Chromium |
-| `无法连接 CDP 端口` | 端口被占用或浏览器未启动 | 换 `CAREER_KIT_BOSS_CDP_PORT`，或重新运行登录命令 |
-| `详情页被登录墙截断` | 详情需要有效登录态 | 重新扫码登录后再 fetch_jd_detail |
+| `无法连接 CDP 端口` | 端口被占用或浏览器未启动 | 换 `CAREER_KIT_BOSS_CDP_PORT`，或重新登录 |
+| `详情页被登录墙截断` | 详情需要有效登录态 | `boss_login(action="login")` 后再 fetch_jd_detail |
+| `不支持参数：experience/degree/salary` | 本源未实现这些筛选 | 移除参数；只传 keyword / city / limit |
 
 ## 注意事项
 
-1. **交互纪律**：抓取前先问用户是否抓取 BOSS；未登录/登录过期时返回
-   `LOGIN_REQUIRED` / `CONFIRMATION_REQUIRED`。询问时说明「我可以帮你打开登录窗口，
-   你只需扫码」；用户同意后 Agent 用 harness 的终端/Bash 运行 `login_command`，
-   不要把命令丢给用户手动执行，也不得静默跳过该源或直接宣布失败。
+1. **一次同意**：抓取前只问一次是否把 BOSS 纳入本次调研；同意后未登录时直接
+   调用 `boss_login(action="login")`，不再追问第二次。未确认返回
+   `CONFIRMATION_REQUIRED`，确认但未登录返回 `ACTION_REQUIRED` /
+   `next_tool=boss_login`。不得静默跳过该源或直接宣布失败。
 2. **登录态不伪装**：只有接口返回明文薪资才写登录标记；未登录/风控明确失败，
-   不保存注定失效的状态。
+   不保存注定失效的状态。登录成功后浏览器窗口保持常开，由
+   `boss_login(action="close")` 关闭。
 3. **研究阶段 list-only**：BOSS 行不补详情、不剔除；数据缺口会写明
    「BOSS 仅列表数据，未抓 JD 详情」，需要全文时用 `fetch_jd_detail` 补抓。
-4. `salary` 过滤为**近似过滤**：BOSS API 对日薪岗（如「250-400元/天」）不生效，
-   结果中可能混入日薪岗位。
-5. 抓取频率受风控限制，短时间多次调用可能被临时限制。
+4. 抓取频率受风控限制，短时间多次调用可能被临时限制。
 
 ## 开源归属
 

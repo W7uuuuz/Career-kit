@@ -77,13 +77,14 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
 - BUG021 摸排：技能必须带 `authorship` / `control_level`，整份简历写 `self_assessment`；AI 不得代填。
 - 目标由用户确认：用户亲口说出的方向/城市/届别即视为确认（`intake(..., user_confirmed=true)`）；推断目标只能候选。
 - 首轮采集：优先邀请简历；没有简历就一次回 4 项，事实可合并，不追加第二个决策。
-- BOSS：抓取/登录前先问；同意后用 harness 执行，用户只扫码。
+- BOSS：抓取前只问一次；同意后先 `boss_login(action="status")`，未就绪再直接 `boss_login(action="login")`，用户只扫码。
 - 数据真实：没抓到就写「未获取」；失败源如实展示。
 - 企业适配（执行前必做校准）：select_target_companies → collect_company_evidence →
   analyze_company_requirements → save_requirement_profile → plan_execution_alignment →
   save_execution_alignment；数字由代码计算，LLM 只写 interpretation，每条变更必须带 evidence_ids。
-- BOSS 补充：collect_company_evidence 可带 include_boss=true；必须先问用户并传 boss_confirmed=true；
-  未登录返回 LOGIN_REQUIRED，先问是否现在扫码，不得把登录失败当抓取失败。
+- BOSS 补充：collect_company_evidence 可带 include_boss=true；只问一次并传 boss_confirmed=true；
+  未登录返回 LOGIN_REQUIRED / next_tool=boss_login，直接调用 boss_login(action="login")，
+  不再追问第二次；登录成功后浏览器窗口保持常开，不得把登录失败当抓取失败。
 - 投递清单：证据池/需求画像就绪后调用 build_application_list；城市硬筛、方向/技能/学历/档位打分，
   排除已投递，报告落 ~/CareerKit/<档案>/投递清单/。
 - 计划失配检测：证据刷新后、完成一个里程碑、周检视或用户主动问时调用 check_plan_fit；
@@ -143,7 +144,7 @@ start_session → parse_resume? → intake(who/have/want 或 bundle) → finaliz
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：49 个工具的唯一事实源
+- [工具总览](tools.md)：50 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业数据源](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式

@@ -179,18 +179,22 @@ def login_action(login_command: str) -> dict[str, Any]:
     """
     return {
         "harness_can_run": True,
+        "login_tool": "boss_login",
+        "login_tool_action": "boss_login(action=\"login\")",
         "login_url": BOSS_LOGIN_URL,
         "user_instruction": (
             "我可以直接帮你打开登录窗口，你只需要在浏览器里扫码。"
             "会弹出一个专用浏览器，请忽略可能出现的默认新标签页；"
             "打开后如果不在登录页，请点右上角「登录/扫码」；"
-            "扫码后稍等，浏览器会自动关闭；完成后告诉我继续。"
+            "扫码成功后窗口会保持打开，不会自动关闭，后续抓取直接复用；"
             "若登录后迟迟没有反应，可以打断这次会话，直接告诉我。"
         ),
         "agent_action": (
-            "同一会话只提示一次，不要反复问「要不要登录」；用户同意后直接用终端/Bash 工具运行 "
-            "login_command。脚本会打开系统浏览器并等待扫码——请用户扫码，扫码成功后重试原操作。"
-            "不要把命令丢给用户手动执行；只有当前 harness 无法运行命令时才让用户自己执行。"
+            "同一会话只提示一次，不要反复问「要不要登录」；用户同意后优先调用 "
+            "boss_login(action=\"login\")（harness 直接执行，用户只扫码）。"
+            "登录成功后浏览器窗口保持常驻，直接重试原操作；需要关闭时调用 "
+            "boss_login(action=\"close\")。不要把命令丢给用户手动执行；"
+            "只有 boss_login 不可用时，才用终端/Bash 运行 login_command 兜底。"
             "若登录后迟迟无响应，请用户打断本次会话并直接告诉 Agent，再按失败原因给恢复建议。"
         ),
         "login_command": login_command,

@@ -1,7 +1,7 @@
 """BOSS 直聘 Scraper——CDP 接入（复用本地已登录 Chrome/Edge）。
 
 核心思路：
-1. 用户运行 ``python -m src.scrapers.boss.login`` 在专用浏览器扫码登录；
+1. 用户调用 ``boss_login(action="login")`` 在专用浏览器扫码登录；
 2. Scraper 通过 CDP 连接专用浏览器，旁听页面自身的搜索接口，拿明文薪资；
 3. 详情按需交互式补抓，列表阶段只返回 list_only 行，不拖垮整批调研。
 
@@ -15,19 +15,20 @@ from typing import Any
 
 from ..base import CompanyScraper
 from . import cdp
-from .auth import has_valid_cookies, invalidate_auth
+from .auth import describe_ttl, has_valid_cookies, invalidate_auth
 
 BASE_URL = "https://www.zhipin.com"
+
+# BOSS 搜索 URL 不消费这些筛选参数；声明为不支持，收到时显式报错而不是静默忽略。
+_UNSUPPORTED_PARAMS = ("experience", "degree", "salary")
 
 
 def _login_required_message() -> str:
     return (
-        "需要登录 BOSS 直聘（登录标记不存在、已超过 6 小时或专用浏览器不可用）。"
-        "请在 career-kit 项目目录运行：\n"
-        f'    "{sys.executable}" -m src.scrapers.boss.login\n'
-        "使用当前 MCP 服务的解释器（绝对路径），避免裸 python 指向错误环境。\n"
-        "扫码成功后登录标记按 6 小时有效期管理，过期需重新登录；"
-        "若浏览器已关闭，抓取时会在后台自动拉起专用 profile。"
+        "需要登录 BOSS 直聘（登录标记不存在、已过期或专用浏览器不可用）。"
+        f"登录态按 {describe_ttl()}有效期管理。"
+        "请调用 boss_login(action=\"login\") 扫码登录；登录成功后浏览器窗口保持常驻，"
+        "抓取会自动复用，不需要反复登录。"
     )
 
 
@@ -36,8 +37,8 @@ def _env_anomaly_error(message: str) -> str:
         f"API 错误: {message}\n"
         "BOSS 登录态已被判定异常并销毁。环境异常通常是 BOSS 对当前网络/浏览器"
         "环境的判定：先关闭代理/VPN 或换网络，稍后再扫码；单纯重复扫码可能继续失败。\n"
-        "重新登录：\n"
-        f'    "{sys.executable}" -m src.scrapers.boss.login'
+        "重新登录：调用 boss_login(action=\"login\")；"
+        f'若 harness 不可用，再运行 "{sys.executable}" -m src.scrapers.boss.login。'
     )
 
 
@@ -105,9 +106,6 @@ class Scraper(CompanyScraper):
     PARAMS: dict[str, dict[str, Any]] = {
         "keyword": {"required": True, "description": "搜索关键词（如 \"Python\"、\"前端\"、\"AI\"）"},
         "city": {"required": False, "description": "城市名（如 \"北京\"、\"上海\"、\"全国\"）或城市代码"},
-        "experience": {"required": False, "description": "经验要求（如 \"1-3年\"、\"3-5年\"、\"不限\"）"},
-        "degree": {"required": False, "description": "学历要求（如 \"本科\"、\"硕士\"、\"不限\"）"},
-        "salary": {"required": False, "description": "薪资范围（如 \"15-25K\"、\"30-50K\"）"},
         "limit": {"required": False, "description": "返回数量上限，默认 20"},
     }
 
@@ -119,6 +117,20 @@ class Scraper(CompanyScraper):
         keyword = str(kwargs.get("keyword", "") or "").strip()
         city = str(kwargs.get("city", "全国") or "全国")
         limit = int(kwargs.get("limit", 20) or 20)
+
+        unsupported = [
+            name
+            for name in _UNSUPPORTED_PARAMS
+            if kwargs.get(name) not in (None, "")
+        ]
+        if unsupported:
+            return [{
+                "error": (
+                    f"BOSS 直聘源不支持参数：{', '.join(unsupported)}；"
+                    "该源只支持 keyword / city / limit。请移除这些参数后重试，"
+                    "不要把它当作已生效的筛选条件。"
+                )
+            }]
 
         if not keyword:
             return [{"error": "搜索关键词不能为空"}]

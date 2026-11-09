@@ -126,7 +126,11 @@ def test_boss_login_navigates_and_zero_param():
     # CDP 登录主流程必须导航到 BOSS 登录页（曾因丢失导致永久白屏）
     assert "cdp.LOGIN_URL" in login_src
     assert "Page.navigate" in login_src
-    assert "https://www.zhipin.com/web/user/" in cdp_src
+    # 登录 URL 唯一事实源在 guidance，cdp 只引用同一常量
+    assert "BOSS_LOGIN_URL" in cdp_src
+    from src.guidance import BOSS_LOGIN_URL
+
+    assert BOSS_LOGIN_URL == "https://www.zhipin.com/web/user/?ka=header-login"
     # 带参即打印用法退出，绝不带参拉起浏览器
     assert "len(sys.argv) > 1" in login_src
     # 窗口尺寸由浏览器自适应：必须最大化、不得代码规定分辨率
@@ -1255,3 +1259,43 @@ def test_goal_selection_has_three_tier_phase():
 
 
 
+
+
+def test_fetch_jd_detail_boss_login_required(temp_profile, monkeypatch):
+    """BOSS 详情登录墙必须返回 LOGIN_REQUIRED + next_tool=boss_login。"""
+    import asyncio
+
+    import src.server as server_module
+    import src.tools.data_tools as data_tools
+
+    monkeypatch.setattr(
+        data_tools,
+        "get_job_detail",
+        lambda *a, **k: {"error": "详情页被登录墙截断：登录态已不可用"},
+    )
+    result = json.loads(
+        asyncio.run(
+            server_module.fetch_jd_detail(
+                url="https://www.zhipin.com/job_detail/x.html"
+            )
+        )
+    )
+    assert result["code"] == "LOGIN_REQUIRED"
+    assert result["details"]["next_tool"] == "boss_login"
+    assert result["details"]["action"] == "boss_login"
+
+
+def test_fetch_company_jobs_boss_login_required_next_tool(temp_profile, monkeypatch):
+    """BOSS 未登录：返回 LOGIN_REQUIRED 且 next_tool=boss_login，不再问第二次。"""
+    import asyncio
+
+    import src.scrapers.boss.auth as boss_auth
+    import src.server as server_module
+
+    monkeypatch.setattr(boss_auth, "has_valid_cookies", lambda: False)
+    result = json.loads(
+        asyncio.run(server_module.fetch_company_jobs(company="boss"))
+    )
+    assert result["code"] == "LOGIN_REQUIRED"
+    assert result["details"]["next_tool"] == "boss_login"
+    assert "2 小时" not in result["message"]

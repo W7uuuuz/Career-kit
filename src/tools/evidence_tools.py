@@ -10,7 +10,10 @@ from ..core.stages import evidence
 from ..core.stages.base import StageContext, StageResult
 from ..guidance import login_action
 from ..mcp_app import mcp
-from ..scrapers.boss.auth import has_valid_cookies as boss_has_valid_cookies
+from ..scrapers.boss.auth import (
+    describe_ttl as boss_describe_ttl,
+    has_valid_cookies as boss_has_valid_cookies,
+)
 from .errors import error_response
 from .profile import get_active_profile_name
 from .tool_helpers import _json
@@ -35,11 +38,10 @@ async def collect_company_evidence(
 
     BOSS 直聘纪律（include_boss=True 时）：
     - BOSS 是跨公司补充源，只补充薪资与广度，不能替代目标企业池；
-    - 抓取前必须先问用户是否抓取 BOSS，用户同意后传 boss_confirmed=true；
-    - 未确认返回 CONFIRMATION_REQUIRED；确认但未登录返回 LOGIN_REQUIRED，
-      先问用户是否现在登录，绝不把登录失败直接当抓取失败；
-    - 用户同意登录后，用 harness 的终端/Bash 直接运行 login_command（用户只需扫码），
-      不要把命令丢给用户手动执行。
+    - 抓取前只问一次是否把 BOSS 纳入采集，用户同意后传 boss_confirmed=true；
+    - 未确认返回 CONFIRMATION_REQUIRED；确认但未登录返回 LOGIN_REQUIRED +
+      next_tool=boss_login，直接调用 boss_login(action="login")，不再追问第二次；
+    - 登录成功后浏览器保持常开并复用，绝不把登录失败直接当抓取失败。
 
     Args:
         company_pool_id: 目标企业池 artifact id；空串取当前档案最新且已确认的企业池
@@ -58,41 +60,42 @@ async def collect_company_evidence(
     if include_boss and not boss_confirmed:
         return error_response(
             "CONFIRMATION_REQUIRED",
-            "采集范围包含 BOSS 直聘：该源需要扫码登录（登录态 2 小时有效），"
-            "抓取前必须先问用户是否进行 BOSS 抓取。",
+            "采集范围包含 BOSS 直聘：同意抓取即可，若尚未登录我会直接打开登录窗口"
+            f"（登录态 {boss_describe_ttl()}有效），你只需扫码。",
             {
                 **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
+                "login_tool": "boss_login",
                 "question": (
-                    "是否抓取 BOSS 直聘？我可以直接帮你打开登录窗口，"
-                    "你只需扫码（登录态 2 小时有效）。"
+                    "是否把 BOSS 直聘纳入本次采集？如需登录我会直接打开登录窗口，"
+                    "你只需扫码。"
                 ),
                 "options": [
-                    "同意：用 harness 运行登录脚本，扫码后带 include_boss=true、"
-                    "boss_confirmed=true 重新调用 collect_company_evidence",
+                    "同意：带 include_boss=true、boss_confirmed=true 重新调用；"
+                    "若未登录先调用 boss_login(action=\"login\")",
                     "不同意：不带 include_boss 重新调用，只采集目标企业池",
                 ],
-                "rule": "把 question 转问用户；同意后用 harness 直接运行 login_command，"
-                        "不要把命令丢给用户手动执行；不得静默跳过 BOSS",
+                "rule": "只问一次；同意后未登录时直接调用 boss_login(action=\"login\")，"
+                        "不得静默跳过 BOSS",
             },
         )
 
     if include_boss and boss_confirmed and not boss_has_valid_cookies():
         return error_response(
             "LOGIN_REQUIRED",
-            "BOSS 直聘登录态不可用（未登录或超过 2 小时）：本次没有启动抓取，"
-            "先问用户是否现在登录；也可以不带 include_boss 只采集目标企业池。",
+            "BOSS 直聘已确认采集但尚未登录：直接调用 boss_login(action=\"login\") 扫码，"
+            "登录成功后浏览器保持常开，再重试；也可以不带 include_boss 只采集目标企业池。",
             {
                 **login_action(f'"{sys.executable}" -m src.scrapers.boss.login'),
-                "question": (
-                    "BOSS 直聘未登录，我可以直接帮你打开登录窗口扫码，要现在登录吗？"
-                ),
+                "action": "boss_login",
+                "reason": "not_logged_in",
+                "next_tool": "boss_login",
                 "after_login": (
                     "登录完成后带 include_boss=true、boss_confirmed=true "
                     "重新调用 collect_company_evidence"
                 ),
                 "alternative": "不想登录时不传 include_boss 重跑，只采集目标企业池",
-                "rule": "先问用户是否现在登录；同意后用 harness 直接运行 login_command，"
-                        "不要把命令丢给用户手动执行；不得把登录失败直接当抓取失败宣布",
+                "rule": "用户已同意采集 BOSS，直接调用 boss_login(action=\"login\")，"
+                        "不要再问第二次是否登录；不得把登录失败直接当抓取失败宣布",
             },
         )
 
