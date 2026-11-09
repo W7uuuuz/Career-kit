@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **设计一致性修复（2026-11-09）**：
+  - 建档首轮合并为「简历或 4 项采集卡」，事实可一次采集，用户亲口陈述即确认；
+    `finalize_profile` 不再代替用户确认目标。
+  - 下一步统一由 `resolve_progress` 派生；企业适配改为执行前必做；
+    `gap_stale_at` 强制回到差距分析。
+  - BOSS 直聘新增 `boss_login(status/login/close)`：登录页/探测页/抓取页隔离，
+    登录窗口唯一、成功后切到登录成功页，浏览器常驻复用；TTL 统一 6 小时；
+    `experience/degree/salary` 显式不支持。
+  - 数据源别名统一走 `companies.yaml`/loader；Nowcoder `order`、
+    Baidu/Tencent `limit`、GitHub `filter_company` 生效；详情字段、数据源计数与
+    SHEIN/OPPO 描述对齐。
+  - Artifact 阶段 2-10 强制上游引用；ExecutionState 只在 applied plan 后落库；
+    新计划强制重新生成任务；`evidence_ids` 校验单源；需求统计拒绝草稿数字；
+    证据阶段尊重 BOSS list-only。
+  - 工具数 49 → 50。
+
 ## v0.3.0 (2026-11-09)
 
 - **0.3 发布补充（2026-11-09）**：
