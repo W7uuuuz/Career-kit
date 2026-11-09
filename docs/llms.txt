@@ -22,11 +22,13 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 
 执行纪律：
 
-- 首屏先发 `[USER_BRIEF]`，再只问 `[GUIDE]` 里的一个问题；之后每轮沿用最新 `[GUIDE]`。
-- 不自行改写阶段名、不追加第二个问题、不跳步；工具返回与记忆冲突时以工具为准。
+- 首屏先发 `[USER_BRIEF]`，再按 `[GUIDE]` 的采集卡推进；之后每轮沿用最新 `[GUIDE]`。
+- 每轮最多一个决策；事实字段可以合并成一张清单一次问完，但不追加第二个决策。
+- 不自行改写阶段名、不跳步；工具返回与记忆冲突时以工具为准。
 - 用户可见文本不出现工具名、字段名、`JD01`/`CS03` 这类内部代号。
-- 目标必须由用户确认：`intake(section="want", ...)` 带 `user_confirmed=true` 才算确认；
-  从简历推断的方向只能作为候选。
+- 用户亲口说出的方向/城市/届别即视为确认，直接 `intake(..., user_confirmed=true)`；
+  只有从简历推断的方向才需要再确认。
+- 首轮优先邀请简历；没有简历就一次回 4 项（方向/城市/届别学历/实习项目）。
 - 用户说「不知道做什么」时，按 `[GUIDE]` 的下一步走 `explore_goals`，不要直接分析。
 - 展示分数/档位前必须先说明口径（维度、权重、结果怎么读）；规则见
   `career-kit://docs/rules`。
@@ -58,7 +60,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 完整前置条件、输入输出与质量门以 `career-kit://docs/workflow` 为准；这里只给命令顺序。
 
 ```
-start_session → parse_resume? → intake(who/have/want) → finalize_profile
+start_session → parse_resume? → intake(who/have/want 或 bundle) → finalize_profile
 → research_market → gather_research_data
 → analyze_gaps → save_gap_analysis
 → generate_roadmap → save_roadmap → save_roadmap_audit?
@@ -73,10 +75,11 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
 
 关键纪律：
 - BUG021 摸排：技能必须带 `authorship` / `control_level`，整份简历写 `self_assessment`；AI 不得代填。
-- 目标由用户确认：`intake(want)` 带 `user_confirmed=true`；推断目标只能候选。
+- 目标由用户确认：用户亲口说出的方向/城市/届别即视为确认（`intake(..., user_confirmed=true)`）；推断目标只能候选。
+- 首轮采集：优先邀请简历；没有简历就一次回 4 项，事实可合并，不追加第二个决策。
 - BOSS：抓取/登录前先问；同意后用 harness 执行，用户只扫码。
 - 数据真实：没抓到就写「未获取」；失败源如实展示。
-- 企业适配（执行前可选校准）：select_target_companies → collect_company_evidence →
+- 企业适配（执行前必做校准）：select_target_companies → collect_company_evidence →
   analyze_company_requirements → save_requirement_profile → plan_execution_alignment →
   save_execution_alignment；数字由代码计算，LLM 只写 interpretation，每条变更必须带 evidence_ids。
 - BOSS 补充：collect_company_evidence 可带 include_boss=true；必须先问用户并传 boss_confirmed=true；
@@ -85,7 +88,7 @@ start_session → parse_resume? → intake(who/have/want) → finalize_profile
   排除已投递，报告落 ~/CareerKit/<档案>/投递清单/。
 - 计划失配检测：证据刷新后、完成一个里程碑、周检视或用户主动问时调用 check_plan_fit；
   status=major_drift 时把 question_for_user 原意转问用户，用户同意后才 refresh / 重新校准，不自动改计划。
-- 路线图后先做企业适配（推荐），再细化当前阶段、生成任务；用户拒绝企业适配时才按基线版执行。
+- 路线图后先做企业适配（执行前必做），再细化当前阶段、生成任务；阶段 6-9 必须走完才进入执行。
 
 ## 返回值与错误
 

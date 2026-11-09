@@ -433,7 +433,8 @@ def test_legacy_adapter_defaults_for_empty_profile() -> None:
 def test_state_machine_without_artifacts(store: ArtifactStore, core_state: dict[str, Any]) -> None:
     result = state_machine.next_action("alice")
     assert result["stage"] == state_machine.STAGE_PROFILE
-    assert result["next_tool"] == "finalize_profile"
+    # 空档案还没有任何内容：先走采集卡，而不是 finalize 空档案。
+    assert result["next_tool"] == "intake(section='bundle')"
     assert all(value == "" for value in result["artifact_ids"].values())
     assert result["optional_next_tools"] == []
 

@@ -350,7 +350,7 @@ def test_analyze_gaps_blocks_late_skill_without_authorship(temp_profile):
     from src.server import analyze_gaps, finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake(
         "have",
         '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
@@ -383,7 +383,7 @@ def test_analyze_gaps_returns_step_template(temp_profile):
     from src.server import analyze_gaps, finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake(
         "have",
         '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
@@ -1125,7 +1125,7 @@ def test_daily_same_day_is_idempotent(temp_profile):
 
 
 def test_save_roadmap_guides_execution_start(temp_profile):
-    """save_roadmap 文案引导先细化当前阶段，再生成任务。"""
+    """save_roadmap 文案引导先做企业适配，再细化当前阶段、生成任务。"""
     from src.server import intake, save_roadmap
 
     intake("who", '{"name": "张三"}')
@@ -1137,7 +1137,10 @@ def test_save_roadmap_guides_execution_start(temp_profile):
          "kpi": {"metric": "完成", "target": "1个"}},
     ]}}
     out = _parse(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    assert "detail_current_phase" in out["message"] and "细化当前阶段" in out["message"]
+    assert "select_target_companies" in out["message"]
+    assert "detail_current_phase" in out["message"]
+    assert out["next_steps"] == ["select_target_companies"]
+    assert "跳过" not in out["message"] and "按基线" not in out["message"]
 
 
 # ============ 差距分析内容质量门（BUG-002/003 收尾：不编造落成代码） ============

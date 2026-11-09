@@ -578,10 +578,10 @@ def test_stage_position_fallback_walks_all_twelve_keys() -> None:
     assert next_tool == "build_application_list / record_application"
 
 
-def test_workflow_status_plan_fit_does_not_override_execution(
+def test_workflow_status_plan_fit_does_not_override_core_v2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """执行中 plan_fit 指向上游采集时，只能作为提示，主下一步仍是 get_next_tasks。"""
+    """plan_fit 只作提示；core_v2 缺 CompanyPool 时主下一步必须是企业筛选。"""
     _isolate_profile(tmp_path, monkeypatch)
     profile = CareerProfile(
         who={"name": "张三"},
@@ -617,14 +617,17 @@ def test_workflow_status_plan_fit_does_not_override_execution(
     output = task_tools.get_workflow_status()
 
     next_line = next(line for line in output.splitlines() if line.startswith("**下一步**"))
-    assert "get_next_tasks" in next_line
+    assert "select_target_companies" in next_line
     assert "collect_company_evidence" not in next_line
+    # plan_fit 仍是提示：不覆盖主下一步，但失配检测与建议工具要照常展示。
+    assert "计划失配检测" in output
+    assert "用户同意后可调用：collect_company_evidence" in output
 
 
-def test_workflow_status_all_finished_with_pending_phase_routes_generate_tasks(
+def test_workflow_status_all_finished_without_company_pool_selects_companies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """当前任务全部完成但路线图还有新阶段时，不能直接宣布「目标达成」。"""
+    """任务全完成且缺企业适配 artifact 时，新契约先走企业筛选而不是 generate_tasks。"""
     _isolate_profile(tmp_path, monkeypatch)
     profile = CareerProfile(
         who={"name": "张三"},
@@ -664,5 +667,8 @@ def test_workflow_status_all_finished_with_pending_phase_routes_generate_tasks(
     output = task_tools.get_workflow_status()
 
     next_line = next(line for line in output.splitlines() if line.startswith("**下一步**"))
-    assert "generate_tasks" in next_line
+    # 企业适配是执行前必做链路：缺 CompanyPool 时 core_v2 先要求企业筛选。
+    assert "select_target_companies" in next_line
     assert "目标达成" not in output
+    # 任务统计仍按档案事实展示。
+    assert "总计：1" in output and "已完成：1" in output

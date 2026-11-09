@@ -694,7 +694,8 @@ def test_tool_does_not_advance_empty_profile(workspace: SimpleNamespace) -> None
     assert json.loads(raw)["status"] == "incomplete_chain"
     action = state_machine.next_action(PROFILE_NAME)
     assert action["stage"] == state_machine.STAGE_PROFILE
-    assert action["next_tool"] == "finalize_profile"
+    # 空档案还没有任何内容：先走采集卡，而不是 finalize 空档案。
+    assert action["next_tool"] == "intake(section='bundle')"
 
 
 def test_unapplied_execution_plan_is_not_aligned(workspace: SimpleNamespace) -> None:

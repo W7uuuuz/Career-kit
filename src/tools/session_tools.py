@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import profile_display_name
+from ..core.progress import resolve_progress
 from ..guidance import (
+    goal_confirmed,
     guide_for,
     mark_brief_shown,
     mark_goal_confirmed,
@@ -21,7 +23,7 @@ from .probing import (
     find_self_assessment_issues,
     is_verified_skill,
 )
-from .profile import get_active_profile_name, load_profile, merge_section, save_profile
+from .profile import get_active_profile_name, load_profile, save_profile
 from .resume_parser import extract_text
 from .session import get_welcome_message
 from .tool_helpers import _parse_json_param, server_fingerprint_line
@@ -49,6 +51,8 @@ def start_session() -> str:
             "；目标 JD 在分析之后更新过——需先 analyze_gaps 重新分析，再考虑重新规划"
             if profile.gap_stale_at else ""
         )
+        progress = resolve_progress(profile)
+        next_tool = str(progress.get("next_tool") or "get_next_tasks")
         return (
             "—— 继续模式：检测到已有进行中的档案，不展示全量手册 ——\n\n"
             f"当前档案 {profile_display_name(get_active_profile_name())}："
@@ -57,7 +61,7 @@ def start_session() -> str:
             + (f"；差距分析已存在（match {profile.gap.get('match_score', '?')}）" if has_gap else "")
             + stale_note
             + "\n\n本会话应从续跑开始，而不是按新用户建档：\n"
-            "1. 跳过建档提问，直接调用 get_next_tasks 展示当前阶段任务，问用户想推进哪一项\n"
+            f"1. 下一步按状态机：{next_tool}——企业适配/上游采集未完成时先补齐，不要跳过\n"
             "2. 用户报告完成 → checkin_task 打卡（完成即沉淀能力证据）\n"
             "3. 用户说目标变了 / 想换方向 → 按 get_workflow_status 提示重新分析规划\n"
             "4. 用户明确要重新建档 → switch_profile 或 delete_profile 后走全量手册\n"
@@ -95,6 +99,12 @@ def start_session() -> str:
     blocks = opening_blocks(profile)
     mark_brief_shown(profile)
     save_profile(profile)
+    progress = resolve_progress(profile)
+    next_tool = str(progress.get("next_tool") or "finalize_profile")
+    if profile.who or profile.have or profile.want or profile.target_jd:
+        next_line = f"下一步：{next_tool}（以 [GUIDE] 为准）。"
+    else:
+        next_line = "下一步：按 [GUIDE] 采集卡开始。"
     return (
         f"{blocks}\n\n"
         "---\n"
@@ -103,8 +113,8 @@ def start_session() -> str:
         f"当前档案：{profile_display_name(get_active_profile_name())}\n"
         f"{summary_note}"
         f"\n[服务自检] {server_fingerprint_line()}\n"
-        "\n下一步：先把 [USER_BRIEF] 原样发给用户（若存在），再只问 [GUIDE] 里的问题；"
-        "不要直接索要简历或目标。"
+        f"\n{next_line}先把 [USER_BRIEF] 原样发给用户（若存在），"
+        "再按采集卡推进；首轮优先邀请简历，没有简历就一次回 4 项。"
     )
 
 
@@ -146,14 +156,14 @@ def parse_resume(file_path: str) -> str:
 
 
 @mcp.tool()
-def intake(section: str, data: str) -> str:
+def intake(section: str, data: str, user_confirmed: bool = False) -> str:
     """逐步填充档案信息。
 
-    何时调用：在 start_session 之后，根据用户描述逐步填充档案。
-    每次调用填充一个 section，可以多次调用。
+    何时调用：在 start_session 之后，根据用户描述填充档案。
+    用户亲口陈述的信息直接写入并视为确认；只有模型推断值才需要确认。
 
     Args:
-        section: 填充到哪个 section，只接受 who / have / want
+        section: 填充到哪个 section，接受 who / have / want / bundle
             - who: 你是谁（姓名、教育、状态）
             - have: 你有什么（技能、经历、资源）；关键技能请附带证据与置信度，
                 并标 authorship（作者身份）+ control_level（把控度自评 0-10），
@@ -163,17 +173,22 @@ def intake(section: str, data: str) -> str:
                 - 深度规划确认行业后写 industry / industry_id
                 - expected_outcome: 最终想要的结果（大厂/平台、先上车再发展、
                   稳定优先、薪资优先、成长/技术优先）
-                - 必须由用户本人确认方向/城市/届别后，带 `user_confirmed=true` 写入；
+                - 必须由用户本人确认方向/城市/届别后，带 user_confirmed=true 写入；
                   模型从简历推断的目标只能作为候选，不能直接进入分析
+            - bundle: 一次写入多个 section，data 形如
+                {"who": {...}, "have": {...}, "want": {...}}，至少包含一个对象
         data: 用户提供的信息，必须是 JSON 对象字符串
             示例：'{"name":"张三", "education":"计算机本科", "skills":["Python", "React"]}'
             非法 JSON 会被拒绝且不写入档案
+        user_confirmed: 用户是否亲口确认了目标。优先级高于 data 里的 user_confirmed；
+            仅在写入 want（或 bundle 含 want）时生效
     """
-    if section not in ("who", "have", "want"):
+    valid_sections = ("who", "have", "want", "bundle")
+    if section not in valid_sections:
         return error_response(
             "INVALID_SECTION",
-            f"section 必须是 who/have/want，收到的是「{section}」",
-            {"received": section, "valid": ["who", "have", "want"]},
+            f"section 必须是 who/have/want/bundle，收到的是「{section}」",
+            {"received": section, "valid": list(valid_sections)},
         )
 
     # 先校验再写入：坏 JSON 静默入库会污染工作流状态判定（BUG-007）
@@ -182,41 +197,62 @@ def intake(section: str, data: str) -> str:
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
 
-    before = load_profile()
-    old_industry = ""
-    if section == "want":
-        old_industry = industry_of(before.want)
-    profile = merge_section(section, data)
+    if section == "bundle":
+        sections: dict[str, dict] = {}
+        for key in ("who", "have", "want"):
+            value = payload.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, dict):
+                return error_response(
+                    "INVALID_PARAM",
+                    f"bundle.{key} 必须是 JSON 对象，收到的是 {type(value).__name__}",
+                    {"section": key, "received": type(value).__name__},
+                )
+            sections[key] = value
+        if not sections:
+            return error_response(
+                "INVALID_PARAM",
+                "bundle 至少要包含 who/have/want 中的一个对象。",
+                {"received_keys": list(payload)},
+            )
+    else:
+        sections = {section: payload}
+
+    profile = load_profile()
+    old_industry = industry_of(profile.want) if "want" in sections else ""
+    for name, value in sections.items():
+        profile.merge(name, value)
+
     # 直接调用 intake（未走 start_session）时也要初始化 guidance：
     # 否则 progress 会按旧档案兜底，finalize 前跳到市场调研（复测 BUG #12-14）。
     if not profile.guidance:
         mark_brief_shown(profile)
-        save_profile(profile)
-    if section == "want":
-        # 只有用户本人确认过才点亮「目标已确认」；模型推断写入的 want 不算。
-        if payload.get("user_confirmed") is True:
+
+    # 只有用户本人确认过才点亮「目标已确认」；模型推断写入的 want 不算。
+    confirmed = bool(user_confirmed) or payload.get("user_confirmed") is True
+    if "want" in sections:
+        if confirmed:
             mark_goal_confirmed(profile)
         else:
             reset_goal_confirmation(profile)
-        save_profile(profile)
+
     result = (
-        f"已记录到「{section}」。当前档案版本：v{profile.version}\n"
-        "下一步：继续补齐其他 section；who/have/want 都有内容后调用 finalize_profile。"
+        "已记录到「" + "、".join(sections) + f"」。当前档案版本：v{profile.version}"
     )
 
     # 行业变更：旧调研/差距/路线图不再代表新目标，标记过期由工作流提示重跑。
-    if section == "want" and mark_industry_change(
+    if "want" in sections and mark_industry_change(
         profile, old_industry, industry_of(profile.want)
     ):
         profile.touch()
-        save_profile(profile)
         result += (
             "\n\n行业已变更：旧的市场调研/差距分析/路线图可能不再适用，"
             "已标记分析过期；请重新调研/分析后再规划。"
         )
 
     # 毕业届引导（届别校验的数据基础）：who 未含 graduation_year 时提醒补充
-    if section == "who":
+    if "who" in sections:
         who = profile.who or {}
         if not who.get("graduation_year") and not who.get("graduation"):
             result += (
@@ -225,8 +261,10 @@ def intake(section: str, data: str) -> str:
                 "不补充也不影响流程，届别校验会自动跳过。"
             )
 
+    save_profile(profile)
+
     # Core v2 同步：用户本人确认目标后落 TargetSpec artifact（失败不阻断）
-    if section == "want" and payload.get("user_confirmed") is True:
+    if "want" in sections and confirmed:
         try:
             from ..core.sync import sync_target
 
@@ -257,6 +295,14 @@ def finalize_profile(skip_probing: bool = False) -> str:
     后续步骤：先 research_market 做市场调研（推荐），再 analyze_gaps。
     """
     profile = load_profile()
+
+    # 空档案不放行：没有 who/have/want/target_jd 时生成摘要只会制造假进度。
+    if not (profile.who or profile.have or profile.want or profile.target_jd):
+        return error_response(
+            "MISSING_DATA",
+            "档案还是空的：至少需要 who/have/want/target_jd 中一项内容后才能真正建档。",
+            {"missing": ["who", "have", "want", "target_jd"]},
+        )
 
     # 摸排硬门禁（BUG-001）：先检查再生成摘要——有技能但无用户确认证据时不放行
     have = profile.have or {}
@@ -321,10 +367,7 @@ def finalize_profile(skip_probing: bool = False) -> str:
         parts.append(f"目标：{_summarize_dict(profile.want)}")
 
     profile.summary = "；".join(parts) if parts else "（档案为空）"
-    # 建档已走到 finalize，说明用户已确认方向；否则 GUIDE 会一直停在
-    # 「确认毕业方向」，重复问用户已经回答过的问题（P1-3）。
-    if _has_goal(profile):
-        mark_goal_confirmed(profile)
+    # 目标确认只由 intake(user_confirmed=true) 点亮：finalize 不代替用户确认。
     save_profile(profile)
 
     # Core v2 同步：档案快照落 artifact（失败不影响建档主流程）
@@ -335,6 +378,9 @@ def finalize_profile(skip_probing: bool = False) -> str:
             sync_profile(get_active_profile_name())
         except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
             pass
+
+    # 同步会写 core_state；重新读档后再推导下一步，避免本地对象看不到 ProfileSnapshot。
+    profile = load_profile()
 
     # 跳过留痕提示
     skip_note = ""
@@ -353,13 +399,18 @@ def finalize_profile(skip_probing: bool = False) -> str:
             "再用 intake(section='want') 落定，然后才进入 analyze_gaps。"
         )
 
-    if _has_goal(profile):
-        next_step = (
-            "下一步：先调用 research_market 做市场调研（推荐，真实市场是分析的地基），"
-            "再调用 analyze_gaps；用户想跳过调研时也可直接 analyze_gaps。"
+    # 下一步只从状态推导取，不在这里自建「有目标→调研 / 无目标→探索」分支。
+    progress = resolve_progress(profile)
+    next_tool = str(progress.get("next_tool") or "finalize_profile")
+    next_step = (
+        f"下一步：{next_tool}（按当前档案状态推导；目标尚未由用户确认时，"
+        "先按 GUIDE 确认，不要直接分析）。"
+    )
+    if _has_goal(profile) and not goal_confirmed(profile):
+        next_step += (
+            " 目标确认后先用 research_market 做市场调研（真实市场是分析的地基），"
+            "再进入差距分析。"
         )
-    else:
-        next_step = "下一步：先调用 explore_goals 帮用户选定方向，再进入分析。"
 
     return (
         f"档案已确认。\n\n摘要：{profile.summary}{skip_note}{goal_reminder}\n\n"
@@ -449,7 +500,9 @@ def import_jd(jd_text: str) -> str:
     return (
         f"已导入目标 JD。当前档案版本：v{profile.version}"
         f"{stale_note}\n\n"
-        "下一步：调用 analyze_gaps 开始差距分析。"
+        "先确认目标（用户亲口确认时调用 intake(section='want', user_confirmed=true)），"
+        "再按下面的引导继续；不要跳过目标确认直接分析。\n\n"
+        f"{guide_for(load_profile())}"
     )
 
 

@@ -135,6 +135,23 @@ FAMILIARITY_OPTIONS: tuple[str, ...] = (
     "已经有明确目标",
 )
 
+# 首轮采集卡：只有一个决策（给简历 / 一次回 4 项），事实字段一次问完。
+INTAKE_CARD = (
+    "为了少打扰你，这一步尽量一次问完：\n"
+    "有简历就直接发我（文件或路径），我会读出学历、届别、经历和技能；\n"
+    "没有简历，就一次回我 4 项：\n"
+    "1) 方向/岗位（不确定写「不知道」）\n"
+    "2) 城市\n"
+    "3) 届别 + 学历/专业\n"
+    "4) 实习/项目（没有写「没有」）"
+)
+
+INTAKE_OPTIONS: tuple[str, ...] = (
+    "我有简历，给路径",
+    "我一次说 4 项",
+    "先只定方向",
+)
+
 BOSS_LOGIN_URL = "https://www.zhipin.com/web/user/?ka=header-login"
 
 EXPECTED_OUTCOME_OPTIONS: tuple[str, ...] = (
@@ -283,7 +300,12 @@ def _want_text(profile: Any) -> tuple[str, str, str]:
         or ""
     )
     city = str(want.get("city") or "")
-    year = str(want.get("graduation_year") or "")
+    who = getattr(profile, "who", None) or {}
+    year = ""
+    if isinstance(who, dict):
+        year = str(who.get("graduation_year") or "")
+    if not year:
+        year = str(want.get("graduation_year") or "")
     return role, city, year
 
 
@@ -371,6 +393,7 @@ class Guide:
     next_action: str = ""
     warnings: list[str] = field(default_factory=list)
     brief_needed: bool = False
+    kind: str = "decision"
     what: str = ""
     method: str = ""
     how_to_read: str = ""
@@ -384,14 +407,14 @@ class Guide:
 # 每个状态的「在做什么 / 怎么做 / 结果怎么读」——先解释，再判定
 _STATUS_META: dict[str, tuple[str, str, str]] = {
     "brief": (
-        "介绍 Career Kit，并确认你对毕业方向的了解程度",
-        "先带你看完整 12 步，再只问一个问题；不需要准备材料",
-        "按真实想法回答即可，没有标准答案",
+        "介绍 Career Kit，并邀请你给简历或一次说清基本情况",
+        "先带你看完整 12 步，再只问一个决策；不需要准备材料",
+        "有简历就发简历，没有就一次回 4 项，没有标准答案",
     ),
-    "familiarity": (
-        "确认你对毕业方向的了解程度",
-        "听完你的回答再决定是否先做行业扫盲",
-        "不了解也没关系，扫盲是可选的",
+    "intake_wait": (
+        "把你刚才说的信息写入档案",
+        "先把刚才的信息整理进档案，本轮不用再向你提问",
+        "信息已经足够，本轮不用再向用户新增问题",
     ),
     "goal": (
         "确认你的目标（方向 / 城市 / 届别）",
@@ -460,6 +483,7 @@ def _guide(
     next_action: str = "",
     profile: Any = None,
     brief_needed: bool = False,
+    kind: str = "decision",
 ) -> Guide:
     step = JOURNEY_STEPS[_STEP_INDEX[step_id] - 1]
     what, method, how_to_read = _STATUS_META.get(status, ("", "", ""))
@@ -476,6 +500,7 @@ def _guide(
         next_action=next_action,
         warnings=warnings(profile) if profile is not None else [],
         brief_needed=brief_needed,
+        kind=kind,
         what=what,
         method=method,
         how_to_read=how_to_read,
@@ -484,12 +509,33 @@ def _guide(
 
 
 def _profile_guide(profile: Any) -> Guide:
+    has_section = bool(
+        getattr(profile, "who", None)
+        or getattr(profile, "have", None)
+        or getattr(profile, "want", None)
+        or getattr(profile, "target_jd", None)
+    )
+    if not has_section:
+        return _guide(
+            "profile",
+            "profile",
+            INTAKE_CARD,
+            options=list(INTAKE_OPTIONS),
+            next_action=(
+                "用户给简历先调用 parse_resume，再 intake(section='bundle')；"
+                "一次回 4 项直接 intake(section='bundle', user_confirmed=用户是否亲口确认)；"
+                "收齐 who/have 后调用 finalize_profile；技能必须由用户确认，不能照抄简历"
+            ),
+            profile=profile,
+            kind="intake",
+        )
     return _guide(
         "profile",
         "profile",
-        "有简历文件吗？有的话给我路径；没有就简单说说你的经历，我会逐项向你求证。",
-        options=["我有简历，给路径", "我口述经历", "先不补，直接看市场"],
-        next_action="收齐 who/have 后调用 finalize_profile；技能必须由你确认，不能照抄简历",
+        "信息已收齐，下一步把它整理成一份可核验的职业档案。",
+        options=["开始整理"],
+        next_action="finalize_profile；若技能证据未确认，先按摸排纪律确认 "
+                    "authorship / control_level / self_assessment",
         profile=profile,
     )
 
@@ -548,9 +594,10 @@ def _company_guide(profile: Any) -> Guide:
         "company",
         "company",
         "路线图已就绪。下一步筛选目标企业：先按档位和行业给你一份名单，你再增删确认。"
-        "要先看名单吗？",
-        options=["推荐目标企业", "先跳过，按基线执行"],
-        next_action="select_target_companies；用户确认名单后才进入岗位与面经采集",
+        "要现在生成名单吗？",
+        options=["生成目标企业名单"],
+        next_action="select_target_companies；名单确认后进入 collect_company_evidence，"
+                    "企业适配是执行前必做链路",
         profile=profile,
     )
 
@@ -587,14 +634,26 @@ def _alignment_guide(profile: Any) -> Guide:
         "alignment",
         "alignment",
         "企业需求已分析。下一步用真实要求校准培养方案，生成执行版路线图。要现在校准吗？",
-        options=["开始校准", "先按基线路线图执行"],
+        options=["开始校准"],
         next_action="plan_execution_alignment → save_execution_alignment；"
-                    "用户跳过时直接 detail_current_phase 或 generate_tasks",
+                    "校准完成后重新生成当前阶段任务",
         profile=profile,
     )
 
 
 def _execution_guide(profile: Any, *, ready: bool) -> Guide:
+    plan = getattr(profile, "plan", None) or {}
+    detail_ready = isinstance(plan, dict) and bool(plan.get("current_detail"))
+    has_tasks = bool(getattr(profile, "tasks", None) or [])
+    if detail_ready and not has_tasks:
+        return _guide(
+            "execution",
+            "execution",
+            "当前阶段详细路线已就绪。下一步把它合并成可打卡任务。",
+            options=["推荐：生成任务", "先看职业地图"],
+            next_action="generate_tasks（合并详细路线与打卡点）；随后 get_next_tasks",
+            profile=profile,
+        )
     if not ready:
         return _guide(
             "execution",
@@ -641,7 +700,12 @@ def _guide_from_progress(profile: Any) -> Guide:
     if stage == STAGE_EXECUTING:
         return _execution_guide(profile, ready=True)
     if stage == STAGE_EXECUTION:
-        ready = bool(progress.get("has_execution_state") or progress.get("has_tasks"))
+        has_detail = bool((getattr(profile, "plan", None) or {}).get("current_detail"))
+        ready = bool(
+            progress.get("has_execution_state")
+            or progress.get("has_tasks")
+            or has_detail
+        )
         return _execution_guide(profile, ready=ready)
     builder = _STAGE_GUIDES.get(stage)
     if builder is not None:
@@ -655,34 +719,41 @@ def build_guide(profile: Any) -> Guide:
         return _guide(
             "profile",
             "brief",
-            "你对毕业后的方向了解多少？",
-            options=list(FAMILIARITY_OPTIONS),
-            next_action="用户回答后，按对应分支继续；不要先要简历或目标",
+            INTAKE_CARD,
+            options=list(INTAKE_OPTIONS),
+            next_action=(
+                "用户给简历 → parse_resume → intake(section='bundle')；"
+                "一次回 4 项 → intake(section='bundle', user_confirmed=用户是否亲口确认)；"
+                "用户亲口陈述即确认，不要追加第二个确认决策"
+            ),
             profile=profile,
             brief_needed=True,
+            kind="intake",
         )
 
     if not goal_confirmed(profile):
-        want = getattr(profile, "want", None) or {}
-        scan_done = bool(isinstance(want, dict) and want.get("scan_completed_at"))
-        if not want and not scan_done and not _has_sections(profile):
+        if not _has_sections(profile):
             return _guide(
                 "profile",
-                "familiarity",
-                "你对毕业后的方向了解多少？",
-                options=list(FAMILIARITY_OPTIONS),
+                "intake_wait",
+                "先把你刚才说的信息写进档案，再继续。",
                 next_action=(
-                    "完全不了解 → 提议扫盲；有一些想法 → 先问方向，再确认城市/届别；"
-                    "已有目标 → 直接确认方向/城市/届别。用户回答后不要重复问同一题。"
+                    "先调用 parse_resume 或 intake(section='bundle', user_confirmed=...)，"
+                    "不要重复提问。"
                 ),
                 profile=profile,
+                kind="intake",
             )
         return _guide(
             "profile",
             "goal",
             goal_question(profile),
             options=["对，就是这样", "方向要改", "城市/届别要改"],
-            next_action="用户确认后调用 intake(section='want', data 里带 user_confirmed=true)，再继续",
+            next_action=(
+                "用户没有方向 → explore_goals；用户给出方向 → "
+                "intake(section='want', data 里带 user_confirmed=true)；"
+                "用户已亲口说过的方向/城市/届别再问一遍"
+            ),
             profile=profile,
         )
 
@@ -735,7 +806,10 @@ def render_guide(guide: Guide) -> str:
     if guide.how_to_read:
         lines.append(f"结果怎么读：{guide.how_to_read}")
     if guide.options:
-        lines.append(f"本轮只问一个问题：{guide.ask}")
+        if guide.kind == "intake":
+            lines.append(f"本轮采集（事实可以合并成一张清单一次问完）：{guide.ask}")
+        else:
+            lines.append(f"本轮只问一个决策：{guide.ask}")
         lines.append("可选回答：" + " / ".join(guide.options))
     else:
         lines.append(f"本轮不用等确认，直接说明并继续：{guide.ask}")
@@ -747,10 +821,10 @@ def render_guide(guide: Guide) -> str:
     if guide.rules_hint:
         lines.append(f"规则入口：{guide.rules_hint}")
     if guide.brief_needed:
-        lines.append("首次进入：先发上面的 [USER_BRIEF]，再问下面的问题。")
+        lines.append("首次进入：先发上面的 [USER_BRIEF]，再按下面的采集卡提问。")
     lines += [
         "转述纪律：只把 [GUIDE] 到 [GUIDE_MODEL] 之间的内容转述给用户；"
-        "不要出现工具名、字段名、JD01/CS03 这类内部代号；不要一次问多个问题。",
+        "不要出现工具名、字段名、JD01/CS03 这类内部代号；不要追加第二个决策。",
         "[GUIDE END]",
     ]
     return "\n".join(lines)
@@ -775,6 +849,8 @@ __all__ = [
     "BOSS_LOGIN_URL",
     "EXPECTED_OUTCOME_OPTIONS",
     "FAMILIARITY_OPTIONS",
+    "INTAKE_CARD",
+    "INTAKE_OPTIONS",
     "JOURNEY_STEPS",
     "MAINTENANCE_CLOSING",
     "PHASE_TYPE_LABELS",

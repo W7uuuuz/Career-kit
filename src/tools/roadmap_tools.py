@@ -7,6 +7,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from ..core.progress import resolve_progress
 from ..guidance import guide_for, verdict_label
 from ..mcp_app import mcp
 from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
@@ -43,8 +44,17 @@ def generate_roadmap() -> str:
 
     ctx = build_methodology_context("roadmap", profile, compact=True)
 
+    progress = resolve_progress(profile)
+    core_next = str(progress.get("next_tool") or "")
+    # 当前仍在生成路线图：下一步就是保存；其余情况跟随状态机，不再自维护长清单。
+    next_steps = (
+        ["save_roadmap"]
+        if core_next in ("", "generate_roadmap")
+        else [core_next]
+    )
+
     return _json({
-        "next_steps": ["save_roadmap", "detail_current_phase", "generate_tasks"],
+        "next_steps": next_steps,
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
         "step_template": [
@@ -531,6 +541,12 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
         pass
 
+    # 同步会写 core_state；重新读档后统一推导下一步与 GUIDE，避免本地对象看不到基线 artifact。
+    profile = load_profile()
+    progress = resolve_progress(profile)
+    next_tool = str(progress.get("next_tool") or "")
+    next_steps = [next_tool] if next_tool else ["select_target_companies"]
+
     # 格式化报告
     report = format_roadmap(parsed)
 
@@ -581,15 +597,13 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             )
             + "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
-            "接下来建议先做企业适配，把基线路线图校准为执行版："
+            "接下来先做企业适配（执行前必做），把基线路线图校准为执行版："
             "select_target_companies → collect_company_evidence → analyze_company_requirements "
             "→ save_requirement_profile → plan_execution_alignment → save_execution_alignment；"
-            "完成后再 detail_current_phase → generate_tasks。\n"
-            "用户暂时不想做企业适配时，也可以先 detail_current_phase 细化当前阶段，"
-            "再 generate_tasks 按基线版执行。\n\n"
+            "完成后再 detail_current_phase → generate_tasks。\n\n"
             f"{guide_for(profile)}"
         ),
-        "next_steps": ["detail_current_phase", "generate_tasks"],
+        "next_steps": next_steps,
         "context": {
             "phase": "roadmap_saved",
             "version": profile.version,

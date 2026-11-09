@@ -239,7 +239,7 @@ def test_empty_profile_starts_at_stage_one(
     action = state_machine.next_action(PROFILE_NAME)
 
     assert action["stage"] == state_machine.STAGE_PROFILE
-    assert action["next_tool"] == "finalize_profile"
+    assert action["next_tool"] == "intake(section='bundle')"
     assert all(value == "" for value in action["artifact_ids"].values())
     assert action["optional_next_tools"] == []
 
@@ -247,7 +247,7 @@ def test_empty_profile_starts_at_stage_one(
 def test_stages_follow_artifact_order(
     store: ArtifactStore, profile_state: dict[str, Any]
 ) -> None:
-    assert state_machine.next_action(PROFILE_NAME)["next_tool"] == "finalize_profile"
+    assert state_machine.next_action(PROFILE_NAME)["next_tool"] == "intake(section='bundle')"
     _save_profile(store)
 
     action = state_machine.next_action(PROFILE_NAME)

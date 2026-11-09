@@ -1065,6 +1065,13 @@ def _backfill_core_state(profile):
     return load_profile() if changed else profile
 
 
+def _core_next_step_text(action: dict) -> str:
+    """把状态机输出转成「下一步」单行文案，保证与 [GUIDE] 同源。"""
+    tool = str((action or {}).get("next_tool") or "")
+    reason = str((action or {}).get("reason") or "")
+    return f"{tool}（{reason}）" if reason else tool
+
+
 def _stage_position(profile, core_action: dict) -> tuple[int, str, str]:
     """根据状态机输出（缺失时回退 core_state）给出 12 阶段位置与下一步。"""
     stage = str((core_action or {}).get("stage") or "")
@@ -1288,6 +1295,11 @@ def get_workflow_status() -> str:
             f"{fit['next_tool']}（计划失配：{fit.get('recommended_action', '')}）"
         )
 
+    # 唯一事实源：core_v2（resolve_progress）有结论时，**下一步**只跟它走——
+    # 已有 tasks 也不能把阶段 6-9 的企业适配覆盖成 get_next_tasks。
+    if core_v2.get("next_tool"):
+        next_step = _core_next_step_text(core_v2)
+
     # 构建状态报告
     total_tasks = len(profile.tasks)
     completed_tasks = sum(1 for t in profile.tasks if t.status == "completed")
@@ -1338,7 +1350,7 @@ def get_workflow_status() -> str:
         stored = [f"{key}={value}" for key, value in artifact_ids.items() if value]
         if stored:
             lines.append("- 已落库：" + "、".join(stored))
-        lines.append("- 说明：企业适配是执行前的推荐校准；不做也能按基线路线图继续执行。")
+        lines.append("- 说明：企业适配是执行前必做链路；完成后才进入任务执行。")
         lines.append("")
     fit_lines = _plan_fit_lines(fit)
     if fit_lines:
@@ -1349,7 +1361,7 @@ def get_workflow_status() -> str:
     lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
     lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
     lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap")
-    lines.append("- 企业适配（执行前推荐校准）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
+    lines.append("- 企业适配（执行前必做）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
     lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
     lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
     lines.append("- 投递：build_application_list 批量生成投递清单；投递/面试/offer 进展用 record_application 登记")

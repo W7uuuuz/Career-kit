@@ -101,10 +101,27 @@ def resolve_progress(
         resolved[stage] = resolve_artifact(store, profile_name, stage, artifact_id)
 
     artifact_ids: dict[str, str] = dict.fromkeys(ARTIFACT_KEYS, "")
+    legacy = legacy_flags(profile)
+
+    # 目标 JD 更新后旧差距分析过期：必须强制回到差距阶段，下游 tasks/plan 不得覆盖。
+    if getattr(profile, "gap", None) and str(
+        getattr(profile, "gap_stale_at", "") or ""
+    ).strip():
+        resolved_ids = {
+            STAGE_KEYS[stage]: _artifact_id(resolved[stage]) for stage in STAGE_ORDER
+        }
+        return _result(
+            STAGE_GAP,
+            "analyze_gaps",
+            "目标 JD 已更新，旧差距分析已过期，必须先重新分析",
+            resolved_ids,
+            legacy=legacy,
+            has_tasks=_has_tasks(profile),
+        )
+
     has_required_artifact = any(
         resolved[stage] is not None for stage in REQUIRED_STAGES
     )
-    legacy = legacy_flags(profile)
     # 新流程档案（有 guidance）即使还没 finalize，也不能按「旧档案已有 section」
     # 跳阶段，否则 GUIDE 会在 finalize 前跳到市场调研（复测 BUG #12-13）。
     legacy_mode = _is_legacy_mode(profile)
@@ -122,6 +139,39 @@ def resolve_progress(
             continue
         if legacy_mode and not has_required_artifact and legacy_stage_done(profile, stage):
             continue
+
+        # 空档案还没有任何可采集内容：先走采集卡，而不是让用户 finalize 空档案。
+        if stage == STAGE_PROFILE:
+            if not _has_any_section(profile):
+                return _result(
+                    STAGE_PROFILE,
+                    "intake(section='bundle')",
+                    "尚无档案内容，先采集基本信息",
+                    artifact_ids,
+                    legacy=legacy,
+                    has_tasks=_has_tasks(profile),
+                )
+            # 目标未由用户确认时停在目标阶段；已有目标字段则请用户确认，
+            # 完全没有目标则先探索方向。legacy 档案按已确认处理。
+            if not _goal_confirmed(profile):
+                if _has_want(profile) or bool(getattr(profile, "target_jd", None)):
+                    return _result(
+                        STAGE_TARGET,
+                        "intake(want)",
+                        "目标已存在但尚未由用户确认",
+                        artifact_ids,
+                        legacy=legacy,
+                        has_tasks=_has_tasks(profile),
+                    )
+                return _result(
+                    STAGE_TARGET,
+                    "explore_goals",
+                    "尚未确定目标岗位",
+                    artifact_ids,
+                    legacy=legacy,
+                    has_tasks=_has_tasks(profile),
+                )
+
         return _result(
             stage,
             _core_stage_tool(profile, stage),
@@ -425,6 +475,27 @@ def _confirmed(pool: dict[str, Any]) -> bool:
 def _core_state(profile: Any) -> dict[str, Any]:
     value = getattr(profile, "core_state", None)
     return value if isinstance(value, dict) else {}
+
+
+def _has_any_section(profile: Any) -> bool:
+    """是否已有任何可采集内容；空档案应先走采集卡。"""
+    return bool(
+        getattr(profile, "who", None)
+        or getattr(profile, "have", None)
+        or getattr(profile, "want", None)
+        or getattr(profile, "target_jd", None)
+    )
+
+
+def _goal_confirmed(profile: Any) -> bool:
+    """目标是否由用户确认；legacy 档案按已确认处理。
+
+    延迟到本地读取 guidance，避免 progress 反向 import guidance 造成循环依赖。
+    """
+    guidance = getattr(profile, "guidance", None)
+    if isinstance(guidance, dict) and guidance.get("goal_confirmed_at"):
+        return True
+    return _is_legacy_mode(profile)
 
 
 def _has_want(profile: Any) -> bool:
