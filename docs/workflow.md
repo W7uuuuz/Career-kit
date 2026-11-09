@@ -67,8 +67,9 @@ evidence / requirement / execution_plan / execution / applications / review`；
 `TargetSpec` 同样由 `core.sync` 包装持久化，`meta.inputs.profile_id` 必须指向
 当前档案的 `ProfileSnapshot`。
 
-**关键规则**：模型从简历推断的目标只能作为候选，未确认时 GUIDE 停在 goal 状态；
-目标变更后旧分析和计划可能过期，后续用 `check_plan_fit` 检测。
+**关键规则**：模型从简历推断的目标只能作为候选，未确认时 GUIDE 停在目标阶段（第 2 步）；
+`TargetSpec` 只在用户确认目标后写入，未确认不会推进到市场阶段。`want` 改写会立即失效旧
+`TargetSpec`，确认后按新目标重建；目标变更后旧分析和计划可能过期，后续用 `check_plan_fit` 检测。
 
 ---
 
@@ -276,6 +277,8 @@ collect_company_evidence(
 **产物**：`ExecutionState`（`es_`）+ `profile.tasks` + `profile.have.capability_evidence`。
 
 **关键规则**：
+- `detail_current_phase` / `generate_tasks` 先校验状态机已进入执行阶段；企业适配（阶段 6-9）
+  未完成时拒绝执行，不能仅凭已有路线图绕过。无用户确认的旧档案按旧路径豁免。
 - `checkin_mode`：`once` / `daily`（amount 累加天数）/ `percent`（amount 累加比例）。
 - `ExecutionState` 只在存在 applied `ExecutionPlan` 且 `execution_plan_id` 非空时写入。
 - 只有匹配当前 applied plan 的 `ExecutionState` 才进入 `get_next_tasks`；

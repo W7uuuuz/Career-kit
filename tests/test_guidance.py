@@ -1204,3 +1204,112 @@ def test_save_roadmap_message_matches_unconfirmed_goal(temp_profile):
     assert out["next_steps"] == ["intake(want)"]
     assert "intake(want)" in out["message"]
     assert "select_target_companies" not in out["message"]
+
+def test_goal_boundary_index_matches_progress_stage():
+    """目标未确认时 GUIDE 的位置与 resolve_progress 的目标阶段一致（第 2 步）。"""
+    profile = CareerProfile()
+    mark_brief_shown(profile)
+    profile.who = {"name": "张三"}
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.core_state["profile_id"] = _save_profile_artifact(ArtifactStore())
+
+    progress = resolve_progress(profile)
+    guide = build_guide(profile)
+
+    assert progress["stage"] == "target"
+    assert progress["next_tool"] == "intake(want)"
+    assert guide.status == "goal"
+    assert guide.index == _STAGE_INDEX[progress["stage"]] == 2
+
+
+def test_finalize_with_confirmed_goal_does_not_reopen_want(temp_profile):
+    """目标已亲口确认并 finalize 后，下一步不再回到 intake(want)。"""
+    from src.server import finalize_profile, intake, start_session
+
+    start_session()
+    intake("who", '{"name": "张三"}')
+    intake("have", '{"skills": []}')
+    intake(
+        "want",
+        '{"target_role": "AI 工程师", "city": "上海", "user_confirmed": true}',
+    )
+    finalize_profile()
+
+    profile = profile_module.load_profile()
+    progress = resolve_progress(profile)
+    assert profile.core_state.get("target_spec_id")
+    assert progress["next_tool"] != "intake(want)"
+    assert build_guide(profile).status != "goal"
+
+
+def test_finalize_without_goal_confirmation_does_not_sync_target(temp_profile):
+    """未确认目标时，finalize 与状态回填都不能写 TargetSpec 或推进市场。"""
+    from src.server import finalize_profile, get_workflow_status, intake
+
+    intake("who", '{"name": "张三"}')
+    intake("want", '{"target_role": "AI Agent"}')
+    finalize_profile()
+
+    profile = profile_module.load_profile()
+    assert not profile.core_state.get("target_spec_id")
+    assert not profile.core_state.get("market_baseline_id")
+
+    get_workflow_status()
+    profile = profile_module.load_profile()
+    assert not profile.core_state.get("target_spec_id")
+    assert not profile.core_state.get("market_baseline_id")
+    assert resolve_progress(profile)["next_tool"] == "intake(want)"
+
+
+def test_rewritten_want_invalidates_old_target_spec(temp_profile):
+    """want 改写后旧 TargetSpec 立即失效，不能把进度推进到市场阶段。"""
+    from src.server import intake
+
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+    profile_module.save_profile(profile, PROFILE_NAME)
+
+    intake("want", '{"target_role": "后端开发"}')
+
+    updated = profile_module.load_profile(PROFILE_NAME)
+    assert not updated.core_state.get("target_spec_id")
+    assert resolve_progress(updated)["stage"] == "target"
+    assert resolve_progress(updated)["next_tool"] == "intake(want)"
+
+
+def test_old_tasks_do_not_make_execution_ready():
+    """旧任务不能让 GUIDE 误判为执行就绪；就绪只认匹配当前 applied plan 的 ExecutionState。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.core_state = _seed_chain(ArtifactStore(), with_execution=False)
+    profile.tasks = [Task(id="task_001", name="旧任务", phase_id="phase_1")]
+
+    guide = build_guide(profile)
+    assert guide.status == "execution"
+    assert guide.options[0] != "推荐：先看下一步任务"
+    assert "细化" in guide.ask
+
+def test_scan_resume_follows_progress_not_hardcoded_analyze(temp_profile):
+    """扫盲续跑按状态机推进，不硬编码 intake(want) 后直接 analyze_gaps。"""
+    from src.server import intake, start_session
+
+    profile = profile_module.load_profile()
+    profile.want = {
+        "industry_id": "internet",
+        "scan_consent": True,
+        "scan_completed_at": "2026-11-09T00:00:00",
+        "scan_summary": ["互联网/软件行业：常见方向包括后端开发。"],
+    }
+    profile_module.save_profile(profile)
+
+    out = start_session()
+    assert "扫盲继续模式" in out
+    assert "再走 analyze_gaps" not in out
+    assert "finalize_profile" in out
+
+    intake("want", '{"target_role": "后端开发", "user_confirmed": true}')
+    updated = profile_module.load_profile()
+    assert resolve_progress(updated)["next_tool"] == "finalize_profile"

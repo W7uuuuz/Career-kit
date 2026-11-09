@@ -1365,3 +1365,34 @@ def test_generate_tasks_records_retained_completed_evidence(temp_profile):
     saved = profile_module.load_profile()
     evidence = saved.have.get("capability_evidence") or []
     assert [item["task"] for item in evidence] == ["已完成任务"], "重复重建不得重复追加"
+
+def test_generate_tasks_requires_company_alignment(temp_profile):
+    """路线图存在但企业适配未完成时，执行工具不能绕过（目标已确认的引导流程）。"""
+    from src.core.progress import resolve_progress
+    from src.guidance import mark_brief_shown, mark_goal_confirmed
+    from src.models import CareerProfile
+    from src.server import detail_current_phase, generate_tasks
+
+    profile = CareerProfile()
+    mark_brief_shown(profile)
+    mark_goal_confirmed(profile)
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.plan = {"roadmap": {"phases": [
+        {"id": "phase_1", "name": "基础学习", "milestones": [
+            {"id": "m1", "name": "M1", "tasks": [{"name": "任务A"}]}
+        ]},
+    ]}}
+    profile_module.save_profile(profile)
+
+    progress = resolve_progress(profile)
+    assert progress["stage"] not in ("execution", "executing")
+
+    tasks_out = json.loads(generate_tasks())
+    assert tasks_out.get("isError") is True
+    assert tasks_out["code"] == "ENTERPRISE_ALIGNMENT_REQUIRED"
+    assert "企业适配" in tasks_out["message"]
+
+    detail_out = json.loads(detail_current_phase())
+    assert detail_out.get("isError") is True
+    assert detail_out["code"] == "ENTERPRISE_ALIGNMENT_REQUIRED"
+

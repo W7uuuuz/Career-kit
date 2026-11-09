@@ -716,11 +716,9 @@ def _guide_from_progress(profile: Any) -> Guide:
         return _execution_guide(profile, ready=True)
     if stage == STAGE_EXECUTION:
         has_detail = bool((getattr(profile, "plan", None) or {}).get("current_detail"))
-        ready = bool(
-            progress.get("has_execution_state")
-            or progress.get("has_tasks")
-            or has_detail
-        )
+        # 执行就绪只认匹配当前 applied plan 的 ExecutionState 或已保存的 current_detail；
+        # 旧任务（has_tasks）本身不能把阶段推进到「持续推进与维护」。
+        ready = bool(progress.get("has_execution_state") or has_detail)
         return _execution_guide(profile, ready=ready)
     builder = _STAGE_GUIDES.get(stage)
     if builder is not None:
@@ -760,14 +758,14 @@ def build_guide(profile: Any) -> Guide:
                 kind="intake",
             )
         return _guide(
-            "profile",
+            "target",
             "goal",
             goal_question(profile),
             options=["对，就是这样", "方向要改", "城市/届别要改"],
             next_action=(
                 "用户没有方向 → explore_goals；用户给出方向 → "
                 "intake(section='want', data 里带 user_confirmed=true)；"
-                "用户已亲口说过的方向/城市/届别再重复询问"
+                "只确认缺失项：已亲口说过的方向/城市/届别直接采用，不再重复询问"
             ),
             profile=profile,
         )
@@ -796,9 +794,12 @@ def user_brief() -> str:
         "",
         "**怎么走**",
         "全流程共 12 步，归为三段：",
-        "1. 定位——建立你确认过的档案，定下目标岗位、城市和届别；",
-        "2. 规划——用真实市场数据看清差距，排出培养方案与目标企业；",
-        "3. 执行——按任务推进、记录投递与复盘，随时按事实调整计划。",
+        "1. 定位（第 1-4 步）——建立你确认过的档案，定下目标岗位、城市和届别，"
+        "再用真实市场数据看清差距；",
+        "2. 规划（第 5-9 步）——把目标拆成有顺序的阶段方案，筛选目标企业、"
+        "抓取真实 JD 与面经，并完成执行前校准；",
+        "3. 执行（第 10-12 步）——按任务持续推进与打卡，记录投递与周期复盘，"
+        "随时按事实调整计划。",
         "",
         "像聊天一样回答即可，每轮我只问一个真正需要你决定的问题。",
         "顺序定、节奏自己掌握；规则不清楚随时问我；现在从第 1 步开始——",

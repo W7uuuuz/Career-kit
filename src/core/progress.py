@@ -112,6 +112,14 @@ def resolve_progress(
     legacy = legacy_flags(profile)
     has_tasks = _has_tasks(profile)
 
+    # 目标确认是 TargetSpec 的唯一门禁：未由用户确认，或 want 在 TargetSpec
+    # 之后被改写时，旧 TargetSpec 不能再推进链路（回到目标阶段）。
+    target_artifact = resolved[STAGE_TARGET]
+    if target_artifact is not None and (
+        not _goal_confirmed(profile) or _target_stale(profile, target_artifact)
+    ):
+        resolved[STAGE_TARGET] = None
+
     # 目标 JD 更新后旧差距分析过期：必须强制回到差距阶段，下游 tasks/plan 不得覆盖。
     if getattr(profile, "gap", None) and str(
         getattr(profile, "gap_stale_at", "") or ""
@@ -616,6 +624,19 @@ def _goal_confirmed(profile: Any) -> bool:
 def _has_want(profile: Any) -> bool:
     want = getattr(profile, "want", None) or {}
     return isinstance(want, dict) and bool(want)
+
+
+def _target_stale(profile: Any, artifact: dict[str, Any]) -> bool:
+    """want 在 TargetSpec 生成之后被改写时，旧 TargetSpec 失效。"""
+    updated = getattr(profile, "section_updated_at", None)
+    want_at = str((updated or {}).get("want") or "").strip() if isinstance(updated, dict) else ""
+    if not want_at:
+        return False
+    meta = artifact.get("meta")
+    created = (
+        str(meta.get("created_at") or "").strip() if isinstance(meta, dict) else ""
+    )
+    return bool(created) and want_at > created
 
 
 def _has_tasks(profile: Any) -> bool:

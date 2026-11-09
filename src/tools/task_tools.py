@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
+from ..core.progress import STAGE_EXECUTING, STAGE_EXECUTION, resolve_progress
 from ..guidance import MAINTENANCE_CLOSING, guide_for, is_legacy
 from ..mcp_app import mcp
 from .dashboard import (
@@ -25,6 +26,45 @@ _FINISHED_TASK_STATUSES = ("completed", "skipped")
 def _sync_failure_warning(label: str, exc: Exception) -> str:
     """sync 失败不阻断主工具，但要在返回内容里留痕，方便排查。"""
     return f"Core v2 同步失败（{label}）：{exc}"
+
+
+def _explicit_goal_confirmed(profile) -> bool:
+    """用户是否亲口确认过目标（不看旧档案兜底）。"""
+    guidance = getattr(profile, "guidance", None) or {}
+    want = getattr(profile, "want", None) or {}
+    return bool(guidance.get("goal_confirmed_at")) or bool(want.get("user_confirmed"))
+
+
+def _enterprise_alignment_gate(profile) -> dict | None:
+    """执行工具门禁：引导流程里目标已确认时，必须先进入执行阶段。
+
+    旧档案（没有用户确认标记）保留原有路径；只要用户确认了目标，就不能仅凭
+    ``plan.roadmap`` 绕过企业适配链路。
+    """
+    if not _explicit_goal_confirmed(profile):
+        return None
+    progress = resolve_progress(profile)
+    if str(progress.get("stage") or "") in (STAGE_EXECUTION, STAGE_EXECUTING):
+        return None
+    return progress
+
+
+def _enterprise_alignment_error(progress: dict) -> str:
+    next_tool = str(progress.get("next_tool") or "")
+    reason = str(progress.get("reason") or "")
+    return error_response(
+        "ENTERPRISE_ALIGNMENT_REQUIRED",
+        "企业适配还没完成：执行前必须按状态机走完企业适配链路"
+        f"（当前下一步：{next_tool}；{reason}）。"
+        "请先完成 select_target_companies → collect_company_evidence → "
+        "analyze_company_requirements → save_requirement_profile → "
+        "plan_execution_alignment → save_execution_alignment，再细化或生成任务。",
+        {
+            "stage": str(progress.get("stage") or ""),
+            "next_tool": next_tool,
+            "reason": reason,
+        },
+    )
 
 
 def _roadmap_phase_id(phase: dict, index: int) -> str:
@@ -119,6 +159,10 @@ def generate_tasks() -> str:
             "档案中没有路线图，请先调用 generate_roadmap。",
             {"section": "plan"},
         )
+
+    blocked = _enterprise_alignment_gate(profile)
+    if blocked is not None:
+        return _enterprise_alignment_error(blocked)
 
     phase_rows = [phase for phase in phases if isinstance(phase, dict)]
     phase_ids = [_roadmap_phase_id(phase, index) for index, phase in enumerate(phase_rows)]
@@ -259,6 +303,10 @@ def detail_current_phase() -> str:
             "档案里还没有路线图——先 generate_roadmap → save_roadmap，再细化当前阶段。",
             {"missing": "plan.roadmap"},
         )
+
+    blocked = _enterprise_alignment_gate(profile)
+    if blocked is not None:
+        return _enterprise_alignment_error(blocked)
 
     current = resolve_current_phase(profile)
     if current is None:
@@ -1027,6 +1075,13 @@ def _backfill_core_state(profile):
         or is_legacy(profile)
         or not (profile.guidance or {})
     )
+    # 目标确认是 TargetSpec 的唯一门禁：只有用户确认（或旧档案兜底）才允许
+    # 补 TargetSpec；未确认时也不能因为已有调研数据而推进市场基线。
+    goal_ready = (
+        bool((profile.want or {}).get("user_confirmed"))
+        or bool((profile.guidance or {}).get("goal_confirmed_at"))
+        or is_legacy(profile)
+    )
     checks = (
         (
             core_sync.KEY_PROFILE,
@@ -1036,18 +1091,13 @@ def _backfill_core_state(profile):
         ),
         (
             core_sync.KEY_TARGET,
-            bool(profile.want)
-            and (
-                bool((profile.want or {}).get("user_confirmed"))
-                or bool((profile.guidance or {}).get("goal_confirmed_at"))
-                or bool(profile.summary)
-                or is_legacy(profile)
-            ),
+            bool(profile.want) and goal_ready,
             core_sync.sync_target,
         ),
         (
             core_sync.KEY_MARKET_BASELINE,
-            bool(
+            goal_ready
+            and bool(
                 research.get("report_md")
                 or research.get("jd_samples")
                 or research.get("cases")

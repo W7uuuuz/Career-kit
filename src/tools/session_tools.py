@@ -81,14 +81,18 @@ def start_session() -> str:
     if (profile.want or {}).get("scan_completed_at") and not _has_goal(profile):
         scan_summary = (profile.want or {}).get("scan_summary") or []
         summary_lines = "\n".join(f"- {item}" for item in scan_summary[:5])
+        progress = resolve_progress(profile)
+        next_tool = str(progress.get("next_tool") or "explore_goals")
         return (
             "—— 扫盲继续模式：已生成行业快照，不重复抓取 ——\n\n"
             f"当前档案：{profile_display_name(get_active_profile_name())}\n"
             f"{summary_note}"
             f"{summary_lines}\n\n"
             "下一步：先问用户「看完这些，有没有哪个方向想进一步了解？」\n"
-            "有方向 → intake(section='want') 记录目标，再走 analyze_gaps；\n"
+            "有方向 → intake(section='want', user_confirmed=true) 记录目标；\n"
             "没方向 → 换一个方向看，或先聊兴趣和约束；不要停在知识讲解。\n"
+            f"之后按 [GUIDE] 与状态机推进（当前下一步：{next_tool}），"
+            "不要跳过 finalize_profile 或直接 analyze_gaps；"
             "扫盲不是规划门禁，用户不想继续时可直接结束。\n\n"
             f"{guide_for(profile)}\n\n"
             f"[服务自检] {server_fingerprint_line()}"
@@ -263,6 +267,19 @@ def intake(section: str, data: str, user_confirmed: bool = False) -> str:
 
     save_profile(profile)
 
+    # want 改写：旧 TargetSpec 立即失效；用户确认后由 sync_target 按新目标重建。
+    if "want" in sections:
+        try:
+            from ..core.sync import merge_core_state
+
+            merge_core_state(
+                get_active_profile_name(),
+                {"target_spec_id": None},
+                advance_stage=False,
+            )
+        except Exception:  # noqa: BLE001 - 失效失败不阻断主工具
+            pass
+
     # Core v2 同步：用户本人确认目标后落 TargetSpec artifact（失败不阻断）
     if "want" in sections and confirmed:
         try:
@@ -376,6 +393,15 @@ def finalize_profile(skip_probing: bool = False) -> str:
             from ..core.sync import sync_profile
 
             sync_profile(get_active_profile_name())
+        except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
+            pass
+
+    # 目标已由用户确认时才同步 TargetSpec；未确认不写，避免模型推断目标被当成用户目标。
+    if goal_confirmed(profile):
+        try:
+            from ..core.sync import sync_target
+
+            sync_target(get_active_profile_name())
         except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
             pass
 
