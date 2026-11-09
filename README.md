@@ -1,30 +1,36 @@
-# Career Kit
+# Career Kit｜AI 求职规划
 
 <!-- mcp-name: io.github.W7uuuuz/career-kit -->
 
-[English](https://github.com/W7uuuuz/Career-kit/blob/main/README.en.md) | 中文
+中文 | [English](https://github.com/W7uuuuz/Career-kit/blob/main/README.en.md)
 
-[![CI](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
+> 不知道投什么、差在哪、今天做什么？
+> 用真实岗位 JD 和同背景案例，生成一条可执行的求职路线图。
+> 本地运行，简历和报告不上传；开源免费，不卖课、不收集简历。
 
-> 不知道做什么工作？Career Kit 是一个 AI 职业陪练 MCP 服务——以真实岗位数据和同背景案例为依据，帮你确定方向、看清差距、拆解出当下即可执行的一步。可接入 Claude Code / Cursor / opencode / Codex。
+**适合**：应届生 · 双非 · 转行 · 不知道做什么 · 投了很多没回音
 
-![Career Kit 演示：不知道做什么工作 → 同背景的人怎么走 → 差距诊断 → 下一步](https://raw.githubusercontent.com/W7uuuuz/Career-kit/main/docs/examples/demo/readme-demo.gif)
+<p align="center">
+<a href="https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html"><b>3 分钟在线体验</b></a>
+&nbsp;·&nbsp;
+<a href="https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo">看示例产物</a>
+&nbsp;·&nbsp;
+<a href="#快速开始">一键安装</a>
+&nbsp;·&nbsp;
+<a href="#文档">完整文档</a>
+</p>
 
-> **先看同背景的人去了哪，企业招聘需要什么 → 再看你差在哪 → 今天先做什么。**
-> 演示数据为合成，不含真实用户简历或报告。
+<p align="center">
+<img src="docs/examples/demo/readme-demo.gif" width="820" alt="Career Kit 演示：不知道做什么工作 → 同背景的人怎么走 → 差距诊断 → 下一步">
+</p>
 
-<div align="center">
+> 演示为合成数据，不含真实用户简历或报告；真实使用在你的电脑本地运行，可接入 Claude Code / opencode / Cursor 等支持 MCP 的客户端。
 
-### [点我 → 3分钟在线模拟体验](https://w7uuuuz.github.io/Career-kit/examples/demo/chat-demo.html)
+**你会拿到**
 
-无需安装，像和 AI 教练对话一样走完整个流程；演示为固定选项对话与合成数据，真实使用请安装到本地。
-
-</div>
-
-[示例产物](https://github.com/W7uuuuz/Career-kit/tree/main/docs/examples/demo) · [完整文档](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)
+- **方向**：同背景的人去了哪，真实岗位要什么
+- **差距**：你的简历 vs 目标 JD，差在哪
+- **行动**：分阶段路线图 + 今天先做什么
 
 ## 30 秒看懂：定位 → 规划 → 执行
 
@@ -37,8 +43,6 @@
 | **执行** | 10 任务打卡 · 11 投递管理 · 12 周期复盘 | 能力证据、投递漏斗和持续维护 |
 
 顺序固定、节奏自定；每阶段只做一个决策，无证据的结论不会写进方案。
-
-> 如果这个项目对你有帮助，欢迎点一个 Star。
 
 ## 支持哪些网站
 
@@ -164,6 +168,12 @@ career-kit-doctor
 欢迎 issue、PR 与新的企业数据源。开始前请先阅读 [CONTRIBUTING.md](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md)；新增企业源请参考 `src/scrapers/_template/`。
 
 如果这个项目帮你少走了弯路，一个 Star 会帮助更多求职者发现它。
+
+## 开发与验证
+
+[![CI](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/W7uuuuz/Career-kit/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
 ## 开源协议
 
