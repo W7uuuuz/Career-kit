@@ -821,6 +821,10 @@ def test_fixture_13_requirement_draft(store: ArtifactStore) -> None:
     assert snapshot.state is State.REQUIREMENT_DRAFT
     assert snapshot.next_tool == "save_requirement_profile"
     assert "save_requirement_profile" in snapshot.allowed_tools
+    assert {
+        "select_target_companies",
+        "collect_company_evidence",
+    } <= snapshot.allowed_tools
     assert any(blocker.code == "requirement_draft" for blocker in snapshot.blockers)
 
 
@@ -925,7 +929,12 @@ def test_fixture_23_enterprise_skip_all_tasks_done_is_maintenance(
     assert snapshot.next_tool == "get_weekly_review"
     assert snapshot.next_tool in snapshot.allowed_tools
     assert snapshot.skip_flags["enterprise_alignment"] is True
-    assert {"build_application_list", "get_weekly_review"} <= snapshot.allowed_tools
+    assert {
+        "build_application_list",
+        "get_weekly_review",
+        "detail_current_phase",
+        "save_current_detail",
+    } <= snapshot.allowed_tools
 
 
 def test_import_plan_pending_next_tool_is_save_roadmap(

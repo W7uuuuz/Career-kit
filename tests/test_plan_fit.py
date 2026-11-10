@@ -51,6 +51,7 @@ def _meta(
     *,
     created_at: str | None = None,
     inputs: dict[str, str] | None = None,
+    validation: dict[str, Any] | None = None,
 ) -> ArtifactMeta:
     return ArtifactMeta(
         id=store.new_id(prefix),
@@ -58,6 +59,7 @@ def _meta(
         profile_name=PROFILE_NAME,
         created_at=created_at or _iso(),
         inputs=inputs or {},
+        validation=validation or {},
     )
 
 
@@ -139,6 +141,7 @@ def _save_requirement(
     interview_terms: tuple[str, ...] = (),
     confidence: tuple[str, str] = ("high", "high"),
     created_at: str | None = None,
+    validation: dict[str, Any] | None = None,
 ) -> str:
     return store.save(
         RequirementProfile(
@@ -148,6 +151,9 @@ def _save_requirement(
                 "rp",
                 created_at=created_at,
                 inputs={"evidence_run_id": evidence_id},
+                validation=validation
+                if validation is not None
+                else {"status": "saved"},
             ),
             evidence_run_id=evidence_id,
             sample_size_jd=30 if confidence[0] == "high" else 4,
@@ -387,6 +393,41 @@ def test_alignment_missing(workspace: SimpleNamespace) -> None:
     assert result["next_tool"] == "plan_execution_alignment"
     assert result["recommended_action"] == "rerun_alignment"
     assert result["question_for_user"]
+
+
+def test_requirement_draft_never_recommends_plan_execution_alignment(
+    workspace: SimpleNamespace,
+) -> None:
+    """RequirementProfile 仍是草稿时，只推荐 analyze/save_requirement，不推荐校准。"""
+    from src.tools.task_tools import get_workflow_status
+
+    store = workspace.store
+    pool_id = _save_pool(store, created_at=_iso(-3))
+    evidence_id = _save_evidence(store, pool_id, created_at=_iso(-2))
+    requirement_id = _save_requirement(
+        store,
+        evidence_id,
+        created_at=_iso(-1),
+        validation={"status": "draft"},
+    )
+    _save_profile(
+        tasks=[_rag_task()],
+        core_state=_core_state(pool_id, evidence_id, requirement_id, ""),
+    )
+
+    result = check_plan_fit(PROFILE_NAME)
+
+    assert result["status"] == "major_drift"
+    assert result["next_tool"] != "plan_execution_alignment"
+    assert result["next_tool"] in (
+        "save_requirement_profile",
+        "analyze_company_requirements",
+    )
+    assert "先保存需求解读" in result["question_for_user"]
+
+    status = get_workflow_status()
+    assert "plan_execution_alignment" not in status
+    assert "save_requirement_profile" in status
 
 
 def test_alignment_stale(workspace: SimpleNamespace) -> None:

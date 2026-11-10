@@ -22,8 +22,15 @@ from ..models import CareerProfile
 from ..tools.application_tracker import funnel_stats
 from ..tools.profile import load_profile
 from .artifacts.store import ArtifactStore
+from .contracts import STAGE_CONTRACTS
 from .orchestrator import state_machine
-from .progress import STAGE_KEYS
+from .progress import (
+    STAGE_COMPANY_POOL,
+    STAGE_EVIDENCE,
+    STAGE_EXECUTION_PLAN,
+    STAGE_KEYS,
+    STAGE_REQUIREMENT,
+)
 
 STALE_EVIDENCE_DAYS = 7
 FUNNEL_MIN_SAMPLE = 5
@@ -36,6 +43,7 @@ TRIGGERS = ("manual", "evidence_refresh", "milestone", "weekly_review")
 _QUESTIONS = {
     "rerun_gap": "目标或差距依据已经变了，要不要先重新做一次差距分析，再决定是否调整计划？",
     "rerun_alignment": "现有计划和企业最新需求有出入，要不要按最新证据重新校准执行方案？",
+    "save_requirement": "企业需求画像还是草稿，要不要先保存需求解读，再校准执行方案？",
     "refresh_evidence": "证据已经超过 7 天，要不要先刷新一次岗位与面经样本，再判断计划要不要改？",
     "review": "投递漏斗显示初筛通过偏低，要不要先做一次周检视复盘，再决定是否改计划？",
 }
@@ -109,6 +117,19 @@ def check_plan_fit(profile_name: str, trigger: str = "manual") -> dict[str, Any]
         "requirement_profile_id": _artifact_id(requirement),
         "execution_plan_id": _artifact_id(plan),
     }
+    # 阶段 9 门禁用 contracts.ready 判定 RequirementProfile 是否可进入校准；
+    # 草稿态只能推荐 analyze/save_requirement，不能推荐 plan_execution_alignment。
+    requirement_ready = (
+        requirement is not None
+        and STAGE_CONTRACTS[STAGE_REQUIREMENT].ready(
+            {
+                STAGE_COMPANY_POOL: pool,
+                STAGE_EVIDENCE: evidence,
+                STAGE_REQUIREMENT: requirement,
+                STAGE_EXECUTION_PLAN: plan,
+            }
+        )
+    )
 
     incomplete = evidence is None and requirement is None and plan is None
     signals: list[dict[str, Any]] = []
@@ -139,6 +160,7 @@ def check_plan_fit(profile_name: str, trigger: str = "manual") -> dict[str, Any]
         incomplete=incomplete,
         has_pool=pool is not None,
         has_requirement=requirement is not None,
+        requirement_ready=requirement_ready,
     )
     question = "" if status in ("aligned", "incomplete_chain") else _QUESTIONS.get(action, "")
 
@@ -632,7 +654,13 @@ def _recommend(
     incomplete: bool,
     has_pool: bool,
     has_requirement: bool,
+    requirement_ready: bool,
 ) -> tuple[str, str]:
+    def alignment() -> tuple[str, str]:
+        if requirement_ready:
+            return "rerun_alignment", "plan_execution_alignment"
+        return "save_requirement", "save_requirement_profile"
+
     if incomplete:
         return ("refresh_evidence", "collect_company_evidence") if has_pool else ("continue", "")
 
@@ -642,16 +670,16 @@ def _recommend(
     if "plan_not_applied" in codes:
         return "rerun_alignment", "save_execution_alignment"
     if "alignment_stale" in codes:
-        return "rerun_alignment", "plan_execution_alignment"
+        return alignment()
     if "alignment_missing" in codes:
         if not has_requirement:
             return "rerun_alignment", "analyze_company_requirements"
-        return "rerun_alignment", "plan_execution_alignment"
+        return alignment()
     if any(
         signal["code"] == "uncovered_requirement" and signal["severity"] == "high"
         for signal in signals
     ):
-        return "rerun_alignment", "plan_execution_alignment"
+        return alignment()
     if "stale_evidence" in codes:
         return "refresh_evidence", "collect_company_evidence"
     if "funnel_signal" in codes:
@@ -660,7 +688,7 @@ def _recommend(
         signal["code"] == "uncovered_interview_topic" and signal["severity"] == "medium"
         for signal in signals
     ):
-        return "rerun_alignment", "plan_execution_alignment"
+        return alignment()
     if "insufficient_sample" in codes and status != "aligned":
         return "refresh_evidence", "collect_company_evidence"
     return "continue", ""

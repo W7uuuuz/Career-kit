@@ -31,7 +31,6 @@ from src.core.artifacts.models import (  # noqa: E402
 )
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
 from src.core.orchestrator import state_machine  # noqa: E402
-from src.core.progress import resolve_progress  # noqa: E402
 from src.core.state import State, resolve_state  # noqa: E402
 from src.guidance import (  # noqa: E402
     build_guide,
@@ -544,6 +543,21 @@ def test_user_brief_summarizes_three_phases():
     assert "每步你都能拿到实际的东西" not in brief
 
 
+def test_workflow_stage_one_requires_goal_confirmation_before_finalize():
+    """docs/workflow 阶段 1 必须写「who/have + 目标确认 → finalize」，不能跳过目标。"""
+    text = (
+        Path(__file__).parent.parent / "docs" / "workflow.md"
+    ).read_text(encoding="utf-8")
+    stage_one = text.split("## 阶段 1", 1)[1].split("## 阶段 2", 1)[0]
+
+    assert "intake(who)" in stage_one
+    assert "intake(have)" in stage_one
+    assert "intake(want" in stage_one
+    assert "user_confirmed=true" in stage_one
+    assert stage_one.index("intake(want") < stage_one.index("finalize_profile(")
+    assert "目标未确认" in stage_one and "PROFILE_COLLECTING" in stage_one
+
+
 def test_login_action_points_to_harness():
     """BOSS 登录询问必须说明 Agent 会直接运行脚本，用户只需扫码。"""
     from src.guidance import BOSS_LOGIN_URL, login_action
@@ -890,7 +904,7 @@ def test_intake_bundle_writes_sections_and_confirms_goal(temp_profile):
 
 
 def test_intake_bundle_guide_does_not_repeat_card(temp_profile):
-    """bundle 写全且目标确认后，GUIDE 不再重复采集卡，下一步与 progress 同为整理档案。"""
+    """bundle 写全且目标确认后，GUIDE 不再重复采集卡，下一步与状态机同为整理档案。"""
     from src.server import intake
 
     intake(
@@ -907,10 +921,11 @@ def test_intake_bundle_guide_does_not_repeat_card(temp_profile):
     )
 
     profile = profile_module.load_profile()
-    progress = resolve_progress(profile)
+    snapshot = resolve_state(profile)
     guide = build_guide(profile)
 
-    assert progress["next_tool"] == "finalize_profile"
+    assert snapshot.state is State.PROFILE_READY
+    assert snapshot.next_tool == "finalize_profile"
     assert "有简历就直接发我" not in guide.ask
     assert guide.options == ["开始整理"]
     assert "finalize_profile" in guide.next_action
@@ -935,22 +950,35 @@ def test_finalize_does_not_auto_confirm_inferred_goal(temp_profile):
     intake("want", '{"target_role": "AI Agent", "city": "上海"}')
     out = json.loads(finalize_profile())
     assert out.get("isError") is True
+    # 目标未确认时被状态门禁拒绝：不是静默成功，也不是空过。
     assert out["code"] == "INVALID_STATE"
+    assert out["details"]["state"] == State.PROFILE_COLLECTING.value
+    assert out["details"]["tool"] == "finalize_profile"
+    assert out["details"]["next_tool"] == "intake(want)"
 
     profile = profile_module.load_profile()
     assert not goal_confirmed(profile)
+    assert not profile.summary
+    assert not profile.core_state.get("profile_id")
 
     blocked = json.loads(analyze_gaps())
     assert blocked["code"] == "GOAL_CONFIRMATION_REQUIRED"
 
 
 def test_finalize_rejects_empty_profile(temp_profile):
-    """空档案 finalize 返回 MISSING_DATA，不生成摘要。"""
+    """空档案 finalize 被状态门禁拒绝，不生成摘要。"""
     from src.server import finalize_profile
 
     out = json.loads(finalize_profile())
     assert out.get("isError") is True
     assert out["code"] == "INVALID_STATE"
+    assert out["details"]["state"] == State.EMPTY.value
+    assert out["details"]["tool"] == "finalize_profile"
+    assert out["details"]["next_tool"] == "parse_resume"
+
+    profile = profile_module.load_profile()
+    assert not profile.summary
+    assert not profile.core_state.get("profile_id")
 
 
 def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
@@ -1025,9 +1053,9 @@ def test_gap_stale_forces_gap_even_with_tasks():
     profile.gap_stale_at = datetime.now().isoformat()
     profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
 
-    progress = resolve_progress(profile)
-    assert progress["stage"] == "gap"
-    assert progress["next_tool"] == "analyze_gaps"
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.GAP_PENDING
+    assert snapshot.next_tool == "analyze_gaps"
     assert build_guide(profile).status == "gap"
 
 
@@ -1161,11 +1189,13 @@ def test_start_session_empty_profile_does_not_route_to_finalize(temp_profile):
 
 
 def test_workflow_status_empty_profile_matches_start_session(temp_profile):
-    """空档案的 progress、GUIDE 采集卡与状态报告下一步保持一致。"""
+    """空档案的状态机、GUIDE 采集卡与状态报告下一步保持一致。"""
     from src.server import get_workflow_status, start_session
 
-    progress = resolve_progress(profile_module.load_profile())
-    assert progress["next_tool"] == "intake(section='bundle')"
+    snapshot = resolve_state(profile_module.load_profile())
+    assert snapshot.state is State.EMPTY
+    assert snapshot.next_tool == "parse_resume"
+    assert {"parse_resume", "intake"} <= snapshot.allowed_tools
 
     guide = build_guide(CareerProfile())
     assert guide.kind == "intake"
@@ -1180,26 +1210,26 @@ def test_workflow_status_empty_profile_matches_start_session(temp_profile):
     assert "下一步：按 [GUIDE] 采集卡" in session
 
 
-def test_progress_stays_on_target_before_goal_confirmation(temp_profile):
-    """who/have 已写但目标未确认时，progress 按目标阶段处理，不返回 finalize_profile。"""
+def test_state_stays_on_target_before_goal_confirmation(temp_profile):
+    """who/have 已写但目标未确认时，状态机停在目标阶段，不返回 finalize_profile。"""
     profile = CareerProfile()
     mark_brief_shown(profile)
     profile.who = {"name": "张三"}
     profile.have = {"skills": []}
 
-    progress = resolve_progress(profile)
-    assert progress["stage"] == "target"
-    assert progress["next_tool"] == "explore_goals"
-    assert progress["next_tool"] != "finalize_profile"
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "explore_goals"
+    assert snapshot.next_tool != "finalize_profile"
 
     guide = build_guide(profile)
     assert guide.status == "goal"
     assert "explore_goals" in guide.next_action
 
     profile.want = {"target_role": "AI Agent"}
-    progress = resolve_progress(profile)
-    assert progress["stage"] == "target"
-    assert progress["next_tool"] == "intake(want)"
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
 
 
 def test_tool_layer_has_no_empty_profile_next_step_override():
@@ -1286,21 +1316,21 @@ def test_save_roadmap_message_matches_unconfirmed_goal(temp_profile):
     assert out["details"]["next_tool"] == "intake(want)"
     assert "select_target_companies" not in out["message"]
 
-def test_goal_boundary_index_matches_progress_stage():
-    """目标未确认时 GUIDE 的位置与 resolve_progress 的目标阶段一致（第 2 步）。"""
+def test_goal_boundary_index_matches_state_snapshot():
+    """目标未确认时 GUIDE 的位置与 StateSnapshot 的目标阶段一致（第 2 步）。"""
     profile = CareerProfile()
     mark_brief_shown(profile)
     profile.who = {"name": "张三"}
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.core_state["profile_id"] = _save_profile_artifact(ArtifactStore())
 
-    progress = resolve_progress(profile)
+    snapshot = resolve_state(profile)
     guide = build_guide(profile)
 
-    assert progress["stage"] == "target"
-    assert progress["next_tool"] == "intake(want)"
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
     assert guide.status == "goal"
-    assert guide.index == _STAGE_INDEX[progress["stage"]] == 2
+    assert guide.index == snapshot.stage_index == _STAGE_INDEX["target"] == 2
 
 
 def test_finalize_with_confirmed_goal_does_not_reopen_want(temp_profile):
@@ -1317,9 +1347,9 @@ def test_finalize_with_confirmed_goal_does_not_reopen_want(temp_profile):
     finalize_profile()
 
     profile = profile_module.load_profile()
-    progress = resolve_progress(profile)
+    snapshot = resolve_state(profile)
     assert profile.core_state.get("target_spec_id")
-    assert progress["next_tool"] != "intake(want)"
+    assert snapshot.next_tool != "intake(want)"
     assert build_guide(profile).status != "goal"
 
 
@@ -1339,7 +1369,9 @@ def test_finalize_without_goal_confirmation_does_not_sync_target(temp_profile):
     profile = profile_module.load_profile()
     assert not profile.core_state.get("target_spec_id")
     assert not profile.core_state.get("market_baseline_id")
-    assert resolve_progress(profile)["next_tool"] == "intake(want)"
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
 
 
 def test_rewritten_want_invalidates_old_target_spec(temp_profile):
@@ -1357,8 +1389,9 @@ def test_rewritten_want_invalidates_old_target_spec(temp_profile):
 
     updated = profile_module.load_profile(PROFILE_NAME)
     assert not updated.core_state.get("target_spec_id")
-    assert resolve_progress(updated)["stage"] == "target"
-    assert resolve_progress(updated)["next_tool"] == "intake(want)"
+    snapshot = resolve_state(updated)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
 
 
 def test_expected_outcome_write_keeps_confirmed_target(temp_profile):
@@ -1410,7 +1443,9 @@ def test_city_change_invalidates_target_spec(temp_profile):
     updated = profile_module.load_profile(PROFILE_NAME)
     assert not updated.core_state.get("target_spec_id")
     assert build_guide(updated).status == "goal"
-    assert resolve_progress(updated)["next_tool"] == "intake(want)"
+    snapshot = resolve_state(updated)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
 
 
 def test_who_graduation_year_change_invalidates_target_and_rebuilds(temp_profile):
@@ -1455,7 +1490,7 @@ def test_old_tasks_do_not_make_execution_ready():
     assert guide.options[0] != "推荐：先看下一步任务"
     assert "细化" in guide.ask
 
-def test_scan_resume_follows_progress_not_hardcoded_analyze(temp_profile):
+def test_scan_resume_follows_state_not_hardcoded_analyze(temp_profile):
     """扫盲续跑按状态机推进，不硬编码 intake(want) 后直接 analyze_gaps。"""
     from src.server import intake, start_session
 
@@ -1475,4 +1510,6 @@ def test_scan_resume_follows_progress_not_hardcoded_analyze(temp_profile):
 
     intake("want", '{"target_role": "后端开发", "user_confirmed": true}')
     updated = profile_module.load_profile()
-    assert resolve_progress(updated)["next_tool"] == "finalize_profile"
+    snapshot = resolve_state(updated)
+    assert snapshot.state is State.PROFILE_READY
+    assert snapshot.next_tool == "finalize_profile"

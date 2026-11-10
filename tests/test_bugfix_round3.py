@@ -49,24 +49,34 @@ def test_save_current_detail_rejects_orphan_phase(temp_profile):
 
     from conftest import promote_profile
 
-    # 状态未就绪时门禁拒绝（无路线图不再进入业务守卫）
+    # 状态未就绪时门禁先拒绝（无路线图不再进入业务守卫），断言具体状态而非只断言错误码。
     no_plan = json.loads(save_current_detail(json.dumps(
         {"phase_id": "phase_99", "tasks": [{"name": "刷题"}]}
     )))
     assert no_plan["code"] == "INVALID_STATE"
+    assert no_plan["details"]["tool"] == "save_current_detail"
+    assert no_plan["details"]["state"] == "EMPTY"
+    assert no_plan["details"]["next_tool"] == "parse_resume"
 
     p = profile_module.load_profile()
     p.plan = {"roadmap": {"phases": [{"id": "phase_1", "name": "基础学习"}]}}
     promote_profile(p, execution=True)
 
+    # 路线图存在但 phase_id 是孤儿：工具级守卫必须拒绝，且不得写入 current_detail。
     bad_id = json.loads(save_current_detail(json.dumps(
         {"phase_id": "phase_99", "tasks": []}
     )))
     assert bad_id["code"] == "MISSING_DATA"
     assert "phase_99" in bad_id["message"]
+    assert bad_id["details"]["existing_phase_ids"] == ["phase_1"]
+    assert bad_id["details"]["hint"]
+    assert not profile_module.load_profile().plan.get("current_detail")
 
     missing = json.loads(save_current_detail(json.dumps({"tasks": []})))
     assert missing["code"] == "INVALID_PARAM"
+    assert missing["details"]["existing_phase_ids"] == ["phase_1"]
+    assert missing["details"]["hint"]
+    assert not profile_module.load_profile().plan.get("current_detail")
 
 
 # ============ #2 GitHub 意图 AND + 标题门槛 ============

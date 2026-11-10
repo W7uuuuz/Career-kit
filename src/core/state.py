@@ -212,8 +212,15 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
     State.EVIDENCE_PENDING: frozenset(
         {"collect_company_evidence", "boss_login", "select_target_companies"}
     ),
+    # 企业证据/需求/执行版阶段仍允许改名单或刷新证据补齐（D2），
+    # 否则文档里的「名单要改 / 刷新证据」在该链路不可达。
     State.REQUIREMENT_DRAFT: frozenset(
-        {"analyze_company_requirements", "save_requirement_profile"}
+        {
+            "analyze_company_requirements",
+            "save_requirement_profile",
+            "select_target_companies",
+            "collect_company_evidence",
+        }
     ),
     State.REQUIREMENT_READY: frozenset(
         {
@@ -221,9 +228,17 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "save_execution_alignment",
             "read_research_details",
             "fetch_jd_detail",
+            "select_target_companies",
+            "collect_company_evidence",
         }
     ),
-    State.EXECUTION_PLAN_DRAFT: frozenset({"save_execution_alignment"}),
+    State.EXECUTION_PLAN_DRAFT: frozenset(
+        {
+            "save_execution_alignment",
+            "select_target_companies",
+            "collect_company_evidence",
+        }
+    ),
     State.EXECUTION_READY: frozenset(
         {
             "detail_current_phase",
@@ -261,6 +276,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "get_weekly_review",
             "get_next_tasks",
             "generate_tasks",
+            "detail_current_phase",
+            "save_current_detail",
             "export_dashboard",
         }
     )

@@ -1,6 +1,7 @@
-"""Phase 3a 工具门禁：期望全部来自 StateSnapshot.allowed_tools。
+"""Phase 3a 工具门禁：显式 state→tool 期望表，不从 snapshot.allowed_tools 反推。
 
-不维护第二套工具→状态映射；合法/非法 smoke 覆盖 13 个状态。
+合法/非法 smoke 覆盖 14 个状态，关键修复路径另有独立期望表；避免门禁实现
+与状态表同错时测试仍然变绿。
 """
 
 from __future__ import annotations
@@ -20,14 +21,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src import paths  # noqa: E402
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
 from src.core.state import (  # noqa: E402
-    READ_ONLY_TOOLS,
     State,
     StateSnapshot,
     resolve_state,
 )
+from src.guidance import build_guide  # noqa: E402
 from src.models import CareerProfile, Task  # noqa: E402
 from src.tools import profile as profile_store  # noqa: E402
 from src.tools.state_gate import require_state  # noqa: E402
+from src.tools.task_tools import get_workflow_status  # noqa: E402
 
 from test_state_matrix import (  # noqa: E402
     PROFILE_NAME,
@@ -114,23 +116,23 @@ _LABEL_BY_STATE: dict[State, str] = {
     State.REQUIREMENT_DRAFT: "13",
 }
 
-_LEGAL_CANDIDATES = (
-    "generate_tasks",
-    "detail_current_phase",
-    "save_current_detail",
-    "checkin_task",
-    "generate_roadmap",
-    "save_roadmap",
-    "save_execution_alignment",
-    "save_requirement_profile",
-    "collect_company_evidence",
-    "select_target_companies",
-    "finalize_profile",
-    "intake",
-    "analyze_gaps",
-    "plan_execution_alignment",
-    "build_application_list",
-)
+# 显式 state→工具 smoke 期望：合法/非法都写死，不从 snapshot.allowed_tools 反推。
+_GATE_SMOKE: dict[State, tuple[str, str]] = {
+    State.EMPTY: ("intake", "finalize_profile"),
+    State.PROFILE_COLLECTING: ("intake", "finalize_profile"),
+    State.PROFILE_READY: ("finalize_profile", "save_roadmap"),
+    State.MARKET_PENDING: ("analyze_gaps", "finalize_profile"),
+    State.GAP_PENDING: ("analyze_gaps", "finalize_profile"),
+    State.BASELINE_PLAN_PENDING: ("generate_roadmap", "finalize_profile"),
+    State.COMPANY_PENDING: ("select_target_companies", "finalize_profile"),
+    State.EVIDENCE_PENDING: ("collect_company_evidence", "finalize_profile"),
+    State.REQUIREMENT_DRAFT: ("analyze_company_requirements", "plan_execution_alignment"),
+    State.REQUIREMENT_READY: ("plan_execution_alignment", "save_requirement_profile"),
+    State.EXECUTION_PLAN_DRAFT: ("save_execution_alignment", "plan_execution_alignment"),
+    State.EXECUTION_READY: ("detail_current_phase", "finalize_profile"),
+    State.EXECUTING: ("checkin_task", "finalize_profile"),
+    State.MAINTENANCE: ("detail_current_phase", "finalize_profile"),
+}
 
 
 def _build_state(state: State, store: ArtifactStore) -> tuple[SimpleNamespace, StateSnapshot]:
@@ -144,6 +146,7 @@ def _build_state(state: State, store: ArtifactStore) -> tuple[SimpleNamespace, S
 def test_all_states_covered() -> None:
     states = set(_CUSTOM_CASES) | set(_LABEL_BY_STATE)
     assert states == set(State)
+    assert set(_GATE_SMOKE) == set(State)
 
 
 @pytest.mark.parametrize("state", list(State), ids=[state.value for state in State])
@@ -153,14 +156,10 @@ def test_legal_and_illegal_smoke_for_every_state(
     profile, snapshot = _build_state(state, store)
     assert snapshot.state is state
 
-    legal = sorted(snapshot.allowed_tools - READ_ONLY_TOOLS)
-    assert legal, f"{state} 没有可门禁工具"
-    legal_result = require_state(profile, legal[0])
+    legal, illegal = _GATE_SMOKE[state]
+    legal_result = require_state(profile, legal)
     assert isinstance(legal_result, StateSnapshot), legal_result
 
-    illegal = next(
-        tool for tool in _LEGAL_CANDIDATES if tool not in snapshot.allowed_tools
-    )
     payload = json.loads(require_state(profile, illegal))
     assert payload["isError"] is True
     assert payload["code"] == "INVALID_STATE"
@@ -170,8 +169,30 @@ def test_legal_and_illegal_smoke_for_every_state(
     assert payload["details"]["next_tool"] == snapshot.next_tool
 
 
+def test_execution_plan_draft_guide_and_status_follow_allowed_tools(
+    store: ArtifactStore,
+) -> None:
+    """EXECUTION_PLAN_DRAFT 的下一步只能是应用，GUIDE/status 与门禁一致。"""
+    profile, snapshot = _build_state(State.EXECUTION_PLAN_DRAFT, store)
+    assert snapshot.state is State.EXECUTION_PLAN_DRAFT
+    assert snapshot.next_tool == "save_execution_alignment"
+    assert "plan_execution_alignment" not in snapshot.allowed_tools
+
+    guide = build_guide(profile)
+    assert guide.status == "alignment"
+    assert guide.next_action.startswith("save_execution_alignment")
+    assert "plan_execution_alignment" not in guide.next_action
+
+    _persist_fixture(profile, snapshot)
+    status = get_workflow_status()
+    assert "**下一步**：save_execution_alignment" in status
+    assert "该阶段下一步：save_execution_alignment" in status
+    assert "plan_execution_alignment" not in status
+
+
 GATED_TOOLS: tuple[str, ...] = (
     "finalize_profile",
+    "analyze_gaps",
     "save_gap_analysis",
     "generate_roadmap",
     "save_roadmap",
@@ -187,17 +208,111 @@ GATED_TOOLS: tuple[str, ...] = (
     "checkin_task",
 )
 
+# 显式 state→工具期望表：每个状态的合法门禁工具全部写死。
+# 不从 snapshot.allowed_tools 反推，避免门禁与状态实现同错时测试仍然变绿。
+_EXPECTED_GATED: dict[State, frozenset[str]] = {
+    State.EMPTY: frozenset(),
+    State.PROFILE_COLLECTING: frozenset(),
+    State.PROFILE_READY: frozenset({"finalize_profile"}),
+    State.MARKET_PENDING: frozenset({"analyze_gaps", "save_gap_analysis"}),
+    State.GAP_PENDING: frozenset(
+        {"analyze_gaps", "save_gap_analysis", "generate_roadmap", "save_roadmap"}
+    ),
+    State.BASELINE_PLAN_PENDING: frozenset(
+        {"save_gap_analysis", "generate_roadmap", "save_roadmap"}
+    ),
+    State.COMPANY_PENDING: frozenset(
+        {
+            "select_target_companies",
+            "detail_current_phase",
+            "generate_tasks",
+            "save_roadmap",
+        }
+    ),
+    State.EVIDENCE_PENDING: frozenset(
+        {"collect_company_evidence", "select_target_companies"}
+    ),
+    State.REQUIREMENT_DRAFT: frozenset(
+        {
+            "analyze_company_requirements",
+            "save_requirement_profile",
+            "select_target_companies",
+            "collect_company_evidence",
+        }
+    ),
+    State.REQUIREMENT_READY: frozenset(
+        {
+            "plan_execution_alignment",
+            "save_execution_alignment",
+            "select_target_companies",
+            "collect_company_evidence",
+        }
+    ),
+    State.EXECUTION_PLAN_DRAFT: frozenset(
+        {
+            "save_execution_alignment",
+            "select_target_companies",
+            "collect_company_evidence",
+        }
+    ),
+    State.EXECUTION_READY: frozenset(
+        {
+            "detail_current_phase",
+            "save_current_detail",
+            "generate_tasks",
+            "select_target_companies",
+            "collect_company_evidence",
+            "analyze_company_requirements",
+            "plan_execution_alignment",
+            "save_execution_alignment",
+        }
+    ),
+    State.EXECUTING: frozenset(
+        {
+            "checkin_task",
+            "detail_current_phase",
+            "save_current_detail",
+            "generate_tasks",
+            "select_target_companies",
+            "collect_company_evidence",
+            "analyze_company_requirements",
+            "plan_execution_alignment",
+            "save_execution_alignment",
+        }
+    ),
+    State.MAINTENANCE: frozenset(
+        {
+            "generate_tasks",
+            "detail_current_phase",
+            "save_current_detail",
+            "select_target_companies",
+            "collect_company_evidence",
+            "analyze_company_requirements",
+            "plan_execution_alignment",
+            "save_execution_alignment",
+        }
+    ),
+}
+
+
+def test_gated_expectations_cover_all_states() -> None:
+    assert set(_EXPECTED_GATED) == set(State)
+    assert set(GATED_TOOLS) >= {tool for tools in _EXPECTED_GATED.values() for tool in tools}
+
 
 @pytest.mark.parametrize("state", list(State), ids=[state.value for state in State])
-def test_gated_tool_decision_follows_snapshot(
+def test_gated_tool_decision_matches_explicit_table(
     state: State, store: ArtifactStore
 ) -> None:
     profile, snapshot = _build_state(state, store)
     assert snapshot.state is state
 
+    expected = _EXPECTED_GATED[state]
+    assert snapshot.allowed_tools & frozenset(GATED_TOOLS) == expected, state
+
     for tool in GATED_TOOLS:
         result = require_state(profile, tool)
-        if tool in snapshot.allowed_tools:
+        if tool in expected:
             assert isinstance(result, StateSnapshot), (tool, state)
             continue
         payload = json.loads(result)
@@ -209,32 +324,55 @@ def test_gated_tool_decision_follows_snapshot(
         assert payload["details"]["next_tool"] == snapshot.next_tool
 
 
-# 修复/补齐路径的正向门禁：期望表显式写死 (state, tool)，不从 snapshot 反推。
-_POSITIVE_GATES: tuple[tuple[State, str], ...] = (
-    (State.REQUIREMENT_READY, "save_execution_alignment"),
-    (State.EXECUTING, "select_target_companies"),
-    (State.EXECUTING, "collect_company_evidence"),
-    (State.COMPANY_PENDING, "generate_tasks"),
-    (State.COMPANY_PENDING, "detail_current_phase"),
-    (State.MARKET_PENDING, "save_gap_analysis"),
+# 本轮修复/补齐路径的显式 (state, tool, 是否允许) 期望；合法与非法都由测试写死。
+_ROUND_GATES: tuple[tuple[State, str, bool], ...] = (
+    # 本轮 1：EXECUTION_PLAN_DRAFT 只能应用，不能回到校准。
+    (State.EXECUTION_PLAN_DRAFT, "save_execution_alignment", True),
+    (State.EXECUTION_PLAN_DRAFT, "plan_execution_alignment", False),
+    # 本轮 4：阶段 8/9 允许改名单与刷新证据。
+    (State.REQUIREMENT_DRAFT, "select_target_companies", True),
+    (State.REQUIREMENT_DRAFT, "collect_company_evidence", True),
+    (State.REQUIREMENT_READY, "select_target_companies", True),
+    (State.REQUIREMENT_READY, "collect_company_evidence", True),
+    (State.EXECUTION_PLAN_DRAFT, "select_target_companies", True),
+    (State.EXECUTION_PLAN_DRAFT, "collect_company_evidence", True),
+    # 本轮 5：MAINTENANCE 仍可细化/保存当前阶段详细路线。
+    (State.MAINTENANCE, "detail_current_phase", True),
+    (State.MAINTENANCE, "save_current_detail", True),
+    # 既有修复路径回归。
+    (State.REQUIREMENT_READY, "save_execution_alignment", True),
+    (State.EXECUTING, "select_target_companies", True),
+    (State.EXECUTING, "collect_company_evidence", True),
+    (State.COMPANY_PENDING, "generate_tasks", True),
+    (State.COMPANY_PENDING, "detail_current_phase", True),
+    (State.MARKET_PENDING, "save_gap_analysis", True),
+    (State.MAINTENANCE, "plan_execution_alignment", True),
 )
 
 
 @pytest.mark.parametrize(
-    ("state", "tool"),
-    _POSITIVE_GATES,
-    ids=[f"{state.value}:{tool}" for state, tool in _POSITIVE_GATES],
+    ("state", "tool", "allowed"),
+    _ROUND_GATES,
+    ids=[f"{state.value}:{tool}:{'allow' if allowed else 'deny'}" for state, tool, allowed in _ROUND_GATES],
 )
-def test_repair_path_tools_are_allowed(
-    state: State, tool: str, store: ArtifactStore
+def test_repair_path_gate_expectations(
+    state: State, tool: str, allowed: bool, store: ArtifactStore
 ) -> None:
     profile, snapshot = _build_state(state, store)
     assert snapshot.state is state
 
     result = require_state(profile, tool)
 
-    assert isinstance(result, StateSnapshot), result
-    assert result.state is state
+    if allowed:
+        assert isinstance(result, StateSnapshot), result
+        assert result.state is state
+        return
+    payload = json.loads(result)
+    assert payload["isError"] is True
+    assert payload["code"] == "INVALID_STATE"
+    assert payload["details"]["state"] == state.value
+    assert payload["details"]["tool"] == tool
+    assert payload["details"]["next_tool"] == snapshot.next_tool
 
 
 def _persist_fixture(profile: SimpleNamespace, snapshot: StateSnapshot) -> None:

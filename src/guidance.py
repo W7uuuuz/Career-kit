@@ -612,6 +612,19 @@ def _alignment_guide(profile: Any) -> Guide:
     )
 
 
+def _alignment_draft_guide(profile: Any) -> Guide:
+    """EXECUTION_PLAN_DRAFT：执行版已生成，下一步只能是应用，不再先校准。"""
+    return _guide(
+        "alignment",
+        "alignment",
+        "执行版路线图已生成但还没应用到当前计划。要现在应用吗？",
+        options=["应用执行版"],
+        next_action="save_execution_alignment(confirmed=true)；"
+                    "应用后重新生成当前阶段任务",
+        profile=profile,
+    )
+
+
 def _execution_guide(profile: Any, snapshot: StateSnapshot) -> Guide:
     plan = getattr(profile, "plan", None) or {}
     detail_ready = isinstance(plan, dict) and bool(plan.get("current_detail"))
@@ -726,8 +739,10 @@ def _guide_from_state(profile: Any, snapshot: StateSnapshot) -> Guide:
         guide = _evidence_guide(profile)
     elif state is State.REQUIREMENT_DRAFT:
         guide = _requirement_guide(profile)
-    elif state in (State.REQUIREMENT_READY, State.EXECUTION_PLAN_DRAFT):
+    elif state is State.REQUIREMENT_READY:
         guide = _alignment_guide(profile)
+    elif state is State.EXECUTION_PLAN_DRAFT:
+        guide = _alignment_draft_guide(profile)
     else:
         guide = _execution_guide(profile, snapshot)
     return _finalize_guide(guide, snapshot)

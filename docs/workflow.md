@@ -40,8 +40,13 @@ evidence / requirement / execution_plan / execution / applications / review`；
 3. intake(who)               # 姓名、教育、当前状态、毕业年份
 4. intake(have)              # 技能、经历、资源；每条技能带 evidence + verified + authorship
                              # + control_level（0-10）；整份自评写 have.self_assessment
-5. finalize_profile()
+5. intake(want, user_confirmed=true)  # 确认方向/城市/届别；模型推断值必须由用户亲口确认
+6. finalize_profile()
 ```
+
+> 阶段 1 的 finalize 以目标确认为前提：who/have 就绪后先确认方向/城市/届别，再
+> `finalize_profile`。目标未确认时状态停在 `PROFILE_COLLECTING`（第 2 步目标确认），
+> `finalize_profile` 会被门禁拒绝；不能跳过目标确认直接建档。
 
 > 摸排硬门禁：技能无用户确认证据，或缺 authorship/control_level/self_assessment 时，
 > finalize 与 analyze_gaps 都会拒绝放行；authorship/control_level 必须来自用户本人回答，
