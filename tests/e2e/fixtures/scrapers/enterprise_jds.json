@@ -1,0 +1,201 @@
+{
+  "search": {
+    "bytedance": {
+      "company": "字节跳动",
+      "count": 8,
+      "results": [
+        {
+          "title": "AI Agent 开发工程师（校招）",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "22k-32k",
+          "url": "https://e2e.local/bytedance/jd/1",
+          "summary": "负责 Agent 编排、RAG 链路与评测。",
+          "description": "参与 Agent 编排、工具调用与 RAG 链路的开发与评测，要求熟悉 Kubernetes 部署与 Python 服务。",
+          "requirements": "Python、FastAPI、LangGraph、RAG、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "Agent 平台后端工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "20k-30k",
+          "url": "https://e2e.local/bytedance/jd/2",
+          "summary": "Agent 平台服务端开发。",
+          "description": "负责 Agent 平台服务端与工具调用网关，使用 Kubernetes 管理服务发布。",
+          "requirements": "Python、RAG、Kubernetes、Docker。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "大模型应用工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "21k-31k",
+          "url": "https://e2e.local/bytedance/jd/3",
+          "summary": "大模型应用落地与效果回归。",
+          "description": "把大模型能力落到业务场景，负责 Prompt、RAG 与在线服务部署，熟悉 Kubernetes 优先。",
+          "requirements": "Python、LLM、Prompt、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "RAG 检索工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "20k-28k",
+          "url": "https://e2e.local/bytedance/jd/4",
+          "summary": "检索增强生成链路与评测。",
+          "description": "负责向量检索与 RAG 评测，服务部署在 Kubernetes 集群。",
+          "requirements": "Python、RAG、向量数据库、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "Agent 工具链工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "23k-33k",
+          "url": "https://e2e.local/bytedance/jd/5",
+          "summary": "Agent 工具链与评测平台。",
+          "description": "建设 Agent 工具链与离线评测平台，要求理解 Kubernetes 与 Python 服务治理。",
+          "requirements": "Python、Agent、LangGraph、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "LLM 应用平台工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "22k-30k",
+          "url": "https://e2e.local/bytedance/jd/6",
+          "summary": "LLM 应用平台与工具调用。",
+          "description": "负责 LLM 应用平台的后端与工具调用能力，使用 Kubernetes 做多环境发布。",
+          "requirements": "Python、LLM、FastAPI、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "智能体评测工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "20k-29k",
+          "url": "https://e2e.local/bytedance/jd/7",
+          "summary": "智能体效果评测与回归。",
+          "description": "搭建智能体评测集与回归流程，测试环境基于 Kubernetes。",
+          "requirements": "Python、Agent、RAG、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "AI 应用后端工程师",
+          "company": "字节跳动",
+          "location": "深圳",
+          "salary": "21k-29k",
+          "url": "https://e2e.local/bytedance/jd/8",
+          "summary": "AI 应用后端服务。",
+          "description": "负责 AI 应用后端接口与任务编排，服务运行在 Kubernetes。",
+          "requirements": "Python、FastAPI、Kubernetes、Docker。",
+          "detail_status": "ok"
+        }
+      ]
+    },
+    "tencent": {
+      "company": "腾讯",
+      "count": 8,
+      "results": [
+        {
+          "title": "AI Agent 开发工程师（校招）",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "22k-34k",
+          "url": "https://e2e.local/tencent/jd/1",
+          "summary": "负责 Agent 编排与工具调用。",
+          "description": "参与 Agent 编排、工具调用与 RAG 链路开发，要求熟悉 Kubernetes 与 Python。",
+          "requirements": "Python、LangGraph、RAG、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "大模型应用开发工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "21k-31k",
+          "url": "https://e2e.local/tencent/jd/2",
+          "summary": "大模型应用与效果评测。",
+          "description": "负责大模型应用开发与效果评测，服务部署在 Kubernetes。",
+          "requirements": "Python、LLM、RAG、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "Agent 平台后端工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "20k-30k",
+          "url": "https://e2e.local/tencent/jd/3",
+          "summary": "Agent 平台后端与工具网关。",
+          "description": "建设 Agent 平台后端与工具网关，要求熟悉 Kubernetes 与 Python 微服务。",
+          "requirements": "Python、FastAPI、Kubernetes、Docker。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "RAG 应用工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "20k-29k",
+          "url": "https://e2e.local/tencent/jd/4",
+          "summary": "RAG 应用与检索优化。",
+          "description": "负责 RAG 应用链路与检索优化，部署环境基于 Kubernetes。",
+          "requirements": "Python、RAG、向量数据库、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "LLM 平台工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "23k-33k",
+          "url": "https://e2e.local/tencent/jd/5",
+          "summary": "LLM 平台与在线服务。",
+          "description": "负责 LLM 平台能力建设与在线服务治理，使用 Kubernetes 管理集群。",
+          "requirements": "Python、LLM、Kubernetes、API。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "智能体工具工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "21k-30k",
+          "url": "https://e2e.local/tencent/jd/6",
+          "summary": "智能体工具接入与编排。",
+          "description": "负责智能体工具接入与编排，要求熟悉 Kubernetes 与 Python 服务开发。",
+          "requirements": "Python、Agent、LangGraph、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "AI 应用评测工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "20k-28k",
+          "url": "https://e2e.local/tencent/jd/7",
+          "summary": "AI 应用评测与回归。",
+          "description": "负责 AI 应用评测集与回归，测试集群基于 Kubernetes。",
+          "requirements": "Python、RAG、Prompt、Kubernetes。",
+          "detail_status": "ok"
+        },
+        {
+          "title": "AI 后端开发工程师",
+          "company": "腾讯",
+          "location": "深圳",
+          "salary": "21k-29k",
+          "url": "https://e2e.local/tencent/jd/8",
+          "summary": "AI 后端服务与任务编排。",
+          "description": "负责 AI 后端服务与任务编排，服务部署在 Kubernetes。",
+          "requirements": "Python、FastAPI、Kubernetes、Docker。",
+          "detail_status": "ok"
+        }
+      ]
+    },
+    "nowcoder": {
+      "error": "E2E 固定样本：面经源不外网抓取",
+      "results": []
+    },
+    "github": {
+      "error": "E2E 固定样本：经验帖源不外网抓取",
+      "results": []
+    }
+  },
+  "detail": {}
+}

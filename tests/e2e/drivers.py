@@ -60,6 +60,90 @@ class FlowDriver:
     async def import_plan(self, path: Path) -> ToolResult:
         return (await self.mcp.call("import_plan", {"file_path": str(path)})).assert_ok()
 
+    async def select_companies(
+        self,
+        *,
+        include: str = "",
+        target_tiers: str = "",
+        bridge_tiers: str = "",
+        confirmed: bool = False,
+    ) -> ToolResult:
+        args: dict[str, Any] = {"confirmed": confirmed}
+        for key, value in (
+            ("include", include),
+            ("target_tiers", target_tiers),
+            ("bridge_tiers", bridge_tiers),
+        ):
+            if value:
+                args[key] = value
+        return (await self.mcp.call("select_target_companies", args)).assert_ok()
+
+    async def collect_evidence(
+        self,
+        *,
+        company_pool_id: str = "",
+        per_company_limit: int = 5,
+        max_companies: int = 2,
+    ) -> ToolResult:
+        return (
+            await self.mcp.call(
+                "collect_company_evidence",
+                {
+                    "company_pool_id": company_pool_id,
+                    "per_company_limit": per_company_limit,
+                    "max_companies": max_companies,
+                },
+            )
+        ).assert_ok()
+
+    async def analyze_requirements(self, evidence_run_id: str = "") -> ToolResult:
+        return (
+            await self.mcp.call(
+                "analyze_company_requirements",
+                {"evidence_run_id": evidence_run_id},
+            )
+        ).assert_ok()
+
+    async def save_requirement(
+        self, requirement_profile_id: str, interpretation: dict[str, Any]
+    ) -> ToolResult:
+        payload = {
+            "requirement_profile_id": requirement_profile_id,
+            "interpretation": interpretation,
+        }
+        return (
+            await self.mcp.call(
+                "save_requirement_profile",
+                {"analysis_json": json.dumps(payload, ensure_ascii=False)},
+            )
+        ).assert_ok()
+
+    async def plan_alignment(self, requirement_profile_id: str = "") -> ToolResult:
+        return (
+            await self.mcp.call(
+                "plan_execution_alignment",
+                {"requirement_profile_id": requirement_profile_id},
+            )
+        ).assert_ok()
+
+    async def save_alignment(
+        self, alignment: dict[str, Any], *, confirmed: bool = False
+    ) -> ToolResult:
+        return (
+            await self.mcp.call(
+                "save_execution_alignment",
+                {
+                    "alignment_json": json.dumps(alignment, ensure_ascii=False),
+                    "confirmed": confirmed,
+                },
+            )
+        ).assert_ok()
+
+    async def plan_fit(self, trigger: str = "manual") -> ToolResult:
+        return (
+            await self.mcp.call("check_plan_fit", {"trigger": trigger})
+        ).assert_ok()
+
     async def analyze_gaps(self) -> ToolResult:
         return (await self.mcp.call("analyze_gaps")).assert_ok()
 

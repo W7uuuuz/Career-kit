@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
-from ..core.progress import STAGE_EXECUTING, STAGE_EXECUTION, resolve_progress
 from ..core.state import State, StateSnapshot, resolve_state
 from ..guidance import MAINTENANCE_CLOSING, guide_for
 from ..mcp_app import mcp
@@ -42,8 +41,12 @@ def _mark_enterprise_alignment_skipped(profile) -> bool:
 
     只在状态机尚未进入执行阶段时记录；已经进入执行链路不重复改写时间戳。
     """
-    progress = resolve_progress(profile)
-    if str(progress.get("stage") or "") in (STAGE_EXECUTION, STAGE_EXECUTING):
+    snapshot = resolve_state(profile)
+    if snapshot.state in (
+        State.EXECUTION_READY,
+        State.EXECUTING,
+        State.MAINTENANCE,
+    ):
         return False
     guidance = dict(getattr(profile, "guidance", None) or {})
     guidance["enterprise_alignment_skipped_at"] = datetime.now().isoformat()

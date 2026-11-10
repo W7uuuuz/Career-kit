@@ -10,7 +10,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -26,9 +28,46 @@ logger = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 COMPANIES_PATH = Path(__file__).parent / "companies.yaml"
 
+# E2E 固定样本：唯一开关是环境变量，未设置时抓取行为完全不变。
+E2E_FIXTURE_ENV = "CAREER_KIT_E2E_SCRAPER_FIXTURE"
+
 # 缓存已加载的 Scraper 类
 _scraper_classes: dict[str, type[CompanyScraper]] = {}
 _config: dict[str, Any] | None = None
+
+
+@lru_cache(maxsize=1)
+def _e2e_fixtures() -> dict[str, Any] | None:
+    """读取 E2E 抓取固定样本；未启用时返回 None。
+
+    只在 E2E 显式设置 ``CAREER_KIT_E2E_SCRAPER_FIXTURE`` 时生效：
+    固定样本覆盖搜索/详情，避免核心套件依赖外网；未设置时完全走真实抓取路径。
+    """
+    path_text = os.environ.get(E2E_FIXTURE_ENV, "").strip()
+    if not path_text:
+        return None
+    try:
+        raw = json.loads(Path(path_text).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _fixture_payload(section: str, key: str) -> dict[str, Any] | None:
+    fixtures = _e2e_fixtures()
+    if fixtures is None:
+        return None
+    mapping = fixtures.get(section)
+    mapping = mapping if isinstance(mapping, dict) else {}
+    payload = mapping.get((key or "").strip().lower())
+    if isinstance(payload, dict):
+        return json.loads(json.dumps(payload))
+    return {
+        "error": (
+            f"E2E 固定样本未提供「{key}」（{E2E_FIXTURE_ENV} 已启用，禁止外网抓取）"
+        ),
+        "results": [],
+    }
 
 
 def _load_config() -> dict[str, Any]:
@@ -317,6 +356,9 @@ def _auto_write_knowledge(company: str, data: Any, data_type: str | None = None)
 
 def search_company_jobs(company: str, **kwargs: Any) -> dict[str, Any]:
     """搜索指定公司的岗位。自动处理缓存、校验、知识库写入。"""
+    fixture = _fixture_payload("search", company)
+    if fixture is not None:
+        return fixture
     company = resolve_company(company)
     scraper = get_scraper(company)
     if scraper is None:
@@ -384,6 +426,9 @@ def search_company_jobs(company: str, **kwargs: Any) -> dict[str, Any]:
 
 def get_job_detail(url: str, company: str | None = None) -> dict[str, Any]:
     """获取岗位详情。自动处理缓存、URL 路由、知识库写入。"""
+    fixture = _fixture_payload("detail", url)
+    if fixture is not None:
+        return fixture
     if company:
         scraper = get_scraper(company)
         if scraper is None:

@@ -315,9 +315,14 @@ def test_save_roadmap_blocked_in_execution_ready(store: ArtifactStore) -> None:
 
 
 def test_session_and_roadmap_tools_do_not_use_resolve_progress() -> None:
-    """入口第二源清理：start_session/finalize/generate_roadmap 只读 resolve_state。"""
+    """入口第二源清理：start_session/finalize/generate_roadmap/state_machine 只读 resolve_state。"""
     src_dir = Path(__file__).parent.parent / "src"
-    for name in ("tools/session_tools.py", "tools/roadmap_tools.py"):
+    for name in (
+        "tools/session_tools.py",
+        "tools/roadmap_tools.py",
+        "tools/task_tools.py",
+        "core/orchestrator/state_machine.py",
+    ):
         text = (src_dir / name).read_text(encoding="utf-8")
         assert "resolve_progress" not in text, f"{name} 仍调用 resolve_progress"
 

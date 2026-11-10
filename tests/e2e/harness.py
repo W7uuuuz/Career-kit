@@ -143,6 +143,21 @@ class Sandbox:
         assert path.exists(), f"档案文件不存在：{path}"
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def artifact(self, artifact_id: str) -> dict[str, Any]:
+        """只读读取已落库 artifact；不写库、不绕过门禁。"""
+        import sqlite3
+
+        db_path = self.data_dir / "career-kit.db"
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT data FROM artifacts WHERE id = ?", (artifact_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, f"artifact 未落库：{artifact_id}"
+        return json.loads(row[0])
+
     def finalize(self, failed: bool) -> None:
         """失败时保留数据快照；成功时清理临时沙箱。"""
         if failed:
