@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src import paths
 from src.core.artifacts.models import (
     ArtifactMeta,
+    BaselinePlan,
     CompanyEntry,
     CompanyPool,
     EvidenceRun,
@@ -66,6 +67,26 @@ def _company(
     )
 
 
+_BASELINE_ID = "bp_state_test"
+
+
+def _ensure_baseline(store: ArtifactStore, profile_name: str) -> None:
+    if store.load(_BASELINE_ID) is not None:
+        return
+    store.save(
+        BaselinePlan(
+            meta=ArtifactMeta(
+                id=_BASELINE_ID,
+                stage=state_machine.STAGE_BASELINE_PLAN,
+                profile_name=profile_name,
+                created_at=datetime.now().isoformat(),
+            ),
+            gap_report_id="gr_state_test",
+            roadmap={"phases": [{"id": "phase_1", "name": "基础"}]},
+        )
+    )
+
+
 def _pool(
     store: ArtifactStore,
     *,
@@ -78,12 +99,14 @@ def _pool(
     if not confirmed:
         for entry in entries:
             entry.status = "recommended"
+    _ensure_baseline(store, profile_name)
     return CompanyPool(
         meta=ArtifactMeta(
             id=store.new_id("cp_"),
             stage=state_machine.STAGE_COMPANY_POOL,
             profile_name=profile_name,
             created_at=datetime.now().isoformat(),
+            inputs={"baseline_plan_id": _BASELINE_ID},
             validation={"confirmed": confirmed},
         ),
         target_spec=TargetSpec(direction="AI 应用", role="AI Agent 开发", city=city),
@@ -99,12 +122,16 @@ def _seed(
     research: dict[str, Any] | None = None,
     who: dict[str, Any] | None = None,
 ) -> str:
+    from conftest import promote_profile
+
     pool_id = store.save(pool)
     profile = CareerProfile(
         who=who or {"education": "本科"},
         research=research or {},
     )
     profile_store.save_profile(profile, profile_name)
+    profile_store.set_active_profile_name(profile_name)
+    promote_profile(profile, profile_name, company=True)
     return pool_id
 
 

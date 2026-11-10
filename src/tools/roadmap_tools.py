@@ -21,6 +21,7 @@ from .profile import (
     save_profile,
 )
 from .roadmap import format_roadmap, parse_roadmap
+from .state_gate import require_state
 from .tool_helpers import _json, _parse_json_param
 
 
@@ -35,6 +36,9 @@ def generate_roadmap() -> str:
     后续步骤：LLM 生成路线图后调用 save_roadmap，然后调用 generate_tasks。
     """
     profile = load_profile()
+    gate = require_state(profile, "generate_roadmap")
+    if isinstance(gate, str):
+        return gate
 
     if not profile.gap:
         return error_response(
@@ -468,6 +472,11 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
       与用户判断，不禁止投递；start_level_after 只影响后续阶段的建议，不写回差距分析。
     - 返回值的 advisories 会持久化到档案，请在向用户交付时如实复述未解决项。
     """
+    profile = load_profile()
+    gate = require_state(profile, "save_roadmap")
+    if isinstance(gate, str):
+        return gate
+
     try:
         roadmap_data = _parse_json_param(roadmap_json, "路线图")
     except InvalidJsonError as exc:
@@ -493,7 +502,6 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             {"received": [type(phase).__name__ for phase in raw_phases[:5]]},
         )
 
-    profile = load_profile()
     parsed = parse_roadmap(json.dumps(roadmap_data, ensure_ascii=False))
 
     # 质量建议（不阻断保存）

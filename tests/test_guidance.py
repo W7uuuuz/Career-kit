@@ -911,8 +911,9 @@ def test_finalize_does_not_auto_confirm_inferred_goal(temp_profile):
 
     intake("who", '{"name": "张三"}')
     intake("want", '{"target_role": "AI Agent", "city": "上海"}')
-    out = finalize_profile()
-    assert "档案已确认" in out
+    out = json.loads(finalize_profile())
+    assert out.get("isError") is True
+    assert out["code"] == "INVALID_STATE"
 
     profile = profile_module.load_profile()
     assert not goal_confirmed(profile)
@@ -927,15 +928,17 @@ def test_finalize_rejects_empty_profile(temp_profile):
 
     out = json.loads(finalize_profile())
     assert out.get("isError") is True
-    assert out["code"] == "MISSING_DATA"
+    assert out["code"] == "INVALID_STATE"
 
 
 def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
     """start_session / get_workflow_status / save_roadmap 的下一步与 resolve_state 同源。"""
+    from src.core.sync import sync_market_baseline
     from src.server import (
         finalize_profile,
         get_workflow_status,
         intake,
+        save_gap_analysis,
         save_roadmap,
         start_session,
     )
@@ -945,8 +948,18 @@ def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
     intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     finalize_profile()
     # 先触发一次状态读取，让 TargetSpec 等上游 artifact 完成回填；
-    # 之后 save_roadmap / status 的下一步才都基于同一条 artifact 链。
+    # 之后 save_roadmap / status 的下一步才都基于同一份 artifact 链。
     get_workflow_status()
+
+    # Phase 3a 门禁：save_roadmap 只在 BASELINE_PLAN_PENDING 放行，上游市场与
+    # 差距 artifact 必须真实存在。
+    profile = profile_module.load_profile()
+    profile.research = {"report_md": "research.md", "counts": {}}
+    profile_module.save_profile(profile)
+    sync_market_baseline(profile_module.get_active_profile_name())
+    save_gap_analysis(
+        json.dumps({"match_score": 60, "skill_gaps": []}, ensure_ascii=False)
+    )
 
     roadmap = {
         "roadmap": {
@@ -1239,8 +1252,9 @@ def test_save_roadmap_message_matches_unconfirmed_goal(temp_profile):
     }
     out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
 
-    assert out["next_steps"] == ["intake(want)"]
-    assert "intake(want)" in out["message"]
+    assert out["isError"] is True
+    assert out["code"] == "INVALID_STATE"
+    assert out["details"]["next_tool"] == "intake(want)"
     assert "select_target_companies" not in out["message"]
 
 def test_goal_boundary_index_matches_progress_stage():

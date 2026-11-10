@@ -19,6 +19,7 @@ from .methodology import build_methodology_context
 from .profile import get_active_profile_name, load_profile, save_profile
 from .resource_catalog import select_resources, validate_resources
 from .session_tools import _summarize_dict
+from .state_gate import require_state
 from .tool_helpers import _json, _parse_json_param
 
 _FINISHED_TASK_STATUSES = ("completed", "skipped")
@@ -134,6 +135,9 @@ def generate_tasks() -> str:
     )
 
     profile = load_profile()
+    gate = require_state(profile, "generate_tasks")
+    if isinstance(gate, str):
+        return gate
 
     roadmap = profile.plan.get("roadmap", profile.plan)
     phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
@@ -284,6 +288,9 @@ def detail_current_phase() -> str:
     from .task_manager import resolve_current_phase
 
     profile = load_profile()
+    gate = require_state(profile, "detail_current_phase")
+    if isinstance(gate, str):
+        return gate
 
     roadmap = profile.plan.get("roadmap", profile.plan)
     phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
@@ -389,6 +396,11 @@ def save_current_detail(detail_json: str) -> str:
             ]
         }
     """
+    profile = load_profile()
+    gate = require_state(profile, "save_current_detail")
+    if isinstance(gate, str):
+        return gate
+
     try:
         detail = _parse_json_param(detail_json, "当前阶段详细路线")
     except InvalidJsonError as exc:
@@ -418,7 +430,6 @@ def save_current_detail(detail_json: str) -> str:
         for warning in validate_resources(task.get("resources") or []):
             advisories.append(f"「{name}」{warning}")
 
-    profile = load_profile()
     roadmap = profile.plan.get("roadmap", profile.plan) if isinstance(profile.plan, dict) else {}
     phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
     phase_ids = [
@@ -590,6 +601,9 @@ def checkin_task(task_id: str, status: str = "completed", notes: str = "", amoun
         )
 
     profile = load_profile()
+    gate = require_state(profile, "checkin_task")
+    if isinstance(gate, str):
+        return gate
 
     try:
         profile, checkin = do_checkin(profile, task_id, status, notes, amount)

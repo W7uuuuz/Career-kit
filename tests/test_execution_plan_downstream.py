@@ -648,7 +648,9 @@ def test_generate_tasks_keeps_finished_tasks_from_deleted_phase(
             ),
         ],
     )
-    profile_store.save_profile(profile, PROFILE_NAME)
+    from conftest import promote_profile
+
+    promote_profile(profile, PROFILE_NAME, execution=True)
 
     payload = json.loads(task_tools.generate_tasks())
 

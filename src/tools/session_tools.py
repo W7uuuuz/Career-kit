@@ -26,6 +26,7 @@ from .probing import (
 from .profile import get_active_profile_name, load_profile, save_profile
 from .resume_parser import extract_text
 from .session import get_welcome_message
+from .state_gate import require_state
 from .tool_helpers import _parse_json_param, server_fingerprint_line
 
 
@@ -312,6 +313,9 @@ def finalize_profile(skip_probing: bool = False) -> str:
     后续步骤：先 research_market 做市场调研（推荐），再 analyze_gaps。
     """
     profile = load_profile()
+    gate = require_state(profile, "finalize_profile")
+    if isinstance(gate, str):
+        return gate
 
     # 空档案不放行：没有 who/have/want/target_jd 时生成摘要只会制造假进度。
     if not (profile.who or profile.have or profile.want or profile.target_jd):

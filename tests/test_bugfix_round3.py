@@ -47,16 +47,17 @@ class _FakeCache:
 def test_save_current_detail_rejects_orphan_phase(temp_profile):
     from src.server import save_current_detail
 
-    # 无路线图（修复前 phase_ids 为空会跳过守卫，直接落孤儿 detail）
+    from conftest import promote_profile
+
+    # 状态未就绪时门禁拒绝（无路线图不再进入业务守卫）
     no_plan = json.loads(save_current_detail(json.dumps(
         {"phase_id": "phase_99", "tasks": [{"name": "刷题"}]}
     )))
-    assert no_plan["code"] == "MISSING_DATA"
-    assert "路线图" in no_plan["message"]
+    assert no_plan["code"] == "INVALID_STATE"
 
     p = profile_module.load_profile()
     p.plan = {"roadmap": {"phases": [{"id": "phase_1", "name": "基础学习"}]}}
-    profile_module.save_profile(p)
+    promote_profile(p, execution=True)
 
     bad_id = json.loads(save_current_detail(json.dumps(
         {"phase_id": "phase_99", "tasks": []}

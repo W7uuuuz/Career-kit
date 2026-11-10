@@ -15,7 +15,8 @@ from ..scrapers.boss.auth import (
     has_valid_cookies as boss_has_valid_cookies,
 )
 from .errors import error_response
-from .profile import get_active_profile_name
+from .profile import get_active_profile_name, load_profile
+from .state_gate import require_state
 from .tool_helpers import _json
 
 
@@ -58,6 +59,10 @@ async def collect_company_evidence(
         JSON 字符串：artifact id、样本统计（含 BOSS 条数）、置信度、来源状态、
         数据缺口、报告完整路径与下一步 analyze_company_requirements。
     """
+    gate = require_state(load_profile(), "collect_company_evidence")
+    if isinstance(gate, str):
+        return gate
+
     if include_boss and not boss_confirmed:
         return error_response(
             "CONFIRMATION_REQUIRED",

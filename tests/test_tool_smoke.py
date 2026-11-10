@@ -37,6 +37,9 @@ def test_save_gap_analysis_accepts_docstring_minimal_schema(temp_profile):
     """BUG-004 回归：按 docstring 最小结构传参必须成功且不留半成品。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     minimal = json.dumps({
         "match_score": 65,
         "skill_gaps": [
@@ -60,6 +63,9 @@ def test_save_gap_analysis_tolerates_string_entries(temp_profile):
     """字符串条目（LLM 退化输出）不崩，报告原样渲染。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     degraded = json.dumps({
         "match_score": 50,
         "skill_gaps": [{"skill": "RAG", "priority": "medium",
@@ -238,7 +244,7 @@ def test_finalize_profile_probes_when_no_evidence(temp_profile):
     from src.server import finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake("have", '{"skills": ["Python", "LangChain"], "experience": "2年"}')
 
     out = json.loads(finalize_profile())
@@ -263,8 +269,15 @@ def test_finalize_profile_probes_when_no_evidence(temp_profile):
     )
     out3 = finalize_profile()
     assert "档案已确认" in out3
+    assert profile_module.load_profile().probe_skipped is False
 
-    # 用户主动跳过（唯一合法绕过）——留痕 probe_skipped
+    # 用户主动跳过（唯一合法绕过）——留痕 probe_skipped；换新档案才能再次 finalize
+    from src.models import CareerProfile
+
+    profile_module.save_profile(CareerProfile(), "skip_case")
+    profile_module.set_active_profile_name("skip_case")
+    intake("who", '{"name": "张三"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake("have", '{"core_skills": [{"skill": "Python", "evidence": "爬虫项目"}]}')
     out4 = finalize_profile(skip_probing=True)
     assert "档案已确认" in out4
@@ -276,7 +289,7 @@ def test_finalize_probes_core_skills_without_evidence(temp_profile):
     from src.server import finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake("have", '{"core_skills": [{"skill": "LangGraph", "confidence": "高"}]}')
 
     out = json.loads(finalize_profile())
@@ -307,7 +320,7 @@ def test_finalize_blocks_missing_authorship(temp_profile):
     from src.server import finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake(
         "have",
         '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true}]}',
@@ -335,6 +348,7 @@ def test_finalize_authorship_skip_path_keeps_trace(temp_profile):
     from src.server import finalize_profile, intake
 
     intake("who", '{"name": "张三"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     intake("have", '{"skills": ["Python"], "evidence": "多年实战（用户口头确认）"}')
 
     # 不带 skip → 阻塞（证据有了但整体自评缺失）
@@ -484,6 +498,9 @@ def test_save_gap_ai_authorship_is_advisory(temp_profile):
     """BUG-021：AI 作者身份提示为 advisory（保存成功并提示，不拒绝）。"""
     from src.server import intake, save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     intake(
         "have",
         '{"core_skills": [{"skill": "LangGraph", "evidence": "项目实战", "user_verified": true, '
@@ -545,6 +562,10 @@ def test_roadmap_jd_fields_defaults():
 def test_save_roadmap_soft_check_and_html(temp_profile):
     """软校验：占位未确认/jd 无据提示；确认后消除；定稿自动产出路线图 HTML。"""
     from src.server import save_roadmap
+
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
 
     base = {
         "roadmap": {"strategy_summary": "测试", "phases": [
@@ -727,19 +748,21 @@ def test_workflow_status_routes_to_explore_goals_when_no_goal(temp_profile):
     assert "**下一步**：analyze_gaps" not in out2
 
 
-def test_finalize_profile_reminds_when_no_goal(temp_profile):
-    """finalize_profile：无目标时返回目标缺失提醒。"""
+def test_finalize_profile_requires_confirmed_goal(temp_profile):
+    """finalize_profile：目标未确认时门禁拒绝，确认后才建档。"""
     from src.server import finalize_profile, intake
 
     intake("who", '{"name": "小白"}')
     intake("have", '{"skills": [], "experience_level": "零基础"}')
 
-    out = finalize_profile()
-    assert "目标缺失" in out and "explore_goals" in out
+    out = json.loads(finalize_profile())
+    assert out.get("isError") is True
+    assert out["code"] == "INVALID_STATE"
+    assert out["details"]["next_tool"] == "explore_goals"
 
-    intake("want", '{"target_role": "前端工程师"}')
+    intake("want", '{"target_role": "前端工程师", "user_confirmed": true}')
     out2 = finalize_profile()
-    assert "目标缺失" not in out2
+    assert "档案已确认" in out2
 
 
 def test_explore_goals_guards_when_goal_exists(temp_profile):
@@ -836,9 +859,12 @@ def test_save_roadmap_hard_check_required_fields(temp_profile):
     """硬校验：learn 外阶段缺 resume_value、KPI 缺量化指标 → 先校验后落盘直接拒绝。"""
     from src.server import intake, save_roadmap
 
+    from conftest import promote_profile
+
     intake("who", '{"name": "张三", "graduation_year": "2028"}')
     intake("have", '{"skills": ["Python"], "experience_level": "小厂"}')
     intake("want", '{"target_role": "AI 工程师"}')
+    promote_profile(profile_module.load_profile())
 
     roadmap = {
         "roadmap": {
@@ -862,9 +888,12 @@ def test_save_roadmap_hard_check_level_jump(temp_profile):
     """硬校验：起点小厂但 intern 目标大厂 → 超连续范围提示。"""
     from src.server import intake, save_roadmap
 
+    from conftest import promote_profile
+
     intake("who", '{"name": "张三"}')
     intake("have", '{"skills": ["Python"], "experience_level": "小厂"}')
     intake("want", '{"target_role": "AI 工程师"}')
+    promote_profile(profile_module.load_profile())
 
     roadmap = {
         "roadmap": {
@@ -887,9 +916,12 @@ def test_save_roadmap_hard_check_graduation(temp_profile):
     """硬校验：阶段面向届早于用户毕业届 → 届别不匹配提示。"""
     from src.server import intake, save_roadmap
 
+    from conftest import promote_profile
+
     intake("who", '{"name": "张三", "graduation_year": "2028"}')
     intake("have", '{"skills": ["Python"]}')
     intake("want", '{"target_role": "AI 工程师"}')
+    promote_profile(profile_module.load_profile())
 
     roadmap = {
         "roadmap": {
@@ -909,9 +941,12 @@ def test_save_roadmap_no_start_level_passes(temp_profile):
     """无 start_level/届别数据时放行（有数据才挡，兼容旧数据）。"""
     from src.server import intake, save_roadmap
 
+    from conftest import promote_profile
+
     intake("who", '{"name": "张三"}')
     intake("have", '{"skills": ["Python"]}')
     intake("want", '{"target_role": "AI 工程师"}')
+    promote_profile(profile_module.load_profile())
 
     roadmap = {
         "roadmap": {
@@ -961,6 +996,8 @@ def test_generate_roadmap_returns_step_template(temp_profile):
     """generate_roadmap 返回 step_template（6 步工作流）。"""
     from src.server import generate_roadmap, intake, save_gap_analysis
 
+    from conftest import promote_profile
+
     intake("who", '{"name": "张三"}')
     intake("have", '{"skills": ["Python"]}')
     intake("want", '{"target_role": "AI 工程师"}')
@@ -969,6 +1006,7 @@ def test_generate_roadmap_returns_step_template(temp_profile):
         "skill_gaps": [{"skill": "AI", "priority": "high", "current_level": "无",
                         "required_level": "入门", "how_to_improve": "学习", "source": "测试"}],
     }, ensure_ascii=False))
+    promote_profile(profile_module.load_profile())
 
     out = _parse(generate_roadmap())
     assert "step_template" in out
@@ -1004,19 +1042,21 @@ def test_parse_resume_requires_verification(tmp_path, temp_profile):
 
 
 def test_detail_current_phase_requires_roadmap_not_tasks(temp_profile):
-    """detail_current_phase：无路线图时拒绝；有路线图但未生成任务时以第一段细化。"""
+    """detail_current_phase：状态未就绪时拒绝；执行准备态下以第一段细化。"""
     from src.server import detail_current_phase
+
+    from conftest import promote_profile
 
     data = json.loads(detail_current_phase())
     assert data.get("isError") is True
-    assert data["code"] == "MISSING_DATA"
+    assert data["code"] == "INVALID_STATE"
 
     profile = profile_module.load_profile()
     profile.plan = {"roadmap": {"phases": [
         {"id": "phase_1", "name": "基础学习", "milestones": []},
         {"id": "phase_2", "name": "项目实战", "milestones": []},
     ]}}
-    profile_module.save_profile(profile)
+    promote_profile(profile, execution=True)
 
     detail = json.loads(detail_current_phase())
     assert detail["current_phase"]["phase_id"] == "phase_1"
@@ -1027,6 +1067,8 @@ def test_detail_current_phase_and_save(temp_profile):
     """BUG-004：detail_current_phase 返回方法论+当前阶段；save_current_detail 保存并引导重新 generate_tasks。"""
     from src.models import Task
     from src.server import detail_current_phase, save_current_detail
+
+    from conftest import promote_profile
 
     p = profile_module.load_profile()
     p.plan = {"roadmap": {"phases": [
@@ -1040,7 +1082,7 @@ def test_detail_current_phase_and_save(temp_profile):
         Task(id="task_002", name="学LangGraph", phase_id="phase_1"),
         Task(id="task_003", name="推进阶段：项目实战", phase_id="phase_2"),
     ]
-    profile_module.save_profile(p)
+    promote_profile(p, execution=True)
 
     out = _parse(detail_current_phase())
     assert "detailed_route" in out["methodology"]["name"] or out["methodology"].get("name") == "当前阶段详细路线"
@@ -1063,6 +1105,8 @@ def test_generate_tasks_merges_checkin_points(temp_profile):
     from src.models import Task
     from src.server import generate_tasks
 
+    from conftest import promote_profile
+
     p = profile_module.load_profile()
     p.plan = {"current_detail": {"phase_id": "phase_1", "tasks": [
         {"name": "学Python", "checkin_mode": "daily", "checkin_goal": 30},
@@ -1072,7 +1116,7 @@ def test_generate_tasks_merges_checkin_points(temp_profile):
         ]},
     ]}}
     p.tasks = [Task(id="task_001", name="学Python", phase_id="phase_1")]
-    profile_module.save_profile(p)
+    promote_profile(p, execution=True)
 
     _parse(generate_tasks())
     final = profile_module.load_profile()
@@ -1086,13 +1130,15 @@ def test_checkin_daily_and_percent(temp_profile):
     from src.models import Task
     from src.server import checkin_task
 
+    from conftest import promote_profile
+
     p = profile_module.load_profile()
     p.plan = {"roadmap": {"phases": []}}
     p.tasks = [
         Task(id="task_d", name="刷题30天", phase_id="phase_1", checkin_mode="daily", checkin_goal=3),
         Task(id="task_p", name="学文档到80%", phase_id="phase_1", checkin_mode="percent", checkin_goal=80),
     ]
-    profile_module.save_profile(p)
+    promote_profile(p, execution=True, detail=True)
 
     # daily：amount 为绝对值（1 表示今天打卡，>1 表示目标天数）
     out1 = checkin_task(task_id="task_d", status="completed", amount=1)
@@ -1116,11 +1162,13 @@ def test_daily_same_day_is_idempotent(temp_profile):
     from src.models import Task
     from src.server import checkin_task
 
+    from conftest import promote_profile
+
     p = profile_module.load_profile()
     p.plan = {"roadmap": {"phases": []}}
     p.tasks = [Task(id="task_d", name="刷题", phase_id="phase_1",
                     checkin_mode="daily", checkin_goal=3)]
-    profile_module.save_profile(p)
+    promote_profile(p, execution=True, detail=True)
 
     checkin_task(task_id="task_d", status="completed", amount=1)
     checkin_task(task_id="task_d", status="completed", amount=1)
@@ -1170,6 +1218,10 @@ def test_gap_missing_source_is_rejected(temp_profile):
     """skill_gaps 非空时每项必须有 source：缺失 → INVALID_PARAM 且不写档案。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
+    before_gap = dict(profile_module.load_profile().gap or {})
     bad = json.dumps({
         "match_score": 60,
         "skill_gaps": [{"skill": "RAG", "priority": "high"}],
@@ -1179,13 +1231,16 @@ def test_gap_missing_source_is_rejected(temp_profile):
     assert result["code"] == "INVALID_PARAM"
     assert result["details"]["index"] == 0
     assert result["details"]["field"] == "source"
-    assert not profile_module.load_profile().gap, "校验失败不得写入档案"
+    assert profile_module.load_profile().gap == before_gap, "校验失败不得改写档案"
 
 
 def test_gap_empty_gaps_is_advisory(temp_profile):
     """空 skill_gaps → 保存成功并提示（不强制凑差距）。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     bad = json.dumps({"match_score": 60, "skill_gaps": []}, ensure_ascii=False)
     result = json.loads(save_gap_analysis(gap_json=bad))
     assert result.get("isError") is not True
@@ -1196,6 +1251,9 @@ def test_gap_gate_rejects_out_of_range_score(temp_profile):
     """match_score 越界 → 拒绝。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     bad = json.dumps({
         "match_score": 180,
         "skill_gaps": [{"skill": "RAG", "source": "JD"}],
@@ -1209,6 +1267,9 @@ def test_gap_incomplete_red_flags_is_advisory(temp_profile):
     """resume_red_flags 缺 risk/evidence_fix → 保存成功并提示。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     bad = json.dumps({
         "match_score": 60,
         "skill_gaps": [{"skill": "RAG", "source": "JD"}],
@@ -1223,6 +1284,9 @@ def test_gap_gate_accepts_anchored_analysis(temp_profile):
     """锚定真实数据来源的完整差距分析 → 正常保存。"""
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     good = json.dumps({
         "match_score": 58,
         "skill_gaps": [{"skill": "协作", "priority": "high", "source": "字节 JD"}],
@@ -1339,6 +1403,14 @@ def test_invalid_enums_return_invalid_param_with_allowed(temp_profile):
     assert dashboard["code"] == "INVALID_PARAM"
     assert set(dashboard["details"]["allowed"]) == {"progress", "roadmap"}
 
+    from src.models import Task
+
+    from conftest import promote_profile
+
+    p = profile_module.load_profile()
+    p.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
+    promote_profile(p, execution=True, detail=True)
+
     missing_task = json.loads(checkin_task(task_id="task_999", status="completed"))
     assert missing_task.get("isError") is True
     assert missing_task["code"] == "MISSING_DATA", "缺失资源仍用 MISSING_DATA"
@@ -1348,6 +1420,8 @@ def test_generate_tasks_records_retained_completed_evidence(temp_profile):
     """generate_tasks 重建时把保留的 completed 任务沉淀为能力证据（去重）。"""
     from src.models import Task
     from src.server import generate_tasks
+
+    from conftest import promote_profile
 
     p = profile_module.load_profile()
     p.have = {"skills": ["Python"]}
@@ -1364,7 +1438,7 @@ def test_generate_tasks_records_retained_completed_evidence(temp_profile):
         milestone_id="m1", status="completed",
         completed_at="2026-11-01T10:00:00",
     )]
-    profile_module.save_profile(p)
+    promote_profile(p, execution=True)
 
     first = json.loads(generate_tasks())
     assert not first.get("isError"), first
@@ -1378,16 +1452,22 @@ def test_generate_tasks_records_retained_completed_evidence(temp_profile):
     evidence = saved.have.get("capability_evidence") or []
     assert [item["task"] for item in evidence] == ["已完成任务"], "重复重建不得重复追加"
 
-def test_company_alignment_skip_allows_baseline_execution(temp_profile):
+def test_company_alignment_skip_allows_baseline_execution(temp_profile, monkeypatch):
     """用户选择先按基线执行时，generate_tasks/detail 继续并记录可审计跳过事实。"""
+    from src import paths
     from src.core.progress import resolve_progress
+    from src.core.sync import sync_market_baseline
     from src.server import (
         detail_current_phase,
         finalize_profile,
         generate_tasks,
         intake,
+        save_gap_analysis,
         save_roadmap,
     )
+    from src.tools.profile import get_active_profile_name
+
+    monkeypatch.setattr(paths, "PROFILE_DIR", temp_profile)
 
     intake("who", '{"name": "张三"}')
     intake("have", '{"skills": []}')
@@ -1396,6 +1476,13 @@ def test_company_alignment_skip_allows_baseline_execution(temp_profile):
         '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
     )
     finalize_profile()
+
+    # 基线路线图需要上游市场与差距 artifact 才能进入 BASELINE_PLAN_PENDING。
+    profile = profile_module.load_profile()
+    profile.research = {"report_md": "research.md", "counts": {}}
+    profile_module.save_profile(profile)
+    sync_market_baseline(get_active_profile_name())
+    save_gap_analysis(json.dumps({"match_score": 60, "skill_gaps": []}, ensure_ascii=False))
 
     roadmap = {"roadmap": {"strategy_summary": "测试", "phases": [
         {"id": "phase_1", "name": "基础学习", "milestones": [

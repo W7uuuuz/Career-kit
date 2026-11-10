@@ -34,11 +34,16 @@ from src.tools import profile as profile_store, requirement_tools
 
 @pytest.fixture()
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from conftest import promote_profile, seed_baseline_pool
+
     root = tmp_path / "data"
     monkeypatch.setattr(paths, "PROFILE_DIR", root)
     monkeypatch.setattr(profile_store, "PROFILE_DIR", root)
-    profile_store.save_profile(CareerProfile(), "alice")
+    profile = CareerProfile()
+    profile_store.save_profile(profile, "alice")
     profile_store.set_active_profile_name("alice")
+    promote_profile(profile, "alice", company=True)
+    seed_baseline_pool("alice")
     return root
 
 
@@ -318,6 +323,7 @@ def test_analyze_tool_uses_latest_evidence_when_id_empty(store: ArtifactStore) -
 
 
 def test_analyze_tool_rejects_missing_evidence(store: ArtifactStore) -> None:
+    _save_run(store)
     result = json.loads(requirement_tools.analyze_company_requirements("ev_missing"))
     assert result["isError"] is True
     assert result["code"] == "EVIDENCE_RUN_NOT_FOUND"
@@ -517,6 +523,7 @@ def _save_draft(
 def test_save_requirement_profile_rejects_missing_evidence_run(
     store: ArtifactStore,
 ) -> None:
+    _save_run(store)
     draft_id = _save_draft(store, "ev_missing")
 
     result = json.loads(
@@ -560,8 +567,9 @@ def test_save_requirement_profile_rejects_corrupt_evidence_run(
         conn.execute("UPDATE artifacts SET data = ? WHERE id = ?", ("{broken", bad_evidence_id))
         conn.commit()
 
-    draft_id = _save_draft(store, bad_evidence_id)
-    result = json.loads(
+        _save_run(store)
+        draft_id = _save_draft(store, bad_evidence_id)
+        result = json.loads(
         requirement_tools.save_requirement_profile(
             json.dumps(
                 {"requirement_profile_id": draft_id, "interpretation": {"summary": "x"}},

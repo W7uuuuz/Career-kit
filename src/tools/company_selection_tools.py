@@ -11,6 +11,7 @@ from ..core.stages.base import StageContext, StageResult
 from ..mcp_app import mcp
 from .errors import error_response
 from .profile import get_active_profile_name, load_profile
+from .state_gate import require_state
 from .tool_helpers import _json
 
 
@@ -46,6 +47,9 @@ def select_target_companies(
     """
     profile_name = get_active_profile_name()
     profile = load_profile(profile_name)
+    gate = require_state(profile, "select_target_companies")
+    if isinstance(gate, str):
+        return gate
     spec = target_spec(profile)
 
     inputs: dict[str, Any] = {

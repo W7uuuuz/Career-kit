@@ -31,12 +31,15 @@ def temp_profile(tmp_path, monkeypatch):
 
 
 def _mk():
-    """干净档案 + 三轴齐全（过 save_roadmap 的前置）。"""
+    """建档案 + 技能 + 目标（供 save_roadmap 前置用）。"""
     from src.server import intake
+
+    from conftest import promote_profile
 
     intake("who", '{"name": "张三", "graduation_year": "2028"}')
     intake("have", '{"skills": ["Python"], "experience_level": "小厂"}')
     intake("want", '{"target_role": "AI 工程师"}')
+    promote_profile(profile_module.load_profile())
 
 
 def _valid_roadmap(**overrides):
@@ -70,6 +73,9 @@ def test_save_roadmap_audit_roundtrip(temp_profile):
         "无路线图时审计应拒绝"
     )
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
     assert out["context"]["phase"] == "roadmap_saved"
 
@@ -107,6 +113,9 @@ def test_audit_fail_rounds_are_recorded_without_blocking(temp_profile):
     """审计 FAIL 累计记录，但不再要求 force 才能定稿。"""
     from src.server import save_roadmap, save_roadmap_audit
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     save_roadmap(json.dumps(_valid_roadmap(), ensure_ascii=False))
     save_roadmap_audit(json.dumps({"verdict": "FAIL", "issues": [
         {"checklist_id": "quantifiable", "problem": "p1", "fix": "f1"},
@@ -153,6 +162,9 @@ def test_start_level_after_enables_staged_climb(temp_profile):
     from src.server import save_roadmap
     from src.tools import profile as profile_module
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     roadmap = {
         "roadmap": {
             "strategy_summary": "分阶段爬升",
@@ -250,19 +262,10 @@ def test_kpi_without_counted_tasks_via_advisory(temp_profile):
 
 def test_import_jd_marks_gap_stale(temp_profile):
     from src.core.sync import sync_market_baseline
-    from src.server import (
-        finalize_profile,
-        get_workflow_status,
-        import_jd,
-        intake,
-        save_gap_analysis,
-    )
+    from src.server import get_workflow_status, import_jd, save_gap_analysis
     from src.tools import profile as profile_module
 
     _mk()
-    # 状态模型要求目标亲口确认且档案 finalize；市场基线是差距 artifact 的上游。
-    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
-    finalize_profile(skip_probing=True)
     profile = profile_module.load_profile()
     profile.research = {"report_md": "research.md", "counts": {}}
     profile_module.save_profile(profile)

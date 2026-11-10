@@ -85,7 +85,7 @@ def test_finalize_profile_syncs_profile_artifact(data_dir: Path) -> None:
 
     intake("who", '{"name": "张三"}')
     intake("have", '{"skills": []}')
-    intake("want", '{"target_role": "AI 工程师"}')
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
     out = finalize_profile()
     assert "档案已确认" in out
 
@@ -98,7 +98,11 @@ def test_finalize_profile_syncs_profile_artifact(data_dir: Path) -> None:
 def test_save_gap_analysis_syncs_gap_artifact(data_dir: Path) -> None:
     from src.tools.analysis_tools import save_gap_analysis
 
-    _seed_legacy_profile()
+    from conftest import promote_profile
+
+    seeded = _seed_legacy_profile()
+    seeded.plan = {}
+    promote_profile(seeded, PROFILE_NAME)
     gap = {"match_score": 60, "skill_gaps": [{"skill": "RAG", "source": "JD"}]}
     out = save_gap_analysis(gap_json=json.dumps(gap, ensure_ascii=False))
     assert json.loads(out).get("isError") is not True
@@ -112,7 +116,9 @@ def test_save_gap_analysis_syncs_gap_artifact(data_dir: Path) -> None:
 def test_save_roadmap_syncs_baseline_plan_artifact(data_dir: Path) -> None:
     from src.tools.roadmap_tools import save_roadmap
 
-    _seed_legacy_profile()
+    from conftest import promote_profile
+
+    promote_profile(_seed_legacy_profile(), PROFILE_NAME)
     roadmap = {
         "roadmap": {
             "strategy_summary": "基线策略",
@@ -143,6 +149,8 @@ def test_save_roadmap_syncs_baseline_plan_artifact(data_dir: Path) -> None:
 def test_generate_tasks_and_checkin_sync_execution_state(data_dir: Path) -> None:
     from src.tools.task_tools import checkin_task, generate_tasks
 
+    from conftest import promote_profile
+
     profile = profile_store.load_profile(PROFILE_NAME)
     profile.plan = {
         "roadmap": {
@@ -158,7 +166,7 @@ def test_generate_tasks_and_checkin_sync_execution_state(data_dir: Path) -> None
         }
     }
     _seed_applied_plan(profile)
-    profile_store.save_profile(profile, PROFILE_NAME)
+    promote_profile(profile, PROFILE_NAME)
 
     out = generate_tasks()
     assert "已为当前阶段" in out
@@ -191,10 +199,78 @@ def test_record_application_syncs_application_state_artifact(data_dir: Path) -> 
 
 
 def _seed_applied_plan(profile: CareerProfile) -> str:
-    """写入 applied ExecutionPlan 并挂到 core_state；ExecutionState 才允许落库。"""
-    from src.core.artifacts.models import ArtifactMeta, ExecutionPlan
+    """写入 applied ExecutionPlan 并挂到 core_state；ExecutionState 留给工具。"""
+    from src.core.artifacts.models import (
+        ArtifactMeta,
+        BaselinePlan,
+        CompanyEntry,
+        CompanyPool,
+        EvidenceRun,
+        ExecutionPlan,
+        RequirementProfile,
+        TargetSpec,
+    )
 
     store = ArtifactStore()
+    baseline_id = "bp_seed"
+    store.save(
+        BaselinePlan(
+            meta=ArtifactMeta(
+                id=baseline_id,
+                stage="baseline_plan",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+            ),
+            gap_report_id="gr_seed",
+            roadmap={"phases": [{"id": "phase_1", "name": "基础"}]},
+        )
+    )
+    store.save(
+        CompanyPool(
+            meta=ArtifactMeta(
+                id="cp_seed",
+                stage="company_pool",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+                inputs={"baseline_plan_id": baseline_id},
+                validation={"confirmed": True},
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发"),
+            companies=[
+                CompanyEntry(
+                    id="bytedance", name="字节跳动", tier="大厂",
+                    industry="互联网", scrapable=True, status="confirmed",
+                )
+            ],
+        )
+    )
+    evidence_id = "ev_seed"
+    store.save(
+        EvidenceRun(
+            meta=ArtifactMeta(
+                id=evidence_id,
+                stage="evidence",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+            ),
+            target_spec=TargetSpec(role="AI Agent 开发"),
+            company_pool_id="cp_seed",
+        )
+    )
+    requirement_id = "rp_seed"
+    store.save(
+        RequirementProfile(
+            meta=ArtifactMeta(
+                id=requirement_id,
+                stage="requirement",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+                validation={"status": "saved"},
+            ),
+            evidence_run_id=evidence_id,
+            interpretation={"summary": "seed"},
+        )
+    )
     plan_id = store.save(
         ExecutionPlan(
             meta=ArtifactMeta(
@@ -203,7 +279,8 @@ def _seed_applied_plan(profile: CareerProfile) -> str:
                 profile_name=PROFILE_NAME,
                 created_at="2026-11-08T00:00:00",
             ),
-            requirement_profile_id="rp_seed",
+            requirement_profile_id=requirement_id,
+            baseline_plan_id=baseline_id,
             applied=True,
         )
     )
@@ -400,6 +477,8 @@ def test_task_tools_surface_sync_failure_warning(
     def _failing_sync(profile_name: str) -> str:
         raise RuntimeError("artifact store down")
 
+    from conftest import promote_profile
+
     monkeypatch.setattr(core_sync, "sync_execution_state", _failing_sync)
     from src.tools.task_tools import checkin_task, generate_tasks
 
@@ -417,7 +496,7 @@ def test_task_tools_surface_sync_failure_warning(
             ]
         }
     }
-    profile_store.save_profile(profile, PROFILE_NAME)
+    promote_profile(profile, PROFILE_NAME, execution=True, detail=True)
 
     out = json.loads(generate_tasks())
     assert "同步失败" in out["message"]

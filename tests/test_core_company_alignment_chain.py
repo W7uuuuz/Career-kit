@@ -80,7 +80,9 @@ def _seed_profile() -> CareerProfile:
             "city": "上海",
             "target_tiers": ["大厂"],
             "bridge_tiers": ["中厂"],
+            "user_confirmed": True,
         },
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         gap={"start_level": "小厂", "match_score": 60},
         research={"report_md": "C:/reports/baseline.md"},
         plan=_baseline_plan(),
@@ -394,6 +396,25 @@ def test_company_alignment_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             "diff_summary": DIFF_SUMMARY,
         },
         ensure_ascii=False,
+    )
+
+    # 阶段 9：先进入 EXECUTION_PLAN_DRAFT（已生成、未应用的 ExecutionPlan）
+    from src.core.artifacts.models import ArtifactMeta, ExecutionPlan
+
+    baseline_id = profile_store.load_profile(PROFILE_NAME).core_state["baseline_plan_id"]
+    store.save(
+        ExecutionPlan(
+            meta=ArtifactMeta(
+                id=store.new_id("ep"),
+                stage=state_machine.STAGE_EXECUTION_PLAN,
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-10T00:00:00",
+                validation={"applied": False},
+            ),
+            requirement_profile_id=rp_id,
+            baseline_plan_id=baseline_id,
+            applied=False,
+        )
     )
 
     # 阶段 9：预览（不得修改档案）

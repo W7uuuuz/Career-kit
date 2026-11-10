@@ -131,9 +131,20 @@ _STATE_USER_DECISION: dict[State, str] = {
     State.MAINTENANCE: "投递或复盘",
 }
 
-# 只读诊断工具在所有状态都允许；其余按状态门禁。
-_READ_ONLY_TOOLS = frozenset(
-    {"get_workflow_status", "get_progress", "list_profiles"}
+# 只读诊断工具在所有状态都允许；其余按状态门禁。工具→状态允许关系的唯一来源。
+READ_ONLY_TOOLS = frozenset(
+    {
+        "get_workflow_status",
+        "get_progress",
+        "list_profiles",
+        "get_weekly_review",
+        "check_plan_fit",
+        "export_dashboard",
+        "list_data_sources",
+        "get_scraper_guide",
+        "search_knowledge",
+        "read_research_details",
+    }
 )
 
 _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
@@ -153,6 +164,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "fetch_jd_detail",
             "boss_login",
             "analyze_gaps",
+            "save_gap_analysis",
             "import_jd",
             "import_jd_file",
         }
@@ -161,6 +173,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
         {
             "analyze_gaps",
             "save_gap_analysis",
+            "generate_roadmap",
+            "save_roadmap",
             "fetch_company_jobs",
             "search_cases",
             "fetch_jd_detail",
@@ -174,6 +188,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "detail_current_phase",
             "generate_tasks",
             "get_next_tasks",
+            "save_roadmap",
         }
     ),
     State.EVIDENCE_PENDING: frozenset(
@@ -199,6 +214,9 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
         {
             "get_next_tasks",
             "checkin_task",
+            "detail_current_phase",
+            "save_current_detail",
+            "generate_tasks",
             "trigger_insight",
             "apply_insight",
             "build_application_list",
@@ -214,6 +232,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "record_application",
             "check_plan_fit",
             "get_weekly_review",
+            "get_next_tasks",
             "export_dashboard",
         }
     ),
@@ -230,7 +249,7 @@ _FINISHED_STATUSES = ("completed", "skipped")
 
 
 def _allowed_for_state(state: State) -> frozenset[str]:
-    return _ALLOWED_TOOLS.get(state, frozenset()) | _READ_ONLY_TOOLS
+    return _ALLOWED_TOOLS.get(state, frozenset()) | READ_ONLY_TOOLS
 
 
 def allowed_tools(snapshot: StateSnapshot) -> frozenset[str]:
@@ -486,22 +505,34 @@ def resolve_state(
         blockers.append(Blocker("target_unconfirmed", "目标尚未写入 TargetSpec"))
         return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
 
+    market_skipped = False
     if not _stage_ready(STAGE_MARKET, artifacts):
         # 覆盖规则：市场调研可跳过。档案已有差距/路线图/任务事实时，不再要求
         # MarketBaseline，标记跳过并继续按后续 artifact 事实判定。
         plan = getattr(profile, "plan", None)
         roadmap_exists = isinstance(plan, dict) and bool(plan.get("roadmap"))
         if getattr(profile, "gap", None) or roadmap_exists or _has_tasks(profile):
+            market_skipped = True
             blockers.append(Blocker("market_skipped", "用户选择跳过市场调研"))
         else:
             blockers.append(Blocker("artifact_missing", "尚未生成 MarketBaseline"))
             return _snapshot(State.MARKET_PENDING, profile, artifacts, blockers)
 
-    if not _stage_ready(STAGE_GAP, artifacts):
+    # 市场跳过时 Gap/Baseline artifact 可能缺 MarketBaseline 上游引用；用户已有
+    # roadmap 即视为规划完成，允许继续执行（对应 GAP_PENDING 放行规划工具）。
+    plan = getattr(profile, "plan", None)
+    roadmap_exists = isinstance(plan, dict) and bool(plan.get("roadmap"))
+    gap_ready = _stage_ready(STAGE_GAP, artifacts)
+    if not gap_ready and market_skipped and roadmap_exists:
+        gap_ready = True
+    if not gap_ready:
         blockers.append(Blocker("artifact_missing", "尚未生成 GapReport"))
         return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
 
-    if not _stage_ready(STAGE_BASELINE_PLAN, artifacts):
+    baseline_ready = _stage_ready(STAGE_BASELINE_PLAN, artifacts)
+    if not baseline_ready and market_skipped and roadmap_exists:
+        baseline_ready = True
+    if not baseline_ready:
         blockers.append(Blocker("artifact_missing", "尚未生成 BaselinePlan"))
         return _snapshot(State.BASELINE_PLAN_PENDING, profile, artifacts, blockers)
 
@@ -514,6 +545,10 @@ def resolve_state(
         blockers.append(
             Blocker("enterprise_alignment_skipped", "企业适配已记录跳过")
         )
+        # 基线执行路径没有 applied ExecutionPlan：有任务即进入执行态，
+        # 否则停留在执行准备，允许 detail_current_phase → save_current_detail。
+        if _has_tasks(profile):
+            return _snapshot(State.EXECUTING, profile, artifacts, blockers)
         return _snapshot(State.EXECUTION_READY, profile, artifacts, blockers)
 
     if not _stage_ready(STAGE_COMPANY_POOL, artifacts):
@@ -584,6 +619,7 @@ def resolve_state(
 
 __all__ = [
     "Blocker",
+    "READ_ONLY_TOOLS",
     "STAGE_NAMES",
     "State",
     "StateSnapshot",

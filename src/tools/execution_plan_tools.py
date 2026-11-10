@@ -5,6 +5,8 @@ from __future__ import annotations
 from ..core.stages import execution_plan as _stage
 from ..mcp_app import mcp
 from .errors import error_response
+from .profile import load_profile
+from .state_gate import require_state
 from .tool_helpers import _json
 
 
@@ -32,6 +34,11 @@ def plan_execution_alignment(requirement_profile_id: str = "") -> str:
     下一步：LLM 设计好 strategy_summary / roadmap / changes / diff_summary 后，
     调用 save_execution_alignment 预览；用户确认后再传 confirmed=true 应用。
     """
+    profile = load_profile()
+    gate = require_state(profile, "plan_execution_alignment")
+    if isinstance(gate, str):
+        return gate
+
     try:
         result = _stage.plan_execution_alignment(requirement_profile_id)
     except _stage.ExecutionPlanError as exc:
@@ -97,6 +104,11 @@ def save_execution_alignment(alignment_json: str, confirmed: bool = False) -> st
         - confirmed=true: status=ok，含应用摘要、execution_plan_id、map_path、
           next_steps（get_next_tasks / generate_tasks）。
     """
+    profile = load_profile()
+    gate = require_state(profile, "save_execution_alignment")
+    if isinstance(gate, str):
+        return gate
+
     try:
         result = _stage.save_execution_alignment(alignment_json, confirmed=confirmed)
     except _stage.ExecutionPlanError as exc:

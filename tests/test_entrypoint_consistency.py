@@ -182,11 +182,6 @@ ROADMAP_EXPECTED: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
         ("select_target_companies", "detail_current_phase"),
         ("select_target_companies", "按基线"),
     ),
-    (
-        "09",
-        ("detail_current_phase",),
-        ("detail_current_phase",),
-    ),
 )
 
 _ROADMAP_PAYLOAD = {
@@ -301,3 +296,19 @@ def test_save_roadmap_follows_snapshot(
     assert tuple(result["next_steps"]) == expected_steps
     for token in message_tokens:
         assert token in result["message"]
+
+
+def test_save_roadmap_blocked_in_execution_ready(store: ArtifactStore) -> None:
+    """09 EXECUTION_READY：save_roadmap 不在 allowed_tools，必须返回 INVALID_STATE。"""
+    profile, snapshot = build_case("09", store)
+    _persist_fixture(profile, snapshot)
+
+    result = json.loads(
+        save_roadmap(json.dumps(_ROADMAP_PAYLOAD, ensure_ascii=False))
+    )
+
+    assert snapshot.state is State.EXECUTION_READY
+    assert result["isError"] is True
+    assert result["code"] == "INVALID_STATE"
+    assert result["details"]["state"] == "EXECUTION_READY"
+    assert result["details"]["next_tool"] == snapshot.next_tool

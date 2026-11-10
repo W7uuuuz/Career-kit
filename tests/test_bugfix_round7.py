@@ -158,11 +158,12 @@ def test_finalize_profile_routes_to_research(temp_profile):
     profile = CareerProfile()
     profile.who = {"name": "张三"}
     profile.have = {"skills": []}
-    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    profile.want = {"target_role": "AI Agent", "city": "上海", "user_confirmed": True}
+    profile.guidance = {"goal_confirmed_at": "2026-11-09T00:00:00"}
     profile_module.save_profile(profile)
 
     message = finalize_profile()
-    assert "research_market" in message
+    assert "gather_research_data" in message
     assert "调用 analyze_gaps 开始差距分析" not in message
 
 
@@ -191,12 +192,14 @@ def test_generate_tasks_only_current_phase_and_refreshes_html(temp_profile):
     from src.assets import ROADMAP_FILENAME, kind_assets_dir
     from src.server import generate_tasks
 
+    from conftest import promote_profile
+
     profile = CareerProfile()
     profile.plan = _roadmap(
         _phase("phase_1", "第一阶段", ["任务 A"]),
         _phase("phase_2", "第二阶段", ["任务 B"]),
     )
-    profile_module.save_profile(profile)
+    promote_profile(profile, execution=True)
 
     generate_tasks()
     after = profile_module.load_profile()
@@ -276,10 +279,13 @@ def test_boss_job_missing_company_uses_placeholder():
 def test_stale_audit_prompts_reaudit_not_contradictory(temp_profile):
     from src.server import save_roadmap, save_roadmap_audit
 
+    from conftest import promote_profile
+
     profile = CareerProfile()
-    profile.want = {"target_role": "AI Agent"}
+    profile.want = {"target_role": "AI Agent", "user_confirmed": True}
     profile.gap = {"start_level": "小厂", "match_score": 60}
     profile_module.save_profile(profile)
+    promote_profile(profile)
 
     base = _roadmap(_phase("phase_1", "基础", ["任务 A"]))
     save_roadmap(json.dumps(base, ensure_ascii=False))

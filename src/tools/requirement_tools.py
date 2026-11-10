@@ -13,7 +13,8 @@ from ..core.stages import requirements
 from ..core.stages.base import StageContext
 from ..mcp_app import mcp
 from .errors import InvalidJsonError, error_response
-from .profile import get_active_profile_name
+from .profile import get_active_profile_name, load_profile
+from .state_gate import require_state
 from .tool_helpers import _json, _parse_json_param
 
 _ALLOWED_TOP_KEYS = {"requirement_profile_id", "interpretation"}
@@ -36,6 +37,11 @@ def analyze_company_requirements(evidence_run_id: str = "") -> str:
     Returns:
         统计摘要 + analysis_prompt + 下一步（save_requirement_profile）。
     """
+    profile = load_profile()
+    gate = require_state(profile, "analyze_company_requirements")
+    if isinstance(gate, str):
+        return gate
+
     profile_name = get_active_profile_name()
     store = ArtifactStore()
     result = requirements.run(
@@ -74,6 +80,11 @@ def save_requirement_profile(analysis_json: str) -> str:
     Returns:
         保存摘要 + 下一步（plan_execution_alignment）。
     """
+    profile = load_profile()
+    gate = require_state(profile, "save_requirement_profile")
+    if isinstance(gate, str):
+        return gate
+
     try:
         data = _parse_json_param(analysis_json, "需求分析")
     except InvalidJsonError as exc:

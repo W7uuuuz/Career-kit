@@ -126,6 +126,10 @@ def _seed_upstream(store: ArtifactStore, profile_name: str = "default") -> dict[
         }
     )
     profile.core_state = core_state
+    profile.guidance = {
+        **(profile.guidance or {}),
+        "goal_confirmed_at": "2026-01-01T00:00:00",
+    }
     profile_module.save_profile(profile, profile_name)
     return {
         "profile_id": profile_id,
@@ -329,6 +333,9 @@ def test_unscrapable_companies_are_kept_with_flag(data_dir: Path) -> None:
 
 
 def test_select_target_companies_tool_recommended(data_dir: Path) -> None:
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile("default"), "default", company=True)
     payload = json.loads(select_target_companies(include="beike"))
 
     assert payload["status"] == "needs_confirmation"

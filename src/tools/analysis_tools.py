@@ -20,6 +20,7 @@ from .probing import (
 )
 from .profile import get_active_profile_name, load_profile, save_profile
 from .session_tools import _has_goal, _summarize_dict
+from .state_gate import require_state
 from .tool_helpers import _json, _parse_json_param
 
 
@@ -556,12 +557,15 @@ def save_gap_analysis(gap_json: str) -> str:
     AI 作者身份未在 red_flags 提及、未知字段——都会作为 advisories 返回并持久化，
     由 LLM 与用户决定是否补充。
     """
+    profile = load_profile()
+    gate = require_state(profile, "save_gap_analysis")
+    if isinstance(gate, str):
+        return gate
+
     try:
         gap_data = _parse_json_param(gap_json, "差距分析")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
-
-    profile = load_profile()
 
     # 结构校验：只挡会破坏渲染/状态的硬错误（match_score 类型与范围）
     structural_issues = _validate_gap_content(gap_data, profile.have or {})

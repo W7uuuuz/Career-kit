@@ -89,6 +89,12 @@ async def _run_mcp_server(data_dir: Path):
             have_result = result.content[0].text
             print(f"[OK] intake have: {have_result}")
 
+            result = await session.call_tool("intake", {
+                "section": "want",
+                "data": '{"target_role": "AI 工程师", "user_confirmed": true}'
+            })
+            print(f"[OK] intake want: {result.content[0].text}")
+
             # 测试 finalize_profile
             print("\n[6] 测试 finalize_profile...")
             result = await session.call_tool("finalize_profile", {})

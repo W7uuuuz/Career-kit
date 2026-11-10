@@ -22,8 +22,10 @@ def test_export_dashboard_smoke(tmp_path, monkeypatch):
         "roadmap": {"phases": [{"type": "learn", "name": "基础", "goal": "入门",
                                 "milestones": [{"name": "M1", "tasks": [{"name": "任务A"}, {"name": "任务B"}]}]}]}
     }, ensure_ascii=False))
+    from conftest import promote_profile
+
     profile.touch()
-    profile_module.save_profile(profile)
+    promote_profile(profile, execution=True, detail=True)
 
     generate_tasks()
     result = checkin_task(task_id="task_001", status="completed", notes="冒烟打卡")
@@ -96,11 +98,19 @@ def test_progress_html_escapes_user_content(tmp_path, monkeypatch):
                                 "milestones": [{"name": "M1", "tasks": [
                                     {"name": "学习 vector<T> <img src=x onerror=alert(1)>"}]}]}]}
     }, ensure_ascii=False))
-    profile.touch()
-    profile_module.save_profile(profile)
+    profile.plan["current_detail"] = {
+        "phase_id": "phase_1",
+        "tasks": [{"name": "学习 vector<T> <img src=x onerror=alert(1)>"}],
+    }
+    from conftest import promote_profile
 
-    generate_tasks()
-    checkin_task(task_id="task_001", status="completed", notes="备注<b>加粗</b>")
+    profile.touch()
+    promote_profile(profile, execution=True)
+
+    generated = jsonlib.loads(generate_tasks())
+    assert generated.get("isError") is not True, generated
+    checked = checkin_task(task_id="task_001", status="completed", notes="备注<b>加粗</b>")
+    assert "isError" not in checked, checked
     out = export_dashboard()
     html = Path(Path(out.split("：")[1].split("\n")[0].strip())).read_text(encoding="utf-8")
 

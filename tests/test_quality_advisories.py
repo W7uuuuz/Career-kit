@@ -24,9 +24,12 @@ def temp_profile(tmp_path, monkeypatch):
 def _mk_profile():
     from src.server import intake
 
+    from conftest import promote_profile
+
     intake("who", '{"name": "张三", "graduation_year": "2028"}')
     intake("have", '{"skills": ["Python"], "experience_level": "小厂"}')
     intake("want", '{"target_role": "AI 工程师"}')
+    promote_profile(profile_module.load_profile())
 
 
 # ============ 数据口径 ============
@@ -233,10 +236,13 @@ def test_pending_jd_prompt_mentions_auto_fetch(temp_profile):
 def test_gap_unknown_fields_are_reported(temp_profile):
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     out = json.loads(save_gap_analysis(json.dumps({
         "match_score": 60,
         "skill_gaps": [{"skill": "RAG", "source": "JD"}],
-        "experience_2": {"experience": "被误写进嵌套字段"},
+        "experience_2": {"experience": "自己写的额外字段"},
     }, ensure_ascii=False)))
     assert any(a["code"] == "unknown_fields" for a in out["context"]["advisories"])
     assert "experience_2" in out["message"]
@@ -245,6 +251,9 @@ def test_gap_unknown_fields_are_reported(temp_profile):
 def test_gap_advisories_persist_to_profile(temp_profile):
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     out = json.loads(save_gap_analysis(json.dumps({
         "match_score": 60,
         "skill_gaps": [],

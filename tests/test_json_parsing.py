@@ -108,6 +108,9 @@ def test_candidates_order_prefers_raw_then_fence_then_scan():
 def test_save_gap_analysis_accepts_fenced_json(temp_profile):
     from src.server import save_gap_analysis
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     raw = (
         "以下是差距分析：\n```json\n"
         + json.dumps({
@@ -143,6 +146,9 @@ def test_import_jd_still_rejects_plain_text(temp_profile):
 def test_save_roadmap_accepts_prose_wrapped_json(temp_profile):
     from src.server import save_roadmap
 
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
     roadmap = json.dumps({
         "strategy_summary": "s",
         "phases": [{"type": "learn", "name": "基础", "goal": "入门",

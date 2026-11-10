@@ -107,7 +107,9 @@ def test_validate_resources_flags_unknown_and_allows_search():
 def test_save_detail_and_generate_tasks_keep_playbook(temp_profile):
     from src.server import generate_tasks, save_current_detail
 
-    profile_module.save_profile(_profile_with_roadmap())
+    from conftest import promote_profile
+
+    promote_profile(_profile_with_roadmap(), execution=True)
 
     saved = json.loads(save_current_detail(json.dumps(_detail_payload(), ensure_ascii=False)))
     assert saved["context"]["task_count"] == 1
@@ -150,7 +152,9 @@ def test_resolve_current_phase_rules():
 def test_generate_tasks_preserves_ids_and_progress(temp_profile):
     from src.server import generate_tasks
 
-    profile_module.save_profile(_profile_with_roadmap())
+    from conftest import promote_profile
+
+    promote_profile(_profile_with_roadmap(), execution=True)
     generate_tasks()
     before = profile_module.load_profile().tasks[0]
     before_id, before_name = before.id, before.name
@@ -172,7 +176,9 @@ def test_generate_tasks_preserves_ids_and_progress(temp_profile):
 def test_save_roadmap_preserves_detail_and_audited_phases(temp_profile):
     from src.server import save_roadmap
 
-    profile_module.save_profile(_profile_with_roadmap())
+    from conftest import promote_profile
+
+    promote_profile(_profile_with_roadmap(), company=True)
     # 先保存一次，让 roadmap 经过 parse_roadmap 规范化
     save_roadmap(json.dumps(
         {"roadmap": _profile_with_roadmap().plan["roadmap"]}, ensure_ascii=False
@@ -199,7 +205,9 @@ def test_save_roadmap_preserves_detail_and_audited_phases(temp_profile):
 def test_save_detail_reports_missing_playbook(temp_profile):
     from src.server import save_current_detail
 
-    profile_module.save_profile(_profile_with_roadmap())
+    from conftest import promote_profile
+
+    promote_profile(_profile_with_roadmap(), execution=True)
     result = json.loads(save_current_detail(json.dumps({
         "phase_id": "phase_1",
         "tasks": [{"name": "只有标题的任务", "priority": "high"}],
@@ -213,11 +221,13 @@ def test_save_detail_reports_missing_playbook(temp_profile):
 def test_detail_current_phase_exposes_resource_catalog(temp_profile):
     from src.server import detail_current_phase, generate_tasks, save_current_detail
 
-    profile_module.save_profile(_profile_with_roadmap())
+    from conftest import promote_profile
+
+    promote_profile(_profile_with_roadmap(), execution=True)
+    detail = json.loads(detail_current_phase())
     save_current_detail(json.dumps(_detail_payload(), ensure_ascii=False))
     generate_tasks()
 
-    detail = json.loads(detail_current_phase())
     assert detail["resource_catalog"]
     assert any(item["id"] == "leetcode-hot-100" for item in detail["resource_catalog"])
     assert "how_to" in detail["instructions"]
@@ -273,7 +283,9 @@ def test_dashboard_renders_task_playbook(temp_profile):
     from src.server import generate_tasks, save_current_detail
     from src.tools.dashboard import render_roadmap_map
 
-    profile_module.save_profile(_profile_with_roadmap())
+    from conftest import promote_profile
+
+    promote_profile(_profile_with_roadmap(), execution=True)
     save_current_detail(json.dumps(_detail_payload(), ensure_ascii=False))
     generate_tasks()
 
