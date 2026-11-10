@@ -137,7 +137,12 @@ def collect_cases(
 
     # ---- 源 4：company 匹配的官方/BOSS 源（面试要求） ----
     if company:
-        for slug in resolve_company_scrapers(company):
+        official_slugs = resolve_company_scrapers(company)
+        if not official_slugs:
+            # 未知企业不能静默漏源：如实写警告与来源状态，让用户知道该源未覆盖。
+            warnings.append(f"official: 未找到企业「{company}」对应的数据源")
+            sources_count["official"] = 0
+        for slug in official_slugs:
             if slug and slug not in {"nowcoder", "github"}:
                 _feed(slug, _search_official(slug, role, city, edu_condition))
 

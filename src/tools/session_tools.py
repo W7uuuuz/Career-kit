@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import profile_display_name
-from ..core.progress import profile_target_fingerprint, resolve_progress
+from ..core.progress import profile_target_fingerprint
+from ..core.state import resolve_state
 from ..guidance import (
     goal_confirmed,
     guide_for,
@@ -52,8 +53,7 @@ def start_session() -> str:
             "；目标 JD 在分析之后更新过——需先 analyze_gaps 重新分析，再考虑重新规划"
             if profile.gap_stale_at else ""
         )
-        progress = resolve_progress(profile)
-        next_tool = str(progress.get("next_tool") or "get_next_tasks")
+        next_tool = resolve_state(profile).next_tool
         return (
             "—— 继续模式：检测到已有进行中的档案，不展示全量手册 ——\n\n"
             f"当前档案 {profile_display_name(get_active_profile_name())}："
@@ -82,8 +82,7 @@ def start_session() -> str:
     if (profile.want or {}).get("scan_completed_at") and not _has_goal(profile):
         scan_summary = (profile.want or {}).get("scan_summary") or []
         summary_lines = "\n".join(f"- {item}" for item in scan_summary[:5])
-        progress = resolve_progress(profile)
-        next_tool = str(progress.get("next_tool") or "explore_goals")
+        next_tool = resolve_state(profile).next_tool
         return (
             "—— 扫盲继续模式：已生成行业快照，不重复抓取 ——\n\n"
             f"当前档案：{profile_display_name(get_active_profile_name())}\n"
@@ -104,8 +103,7 @@ def start_session() -> str:
     blocks = opening_blocks(profile)
     mark_brief_shown(profile)
     save_profile(profile)
-    progress = resolve_progress(profile)
-    next_tool = str(progress.get("next_tool") or "finalize_profile")
+    next_tool = resolve_state(profile).next_tool
     if profile.who or profile.have or profile.want or profile.target_jd:
         next_line = f"下一步：{next_tool}（以 [GUIDE] 为准）。"
     else:
@@ -446,9 +444,8 @@ def finalize_profile(skip_probing: bool = False) -> str:
             "再用 intake(section='want') 落定，然后才进入 analyze_gaps。"
         )
 
-    # 下一步只从状态推导取，不在这里自建「有目标→调研 / 无目标→探索」分支。
-    progress = resolve_progress(profile)
-    next_tool = str(progress.get("next_tool") or "finalize_profile")
+    # 下一步只从唯一状态快照取，不在这里自建「有目标→调研 / 无目标→探索」分支。
+    next_tool = resolve_state(profile).next_tool
     next_step = (
         f"下一步：{next_tool}（按当前档案状态推导；目标尚未由用户确认时，"
         "先按 GUIDE 确认，不要直接分析）。"

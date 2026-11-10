@@ -693,7 +693,10 @@ def _finalize_guide(
     """位置、状态与下一步只来自同一个 StateSnapshot。"""
     guide.index = snapshot.stage_index
     guide.status = _STATE_STATUS[snapshot.state]
-    guide.ask = f"{snapshot.user_decision}：{guide.ask}"
+    # 只有存在可选决策时才加决策前缀；MARKET_PENDING 等无 options 的引导
+    # 直接开始执行，不再出现「是否先做市场调研」这类二次确认。
+    if guide.options:
+        guide.ask = f"{snapshot.user_decision}：{guide.ask}"
     if snapshot.next_tool:
         decision = f"下一步：{snapshot.next_tool}"
         guide.next_action = (

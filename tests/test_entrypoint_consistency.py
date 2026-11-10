@@ -312,3 +312,90 @@ def test_save_roadmap_blocked_in_execution_ready(store: ArtifactStore) -> None:
     assert result["code"] == "INVALID_STATE"
     assert result["details"]["state"] == "EXECUTION_READY"
     assert result["details"]["next_tool"] == snapshot.next_tool
+
+
+def test_session_and_roadmap_tools_do_not_use_resolve_progress() -> None:
+    """入口第二源清理：start_session/finalize/generate_roadmap 只读 resolve_state。"""
+    src_dir = Path(__file__).parent.parent / "src"
+    for name in ("tools/session_tools.py", "tools/roadmap_tools.py"):
+        text = (src_dir / name).read_text(encoding="utf-8")
+        assert "resolve_progress" not in text, f"{name} 仍调用 resolve_progress"
+
+
+def test_start_session_pending_follows_snapshot(store: ArtifactStore) -> None:
+    """pending 续跑路径：next_tool 来自 StateSnapshot（COMPANY_PENDING）。"""
+    from src.server import start_session
+
+    profile, snapshot = build_case("07", store)
+    _persist_fixture(profile, snapshot)
+
+    out = start_session()
+
+    assert snapshot.state is State.COMPANY_PENDING
+    assert "下一步按状态机：select_target_companies" in out
+
+
+def test_start_session_scan_mode_follows_snapshot(
+    store: ArtifactStore,
+) -> None:
+    """扫盲继续路径：next_tool 来自 StateSnapshot（目标未确认 → intake(want)）。"""
+    from src.server import start_session
+
+    profile = CareerProfile(
+        want={
+            "industry_id": "internet",
+            "scan_consent": True,
+            "scan_completed_at": "2026-11-09T00:00:00",
+            "scan_summary": ["互联网行业常见方向包括后端开发。"],
+        },
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    profile_store.set_active_profile_name(PROFILE_NAME)
+
+    out = start_session()
+
+    assert "扫盲继续模式" in out
+    assert "当前下一步：intake(want)" in out
+
+
+def test_start_session_first_screen_follows_snapshot(store: ArtifactStore) -> None:
+    """首屏路径：PROFILE_READY 的 next_tool 来自 StateSnapshot。"""
+    from src.server import start_session
+
+    profile, snapshot = build_case("04", store)
+    _persist_fixture(profile, snapshot)
+
+    out = start_session()
+
+    assert snapshot.state is State.PROFILE_READY
+    assert "下一步：finalize_profile（以 [GUIDE] 为准）。" in out
+
+
+def test_finalize_profile_next_step_follows_snapshot(store: ArtifactStore) -> None:
+    """finalize 的下一步只取 StateSnapshot：确认后进入市场调研。"""
+    from src.server import finalize_profile
+
+    profile, snapshot = build_case("04", store)
+    _persist_fixture(profile, snapshot)
+
+    out = finalize_profile()
+
+    assert snapshot.state is State.PROFILE_READY
+    assert "档案已确认" in out
+    assert "下一步：gather_research_data（按当前档案状态推导" in out
+
+
+def test_generate_roadmap_next_steps_follow_snapshot(store: ArtifactStore) -> None:
+    """generate_roadmap 的 next_steps 只取 StateSnapshot：当前仍生成 → save_roadmap。"""
+    from src.server import generate_roadmap
+
+    profile, snapshot = build_case("05", store)
+    # generate_roadmap 需要 profile.gap 事实；fixture 05 只 seed 了 gap artifact。
+    profile.gap = {"match_score": 58}
+    _persist_fixture(profile, snapshot)
+
+    result = json.loads(generate_roadmap())
+
+    assert snapshot.state is State.BASELINE_PLAN_PENDING
+    assert result["next_steps"] == ["save_roadmap"]

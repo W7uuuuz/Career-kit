@@ -541,6 +541,35 @@ def _case_21(store: ArtifactStore) -> SimpleNamespace:
     return profile
 
 
+def _case_22(store: ArtifactStore) -> SimpleNamespace:
+    """F22：新流程未确认目标 + gap_stale —— 目标确认优先，不得进 GAP_PENDING。"""
+    _seed_to_gap(store)
+    return _profile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        gap_stale_at="2026-11-09T00:00:00",
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[SimpleNamespace(status="pending")],
+    )
+
+
+def _case_23(store: ArtifactStore) -> SimpleNamespace:
+    """F23：企业跳过 + 全部任务完成 → MAINTENANCE，不再停在 EXECUTING。"""
+    _seed_to_baseline(store)
+    return _confirmed_profile(
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[SimpleNamespace(status="completed")],
+        guidance={
+            "goal_confirmed_at": "2026-11-09T00:00:00",
+            "enterprise_alignment_skipped_at": "2026-11-09T00:00:00",
+        },
+    )
+
+
 _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("01", _case_01),
     ("02", _case_02),
@@ -561,6 +590,8 @@ _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("18", _case_18),
     ("19", _case_19),
     ("21", _case_21),
+    ("22", _case_22),
+    ("23", _case_23),
 )
 
 
@@ -858,6 +889,32 @@ def test_fixture_21_graduation_year_change_invalidates_target(
     assert any(blocker.code == "target_stale" for blocker in snapshot.blockers)
 
 
+def test_fixture_22_goal_confirmation_beats_gap_stale(store: ArtifactStore) -> None:
+    """目标未确认时 gap_stale 不得短路目标确认（旧行为：直接进 GAP_PENDING）。"""
+    snapshot = _snapshot("22", store)
+
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.state is not State.GAP_PENDING
+    assert snapshot.next_tool == "intake(want)"
+    assert any(
+        blocker.code == "target_unconfirmed" for blocker in snapshot.blockers
+    )
+    assert not any(blocker.code == "gap_stale" for blocker in snapshot.blockers)
+
+
+def test_fixture_23_enterprise_skip_all_tasks_done_is_maintenance(
+    store: ArtifactStore,
+) -> None:
+    """企业跳过 + 全部任务完成 → MAINTENANCE（旧行为：永远停在 EXECUTING）。"""
+    snapshot = _snapshot("23", store)
+
+    assert snapshot.state is State.MAINTENANCE
+    assert snapshot.state is not State.EXECUTING
+    assert snapshot.next_tool == "build_application_list"
+    assert snapshot.skip_flags["enterprise_alignment"] is True
+    assert {"build_application_list", "get_weekly_review"} <= snapshot.allowed_tools
+
+
 def test_new_flow_downstream_does_not_write_target_or_market(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -921,7 +978,12 @@ def _assert_contract_agreement(
 
     state = snapshot.state
     if state in (State.EXECUTING, State.MAINTENANCE):
-        assert ready(progress.STAGE_EXECUTION) is True, label
+        if snapshot.skip_flags.get("enterprise_alignment"):
+            # 企业跳过路径按基线执行，合法地没有 applied ExecutionPlan/ExecutionState；
+            # 只断言执行版仍未就绪，不能把基线执行判成执行 artifact 就绪。
+            assert ready(progress.STAGE_EXECUTION_PLAN) is False, label
+        else:
+            assert ready(progress.STAGE_EXECUTION) is True, label
     elif state is State.EXECUTION_READY:
         assert ready(progress.STAGE_EXECUTION) is False, label
     elif state is State.EXECUTION_PLAN_DRAFT:

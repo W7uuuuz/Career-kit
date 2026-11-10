@@ -236,6 +236,22 @@ def test_collect_cases_searches_all_company_scrapers(monkeypatch):
     assert "alibaba_social" in calls
 
 
+def test_collect_cases_unknown_company_keeps_source_status(monkeypatch):
+    """未知企业不能静默漏源：保留 warning 与 official 来源状态。"""
+    import src.case_search as cs
+
+    monkeypatch.setattr(cs, "resolve_company_scrapers", lambda identifier: [])
+    monkeypatch.setattr(cs, "_search_slug", lambda *a, **k: _loader_resp([]))
+    monkeypatch.setattr(
+        cs, "_search_local", lambda q: {"results": [], "count": 0, "knowledge_dir": "x"}
+    )
+
+    result = cs.collect_cases("AI Agent 开发", company="不存在的公司")
+
+    assert any("不存在的公司" in w for w in result["warnings"])
+    assert result["sources"].get("official") == 0
+
+
 def test_collect_cases_kind_filter_and_failures(monkeypatch):
     import src.case_search as cs
 

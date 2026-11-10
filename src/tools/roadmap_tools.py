@@ -7,7 +7,6 @@ import re
 from datetime import datetime
 from typing import Any
 
-from ..core.progress import resolve_progress
 from ..core.state import State, StateSnapshot, resolve_state
 from ..guidance import guide_for, verdict_label
 from ..mcp_app import mcp
@@ -49,8 +48,7 @@ def generate_roadmap() -> str:
 
     ctx = build_methodology_context("roadmap", profile, compact=True)
 
-    progress = resolve_progress(profile)
-    core_next = str(progress.get("next_tool") or "")
+    core_next = resolve_state(profile).next_tool
     # 当前仍在生成路线图：下一步就是保存；其余情况跟随状态机，不再自维护长清单。
     next_steps = (
         ["save_roadmap"]

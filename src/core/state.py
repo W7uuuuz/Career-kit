@@ -253,6 +253,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
         }
     )
     | _ENTERPRISE_REPAIR_TOOLS,
+    # 维护期允许继续生成路线图后续阶段的任务（generate_tasks 会跳过已完成的
+    # 当前阶段，取下一个尚未生成任务的阶段），否则完成当前阶段后链路无法前进。
     State.MAINTENANCE: frozenset(
         {
             "build_application_list",
@@ -260,6 +262,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "check_plan_fit",
             "get_weekly_review",
             "get_next_tasks",
+            "generate_tasks",
             "export_dashboard",
         }
     )
@@ -568,22 +571,14 @@ def resolve_state(
         if target is not None:
             if not goal_confirmed:
                 artifacts[STAGE_TARGET] = None
-                blockers.append(
-                    Blocker("target_unconfirmed", "目标尚未由用户确认")
-                )
             elif _target_stale(profile, target):
                 artifacts[STAGE_TARGET] = None
                 blockers.append(
                     Blocker("target_stale", "目标字段已变化，旧 TargetSpec 失效")
                 )
 
-        # 覆盖规则 1：gap_stale 强制回到差距分析，下游 plan/tasks 不得覆盖。
-        if getattr(profile, "gap", None) and str(
-            getattr(profile, "gap_stale_at", "") or ""
-        ).strip():
-            blockers.append(Blocker("gap_stale", "目标 JD 已更新，旧差距分析已过期"))
-            return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
-
+        # 目标确认优先于一切下游陈旧标记：目标未确认先回到目标采集，
+        # gap_stale 不得短路目标确认（新流程有旧 gap 也必须先确认目标）。
         if not goal_confirmed:
             blockers.append(Blocker("target_unconfirmed", "目标尚未由用户确认"))
             return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
@@ -594,6 +589,14 @@ def resolve_state(
         if not _stage_ready(STAGE_TARGET, artifacts):
             blockers.append(Blocker("target_unconfirmed", "目标尚未写入 TargetSpec"))
             return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
+
+        # 覆盖规则 1：目标已确认后，gap_stale 才强制回到差距分析，
+        # 下游 plan/tasks 不得覆盖。
+        if getattr(profile, "gap", None) and str(
+            getattr(profile, "gap_stale_at", "") or ""
+        ).strip():
+            blockers.append(Blocker("gap_stale", "目标 JD 已更新，旧差距分析已过期"))
+            return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
 
         # 市场跳过只认当前 TargetSpec 匹配的 GapReport/BaselinePlan artifact；
         # profile.gap/plan/tasks 不再作为就绪事实。
@@ -624,8 +627,10 @@ def resolve_state(
             Blocker("enterprise_alignment_skipped", "企业适配已记录跳过")
         )
         # 基线执行路径没有 applied ExecutionPlan：有任务即进入执行态，
-        # 否则停留在执行准备，允许 detail_current_phase → save_current_detail。
+        # 任务全部完成后进入维护态，否则停留在执行准备。
         if _has_tasks(profile):
+            if _all_tasks_finished(profile):
+                return _snapshot(State.MAINTENANCE, profile, artifacts, blockers)
             return _snapshot(State.EXECUTING, profile, artifacts, blockers)
         return _snapshot(State.EXECUTION_READY, profile, artifacts, blockers)
 

@@ -788,6 +788,26 @@ def test_market_guide_matches_research_market_four_step_template():
     assert all(name in market_context for name in steps)
 
 
+def test_market_guide_has_no_second_confirmation():
+    """MARKET_PENDING 无 options：不再问「是否先做市场调研」，直接开始调研。"""
+    profile = _confirmed_profile()
+    profile.want = {"target_role": "AI Agent", "city": "上海"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+
+    guide = build_guide(profile)
+    assert guide.status == "market"
+    assert guide.options == []
+
+    text = render_guide(guide)
+    assert "是否先做市场调研" not in text
+    assert "要现在开始吗" not in text
+    assert "是否先做市场调研" not in guide.ask
+    assert "本轮不用等确认" in text
+    assert "gather_research_data" in guide.next_action
+
+
 def test_market_guide_orders_boss_login_before_gather():
     """含 BOSS 的调研必须先登录再批量抓取，不能先跑批再补登录。"""
     profile = _confirmed_profile()
@@ -988,12 +1008,19 @@ def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
 
 
 def test_gap_stale_forces_gap_even_with_tasks():
-    """gap_stale_at 存在时回到差距阶段，已有 tasks 不能覆盖。"""
-    profile = CareerProfile()
-    mark_brief_shown(profile)
-    mark_goal_confirmed(profile)
-    profile.who = {"name": "张三"}
+    """gap_stale_at 存在时回到差距阶段，已有 tasks 不能覆盖。
+
+    旧断言在没有 ProfileSnapshot/TargetSpec 的情况下直接要求 gap：那是状态模型
+    早于「先判建档/目标」的过时行为。现在用真实链路 seed，保留「gap_stale 压过
+    tasks」这一不变量。
+    """
+    profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent"}
+    store = ArtifactStore()
+    profile.core_state["profile_id"] = _save_profile_artifact(store)
+    profile.core_state["target_spec_id"] = _save_target(store)
+    profile.core_state["market_baseline_id"] = _save_market(store)
+    profile.core_state["gap_report_id"] = _save_gap(store)
     profile.gap = {"match_score": 50}
     profile.gap_stale_at = datetime.now().isoformat()
     profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
