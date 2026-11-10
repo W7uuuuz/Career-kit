@@ -33,12 +33,23 @@ def _related_scrapers(company: str, primary: str) -> list[str]:
     return [s for s in resolve_company_scrapers(company) if s != primary]
 
 
-def _related_scrapers_hint(related: list[str], primary: str) -> str:
-    """提示同企业还有其它数据源，避免只查 primary 时静默漏源。"""
+def _related_scrapers_hint(
+    related: list[str], primary: str, *, queried: bool = True
+) -> str:
+    """提示同企业还有其它数据源，避免只查 primary 时静默漏源。
+
+    ``queried=False`` 用于只读 guide 的工具：此时没有发生查询，
+    不应声称“本次只查询了 primary”。
+    """
     if not related:
         return ""
     labels = [f"{s}（社招源）" if "social" in s.lower() else s for s in related]
     names = "、".join(labels)
+    if not queried:
+        return (
+            f"\n\n另有数据源：{names}。"
+            f"可用 fetch_company_jobs(company=\"{related[0]}\", ...) 查询。"
+        )
     return (
         f"\n\n该企业还有其它数据源：{names}。"
         f"本次只查询了 {primary}；"
@@ -169,7 +180,7 @@ def get_scraper_guide(company: str) -> str:
             "下一步：调用 list_data_sources 查看可用来源。"
         )
     related = _related_scrapers(company, scraper_id)
-    hint = _related_scrapers_hint(related, scraper_id)
+    hint = _related_scrapers_hint(related, scraper_id, queried=False)
     return guide + hint + "\n\n下一步：按教程调用 fetch_company_jobs。"
 
 

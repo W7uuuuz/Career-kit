@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src import paths  # noqa: E402
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
-from src.core.state import State  # noqa: E402
+from src.core.state import State, resolve_state  # noqa: E402
 from src.guidance import build_guide  # noqa: E402
 from src.models import CareerProfile, Task  # noqa: E402
 from src.tools import profile as profile_store  # noqa: E402
@@ -162,6 +162,69 @@ EXPECTED: tuple[ExpectedEntry, ...] = (
         "培养方案规划",
         "plan",
         "generate_roadmap",
+    ),
+    ExpectedEntry(
+        "16",
+        "写 expected_outcome 后 TargetSpec 不失效",
+        State.MARKET_PENDING,
+        3,
+        "市场基线调研",
+        "market",
+        "gather_research_data",
+    ),
+    ExpectedEntry(
+        "17",
+        "target_role/city 变化后旧 TargetSpec 失效",
+        State.PROFILE_COLLECTING,
+        2,
+        "目标岗位定位",
+        "goal",
+        "intake(want)",
+    ),
+    ExpectedEntry(
+        "18",
+        "新流程有下游产物但目标未确认",
+        State.PROFILE_COLLECTING,
+        2,
+        "目标岗位定位",
+        "goal",
+        "intake(want)",
+    ),
+    ExpectedEntry(
+        "19",
+        "新流程已确认未 finalize（下游产物不得跳过）",
+        State.PROFILE_READY,
+        1,
+        "职业档案构建",
+        "profile",
+        "finalize_profile",
+    ),
+    ExpectedEntry(
+        "21",
+        "届别变化后旧 TargetSpec 失效",
+        State.PROFILE_COLLECTING,
+        2,
+        "目标岗位定位",
+        "goal",
+        "intake(want)",
+    ),
+    ExpectedEntry(
+        "22",
+        "未确认目标 + gap_stale（目标确认优先）",
+        State.PROFILE_COLLECTING,
+        2,
+        "目标岗位定位",
+        "goal",
+        "intake(want)",
+    ),
+    ExpectedEntry(
+        "23",
+        "企业跳过 + 全部任务完成",
+        State.MAINTENANCE,
+        10,
+        "任务执行与打卡",
+        "execution",
+        "get_weekly_review",
     ),
 )
 
@@ -312,6 +375,31 @@ def test_save_roadmap_blocked_in_execution_ready(store: ArtifactStore) -> None:
     assert result["code"] == "INVALID_STATE"
     assert result["details"]["state"] == "EXECUTION_READY"
     assert result["details"]["next_tool"] == snapshot.next_tool
+
+
+def test_market_pending_blocks_roadmap_until_gap_saved(store: ArtifactStore) -> None:
+    """MARKET_PENDING 不允许 save_roadmap 假成功；先落 gap 再进规划。"""
+    from src.tools.analysis_tools import save_gap_analysis
+
+    profile, snapshot = build_case("16", store)
+    _persist_fixture(profile, snapshot)
+    assert snapshot.state is State.MARKET_PENDING
+
+    blocked = json.loads(
+        save_roadmap(json.dumps(_ROADMAP_PAYLOAD, ensure_ascii=False))
+    )
+    assert blocked["isError"] is True
+    assert blocked["code"] == "INVALID_STATE"
+    assert blocked["details"]["state"] == "MARKET_PENDING"
+
+    saved = json.loads(
+        save_gap_analysis(json.dumps({"match_score": 58}, ensure_ascii=False))
+    )
+    assert not saved.get("isError"), saved
+
+    after = resolve_state(profile_store.load_profile(PROFILE_NAME))
+    assert after.state is State.BASELINE_PLAN_PENDING
+    assert after.next_tool == "generate_roadmap"
 
 
 def test_session_and_roadmap_tools_do_not_use_resolve_progress() -> None:

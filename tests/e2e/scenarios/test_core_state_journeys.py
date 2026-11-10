@@ -267,7 +267,7 @@ async def test_stage_nine_first_save_preview_and_apply(sandbox):
 
 
 async def test_plan_fit_rework_recommendation_is_reachable(sandbox):
-    """E：执行中 plan_fit 判定失配，推荐工具在当前状态可达。"""
+    """E：执行中 plan_fit 判定失配，推荐工具可达且第二次保存/应用可落地。"""
     _use_scraper_fixture(sandbox)
     async with flow(sandbox) as (mcp, driver):
         ctx = await _setup_requirement_ready(driver, per_company_limit=8)
@@ -277,8 +277,10 @@ async def test_plan_fit_rework_recommendation_is_reachable(sandbox):
         assert "Kubernetes" in terms, terms
         assert terms["Kubernetes"]["company_count"] >= 2
 
+        baseline_id = driver.profile["core_state"]["baseline_plan_id"]
         alignment = _alignment(ctx["requirement_id"])
-        await driver.save_alignment(alignment, confirmed=True)
+        first_applied = (await driver.save_alignment(alignment, confirmed=True)).json()
+        assert first_applied["applied"] is True
         await driver.generate_tasks()
         await _assert_status(driver, 10, "任务执行与打卡", "get_next_tasks")
 
@@ -295,6 +297,23 @@ async def test_plan_fit_rework_recommendation_is_reachable(sandbox):
         reachable = await driver.plan_alignment(ctx["requirement_id"])
         reachable.assert_contains("alignment_prompt", "methodology")
 
+        # 第一次 apply 已改写 profile.plan；第二次返工仍以 BaselinePlan artifact
+        # 为基线，预演与应用都必须成功（旧实现会死锁在 BASELINE_PLAN_MISMATCH）。
+        rework = _alignment(ctx["requirement_id"])
+        rework["roadmap"]["phases"][0]["name"] = "Agent 工程返工阶段"
+        rework["roadmap"]["phases"][0]["goal"] = "按 plan_fit 反馈补齐评测闭环"
+        rework["diff_summary"] = "按 plan_fit 反馈返工执行版。"
+        preview = (await driver.save_alignment(rework)).json()
+        assert preview["status"] == "needs_confirmation", preview
+        assert preview["applied"] is False
+        applied = (await driver.save_alignment(rework, confirmed=True)).json()
+        assert applied["status"] == "ok" and applied["applied"] is True, applied
+        assert applied["execution_plan_id"] != first_applied["execution_plan_id"]
+        artifact = sandbox.artifact(applied["execution_plan_id"])
+        assert artifact["baseline_plan_id"] == baseline_id
+        assert artifact["roadmap"]["phases"][0]["name"] == "Agent 工程返工阶段"
+        await _assert_status(driver, 10, "任务执行与打卡", "detail_current_phase")
+
 
 async def test_import_plan_creates_imported_baseline(sandbox):
     """F：空档案导入既有计划 → imported BaselinePlan → COMPANY_PENDING。"""
@@ -307,7 +326,7 @@ async def test_import_plan_creates_imported_baseline(sandbox):
         await driver.begin()
         imported = await driver.import_plan(plan_file)
         imported.assert_contains("save_roadmap")
-        await _assert_status(driver, 5, "培养方案规划", "generate_roadmap")
+        await _assert_status(driver, 5, "培养方案规划", "save_roadmap")
 
         await driver.save_roadmap(ROADMAP)
         await _assert_status(driver, 6, "目标企业筛选", "select_target_companies")

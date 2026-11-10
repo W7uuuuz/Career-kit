@@ -201,6 +201,30 @@ def test_get_scraper_guide_mentions_related_alibaba_social():
     assert "暂未接入" not in result
 
 
+def test_get_scraper_guide_related_hint_does_not_claim_query():
+    """guide 只读，不应写“本次只查询了 primary”；应提示另有数据源。"""
+    from src.tools.data_tools import get_scraper_guide
+
+    result = get_scraper_guide(company="alibaba_social")
+    assert "alibaba" in result
+    assert "另有数据源" in result
+    assert "本次只查询了" not in result
+
+
+def test_e2e_fixture_requires_explicit_fixture_env(monkeypatch):
+    """只设 CAREER_KIT_E2E=1、未设 fixture 路径时不启用固定样本。"""
+    import src.scrapers.loader as loader
+
+    monkeypatch.setenv("CAREER_KIT_E2E", "1")
+    monkeypatch.delenv(loader.E2E_FIXTURE_ENV, raising=False)
+    loader._e2e_fixtures.cache_clear()
+    try:
+        assert loader._e2e_fixtures() is None
+        assert loader._fixture_payload("search", "bytedance") is None
+    finally:
+        loader._e2e_fixtures.cache_clear()
+
+
 def test_fetch_company_jobs_mentions_related_alibaba_social(monkeypatch):
     import asyncio
 

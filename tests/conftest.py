@@ -83,6 +83,10 @@ def promote_profile(
     save_profile(profile, profile_name)
     sync.sync_profile(profile_name)
     sync.sync_target(profile_name)
+    # gap 事实必须落成 GapReport（市场跳过）才能进入规划：MARKET_PENDING 不再放行
+    # generate_roadmap / save_roadmap，避免 roadmap 工具假成功。
+    if profile.gap:
+        sync.sync_gap(profile_name)
     if execution or company:
         _ensure_baseline_chain(profile_name)
     return load_profile(profile_name)

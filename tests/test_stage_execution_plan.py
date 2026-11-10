@@ -708,29 +708,74 @@ def test_save_rejects_missing_baseline_artifact(
     assert "execution_plan_id" not in after.core_state
 
 
-def test_second_apply_rejects_baseline_divergence(
+def test_second_alignment_uses_applied_execution_plan_lineage(
     workspace: SimpleNamespace,
     state_machine_profiles: None,
 ) -> None:
-    """第一次应用改写 profile.plan 后，BaselinePlan artifact 未变：第二次应用拒绝。"""
+    """第一次应用改写 profile.plan 后，第二次校准仍以 BaselinePlan artifact 为基线。
+
+    旧断言把「profile.plan 已被执行版替换」误判为基线分叉，导致 plan_fit 返工
+    在第一次 apply 后必然 BASELINE_PLAN_MISMATCH；现在血缘以已应用
+    ExecutionPlan 的 baseline_plan_id 为准，第二次预览/应用都应成功。
+    """
+    baseline_id = workspace.store.latest(
+        PROFILE_NAME, state_machine.STAGE_BASELINE_PLAN
+    )["meta"]["id"]
     first = stage.save_execution_alignment(
         json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
         confirmed=True,
     )
     assert first["applied"] is True
-    before = profile_module.load_profile(PROFILE_NAME).model_dump()
 
     second_alignment = _alignment(workspace.requirement_id)
-    second_alignment["roadmap"]["phases"][0]["name"] = "分叉后的新阶段"
+    second_alignment["roadmap"]["phases"][0]["name"] = "plan_fit 返工阶段"
+    second_alignment["roadmap"]["phases"][0]["goal"] = "按返工建议补齐评测闭环"
+    second_alignment["diff_summary"] = "按 plan_fit 反馈返工执行版"
+
+    preview = stage.save_execution_alignment(
+        json.dumps(second_alignment, ensure_ascii=False), confirmed=False
+    )
+    assert preview["status"] == "needs_confirmation"
+    assert preview["applied"] is False
+    assert preview["baseline"]["phases"][0]["name"] == "基础补齐"
+
+    applied = stage.save_execution_alignment(
+        json.dumps(second_alignment, ensure_ascii=False), confirmed=True
+    )
+    assert applied["status"] == "ok"
+    assert applied["applied"] is True
+    assert applied["execution_plan_id"] != first["execution_plan_id"]
+
+    artifact = workspace.store.load(applied["execution_plan_id"])
+    assert artifact is not None
+    assert artifact["baseline_plan_id"] == baseline_id
+    assert artifact["roadmap"]["phases"][0]["name"] == "plan_fit 返工阶段"
+
+    updated = profile_module.load_profile(PROFILE_NAME)
+    assert updated.plan["roadmap"]["phases"][0]["name"] == "plan_fit 返工阶段"
+    # 返工保留历史任务：两次应用之间没有新完成的任务，历史仍是 task_001/002。
+    assert {task.id for task in updated.tasks} == {"task_001", "task_002"}
+
+
+def test_first_apply_still_rejects_profile_plan_divergence(
+    workspace: SimpleNamespace,
+) -> None:
+    """首次应用前没有 applied ExecutionPlan：profile.plan 分叉仍必须拒绝。"""
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.plan["roadmap"]["phases"][0]["name"] = "手工改过的分叉阶段"
+    profile_module.save_profile(profile, PROFILE_NAME)
+    before = profile_module.load_profile(PROFILE_NAME).model_dump()
+
     with pytest.raises(stage.ExecutionPlanError) as exc_info:
         stage.save_execution_alignment(
-            json.dumps(second_alignment, ensure_ascii=False), confirmed=True
+            json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
+            confirmed=True,
         )
 
     assert exc_info.value.code == "BASELINE_PLAN_MISMATCH"
-    latest = workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN)
-    assert latest is not None
-    assert latest["meta"]["id"] == first["execution_plan_id"]
+    assert workspace.store.latest(
+        PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN
+    ) is None
     assert profile_module.load_profile(PROFILE_NAME).model_dump() == before
 
 

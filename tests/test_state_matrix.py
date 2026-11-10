@@ -9,6 +9,7 @@ BOSS 运行期登录失效是工具返回态（LOGIN_REQUIRED），不是持久�
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -604,7 +605,7 @@ def build_case(label: str, store: ArtifactStore) -> tuple[SimpleNamespace, Any]:
     return profile, snapshot
 
 
-# Phase 1 持久化 fixture：入口一致性测试（tests/test_entrypoint_consistency.py）
+# 持久化 fixture：入口一致性测试（tests/test_entrypoint_consistency.py）
 # 逐条维护 EXPECTED，新增 fixture 只做状态矩阵断言。
 _ENTRYPOINT_CASE_LABELS: tuple[str, ...] = (
     "01",
@@ -621,6 +622,13 @@ _ENTRYPOINT_CASE_LABELS: tuple[str, ...] = (
     "13",
     "14",
     "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "21",
+    "22",
+    "23",
 )
 
 
@@ -905,14 +913,110 @@ def test_fixture_22_goal_confirmation_beats_gap_stale(store: ArtifactStore) -> N
 def test_fixture_23_enterprise_skip_all_tasks_done_is_maintenance(
     store: ArtifactStore,
 ) -> None:
-    """企业跳过 + 全部任务完成 → MAINTENANCE（旧行为：永远停在 EXECUTING）。"""
+    """企业跳过 + 全部任务完成 → MAINTENANCE（旧行为：永远停在 EXECUTING）。
+
+    该路径没有 EvidenceRun：旧 next_tool=build_application_list 会让模型调用
+    一个无法执行的工具；现在改为 get_weekly_review，且门禁必须放行。
+    """
     snapshot = _snapshot("23", store)
 
     assert snapshot.state is State.MAINTENANCE
     assert snapshot.state is not State.EXECUTING
-    assert snapshot.next_tool == "build_application_list"
+    assert snapshot.next_tool == "get_weekly_review"
+    assert snapshot.next_tool in snapshot.allowed_tools
     assert snapshot.skip_flags["enterprise_alignment"] is True
     assert {"build_application_list", "get_weekly_review"} <= snapshot.allowed_tools
+
+
+def test_import_plan_pending_next_tool_is_save_roadmap(
+    store: ArtifactStore,
+) -> None:
+    """import_plan 且无 GapReport：下一步是 save_roadmap，不是 generate_roadmap。"""
+    profile = _profile(
+        guidance={"plan_imported_at": "2026-11-09T00:00:00"},
+    )
+
+    snapshot = resolve_state(profile, store)
+
+    assert snapshot.state is State.BASELINE_PLAN_PENDING
+    assert snapshot.next_tool == "save_roadmap"
+    assert snapshot.next_tool in snapshot.allowed_tools
+    assert any(blocker.code == "plan_imported" for blocker in snapshot.blockers)
+
+
+def test_imported_baseline_target_change_requires_goal_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """import_plan 落 imported BaselinePlan 后改 want（未确认）→ 回 PROFILE_COLLECTING。
+
+    旧实现先判 imported_mode，跳过了目标确认；imported baseline 的旧 target id
+    恰好等于 latest 旧 TargetSpec 时会把未确认的新目标带进企业链路。
+    """
+    from src.tools.data_tools import import_plan
+    from src.tools.roadmap_tools import save_roadmap
+    from src.tools.session_tools import intake
+
+    root = tmp_path / "data"
+    monkeypatch.setattr(paths, "PROFILE_DIR", root)
+    monkeypatch.setattr(profile_store, "PROFILE_DIR", root)
+    store = ArtifactStore()
+
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发", "city": "北京"},
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+    )
+    profile_id = _save_profile(store)
+    target_id = _save_target(
+        store,
+        profile_id,
+        fingerprint=progress.profile_target_fingerprint(profile),
+    )
+    profile.core_state = {
+        progress.STAGE_KEYS[progress.STAGE_PROFILE]: profile_id,
+        progress.STAGE_KEYS[progress.STAGE_TARGET]: target_id,
+    }
+    profile_store.save_profile(profile, PROFILE_NAME)
+    profile_store.set_active_profile_name(PROFILE_NAME)
+
+    plan_file = tmp_path / "imported_plan.md"
+    plan_file.write_text("# 导入计划\n\n1. 学 Python\n", encoding="utf-8")
+    imported = import_plan(str(plan_file))
+    assert "save_roadmap" in imported
+
+    roadmap = {
+        "roadmap": {
+            "strategy_summary": "导入的基线",
+            "phases": [
+                {
+                    "type": "learn",
+                    "name": "基础",
+                    "goal": "掌握基础",
+                    "milestones": [],
+                }
+            ],
+        }
+    }
+    saved = json.loads(
+        save_roadmap(json.dumps(roadmap, ensure_ascii=False))
+    )
+    assert not saved.get("isError"), saved
+    imported_state = resolve_state(profile_store.load_profile(PROFILE_NAME), store)
+    assert imported_state.state is State.COMPANY_PENDING
+
+    intake(
+        "want",
+        json.dumps({"target_role": "后端开发", "city": "北京"}, ensure_ascii=False),
+    )
+
+    snapshot = resolve_state(profile_store.load_profile(PROFILE_NAME), store)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
+    assert not snapshot.artifact_ids[progress.STAGE_KEYS[progress.STAGE_TARGET]]
+    assert any(
+        blocker.code == "target_unconfirmed" for blocker in snapshot.blockers
+    )
 
 
 def test_new_flow_downstream_does_not_write_target_or_market(

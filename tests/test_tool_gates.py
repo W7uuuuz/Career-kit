@@ -217,7 +217,6 @@ _POSITIVE_GATES: tuple[tuple[State, str], ...] = (
     (State.COMPANY_PENDING, "generate_tasks"),
     (State.COMPANY_PENDING, "detail_current_phase"),
     (State.MARKET_PENDING, "save_gap_analysis"),
-    (State.MARKET_PENDING, "save_roadmap"),
 )
 
 

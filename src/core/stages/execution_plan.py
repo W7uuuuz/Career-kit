@@ -288,9 +288,11 @@ def _save(
                 existing, profile, requirement_profile_id
             )
 
-    # 应用前确认 profile.plan 未与 baseline artifact 分叉；重复确认同一方案
-    # 已在上面按 idempotent 返回，不受第一次 apply 改写 profile.plan 影响。
-    _assert_profile_plan_matches_baseline(baseline_plan_id, profile, baseline)
+    # 应用前确认基线血缘；重复确认同一方案已在上面按 idempotent 返回，
+    # 不受第一次 apply 改写 profile.plan 影响。
+    _assert_profile_plan_matches_baseline(
+        store, profile_name, baseline_plan_id, profile, baseline
+    )
 
     completed = _extract_completed_evidence(profile)
     removed = _pending_tasks(profile)
@@ -357,7 +359,9 @@ def _save(
 
     with profile_lock(profile_name):
         current = load_profile(profile_name)
-        _assert_profile_plan_matches_baseline(baseline_plan_id, current, baseline)
+        _assert_profile_plan_matches_baseline(
+            store, profile_name, baseline_plan_id, current, baseline
+        )
         current.save_plan_snapshot("company_alignment")
         preserved_tasks = [task for task in current.tasks if task.status in _FINISHED_STATUSES]
         removed_tasks = [task for task in current.tasks if task.status not in _FINISHED_STATUSES]
@@ -594,11 +598,34 @@ def _missing_baseline_error() -> ExecutionPlanError:
 
 
 def _assert_profile_plan_matches_baseline(
+    store: ArtifactStore,
+    profile_name: str,
     baseline_plan_id: str,
     profile: CareerProfile,
     baseline: dict[str, Any],
 ) -> None:
-    """profile.plan 与 BaselinePlan artifact 必须一致，避免基线血缘分叉。"""
+    """校验基线血缘；已应用执行版后 profile.plan 是执行副本，不再比哈希。
+
+    首次应用要求 profile.plan 与 BaselinePlan artifact 一致；一旦存在 applied
+    ExecutionPlan，基线血缘以该 ExecutionPlan 的 ``baseline_plan_id`` 为准，
+    第二次校准（plan_fit 返工）仍使用 BaselinePlan artifact 的 roadmap 作为基线。
+    """
+    applied = _latest_applied_execution_plan(store, profile_name)
+    applied_baseline = (
+        str(applied.get("baseline_plan_id") or "").strip() if applied else ""
+    )
+    if applied_baseline:
+        if applied_baseline != baseline_plan_id:
+            raise ExecutionPlanError(
+                "BASELINE_PLAN_MISMATCH",
+                "已应用执行版记录的基线方案与当前基线链路不一致，拒绝落库。",
+                {
+                    "applied_baseline_plan_id": applied_baseline,
+                    "baseline_plan_id": baseline_plan_id,
+                },
+            )
+        return
+
     current = _roadmap_of(profile.plan)
     if not _has_phases(current) or _hash_value(current) != _hash_value(baseline):
         raise ExecutionPlanError(
@@ -611,6 +638,16 @@ def _assert_profile_plan_matches_baseline(
                 "baseline_plan_hash": _hash_value(baseline),
             },
         )
+
+
+def _latest_applied_execution_plan(
+    store: ArtifactStore, profile_name: str
+) -> dict[str, Any] | None:
+    """按版本倒序取最近一个已应用 ExecutionPlan（预览 artifact 不算）。"""
+    for entry in store.list(profile_name, STAGE_ID):
+        if isinstance(entry, dict) and bool(entry.get("applied")):
+            return entry
+    return None
 
 
 def _assert_requirement_ready(
