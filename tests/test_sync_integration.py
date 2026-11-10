@@ -176,6 +176,7 @@ def test_generate_tasks_and_checkin_sync_execution_state(data_dir: Path) -> None
     }
     _seed_applied_plan(profile)
     promote_profile(profile, PROFILE_NAME)
+    _seed_market_skipped_gap(profile_store.load_profile(PROFILE_NAME))
 
     out = generate_tasks()
     assert "已为当前阶段" in out
@@ -205,6 +206,36 @@ def test_record_application_syncs_application_state_artifact(data_dir: Path) -> 
     artifact = _load_artifact(app_id)
     assert len(artifact["applications"]) == 1
     assert artifact["applications"][0]["company"] == "字节跳动"
+
+
+def _seed_market_skipped_gap(profile: CareerProfile) -> str:
+    """市场跳过路径：seed 当前 TargetSpec 匹配的 market_skipped GapReport。"""
+    from src.core.artifacts.models import ArtifactMeta, GapReport
+
+    state = dict(profile.core_state or {})
+    profile_id = str(state.get("profile_id") or "")
+    target_id = str(state.get("target_spec_id") or "")
+    assert profile_id and target_id
+    gap_id = "gr_seed"
+    ArtifactStore().save(
+        GapReport(
+            meta=ArtifactMeta(
+                id=gap_id,
+                stage="gap",
+                profile_name=PROFILE_NAME,
+                created_at="2026-11-08T00:00:00",
+                inputs={"profile_id": profile_id, "target_spec_id": target_id},
+                validation={"market_skipped": True},
+            ),
+            profile_snapshot_id=profile_id,
+            market_baseline_id="",
+            match_score=50,
+        )
+    )
+    state["gap_report_id"] = gap_id
+    profile.core_state = state
+    profile_store.save_profile(profile, PROFILE_NAME)
+    return gap_id
 
 
 def _seed_applied_plan(profile: CareerProfile) -> str:
@@ -501,6 +532,8 @@ def test_task_tools_surface_sync_failure_warning(
         }
     }
     promote_profile(profile, PROFILE_NAME, execution=True, detail=True)
+    _seed_market_skipped_gap(profile_store.load_profile(PROFILE_NAME))
+    assert core_sync.sync_baseline_plan(PROFILE_NAME)
 
     out = json.loads(generate_tasks())
     assert "同步失败" in out["message"]
@@ -715,3 +748,236 @@ def test_sync_market_baseline_does_not_create_profile_for_new_flow(
     assert core_sync.sync_market_baseline(PROFILE_NAME) == ""
     assert ArtifactStore().list(PROFILE_NAME, "profile") == []
     assert ArtifactStore().list(PROFILE_NAME, "market_baseline") == []
+
+
+def _seed_confirmed_no_research() -> CareerProfile:
+    from src.core import sync as core_sync
+
+    profile = CareerProfile(
+        who={"name": "张三", "education": "双非本", "city": "北京"},
+        have={"skills": ["Python"]},
+        want={
+            "target_role": "AI Agent 开发",
+            "city": "北京",
+            "target_tiers": ["大厂"],
+            "bridge_tiers": ["中厂"],
+            "user_confirmed": True,
+        },
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_profile(PROFILE_NAME)
+    assert core_sync.sync_target(PROFILE_NAME)
+    return profile_store.load_profile(PROFILE_NAME)
+
+
+def _roadmap_payload() -> dict:
+    return {
+        "roadmap": {
+            "strategy_summary": "市场跳过基线",
+            "phases": [
+                {
+                    "id": "phase_1",
+                    "type": "learn",
+                    "name": "基础学习",
+                    "kpi": {"metric": "掌握", "target": "1 项"},
+                    "milestones": [
+                        {"id": "m1", "name": "基础", "tasks": [{"name": "学 Python"}]}
+                    ],
+                }
+            ],
+        }
+    }
+
+
+def test_market_skip_writes_gap_and_baseline_artifacts(data_dir: Path) -> None:
+    from src.core.state import State, resolve_state
+    from src.tools.analysis_tools import save_gap_analysis
+    from src.tools.company_selection_tools import select_target_companies
+    from src.tools.roadmap_tools import save_roadmap
+
+    _seed_confirmed_no_research()
+    gap = {"match_score": 60, "skill_gaps": [{"skill": "RAG", "source": "JD"}]}
+    out = save_gap_analysis(gap_json=json.dumps(gap, ensure_ascii=False))
+    assert json.loads(out).get("isError") is not True
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    gap_id = profile.core_state["gap_report_id"]
+    gap_artifact = _load_artifact(gap_id)
+    assert gap_artifact["market_baseline_id"] == ""
+    assert gap_artifact["meta"]["validation"]["market_skipped"] is True
+    assert gap_artifact["meta"]["inputs"]["target_spec_id"] == profile.core_state[
+        "target_spec_id"
+    ]
+    assert resolve_state(profile).state is State.BASELINE_PLAN_PENDING
+
+    out = save_roadmap(roadmap_json=json.dumps(_roadmap_payload(), ensure_ascii=False))
+    assert "路线图已保存" in out
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    baseline_id = profile.core_state["baseline_plan_id"]
+    baseline = _load_artifact(baseline_id)
+    assert baseline["meta"]["validation"]["market_skipped"] is True
+    assert baseline["meta"]["inputs"]["target_spec_id"] == profile.core_state[
+        "target_spec_id"
+    ]
+    assert baseline["gap_report_id"] == gap_id
+    assert resolve_state(profile).state is State.COMPANY_PENDING
+
+    payload = json.loads(
+        select_target_companies(
+            target_tiers="大厂",
+            bridge_tiers="中厂",
+            city="北京",
+            role="AI Agent 开发",
+            industry="互联网",
+            confirmed=True,
+        )
+    )
+    assert payload["status"] == "ok"
+    pool = _load_artifact(payload["artifact_id"])
+    assert pool["meta"]["inputs"]["baseline_plan_id"] == baseline_id
+
+
+def test_target_change_invalidates_market_skipped_gap_and_baseline(
+    data_dir: Path,
+) -> None:
+    from src.core import contracts, progress, sync as core_sync
+    from src.core.state import State, resolve_state
+    from src.tools.analysis_tools import save_gap_analysis
+    from src.tools.roadmap_tools import save_roadmap
+
+    _seed_confirmed_no_research()
+    gap = {"match_score": 60, "skill_gaps": [{"skill": "RAG", "source": "JD"}]}
+    assert not json.loads(save_gap_analysis(json.dumps(gap, ensure_ascii=False))).get(
+        "isError"
+    )
+    assert "路线图已保存" in save_roadmap(
+        roadmap_json=json.dumps(_roadmap_payload(), ensure_ascii=False)
+    )
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    old_gap_id = profile.core_state["gap_report_id"]
+    old_baseline_id = profile.core_state["baseline_plan_id"]
+    assert resolve_state(profile).state is State.COMPANY_PENDING
+
+    profile.want["target_role"] = "后端开发"
+    profile_store.save_profile(profile, PROFILE_NAME)
+    new_target_id = core_sync.sync_target(PROFILE_NAME)
+    assert new_target_id and new_target_id != profile.core_state["target_spec_id"]
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.MARKET_PENDING
+    assert snapshot.next_tool == "gather_research_data"
+
+    artifacts = {
+        "target": _load_artifact(profile.core_state["target_spec_id"]),
+        "gap": _load_artifact(old_gap_id),
+        "baseline_plan": _load_artifact(old_baseline_id),
+    }
+    assert contracts._ready_gap(artifacts) is False
+    assert contracts._ready_baseline_plan(artifacts) is False
+    result = progress.resolve_progress(profile, ArtifactStore(), PROFILE_NAME)
+    assert result["stage"] == progress.STAGE_MARKET
+    assert result["next_tool"] == "gather_research_data"
+
+
+def test_import_plan_writes_imported_baseline(data_dir: Path) -> None:
+    from src.core.state import State, resolve_state
+    from src.tools.data_tools import import_plan
+    from src.tools.roadmap_tools import save_roadmap
+
+    plan_file = data_dir / "imported_plan.md"
+    plan_file.write_text("# 我的计划\n\n1. 学 Python\n2. 做 RAG 项目\n", encoding="utf-8")
+
+    out = import_plan(file_path=str(plan_file))
+    assert "save_roadmap" in out
+    assert "路线图" in out
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    assert profile.guidance.get("plan_imported_at")
+    assert resolve_state(profile).state is State.BASELINE_PLAN_PENDING
+
+    out = save_roadmap(roadmap_json=json.dumps(_roadmap_payload(), ensure_ascii=False))
+    assert "路线图已保存" in out
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    baseline_id = profile.core_state["baseline_plan_id"]
+    baseline = _load_artifact(baseline_id)
+    assert baseline["meta"]["validation"]["imported"] is True
+    assert baseline["gap_report_id"] == ""
+    assert resolve_state(profile).state is State.COMPANY_PENDING
+
+
+def test_profile_fields_without_artifacts_do_not_skip_market(data_dir: Path) -> None:
+    from src.core import progress, sync as core_sync
+    from src.core.state import State, resolve_state
+
+    profile = CareerProfile(
+        who={"name": "张三", "education": "双非本"},
+        have={"skills": ["Python"]},
+        want={
+            "target_role": "AI Agent 开发",
+            "city": "北京",
+            "user_confirmed": True,
+        },
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+        gap={"match_score": 58},
+        plan=_roadmap_payload(),
+        tasks=[Task(id="task_001", name="学 Python", phase_id="phase_1")],
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_profile(PROFILE_NAME)
+    assert core_sync.sync_target(PROFILE_NAME)
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.MARKET_PENDING
+    assert snapshot.state is not State.COMPANY_PENDING
+
+    result = progress.resolve_progress(profile, ArtifactStore(), PROFILE_NAME)
+    assert result["stage"] == progress.STAGE_MARKET
+    assert result["next_tool"] == "gather_research_data"
+
+
+def test_imported_baseline_target_change_invalidates(data_dir: Path) -> None:
+    from src.core import contracts, progress, sync as core_sync
+    from src.core.state import State, resolve_state
+    from src.tools.data_tools import import_plan
+    from src.tools.roadmap_tools import save_roadmap
+
+    _seed_confirmed_no_research()
+    plan_file = data_dir / "imported_target_plan.md"
+    plan_file.write_text("# 导入计划\n\n1. 学 Python\n", encoding="utf-8")
+    assert "save_roadmap" in import_plan(file_path=str(plan_file))
+    assert "路线图已保存" in save_roadmap(
+        roadmap_json=json.dumps(_roadmap_payload(), ensure_ascii=False)
+    )
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    baseline_id = profile.core_state["baseline_plan_id"]
+    old_target_id = profile.core_state["target_spec_id"]
+    baseline = _load_artifact(baseline_id)
+    assert baseline["meta"]["validation"]["imported"] is True
+    assert baseline["meta"]["inputs"]["target_spec_id"] == old_target_id
+    assert resolve_state(profile).state is State.COMPANY_PENDING
+
+    profile.want["target_role"] = "后端开发"
+    profile_store.save_profile(profile, PROFILE_NAME)
+    new_target_id = core_sync.sync_target(PROFILE_NAME)
+    assert new_target_id and new_target_id != old_target_id
+
+    profile = profile_store.load_profile(PROFILE_NAME)
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.MARKET_PENDING
+    assert snapshot.next_tool == "gather_research_data"
+
+    artifacts = {
+        "target": _load_artifact(new_target_id),
+        "baseline_plan": _load_artifact(baseline_id),
+    }
+    assert contracts._ready_baseline_plan(artifacts) is False
+    result = progress.resolve_progress(profile, ArtifactStore(), PROFILE_NAME)
+    assert result["stage"] == progress.STAGE_MARKET
+    assert result["next_tool"] == "gather_research_data"

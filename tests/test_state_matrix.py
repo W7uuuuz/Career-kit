@@ -434,9 +434,22 @@ def _case_14(store: ArtifactStore) -> SimpleNamespace:
 
 
 def _case_15(store: ArtifactStore) -> SimpleNamespace:
-    """F15：无 MarketBaseline，但已有 gap 事实 → 视为跳过市场调研。"""
+    """F15：无 MarketBaseline，但已有当前目标匹配的 market_skipped GapReport。"""
     profile_id = _save_profile(store)
-    _save_target(store, profile_id)
+    target_id = _save_target(store, profile_id)
+    store.save(
+        GapReport(
+            meta=_meta(
+                store,
+                progress.STAGE_GAP,
+                inputs={"profile_id": profile_id, "target_spec_id": target_id},
+                validation={"market_skipped": True},
+            ),
+            profile_snapshot_id=profile_id,
+            market_baseline_id="",
+            match_score=58,
+        )
+    )
     return _confirmed_profile(gap={"match_score": 58})
 
 
@@ -787,9 +800,9 @@ def test_fixture_15_market_skipped(store: ArtifactStore) -> None:
     snapshot = _snapshot("15", store)
 
     assert snapshot.state is not State.MARKET_PENDING
-    assert snapshot.state is State.GAP_PENDING
-    assert snapshot.stage_index == 4
-    assert snapshot.next_tool == "analyze_gaps"
+    assert snapshot.state is State.BASELINE_PLAN_PENDING
+    assert snapshot.stage_index == 5
+    assert snapshot.next_tool == "generate_roadmap"
     assert any(blocker.code == "market_skipped" for blocker in snapshot.blockers)
 
 

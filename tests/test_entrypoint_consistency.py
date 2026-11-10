@@ -156,12 +156,12 @@ EXPECTED: tuple[ExpectedEntry, ...] = (
     ),
     ExpectedEntry(
         "15",
-        "market skipped（无 MarketBaseline）",
-        State.GAP_PENDING,
-        4,
-        "能力差距诊断",
-        "gap",
-        "analyze_gaps",
+        "market skipped（无 MarketBaseline，gap artifact 已落）",
+        State.BASELINE_PLAN_PENDING,
+        5,
+        "培养方案规划",
+        "plan",
+        "generate_roadmap",
     ),
 )
 

@@ -83,6 +83,28 @@ def _artifact_field(artifact: dict[str, Any], field: str, where: str) -> str:
     return str(value or "").strip()
 
 
+def _artifact_validation(artifact: dict[str, Any] | None) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact, dict) else None
+    validation = meta.get("validation") if isinstance(meta, dict) else None
+    return validation if isinstance(validation, dict) else {}
+
+
+def _current_target_id(artifacts: Mapping[str, Any]) -> str:
+    return _artifact_id(_artifact(artifacts, STAGE_TARGET))
+
+
+def _target_matches(artifact: dict[str, Any], artifacts: Mapping[str, Any]) -> bool:
+    """artifact 记录的 target_spec_id 必须指向当前 TargetSpec。
+
+    旧 artifact 没有 target_spec_id 时保持兼容；一旦写入就必须匹配，
+    目标变化后旧 gap/baseline 不再 ready。
+    """
+    stored = _artifact_field(artifact, "target_spec_id", "inputs")
+    if not stored:
+        return True
+    return stored == _current_target_id(artifacts)
+
+
 def _upstream_ready(stage: str, artifacts: Mapping[str, Any]) -> bool:
     data = _artifact(artifacts, stage)
     if data is None:
@@ -108,10 +130,40 @@ def _ready_market_baseline(artifacts: Mapping[str, Any]) -> bool:
 
 
 def _ready_gap(artifacts: Mapping[str, Any]) -> bool:
+    data = _artifact(artifacts, STAGE_GAP)
+    if data is None or not _target_matches(data, artifacts):
+        return False
+    validation = _artifact_validation(data)
+    if validation.get("market_skipped") is True:
+        # 市场跳过：不要求 MarketBaseline，但必须指向当前 TargetSpec，
+        # 且 ProfileSnapshot 必须指向当前快照。
+        target_id = _artifact_field(data, "target_spec_id", "inputs")
+        if not target_id or target_id != _current_target_id(artifacts):
+            return False
+        profile_id = _artifact_id(_artifact(artifacts, STAGE_PROFILE))
+        actual = _artifact_field(data, "profile_snapshot_id", "body")
+        return bool(profile_id) and actual == profile_id
     return _upstream_ready(STAGE_GAP, artifacts)
 
 
 def _ready_baseline_plan(artifacts: Mapping[str, Any]) -> bool:
+    data = _artifact(artifacts, STAGE_BASELINE_PLAN)
+    if data is None or not _target_matches(data, artifacts):
+        return False
+    validation = _artifact_validation(data)
+    if validation.get("imported") is True:
+        # import_plan 路径：没有 GapReport，保留 validation 标记作为契约；
+        # 当前已有 TargetSpec 时，记录过的 target_spec_id 必须一致。
+        target_id = _artifact_field(data, "target_spec_id", "inputs")
+        current_target = _current_target_id(artifacts)
+        return not (current_target and target_id != current_target)
+    if validation.get("market_skipped") is True:
+        target_id = _artifact_field(data, "target_spec_id", "inputs")
+        if not target_id or target_id != _current_target_id(artifacts):
+            return False
+        gap_id = _artifact_id(_artifact(artifacts, STAGE_GAP))
+        actual = _artifact_field(data, "gap_report_id", "body")
+        return bool(gap_id) and actual == gap_id and _ready_gap(artifacts)
     return _upstream_ready(STAGE_BASELINE_PLAN, artifacts)
 
 

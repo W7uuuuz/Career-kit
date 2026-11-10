@@ -124,10 +124,14 @@ evidence / requirement / execution_plan / execution / applications / review`；
 
 **关键规则**：
 - 分析必须基于真实数据；无数据时引导用户导入 JD，绝不编造。
+- 市场调研可跳过：没有 `MarketBaseline` 时 `save_gap_analysis` 仍写 `GapReport`，
+  以 `meta.validation.market_skipped=true` 标记，并把 `meta.inputs.target_spec_id`
+  指向当前 `TargetSpec`；缺 ProfileSnapshot/TargetSpec 不写半成品。
 - `skill_gaps` 非空时每项必须带 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；
   空 `skill_gaps` 允许保存但会给建议；`resume_red_flags` 带 `signal` / `risk` / `evidence_fix`。
 - 过程透明：每步产出用户看得见的中间结果，落盘前用户确认。
-- 换了目标 JD 后差距分析标记过期，必须先重新 `analyze_gaps`。
+- 换了目标 JD 后差距分析标记过期，必须先重新 `analyze_gaps`；目标变化后旧
+  `GapReport` / `BaselinePlan` 的 `target_spec_id` 不再匹配，状态回到市场阶段。
 
 ---
 
@@ -148,6 +152,9 @@ evidence / requirement / execution_plan / execution / applications / review`；
 
 **关键规则**：
 - `save_roadmap` 只做结构校验；质量项以 `advisories` 返回并持久化。
+- 市场跳过时 `BaselinePlan` 继承 `validation.market_skipped=true`；目标变化后旧基线失效。
+- `import_plan` 可直接走基线：设置 `plan_imported_at` 后调用 `save_roadmap`，
+  无 `GapReport` 时写入 `validation.imported=true` 的 `BaselinePlan`，状态进入企业适配。
 - 层级是命中率参考，不是准入许可；跨级不禁止，建议说明证据。
 - 审计是第二意见：FAIL 只用于硬矛盾，最多 3 条 must_fix。
 - JD 细节必须有真实数据；没有就留空并标 `jd_status=pending_user_import`。

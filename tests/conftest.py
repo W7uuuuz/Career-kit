@@ -53,7 +53,12 @@ def promote_profile(
         profile.gap = {"match_score": 50}
     if execution or company:
         plan = profile.plan if isinstance(profile.plan, dict) else {}
-        if not plan.get("roadmap"):
+        roadmap = plan.get("roadmap")
+        if not (
+            isinstance(roadmap, dict)
+            and isinstance(roadmap.get("phases"), list)
+            and roadmap["phases"]
+        ):
             plan["roadmap"] = {
                 "phases": [
                     {
@@ -78,11 +83,89 @@ def promote_profile(
     save_profile(profile, profile_name)
     sync.sync_profile(profile_name)
     sync.sync_target(profile_name)
+    if execution or company:
+        _ensure_baseline_chain(profile_name)
     return load_profile(profile_name)
 
 
+def _ensure_baseline_chain(profile_name: str) -> None:
+    """为执行/企业 fixture 落真实 artifact：market_skipped GapReport + BaselinePlan。"""
+    from src.core import sync
+    from src.core.artifacts.models import ArtifactMeta, GapReport
+    from src.core.artifacts.store import ArtifactStore
+    from src.tools.profile import load_profile, save_profile
+
+    store = ArtifactStore()
+    profile = load_profile(profile_name)
+    state = dict(profile.core_state or {})
+    profile_id = str(state.get("profile_id") or "")
+    target_id = str(state.get("target_spec_id") or "")
+    if not profile_id or not target_id:
+        return
+
+    baseline_id = str(state.get("baseline_plan_id") or "")
+    baseline = store.load(baseline_id) if baseline_id else None
+    if not _valid_stage(baseline, "baseline_plan", profile_name):
+        latest = store.latest(profile_name, "baseline_plan")
+        baseline = latest if _valid_stage(latest, "baseline_plan", profile_name) else None
+        baseline_id = str(((baseline or {}).get("meta") or {}).get("id") or "")
+
+    if baseline is None:
+        gap_id = sync.sync_gap(profile_name)
+        if gap_id:
+            sync.sync_baseline_plan(profile_name)
+        return
+
+    gap_id = str(baseline.get("gap_report_id") or "").strip()
+    if not gap_id:
+        gap_id = sync.sync_gap(profile_name)
+        if gap_id:
+            sync.sync_baseline_plan(profile_name)
+        return
+
+    gap = store.load(gap_id)
+    if not _valid_stage(gap, "gap", profile_name):
+        store.save(
+            GapReport(
+                meta=ArtifactMeta(
+                    id=gap_id,
+                    stage="gap",
+                    profile_name=profile_name,
+                    created_at="2026-11-10T00:00:00",
+                    inputs={
+                        "profile_id": profile_id,
+                        "target_spec_id": target_id,
+                    },
+                    validation={"market_skipped": True},
+                ),
+                profile_snapshot_id=profile_id,
+                market_baseline_id="",
+                match_score=50,
+            )
+        )
+    state["gap_report_id"] = gap_id
+    state["baseline_plan_id"] = baseline_id
+    profile.core_state = state
+    save_profile(profile, profile_name)
+
+
+def _valid_stage(data, stage: str, profile_name: str) -> bool:
+    if not isinstance(data, dict):
+        return False
+    meta = data.get("meta")
+    return (
+        isinstance(meta, dict)
+        and meta.get("stage") == stage
+        and str(meta.get("profile_name") or "") == profile_name
+    )
+
+
 def seed_baseline_pool(profile_name="", *, pool_id="cp_test", baseline_id="bp_test"):
-    """Seed 一个可引用的 BaselinePlan + 已确认 CompanyPool，供企业链路状态 fixture 使用。"""
+    """Seed 一个可引用的 BaselinePlan + 已确认 CompanyPool，供企业链路状态 fixture 使用。
+
+    已有真实 BaselinePlan（promote_profile 生成）时复用其 id，避免 CompanyPool
+    引用一个与 core_state 不同的基线。
+    """
     from datetime import datetime
 
     from src.core.artifacts.models import (
@@ -93,20 +176,32 @@ def seed_baseline_pool(profile_name="", *, pool_id="cp_test", baseline_id="bp_te
         TargetSpec,
     )
     from src.core.artifacts.store import ArtifactStore
+    from src.tools.profile import load_profile
 
     store = ArtifactStore()
-    store.save(
-        BaselinePlan(
-            meta=ArtifactMeta(
-                id=baseline_id,
-                stage="baseline_plan",
-                profile_name=profile_name,
-                created_at=datetime.now().isoformat(),
-            ),
-            gap_report_id="gr_state_test",
-            roadmap={"phases": [{"id": "phase_1", "name": "基础"}]},
+    profile = load_profile(profile_name) if profile_name else None
+    state = dict((profile.core_state if profile else {}) or {})
+    existing_id = str(state.get("baseline_plan_id") or "")
+    existing = store.load(existing_id) if existing_id else None
+    if not _valid_stage(existing, "baseline_plan", profile_name):
+        latest = store.latest(profile_name, "baseline_plan")
+        existing = latest if _valid_stage(latest, "baseline_plan", profile_name) else None
+        existing_id = str(((existing or {}).get("meta") or {}).get("id") or "")
+    if existing is not None:
+        baseline_id = existing_id
+    else:
+        store.save(
+            BaselinePlan(
+                meta=ArtifactMeta(
+                    id=baseline_id,
+                    stage="baseline_plan",
+                    profile_name=profile_name,
+                    created_at=datetime.now().isoformat(),
+                ),
+                gap_report_id="gr_state_test",
+                roadmap={"phases": [{"id": "phase_1", "name": "基础"}]},
+            )
         )
-    )
     store.save(
         CompanyPool(
             meta=ArtifactMeta(

@@ -197,7 +197,11 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "read_research_details",
         }
     ),
-    State.BASELINE_PLAN_PENDING: frozenset({"generate_roadmap", "save_roadmap"}),
+    # 保存 gap 后即进入 BASELINE_PLAN_PENDING；规划前允许修正差距分析，
+    # 重新落 GapReport 不推进状态，避免用户被迫先规划再返工。
+    State.BASELINE_PLAN_PENDING: frozenset(
+        {"generate_roadmap", "save_roadmap", "save_gap_analysis"}
+    ),
     State.COMPANY_PENDING: frozenset(
         {
             "select_target_companies",
@@ -288,6 +292,55 @@ def _guidance(profile: Any) -> dict[str, Any]:
 
 def _skip_flag(profile: Any) -> bool:
     return bool(_guidance(profile).get("enterprise_alignment_skipped_at"))
+
+
+def _plan_imported(profile: Any) -> bool:
+    return bool(_guidance(profile).get("plan_imported_at"))
+
+
+def _artifact_validation(artifact: dict[str, Any] | None) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact, dict) else None
+    validation = meta.get("validation") if isinstance(meta, dict) else None
+    return validation if isinstance(validation, dict) else {}
+
+
+def _artifact_target_id(artifact: dict[str, Any] | None) -> str:
+    meta = artifact.get("meta") if isinstance(artifact, dict) else None
+    inputs = meta.get("inputs") if isinstance(meta, dict) else None
+    if not isinstance(inputs, dict):
+        return ""
+    return str(inputs.get("target_spec_id") or "").strip()
+
+
+def _target_artifact_id(
+    artifacts: dict[str, dict[str, Any] | None],
+) -> str:
+    return _artifact_id(artifacts.get(STAGE_TARGET))
+
+
+def _market_skipped_gap(
+    artifacts: dict[str, dict[str, Any] | None],
+) -> bool:
+    """当前 TargetSpec 匹配的 market_skipped GapReport 才算市场跳过。"""
+    gap = artifacts.get(STAGE_GAP)
+    if _artifact_validation(gap).get("market_skipped") is not True:
+        return False
+    target_id = _target_artifact_id(artifacts)
+    return bool(target_id) and _artifact_target_id(gap) == target_id
+
+
+def _market_skipped_baseline(
+    artifacts: dict[str, dict[str, Any] | None],
+) -> bool:
+    baseline = artifacts.get(STAGE_BASELINE_PLAN)
+    if _artifact_validation(baseline).get("market_skipped") is not True:
+        return False
+    target_id = _target_artifact_id(artifacts)
+    return bool(target_id) and _artifact_target_id(baseline) == target_id
+
+
+def _is_imported_baseline(artifact: dict[str, Any] | None) -> bool:
+    return _artifact_validation(artifact).get("imported") is True
 
 
 def _profile_name(profile: Any) -> str:
@@ -481,74 +534,85 @@ def resolve_state(
     artifacts = _resolve_artifacts(profile, active_store, profile_name)
     blockers: list[Blocker] = _evidence_blockers(artifacts.get(STAGE_EVIDENCE))
 
-    if not _has_any_section(profile):
-        return _snapshot(State.EMPTY, profile, artifacts, blockers)
-
     guidance = _guidance(profile)
-    goal_confirmed = bool(guidance.get("goal_confirmed_at"))
+    plan_imported = _plan_imported(profile)
+    imported_baseline = artifacts.get(STAGE_BASELINE_PLAN)
+    # imported BaselinePlan 同样必须通过 contracts 的 target_spec_id 校验；
+    # 目标变化后 _stage_ready 为 False，回落到正常链路并在市场阶段停下。
+    imported_mode = (
+        plan_imported
+        and _is_imported_baseline(imported_baseline)
+        and _stage_ready(STAGE_BASELINE_PLAN, artifacts)
+    )
 
-    # 覆盖规则 2：TargetSpec 只在目标已确认时有效。
-    target = artifacts.get(STAGE_TARGET)
-    if target is not None:
-        if not goal_confirmed:
-            artifacts[STAGE_TARGET] = None
-            blockers.append(
-                Blocker("target_unconfirmed", "目标尚未由用户确认")
-            )
-        elif _target_stale(profile, target):
-            artifacts[STAGE_TARGET] = None
-            blockers.append(
-                Blocker("target_stale", "目标字段已变化，旧 TargetSpec 失效")
-            )
-
-    # 覆盖规则 1：gap_stale 强制回到差距分析，下游 plan/tasks 不得覆盖。
-    if getattr(profile, "gap", None) and str(
-        getattr(profile, "gap_stale_at", "") or ""
-    ).strip():
-        blockers.append(Blocker("gap_stale", "目标 JD 已更新，旧差距分析已过期"))
-        return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
-
-    if not goal_confirmed:
-        blockers.append(Blocker("target_unconfirmed", "目标尚未由用户确认"))
-        return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
-
-    if not _stage_ready(STAGE_PROFILE, artifacts):
-        return _snapshot(State.PROFILE_READY, profile, artifacts, blockers)
-
-    if not _stage_ready(STAGE_TARGET, artifacts):
-        blockers.append(Blocker("target_unconfirmed", "目标尚未写入 TargetSpec"))
-        return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
-
-    market_skipped = False
-    if not _stage_ready(STAGE_MARKET, artifacts):
-        # 覆盖规则：市场调研可跳过。档案已有差距/路线图/任务事实时，不再要求
-        # MarketBaseline，标记跳过并继续按后续 artifact 事实判定。
-        plan = getattr(profile, "plan", None)
-        roadmap_exists = isinstance(plan, dict) and bool(plan.get("roadmap"))
-        if getattr(profile, "gap", None) or roadmap_exists or _has_tasks(profile):
-            market_skipped = True
-            blockers.append(Blocker("market_skipped", "用户选择跳过市场调研"))
-        else:
-            blockers.append(Blocker("artifact_missing", "尚未生成 MarketBaseline"))
-            return _snapshot(State.MARKET_PENDING, profile, artifacts, blockers)
-
-    # 市场跳过时 Gap/Baseline artifact 可能缺 MarketBaseline 上游引用；用户已有
-    # roadmap 即视为规划完成，允许继续执行（对应 GAP_PENDING 放行规划工具）。
-    plan = getattr(profile, "plan", None)
-    roadmap_exists = isinstance(plan, dict) and bool(plan.get("roadmap"))
-    gap_ready = _stage_ready(STAGE_GAP, artifacts)
-    if not gap_ready and market_skipped and roadmap_exists:
-        gap_ready = True
-    if not gap_ready:
-        blockers.append(Blocker("artifact_missing", "尚未生成 GapReport"))
-        return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
-
-    baseline_ready = _stage_ready(STAGE_BASELINE_PLAN, artifacts)
-    if not baseline_ready and market_skipped and roadmap_exists:
-        baseline_ready = True
-    if not baseline_ready:
-        blockers.append(Blocker("artifact_missing", "尚未生成 BaselinePlan"))
+    # import_plan 路径：尚未落 BaselinePlan 时，下一步是 save_roadmap。
+    if (
+        plan_imported
+        and not imported_mode
+        and artifacts.get(STAGE_GAP) is None
+        and imported_baseline is None
+    ):
+        blockers.append(
+            Blocker("plan_imported", "已导入计划，等待 save_roadmap 保存结构化路线图")
+        )
         return _snapshot(State.BASELINE_PLAN_PENDING, profile, artifacts, blockers)
+
+    if not imported_mode:
+        if not _has_any_section(profile):
+            return _snapshot(State.EMPTY, profile, artifacts, blockers)
+
+        goal_confirmed = bool(guidance.get("goal_confirmed_at"))
+
+        # 覆盖规则 2：TargetSpec 只在目标已确认时有效。
+        target = artifacts.get(STAGE_TARGET)
+        if target is not None:
+            if not goal_confirmed:
+                artifacts[STAGE_TARGET] = None
+                blockers.append(
+                    Blocker("target_unconfirmed", "目标尚未由用户确认")
+                )
+            elif _target_stale(profile, target):
+                artifacts[STAGE_TARGET] = None
+                blockers.append(
+                    Blocker("target_stale", "目标字段已变化，旧 TargetSpec 失效")
+                )
+
+        # 覆盖规则 1：gap_stale 强制回到差距分析，下游 plan/tasks 不得覆盖。
+        if getattr(profile, "gap", None) and str(
+            getattr(profile, "gap_stale_at", "") or ""
+        ).strip():
+            blockers.append(Blocker("gap_stale", "目标 JD 已更新，旧差距分析已过期"))
+            return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
+
+        if not goal_confirmed:
+            blockers.append(Blocker("target_unconfirmed", "目标尚未由用户确认"))
+            return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
+
+        if not _stage_ready(STAGE_PROFILE, artifacts):
+            return _snapshot(State.PROFILE_READY, profile, artifacts, blockers)
+
+        if not _stage_ready(STAGE_TARGET, artifacts):
+            blockers.append(Blocker("target_unconfirmed", "目标尚未写入 TargetSpec"))
+            return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
+
+        # 市场跳过只认当前 TargetSpec 匹配的 GapReport/BaselinePlan artifact；
+        # profile.gap/plan/tasks 不再作为就绪事实。
+        if not _stage_ready(STAGE_MARKET, artifacts):
+            if _market_skipped_gap(artifacts) or _market_skipped_baseline(artifacts):
+                blockers.append(Blocker("market_skipped", "用户选择跳过市场调研"))
+            else:
+                blockers.append(Blocker("artifact_missing", "尚未生成 MarketBaseline"))
+                return _snapshot(State.MARKET_PENDING, profile, artifacts, blockers)
+
+        if not _stage_ready(STAGE_GAP, artifacts):
+            blockers.append(Blocker("artifact_missing", "尚未生成 GapReport"))
+            return _snapshot(State.GAP_PENDING, profile, artifacts, blockers)
+
+        if not _stage_ready(STAGE_BASELINE_PLAN, artifacts):
+            blockers.append(Blocker("artifact_missing", "尚未生成 BaselinePlan"))
+            return _snapshot(
+                State.BASELINE_PLAN_PENDING, profile, artifacts, blockers
+            )
 
     # 覆盖规则 3：企业链未补齐且用户已记录跳过时，允许直接进入执行准备；
     # 一旦出现 CompanyPool/Evidence/Requirement/ExecutionPlan，恢复企业链路。

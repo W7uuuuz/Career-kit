@@ -165,8 +165,10 @@ def sync_market_baseline(profile_name: str) -> str:
 def sync_gap(profile_name: str) -> str:
     """差距分析 → GapReport artifact（`gr_`）。
 
-    必须能解析出 profile 快照并落成 ProfileSnapshot，否则返回空字符串，
-    不写 ``profile_snapshot_id`` 为空的半成品 GapReport。
+    必须能解析出 ProfileSnapshot 与当前 TargetSpec，否则返回空字符串，
+    不写 ``profile_snapshot_id`` 为空的半成品 GapReport。市场调研被跳过时
+    MarketBaseline 缺失，仍写 GapReport，但标记 ``validation.market_skipped``
+    并把 ``meta.inputs.target_spec_id`` 指向当前 TargetSpec。
     """
     try:
         profile = load_profile(profile_name)
@@ -178,19 +180,25 @@ def sync_gap(profile_name: str) -> str:
         profile_id = _resolve_profile_id(store, profile_name, state)
         if not profile_id:
             return ""
-        market_id = _resolve_market_baseline_id(store, profile_name, state)
-        if not market_id:
+        target_id = _resolve_target_spec_id(store, profile_name, state)
+        if not target_id:
             return ""
+        market_id = _resolve_market_baseline_id(store, profile_name, state)
+        validation = {"market_skipped": True} if not market_id else {}
+        inputs: dict[str, Any] = {
+            "profile_id": profile_id,
+            "target_spec_id": target_id,
+        }
+        if market_id:
+            inputs["market_baseline_id"] = market_id
         artifact = GapReport(
             meta=_meta(
                 store,
                 "gr",
                 STAGE_GAP,
                 profile_name,
-                {
-                    "profile_id": profile_id,
-                    "market_baseline_id": market_id,
-                },
+                inputs,
+                validation=validation,
             ),
             profile_snapshot_id=profile_id,
             market_baseline_id=market_id,
@@ -214,7 +222,9 @@ def sync_baseline_plan(profile_name: str) -> str:
     """基线路线图 → BaselinePlan artifact（`bp_`）。
 
     ``plan.roadmap`` 必须是带非空 phases 的 dict；list/空值视为畸形数据，
-    返回空字符串，不写半成品。
+    返回空字符串，不写半成品。上游 GapReport 缺失时只有 import_plan 路径
+    （``guidance.plan_imported_at``）允许写 ``validation.imported`` 的
+    BaselinePlan；市场跳过由 GapReport 的 ``validation.market_skipped`` 继承。
     """
     try:
         profile = load_profile(profile_name)
@@ -227,19 +237,50 @@ def sync_baseline_plan(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
-        gap_id = _resolve_gap_report_id(store, profile_name, state)
-        if not gap_id:
+        if _plan_imported(profile):
+            gap_id = _existing_gap_report_id(store, profile_name, state)
+        else:
+            gap_id = _resolve_gap_report_id(store, profile_name, state)
+        validation: dict[str, Any] = {}
+        target_id = ""
+        if gap_id:
+            gap = store.load(gap_id)
+            gap_meta = gap.get("meta") if isinstance(gap, dict) else None
+            gap_validation = (
+                gap_meta.get("validation") if isinstance(gap_meta, dict) else None
+            )
+            if isinstance(gap_validation, dict) and gap_validation.get(
+                "market_skipped"
+            ):
+                validation["market_skipped"] = True
+            gap_inputs = (
+                gap_meta.get("inputs") if isinstance(gap_meta, dict) else None
+            )
+            if isinstance(gap_inputs, dict):
+                target_id = str(gap_inputs.get("target_spec_id") or "")
+        elif _plan_imported(profile):
+            validation["imported"] = True
+        else:
             return ""
+        if not target_id:
+            target_id = _resolve_target_spec_id(store, profile_name, state)
         strategy = str(plan.get("strategy_summary") or "")
         if not strategy:
             strategy = str(roadmap.get("strategy_summary") or "")
+        inputs: dict[str, Any] = {
+            "profile_id": state.get(KEY_PROFILE, ""),
+            "target_spec_id": target_id,
+        }
+        if gap_id:
+            inputs["gap_report_id"] = gap_id
         artifact = BaselinePlan(
             meta=_meta(
                 store,
                 "bp",
                 STAGE_BASELINE_PLAN,
                 profile_name,
-                {"profile_id": state.get(KEY_PROFILE, ""), "gap_report_id": gap_id},
+                inputs,
+                validation=validation,
             ),
             gap_report_id=gap_id,
             strategy_summary=strategy,
@@ -450,6 +491,7 @@ def _meta(
     stage: str,
     profile_name: str,
     inputs: dict[str, Any],
+    validation: dict[str, Any] | None = None,
 ) -> ArtifactMeta:
     return ArtifactMeta(
         id=store.new_id(prefix),
@@ -457,6 +499,7 @@ def _meta(
         profile_name=profile_name,
         created_at=datetime.now().isoformat(),
         inputs={str(key): str(value) for key, value in inputs.items() if value},
+        validation=dict(validation or {}),
     )
 
 
@@ -651,6 +694,22 @@ def _resolve_gap_report_id(
     if gap_id:
         return gap_id if _matches_stage(store.load(gap_id), STAGE_GAP, profile_name) else ""
     return sync_gap(profile_name)
+
+
+def _existing_gap_report_id(
+    store: ArtifactStore, profile_name: str, state: dict[str, Any]
+) -> str:
+    """只解析已存在的 GapReport；import_plan 路径不得反向创建差距分析。"""
+    gap_id = str(state.get(KEY_GAP) or "").strip()
+    if gap_id and _matches_stage(store.load(gap_id), STAGE_GAP, profile_name):
+        return gap_id
+    latest = store.latest(profile_name, STAGE_GAP)
+    return _artifact_id(latest) if _matches_stage(latest, STAGE_GAP, profile_name) else ""
+
+
+def _plan_imported(profile: CareerProfile) -> bool:
+    guidance = getattr(profile, "guidance", None)
+    return bool(isinstance(guidance, dict) and guidance.get("plan_imported_at"))
 
 
 def _artifact_id(artifact: dict[str, Any] | None) -> str:

@@ -159,38 +159,75 @@ def resolve_progress(
     if baseline is not None:
         return baseline
 
-    # 阶段 1：档案快照。没有 ProfileSnapshot 时必须停在 finalize，即使
-    # TargetSpec 已由 intake(want, user_confirmed=true) 同步存在。
-    profile_artifact = resolved[STAGE_PROFILE]
-    if profile_artifact is not None:
-        artifact_ids[STAGE_KEYS[STAGE_PROFILE]] = _artifact_id(profile_artifact)
-    else:
-        early = _profile_stage_result(profile, artifact_ids, has_tasks=has_tasks)
-        if early is not None:
-            return early
+    # import_plan 路径：无 GapReport 且尚未落 BaselinePlan 时，下一步是 save_roadmap。
+    imported_baseline = resolved.get(STAGE_BASELINE_PLAN)
+    if (
+        _plan_imported(profile)
+        and resolved.get(STAGE_GAP) is None
+        and not _is_imported_baseline(imported_baseline)
+    ):
+        return _result(
+            STAGE_BASELINE_PLAN,
+            "generate_roadmap",
+            "已导入计划文档，等待 save_roadmap 保存结构化路线图",
+            artifact_ids,
+            has_tasks=has_tasks,
+        )
 
-    # 阶段 2-5：缺 artifact 不得因为下游 artifact 存在而跳过；
-    # 已有 artifact 必须引用上游 id，空引用视为不满足。
-    for stage in (STAGE_TARGET, STAGE_MARKET, STAGE_GAP, STAGE_BASELINE_PLAN):
-        artifact = resolved[stage]
-        if artifact is None:
-            return _result(
-                stage,
-                _core_stage_tool(profile, stage),
-                _core_stage_reason(profile, stage),
-                artifact_ids,
-                has_tasks=has_tasks,
-            )
-        problems = _upstream_problems(stage, artifact, artifact_ids)
-        if problems:
-            return _result(
-                stage,
-                _core_stage_tool(profile, stage),
-                "；".join(problems),
-                artifact_ids,
-                has_tasks=has_tasks,
-            )
-        artifact_ids[STAGE_KEYS[stage]] = _artifact_id(artifact)
+    imported_mode = (
+        _plan_imported(profile)
+        and _is_imported_baseline(imported_baseline)
+        and _target_matches_artifact(imported_baseline, resolved)
+    )
+    if imported_mode:
+        artifact_ids[STAGE_KEYS[STAGE_BASELINE_PLAN]] = _artifact_id(
+            imported_baseline
+        )
+    else:
+        # 阶段 1：档案快照。没有 ProfileSnapshot 时必须停在 finalize，即使
+        # TargetSpec 已由 intake(want, user_confirmed=true) 同步存在。
+        profile_artifact = resolved[STAGE_PROFILE]
+        if profile_artifact is not None:
+            artifact_ids[STAGE_KEYS[STAGE_PROFILE]] = _artifact_id(profile_artifact)
+        else:
+            early = _profile_stage_result(profile, artifact_ids, has_tasks=has_tasks)
+            if early is not None:
+                return early
+
+        # 阶段 2-5：缺 artifact 不得因为下游 artifact 存在而跳过；
+        # 已有 artifact 必须引用上游 id，空引用视为不满足。
+        # 市场跳过时 MarketBaseline 缺失，但当前 TargetSpec 匹配的 market_skipped
+        # GapReport 允许直接进入差距/规划阶段。
+        market_skipped = False
+        for stage in (STAGE_TARGET, STAGE_MARKET, STAGE_GAP, STAGE_BASELINE_PLAN):
+            artifact = resolved[stage]
+            if stage == STAGE_MARKET and _market_skipped_gap(
+                resolved.get(STAGE_GAP),
+                artifact_ids.get(STAGE_KEYS[STAGE_TARGET], ""),
+            ):
+                market_skipped = True
+                continue
+            if artifact is None:
+                return _result(
+                    stage,
+                    _core_stage_tool(profile, stage),
+                    _core_stage_reason(profile, stage),
+                    artifact_ids,
+                    has_tasks=has_tasks,
+                )
+            problems = _upstream_problems(stage, artifact, artifact_ids)
+            if problems:
+                return _result(
+                    stage,
+                    _core_stage_tool(profile, stage),
+                    "；".join(problems),
+                    artifact_ids,
+                    has_tasks=has_tasks,
+                )
+            artifact_ids[STAGE_KEYS[stage]] = _artifact_id(artifact)
+        if market_skipped:
+            # 标记已跳过市场调研：不阻塞后续，但保持事实可见。
+            artifact_ids.setdefault(STAGE_KEYS[STAGE_MARKET], "")
 
     pool = resolved[STAGE_COMPANY_POOL]
     if pool is None:
@@ -448,6 +485,55 @@ def _artifact_field(artifact: dict[str, Any], field: str, where: str) -> str:
     return str(value or "").strip()
 
 
+def _artifact_validation(artifact: dict[str, Any] | None) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact, dict) else None
+    validation = meta.get("validation") if isinstance(meta, dict) else None
+    return validation if isinstance(validation, dict) else {}
+
+
+def _artifact_inputs(artifact: dict[str, Any] | None) -> dict[str, Any]:
+    meta = artifact.get("meta") if isinstance(artifact, dict) else None
+    inputs = meta.get("inputs") if isinstance(meta, dict) else None
+    return inputs if isinstance(inputs, dict) else {}
+
+
+def _artifact_target_id(artifact: dict[str, Any] | None) -> str:
+    return str(_artifact_inputs(artifact).get("target_spec_id") or "").strip()
+
+
+def _is_imported_baseline(artifact: dict[str, Any] | None) -> bool:
+    return _artifact_validation(artifact).get("imported") is True
+
+
+def _target_matches_artifact(
+    artifact: dict[str, Any] | None,
+    resolved: dict[str, dict[str, Any] | None],
+) -> bool:
+    """imported BaselinePlan 的 target_spec_id 必须与当前 TargetSpec 一致。"""
+    stored = _artifact_target_id(artifact)
+    current = _artifact_id(resolved.get(STAGE_TARGET))
+    if not stored:
+        return not current
+    return stored == current
+
+
+def _plan_imported(profile: Any) -> bool:
+    guidance = getattr(profile, "guidance", None)
+    return bool(isinstance(guidance, dict) and guidance.get("plan_imported_at"))
+
+
+def _market_skipped_gap(
+    artifact: dict[str, Any] | None, target_id: str
+) -> bool:
+    """市场跳过 GapReport 必须带 validation 标记且指向当前 TargetSpec。"""
+    if not isinstance(artifact, dict):
+        return False
+    if _artifact_validation(artifact).get("market_skipped") is not True:
+        return False
+    stored = _artifact_target_id(artifact)
+    return bool(target_id) and stored == target_id
+
+
 def _upstream_problems(
     stage: str,
     artifact: dict[str, Any],
@@ -461,7 +547,20 @@ def _upstream_problems(
     ExecutionPlan：允许它缺少 baseline_plan_id，其余上游仍强校验。
     """
     problems: list[str] = []
+    validation = _artifact_validation(artifact)
+    stored_target = _artifact_target_id(artifact)
+    if stored_target:
+        expected_target = artifact_ids.get(STAGE_KEYS[STAGE_TARGET], "")
+        if stored_target != expected_target:
+            problems.append(
+                f"{stage} 的 target_spec_id（target）与当前 TargetSpec 不一致"
+            )
+    if stage == STAGE_BASELINE_PLAN and validation.get("imported") is True:
+        return problems
+    market_skipped = validation.get("market_skipped") is True
     for upstream_stage, field, where in _UPSTREAM_REFS.get(stage, ()):
+        if upstream_stage == STAGE_MARKET and market_skipped:
+            continue
         expected = artifact_ids.get(STAGE_KEYS[upstream_stage], "")
         actual = _artifact_field(artifact, field, where)
         if (

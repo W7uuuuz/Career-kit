@@ -48,11 +48,11 @@
 |------|------|
 | `explore_goals` | 无目标时三轴定位（能力 × 兴趣 × 真实市场）并提出候选方向 |
 | `analyze_gaps` | 返回差距分析方法论上下文 |
-| `save_gap_analysis` | 保存分析结果；`skill_gaps` 非空时每项必须有 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；空列表允许保存并给建议；质量建议持久化到档案 |
+| `save_gap_analysis` | 保存分析结果；`skill_gaps` 非空时每项必须有 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；空列表允许保存并给建议；质量建议持久化到档案。市场调研被跳过时仍写 `GapReport`：`market_baseline_id=""`、`meta.validation.market_skipped=true`、`meta.inputs.target_spec_id` 指向当前 `TargetSpec`；缺 ProfileSnapshot/TargetSpec 不写半成品 |
 | `generate_roadmap` | 返回路线图方法论上下文（6 步工作流；审计为第二意见） |
-| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图） |
+| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图）。市场跳过时写 `BaselinePlan.meta.validation.market_skipped=true`；`import_plan` 后无 `GapReport` 时写 `validation.imported=true`、`gap_report_id=""` |
 | `save_roadmap_audit` | 审计结果落库（PASS / PASS_WITH_NOTES / FAIL + issues/notes；按 `roadmap_hash` 绑定版本，不阻断定稿） |
-| `import_plan` | 导入既有规划文档，对比取舍在对话中完成 |
+| `import_plan` | 导入既有规划文档，对比取舍在对话中完成；设置 `guidance.plan_imported_at` 并提示用 `save_roadmap` 保存结构化路线图 |
 
 ### 企业适配工具（7）
 

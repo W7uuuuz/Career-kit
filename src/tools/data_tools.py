@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from datetime import datetime
 
 from ..guidance import login_action
 from ..mcp_app import mcp
@@ -16,7 +17,7 @@ from ..scrapers.loader import (
 )
 from .errors import error_response
 from .plan_importer import parse_plan_file
-from .profile import load_profile
+from .profile import load_profile, save_profile
 from .tool_helpers import server_fingerprint_line
 
 
@@ -119,12 +120,21 @@ def import_plan(file_path: str) -> str:
 
     profile = load_profile()
 
+    # 标记计划已导入：save_roadmap 可直接把结构化路线图落成 imported BaselinePlan，
+    # 不再要求先走市场/差距链路。
+    guidance = dict(profile.guidance or {})
+    guidance["plan_imported_at"] = datetime.now().isoformat()
+    profile.guidance = guidance
+    profile.touch()
+    save_profile(profile)
+
     # 如果没有旧计划，提示 LLM 走标准路线图链路导入
     if not profile.plan:
         return (
             f"--- PLAN CONTENT ---\n{new_plan_text}\n--- END ---\n\n"
             "这是新导入的计划文档。请将其整理为路线图结构后调用 save_roadmap(roadmap_json) 保存：\n"
             "schema 参考 sop/roadmap.yaml 的 output_schema（任务字段为 name/description/priority）。\n"
+            "已记录导入标记，save_roadmap 会直接写入 imported BaselinePlan。\n"
             "下一步：与用户确认取舍后调用 save_roadmap。"
         )
 
@@ -133,6 +143,7 @@ def import_plan(file_path: str) -> str:
         f"--- NEW PLAN CONTENT ---\n{new_plan_text}\n--- END ---\n\n"
         "检测到已有计划档案。请在对话中向用户呈现新旧计划的差异，"
         "由用户决定保留哪些内容；确认后把最终版整理为路线图结构，调用 save_roadmap(roadmap_json) 保存。\n"
+        "已记录导入标记，无 GapReport 时 save_roadmap 会写入 imported BaselinePlan。\n"
         "下一步：save_roadmap。"
     )
 
