@@ -605,13 +605,18 @@ def _has_interpretation(value: Any) -> bool:
 
 
 def _requirement_ready(requirement: dict[str, Any]) -> bool:
-    """草稿必须有非空 interpretation 或已被 save_requirement_profile 保存。"""
+    """D5：saved 或非空 interpretation 任一成立；两者都无则未就绪。
+
+    saved = ``validation`` 是非空 dict 且 ``status != "draft"``；
+    validation 缺失/空 dict 且 interpretation 为空 → 未就绪，与 contracts 一致。
+    """
     if _has_interpretation(requirement.get("interpretation")):
         return True
     meta = requirement.get("meta")
     validation = meta.get("validation") if isinstance(meta, dict) else None
-    status = str(validation.get("status") or "") if isinstance(validation, dict) else ""
-    return status != "draft"
+    if not isinstance(validation, dict) or not validation:
+        return False
+    return str(validation.get("status") or "") != "draft"
 
 
 def _result(

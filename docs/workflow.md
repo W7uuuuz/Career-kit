@@ -232,8 +232,10 @@ collect_company_evidence(
 **产物**：`RequirementProfile`（`rp_`）。
 
 **关键规则**：
-- `analyze_company_requirements` 只落草稿；必须调用 `save_requirement_profile`
-  （或草稿已有非空 interpretation）才允许进入阶段 9，未解读草稿不推进。
+- `analyze_company_requirements` 只落草稿；阶段 9 的 `plan_execution_alignment` /
+  `save_execution_alignment` 按 D5 的 OR 语义放行：RequirementProfile 已保存
+  （validation 存在且 status 非 draft）或 interpretation 非空，任一成立即可；
+  只有草稿/缺 validation 且 interpretation 同时为空时才拒绝。
 - 频率、公司覆盖、Wilson 95% 区间、逐条硬门槛全部由代码计算。
 - 高频共性：`jd_frequency >= 0.5` 且 `company_count >= 2`；样本不足时降级为观察。
 - 不再使用「必备项」：区分高频共性要求、单 JD 硬门槛、面经高频考点、
@@ -262,6 +264,10 @@ collect_company_evidence(
 **关键规则**：
 - ExecutionPlan 必须引用当前 `requirement_profile_id` 与 `baseline_plan_id`；
   core_state 或显式传入的 `baseline_plan_id` 与当前链路不一致时拒绝落库。
+- 基线只来自 BaselinePlan artifact，且 `profile.plan` 与其 roadmap 必须一致：
+  artifact 缺失、baseline_plan_id 缺失或两者分叉时拒绝落库。
+- 没有 BaselinePlan 的旧档案不自动 apply：真 legacy 返回
+  `LEGACY_MIGRATION_REQUIRED`，由 Phase 4 迁移；不写「已应用但状态机不可达」的 artifact。
 - 每条 change 必须带 `evidence_ids`；没有证据的变更不允许落库。
 - 已完成/已跳过任务是历史，不能删除；旧 pending/in_progress 不迁移。
 - 用户确认是硬门禁：未确认只返回 diff 预览，不改档案。

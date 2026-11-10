@@ -219,7 +219,7 @@ def _requirement(
             state_machine.STAGE_REQUIREMENT,
             profile_name,
             inputs={"evidence_run_id": evidence_run_id},
-        ),
+        ).model_copy(update={"validation": {"status": "saved"}}),
         evidence_run_id=evidence_run_id,
         sample_size_jd=1,
     )

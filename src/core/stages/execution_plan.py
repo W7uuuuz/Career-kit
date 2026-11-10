@@ -26,9 +26,11 @@ from ...tools.errors import InvalidJsonError
 from ...tools.profile import get_active_profile_name, load_profile, profile_lock, save_profile
 from ...tools.roadmap import parse_roadmap
 from ...tools.tool_helpers import _parse_json_param
+from .. import contracts
 from ..artifacts.models import ArtifactMeta, ExecutionPlan, PlanChange
 from ..artifacts.store import ArtifactStore
 from ..orchestrator import state_machine
+from ..progress import is_legacy_profile
 from .base import (
     StageContext,
     StageResult,
@@ -198,13 +200,10 @@ def _plan(profile_name: str, requirement_profile_id: str) -> dict[str, Any]:
     profile = load_profile(profile_name)
     store = ArtifactStore()
     requirement = _resolve_requirement(store, profile_name, requirement_profile_id)
-    baseline = _roadmap_of(profile.plan)
-    if not _has_phases(baseline):
-        raise ExecutionPlanError(
-            "MISSING_BASELINE_PLAN",
-            "档案里还没有基线路线图（profile.plan.phases 为空）——请先 save_roadmap 生成基线。",
-            {"missing": "plan.roadmap.phases"},
-        )
+    baseline_plan_id, baseline = _resolve_baseline_artifact(
+        store, profile_name, profile
+    )
+    _assert_requirement_ready(requirement, store)
 
     summary = _summarize_requirement(requirement)
     completed = _extract_completed_evidence(profile)
@@ -214,6 +213,7 @@ def _plan(profile_name: str, requirement_profile_id: str) -> dict[str, Any]:
         "status": "ok",
         "profile_name": profile_name,
         "requirement": summary,
+        "baseline_plan_id": baseline_plan_id,
         "baseline_plan": baseline,
         "completed_evidence": completed,
         "capability_evidence": capability,
@@ -245,6 +245,14 @@ def _save(
     store = ArtifactStore()
     requirement = _resolve_requirement(store, profile_name, requirement_profile_id)
     _check_requirement_chain(profile, requirement, requirement_profile_id)
+
+    # 基线只能来自 BaselinePlan artifact：profile.plan 是应用后的可变副本，
+    # 不能作为血缘来源；缺失时直接拒绝（真 legacy 返回迁移错误）。
+    baseline_plan_id = _resolve_checked_baseline_plan_id(
+        store, profile_name, profile, data.get("baseline_plan_id")
+    )
+    baseline = _baseline_roadmap(store, baseline_plan_id)
+    _assert_requirement_ready(requirement, store)
 
     roadmap_raw = data.get("roadmap")
     if not isinstance(roadmap_raw, dict):
@@ -281,22 +289,15 @@ def _save(
                 existing, profile, requirement_profile_id
             )
 
-    baseline = _roadmap_of(profile.plan)
-    if not _has_phases(baseline):
-        raise ExecutionPlanError(
-            "MISSING_BASELINE_PLAN",
-            "应用前发现档案基线路线图缺失——请先恢复或重新生成基线路线图。",
-            {"missing": "plan.roadmap.phases"},
-        )
+    # 应用前确认 profile.plan 未与 baseline artifact 分叉；重复确认同一方案
+    # 已在上面按 idempotent 返回，不受第一次 apply 改写 profile.plan 影响。
+    _assert_profile_plan_matches_baseline(baseline_plan_id, profile, baseline)
 
     completed = _extract_completed_evidence(profile)
     removed = _pending_tasks(profile)
     # evidence_ids 已在 _assert_known_evidence 里统一校验：未知/空 id 直接拒绝落库，
     # 因此这里不再保留永远不可达的「有未知 id」警告分支。
     warnings: list[str] = []
-    baseline_plan_id = _resolve_checked_baseline_plan_id(
-        store, profile_name, profile, data.get("baseline_plan_id")
-    )
 
     meta = ArtifactMeta(
         id=store.new_id("ep"),
@@ -305,7 +306,7 @@ def _save(
         created_at=datetime.now().isoformat(),
         inputs={
             "requirement_profile_id": requirement_profile_id,
-            "baseline": "profile.plan",
+            "baseline": "baseline_plan",
             "baseline_plan_id": baseline_plan_id,
         },
         validation={
@@ -357,13 +358,7 @@ def _save(
 
     with profile_lock(profile_name):
         current = load_profile(profile_name)
-        current_baseline = _roadmap_of(current.plan)
-        if not _has_phases(current_baseline):
-            raise ExecutionPlanError(
-                "MISSING_BASELINE_PLAN",
-                "应用时发现档案基线路线图缺失——请先恢复或重新生成基线路线图。",
-                {"missing": "plan.roadmap.phases"},
-            )
+        _assert_profile_plan_matches_baseline(baseline_plan_id, current, baseline)
         current.save_plan_snapshot("company_alignment")
         preserved_tasks = [task for task in current.tasks if task.status in _FINISHED_STATUSES]
         removed_tasks = [task for task in current.tasks if task.status not in _FINISHED_STATUSES]
@@ -528,7 +523,8 @@ def _resolve_checked_baseline_plan_id(
 
     - core_state 已有指针但指向非本档案 BaselinePlan：拒绝，避免覆盖链路；
     - 调用方显式传入 baseline_plan_id 时必须存在且与当前链路一致；
-    - 旧档案没有 BaselinePlan artifact 时保持兼容，返回空串由 progress 按旧链路处理。
+    - 没有 BaselinePlan artifact 时一律拒绝：新流程要求重新 save_roadmap，
+      真 legacy 返回明确的迁移错误，不产生「已应用但状态机不可达」的 artifact。
     """
     core_state = profile.core_state if isinstance(profile.core_state, dict) else {}
     core_id = str(core_state.get("baseline_plan_id") or "").strip()
@@ -539,6 +535,8 @@ def _resolve_checked_baseline_plan_id(
             {"baseline_plan_id": core_id},
         )
     resolved = _resolve_baseline_plan_id(store, profile_name, profile)
+    if not resolved:
+        raise _missing_baseline_error(profile)
     requested_id = str(requested or "").strip()
     if not requested_id:
         return resolved
@@ -548,13 +546,130 @@ def _resolve_checked_baseline_plan_id(
             "提交的 baseline_plan_id 不存在、类型不符或不属于当前档案，拒绝落库。",
             {"baseline_plan_id": requested_id},
         )
-    if resolved and requested_id != resolved:
+    if requested_id != resolved:
         raise ExecutionPlanError(
             "BASELINE_PLAN_MISMATCH",
             "提交的 baseline_plan_id 与当前基线链路不一致，拒绝落库。",
             {"expected": resolved, "received": requested_id},
         )
     return requested_id
+
+
+def _resolve_baseline_artifact(
+    store: ArtifactStore, profile_name: str, profile: CareerProfile
+) -> tuple[str, dict[str, Any]]:
+    """解析当前链路 BaselinePlan artifact，返回 (id, roadmap)。"""
+    baseline_plan_id = _resolve_checked_baseline_plan_id(
+        store, profile_name, profile
+    )
+    return baseline_plan_id, _baseline_roadmap(store, baseline_plan_id)
+
+
+def _baseline_roadmap(
+    store: ArtifactStore, baseline_plan_id: str
+) -> dict[str, Any]:
+    """读取 BaselinePlan artifact 的 roadmap；缺失或没有 phases 时拒绝。"""
+    data = store.load(baseline_plan_id)
+    if not _is_stage(data, state_machine.STAGE_BASELINE_PLAN):
+        raise ExecutionPlanError(
+            "BASELINE_PLAN_NOT_FOUND",
+            f"BaselinePlan「{baseline_plan_id}」不存在或类型不符，拒绝落库。",
+            {"baseline_plan_id": baseline_plan_id},
+        )
+    roadmap = data.get("roadmap") if isinstance(data.get("roadmap"), dict) else {}
+    if not _has_phases(roadmap):
+        raise ExecutionPlanError(
+            "MISSING_BASELINE_PLAN",
+            "BaselinePlan artifact 没有可用的 roadmap.phases，拒绝落库。",
+            {"baseline_plan_id": baseline_plan_id},
+        )
+    return roadmap
+
+
+def _missing_baseline_error(profile: CareerProfile) -> ExecutionPlanError:
+    if is_legacy_profile(profile):
+        return ExecutionPlanError(
+            "LEGACY_MIGRATION_REQUIRED",
+            "旧档案没有 BaselinePlan artifact，暂不自动应用执行方案；"
+            "需先完成 legacy 迁移（Phase 4）再校准。",
+            {"missing": "baseline_plan", "legacy": True},
+        )
+    return ExecutionPlanError(
+        "MISSING_BASELINE_PLAN",
+        "档案还没有 BaselinePlan artifact——请先 save_roadmap 生成基线。",
+        {"missing": "baseline_plan"},
+    )
+
+
+def _assert_profile_plan_matches_baseline(
+    baseline_plan_id: str,
+    profile: CareerProfile,
+    baseline: dict[str, Any],
+) -> None:
+    """profile.plan 与 BaselinePlan artifact 必须一致，避免基线血缘分叉。"""
+    current = _roadmap_of(profile.plan)
+    if not _has_phases(current) or _hash_value(current) != _hash_value(baseline):
+        raise ExecutionPlanError(
+            "BASELINE_PLAN_MISMATCH",
+            "profile.plan 与 BaselinePlan artifact 不一致（基线已分叉），拒绝落库；"
+            "请先重新生成基线路线图，或恢复与 artifact 一致的 profile.plan。",
+            {
+                "baseline_plan_id": baseline_plan_id,
+                "profile_plan_hash": _hash_value(current),
+                "baseline_plan_hash": _hash_value(baseline),
+            },
+        )
+
+
+def _assert_requirement_ready(
+    requirement: dict[str, Any], store: ArtifactStore
+) -> None:
+    """阶段 9 入口：RequirementProfile 必须 saved 或 interpretation 非空（D5 OR）。"""
+    problems = _requirement_ready_problems(requirement, store)
+    if not problems:
+        return
+    meta = requirement.get("meta") if isinstance(requirement.get("meta"), dict) else {}
+    validation = meta.get("validation") if isinstance(meta.get("validation"), dict) else {}
+    raise ExecutionPlanError(
+        "INVALID_STATE",
+        "RequirementProfile 未保存或未解读，拒绝进入阶段 9：" + "；".join(problems),
+        {
+            "requirement_profile_id": str(meta.get("id") or ""),
+            "validation_status": str(validation.get("status") or ""),
+            "has_interpretation": _has_interpretation(requirement.get("interpretation")),
+            "problems": problems,
+        },
+    )
+
+
+def _requirement_ready_problems(
+    requirement: dict[str, Any], store: ArtifactStore
+) -> list[str]:
+    """直接复用阶段 8 契约（D5：saved 或 interpretation 非空）。
+
+    契约同时校验上游 EvidenceRun 引用；validation 缺失/空 dict 且 interpretation
+    为空时由契约判未就绪，这里不再维护第二套判定。
+    """
+    evidence_id = str(requirement.get("evidence_run_id") or "").strip()
+    evidence = store.load(evidence_id) if evidence_id else None
+    artifacts: dict[str, Any] = {"requirement": requirement}
+    if isinstance(evidence, dict):
+        artifacts["evidence"] = evidence
+    contract = contracts.STAGE_CONTRACTS.get(state_machine.STAGE_REQUIREMENT)
+    if contract is None or not contract.ready(artifacts):
+        return ["RequirementProfile 未通过阶段 8 契约（需 saved 或非空 interpretation，并引用当前 EvidenceRun）"]
+    return []
+
+
+def _has_interpretation(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for item in value.values():
+        if isinstance(item, str) and item.strip():
+            return True
+        if isinstance(item, (list, tuple, dict)) and item:
+            return True
+    return False
 
 
 def _is_baseline_of_profile(

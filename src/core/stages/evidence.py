@@ -162,6 +162,9 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         reused_jd, counts = _reuse_jobs(profile, pool, target.city, counts)
 
     final_jd = _merge_jobs(fresh_jd, reused_jd, max_jd)
+    # list-only 计数必须在去重 / 按企业截断 / 总量截断之后按终态重算，
+    # 否则截断前计数会与 jd_items 不一致，导致整批证据池校验失败。
+    _recompute_list_only_counts(counts, final_jd)
 
     fresh_interviews = _to_interviews(raw_cases)
     fresh_interviews = _dedupe_interviews(fresh_interviews)
@@ -307,11 +310,16 @@ def validate(artifact: BaseModel) -> list[str]:
         1 for item in artifact.interview_items if item.reused
     ):
         issues.append("counts.reused_interviews 与 reused 标记数量不一致")
-    kept_list_only = counts.get("list_only_kept", counts.get("list_only", 0))
-    if kept_list_only != sum(
+    actual_list_only = sum(
         1 for item in artifact.jd_items if item.detail_status == "list_only"
-    ):
+    )
+    kept_list_only = counts.get("list_only_kept", counts.get("list_only", 0))
+    if kept_list_only != actual_list_only:
         issues.append("counts.list_only_kept 与 list_only 标记数量不一致")
+    if "list_only" in counts and counts.get("list_only") != (
+        actual_list_only + int(counts.get("list_only_dropped_city") or 0)
+    ):
+        issues.append("counts.list_only 与 list_only_kept + list_only_dropped_city 不一致")
     return issues
 
 
@@ -658,8 +666,7 @@ async def _enrich_jobs(
     for item in pending:
         # BOSS 研究阶段固定 list-only：只豁免详情补抓/详情缺失剔除（城市硬筛已在上游执行）。
         if item["detail_status"] == "list_only":
-            counts["list_only"] += 1
-            counts["list_only_kept"] += 1
+            # 保留行先入库；list_only / list_only_kept 在最终 jd_items 上重算。
             kept.append(item)
         elif item["description"] or item["requirements"]:
             item["detail_status"] = "ok"
@@ -760,6 +767,17 @@ def _dedupe_jobs(items: list[JDEvidence]) -> list[JDEvidence]:
             seen_titles.add(key)
         result.append(item)
     return result
+
+
+def _recompute_list_only_counts(
+    counts: dict[str, int], final_jd: list[JDEvidence]
+) -> None:
+    """按最终 JD 集合重算 list-only 计数（去重/截断之后调用）。"""
+    kept = sum(1 for item in final_jd if item.detail_status == "list_only")
+    dropped_city = int(counts.get("list_only_dropped_city") or 0)
+    counts["list_only_kept"] = kept
+    counts["list_only_dropped_city"] = dropped_city
+    counts["list_only"] = kept + dropped_city
 
 
 def _truncate_per_company(items: list[JDEvidence], limit: int) -> list[JDEvidence]:

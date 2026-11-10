@@ -59,7 +59,7 @@ class _TargetArtifact(TargetSpec):
     meta: ArtifactMeta
 
 
-def _seed_chain() -> dict[str, Any]:
+def _seed_chain(*, with_baseline: bool = True) -> dict[str, Any]:
     store = ArtifactStore()
     profile_id = store.save(
         _ProfileArtifact(
@@ -96,18 +96,20 @@ def _seed_chain() -> dict[str, Any]:
             match_score=60,
         )
     )
-    baseline_id = store.save(
-        BaselinePlan(
-            meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, "bp"),
-            gap_report_id=gap_id,
-            roadmap=_baseline_plan()["roadmap"],
+    baseline_id = ""
+    if with_baseline:
+        baseline_id = store.save(
+            BaselinePlan(
+                meta=_meta(store, state_machine.STAGE_BASELINE_PLAN, "bp"),
+                gap_report_id=gap_id,
+                roadmap=_baseline_plan()["roadmap"],
+            )
         )
-    )
     pool_id = store.save(
         CompanyPool(
             meta=_meta(
                 store, state_machine.STAGE_COMPANY_POOL, "cp",
-                {"baseline_plan_id": baseline_id},
+                {"baseline_plan_id": baseline_id} if baseline_id else {},
             ),
             target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
             companies=[
@@ -144,17 +146,19 @@ def _seed_chain() -> dict[str, Any]:
             ],
         )
     )
+    requirement_meta = _meta(
+        store,
+        state_machine.STAGE_REQUIREMENT,
+        "rp",
+        inputs={"evidence_run_id": evidence_id},
+    ).model_copy(update={"validation": {"status": "saved"}})
     requirement_id = store.save(
         RequirementProfile(
-            meta=_meta(
-                store,
-                state_machine.STAGE_REQUIREMENT,
-                "rp",
-                inputs={"evidence_run_id": evidence_id},
-            ),
+            meta=requirement_meta,
             evidence_run_id=evidence_id,
             sample_size_jd=1,
             confidence_jd="low",
+            interpretation={"summary": "RAG 是核心要求"},
             high_frequency=[
                 RequirementItem(
                     term="RAG",
@@ -595,6 +599,138 @@ def test_requirement_chain_mismatch_is_rejected(workspace: SimpleNamespace) -> N
 
     assert exc_info.value.code == "REQUIREMENT_MISMATCH"
     assert workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN) is None
+
+
+def test_requirement_gate_follows_saved_or_interpretation(
+    workspace: SimpleNamespace,
+) -> None:
+    """D5 OR 语义：saved 或非空 interpretation 任一成立即可进入阶段 9。"""
+
+    def _seed_requirement(
+        validation: dict[str, Any], interpretation: dict[str, Any]
+    ) -> str:
+        requirement_id = workspace.store.save(
+            RequirementProfile(
+                meta=_meta(
+                    workspace.store,
+                    state_machine.STAGE_REQUIREMENT,
+                    "rp",
+                    inputs={"evidence_run_id": workspace.evidence_id},
+                ).model_copy(update={"validation": validation}),
+                evidence_run_id=workspace.evidence_id,
+                sample_size_jd=1,
+                high_frequency=[
+                    RequirementItem(
+                        term="RAG",
+                        category="skill",
+                        jd_count=1,
+                        jd_frequency=1.0,
+                        company_count=1,
+                        company_frequency=1.0,
+                        companies=["字节跳动"],
+                        evidence_ids=["JD001"],
+                    )
+                ],
+                interpretation=interpretation,
+            )
+        )
+        profile = profile_module.load_profile(PROFILE_NAME)
+        profile.core_state["requirement_profile_id"] = requirement_id
+        profile_module.save_profile(profile, PROFILE_NAME)
+        return requirement_id
+
+    rejected_cases = [
+        ({"status": "draft"}, {}),
+        ({}, {}),
+    ]
+    for validation, interpretation in rejected_cases:
+        requirement_id = _seed_requirement(validation, interpretation)
+        with pytest.raises(stage.ExecutionPlanError) as plan_exc:
+            stage.plan_execution_alignment(requirement_id)
+        assert plan_exc.value.code == "INVALID_STATE"
+        with pytest.raises(stage.ExecutionPlanError) as save_exc:
+            stage.save_execution_alignment(
+                json.dumps(_alignment(requirement_id), ensure_ascii=False)
+            )
+        assert save_exc.value.code == "INVALID_STATE"
+
+    assert workspace.store.latest(
+        PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN
+    ) is None
+
+    accepted_cases = [
+        ({"status": "draft"}, {"summary": "已解读但仍是草稿"}),
+        ({"status": "saved"}, {}),
+    ]
+    for validation, interpretation in accepted_cases:
+        requirement_id = _seed_requirement(validation, interpretation)
+        payload = stage.plan_execution_alignment(requirement_id)
+        assert payload["status"] == "ok"
+        preview = stage.save_execution_alignment(
+            json.dumps(_alignment(requirement_id), ensure_ascii=False),
+            confirmed=False,
+        )
+        assert preview["status"] == "needs_confirmation"
+        assert preview["applied"] is False
+
+    artifacts = workspace.store.list(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN)
+    assert artifacts
+    assert all(not item.get("applied") for item in artifacts)
+
+
+def test_save_rejects_missing_baseline_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """新流程没有 BaselinePlan artifact 时拒绝 apply，不写 ExecutionPlan/档案。"""
+    root = tmp_path / "no-baseline"
+    monkeypatch.setattr(paths, "PROFILE_DIR", root)
+    monkeypatch.setattr(profile_module, "PROFILE_DIR", root)
+    chain = _seed_chain(with_baseline=False)
+    _seed_profile(chain)
+    profile = profile_module.load_profile(PROFILE_NAME)
+    profile.guidance = {"goal_confirmed_at": "2026-11-09T00:00:00"}
+    profile_module.save_profile(profile, PROFILE_NAME)
+    before = profile_module.load_profile(PROFILE_NAME).model_dump()
+
+    with pytest.raises(stage.ExecutionPlanError) as exc_info:
+        stage.save_execution_alignment(
+            json.dumps(_alignment(chain["requirement_id"]), ensure_ascii=False),
+            confirmed=True,
+        )
+
+    assert exc_info.value.code == "MISSING_BASELINE_PLAN"
+    assert chain["store"].latest(
+        PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN
+    ) is None
+    after = profile_module.load_profile(PROFILE_NAME)
+    assert after.model_dump() == before
+    assert "execution_plan_id" not in after.core_state
+
+
+def test_second_apply_rejects_baseline_divergence(
+    workspace: SimpleNamespace,
+    state_machine_profiles: None,
+) -> None:
+    """第一次应用改写 profile.plan 后，BaselinePlan artifact 未变：第二次应用拒绝。"""
+    first = stage.save_execution_alignment(
+        json.dumps(_alignment(workspace.requirement_id), ensure_ascii=False),
+        confirmed=True,
+    )
+    assert first["applied"] is True
+    before = profile_module.load_profile(PROFILE_NAME).model_dump()
+
+    second_alignment = _alignment(workspace.requirement_id)
+    second_alignment["roadmap"]["phases"][0]["name"] = "分叉后的新阶段"
+    with pytest.raises(stage.ExecutionPlanError) as exc_info:
+        stage.save_execution_alignment(
+            json.dumps(second_alignment, ensure_ascii=False), confirmed=True
+        )
+
+    assert exc_info.value.code == "BASELINE_PLAN_MISMATCH"
+    latest = workspace.store.latest(PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN)
+    assert latest is not None
+    assert latest["meta"]["id"] == first["execution_plan_id"]
+    assert profile_module.load_profile(PROFILE_NAME).model_dump() == before
 
 
 def test_change_with_unknown_evidence_id_is_rejected(workspace: SimpleNamespace) -> None:

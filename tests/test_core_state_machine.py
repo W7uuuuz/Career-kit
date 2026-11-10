@@ -210,7 +210,9 @@ def _save_evidence(store: ArtifactStore, company_pool_id: str) -> str:
 def _save_requirement(store: ArtifactStore, evidence_run_id: str) -> str:
     return store.save(
         RequirementProfile(
-            meta=_meta(store, state_machine.STAGE_REQUIREMENT),
+            meta=_meta(store, state_machine.STAGE_REQUIREMENT).model_copy(
+                update={"validation": {"status": "saved"}}
+            ),
             evidence_run_id=evidence_run_id,
         )
     )
@@ -553,6 +555,19 @@ def test_saved_requirement_without_interpretation_reaches_stage_nine(
 
     assert action["stage"] == state_machine.STAGE_EXECUTION_PLAN
     assert action["next_tool"] == "plan_execution_alignment"
+
+
+def test_missing_validation_without_interpretation_stays_in_requirement(
+    store: ArtifactStore, profile_state: dict[str, Any]
+) -> None:
+    evidence_id = _seed_through_evidence(store)
+    _save_requirement_custom(store, evidence_id, validation={})
+
+    action = state_machine.next_action(PROFILE_NAME)
+
+    # 与 contracts / 阶段 9 工具一致：缺 validation 且 interpretation 为空 → 未就绪。
+    assert action["stage"] == state_machine.STAGE_REQUIREMENT
+    assert action["next_tool"] == "save_requirement_profile"
 
 
 def test_execution_plan_baseline_mismatch_blocks_advancement(

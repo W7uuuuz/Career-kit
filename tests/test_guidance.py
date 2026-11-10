@@ -202,7 +202,9 @@ def _save_evidence(store: ArtifactStore, pool_id: str) -> str:
 def _save_requirement(store: ArtifactStore, evidence_id: str) -> str:
     return store.save(
         RequirementProfile(
-            meta=_meta(store, state_machine.STAGE_REQUIREMENT, "rp"),
+            meta=_meta(store, state_machine.STAGE_REQUIREMENT, "rp").model_copy(
+                update={"validation": {"status": "saved"}}
+            ),
             evidence_run_id=evidence_id,
         )
     )

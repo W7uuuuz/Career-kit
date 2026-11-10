@@ -233,6 +233,7 @@ def _save_alignment_artifacts(profile_name: str) -> dict[str, str]:
         meta=ArtifactMeta(
             id="rp_test", stage="requirement", profile_name=profile_name,
             created_at="2026-11-08T00:00:02",
+            validation={"status": "saved"},
         ),
         evidence_run_id=evidence_id,
         confidence_jd="medium",

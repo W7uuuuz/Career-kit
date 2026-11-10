@@ -881,6 +881,51 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
     assert any("list-only" in gap for gap in run.gaps)
 
 
+def test_list_only_counts_are_recomputed_after_per_company_truncation(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """同公司 list-only 超过 per_company_limit 时，证据池仍成功且计数等于终态。"""
+    _seed(store, _pool(store))
+    rows = [
+        {
+            "title": f"BOSS list-only {index}",
+            "company": "字节跳动",
+            "location": "北京",
+            "url": f"https://zhipin/job/{index}",
+            "salary": "25-45K",
+            "detail_status": "list_only",
+        }
+        for index in range(1, 7)
+    ]
+    _patch_sources(
+        monkeypatch,
+        {
+            "bytedance": {"results": []},
+            "boss": {"results": rows},
+        },
+    )
+
+    result = _run(
+        store,
+        {
+            "include_boss": True,
+            "boss_confirmed": True,
+            "per_company_limit": 3,
+        },
+    )
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
+    list_only_items = [
+        item for item in run.jd_items if item.detail_status == "list_only"
+    ]
+    assert len(list_only_items) == 3
+    assert run.counts["kept_jobs"] == 3
+    assert run.counts["list_only_kept"] == 3
+    assert run.counts["list_only"] == 3
+    assert run.counts["list_only_dropped_city"] == 0
+
+
 def test_list_only_empty_location_is_still_city_filtered(
     store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:

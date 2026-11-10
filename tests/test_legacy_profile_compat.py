@@ -259,9 +259,15 @@ def test_legacy_plan_supports_workflow_progress_and_generate_tasks(compat_env: P
     assert "execution_state_id" not in reloaded.core_state
 
 
-def test_applying_execution_plan_preserves_legacy_progress(compat_env: Path) -> None:
-    _write_legacy(compat_env)
+def test_applying_execution_plan_without_baseline_requires_legacy_migration(
+    compat_env: Path,
+) -> None:
+    """旧档案没有 BaselinePlan artifact：拒绝 apply，不写半成品 ExecutionPlan。"""
+    document = _legacy_document()
+    document.pop("guidance", None)
+    _write_legacy(compat_env, document=document)
     requirement_id = _seed_requirement()
+    before = profile_store.load_profile(PROFILE_NAME)
 
     alignment = {
         "requirement_profile_id": requirement_id,
@@ -311,31 +317,22 @@ def test_applying_execution_plan_preserves_legacy_progress(compat_env: Path) -> 
         "diff_summary": "保留已完成历史，移除旧 pending/in_progress 任务",
     }
 
-    result = execution_stage.save_execution_alignment(
-        json.dumps(alignment, ensure_ascii=False), confirmed=True
-    )
+    with pytest.raises(execution_stage.ExecutionPlanError) as exc_info:
+        execution_stage.save_execution_alignment(
+            json.dumps(alignment, ensure_ascii=False), confirmed=True
+        )
 
-    assert result["applied"] is True
-    assert result["preserved_task_count"] == 1
-    assert result["removed_task_count"] == 2
-
+    assert exc_info.value.code == "LEGACY_MIGRATION_REQUIRED"
+    assert ArtifactStore().list(
+        PROFILE_NAME, state_machine.STAGE_EXECUTION_PLAN
+    ) == []
     profile = profile_store.load_profile(PROFILE_NAME)
-    assert [task.id for task in profile.tasks] == ["task_001"]
-    assert profile.tasks[0].status == "completed"
-    assert profile.tasks[0].completed_at == "2025-03-01T10:00:00"
-    assert profile.tasks[0].how_to == ["读文档", "写练习"]
-    assert profile.plan["roadmap"]["strategy_summary"] == "按企业需求重排"
-    assert [phase["name"] for phase in profile.plan["roadmap"]["phases"]] == [
-        "RAG 项目",
-        "投递实习",
+    assert profile.plan == before.plan
+    assert [(task.id, task.status) for task in profile.tasks] == [
+        (task.id, task.status) for task in before.tasks
     ]
-    assert len(profile.plan_history) == 1
-    assert profile.plan_history[0].source == "company_alignment"
-    assert profile.adjustments[-1].trigger == "company_alignment"
-    assert profile.adjustments[-1].trigger_type == "event"
-    assert profile.core_state["stage"] == "executing"
-    assert profile.core_state["requirement_profile_id"] == requirement_id
-    assert profile.core_state["execution_plan_id"] == result["execution_plan_id"]
+    assert "execution_plan_id" not in profile.core_state
+    assert profile.core_state.get("requirement_profile_id") != requirement_id
 
 
 def test_artifact_store_creates_tables_on_legacy_profiles_db(compat_env: Path) -> None:

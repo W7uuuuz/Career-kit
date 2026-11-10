@@ -148,6 +148,11 @@ def _has_interpretation(value: Any) -> bool:
 
 
 def _ready_requirement(artifacts: Mapping[str, Any]) -> bool:
+    """D5：saved 或 interpretation 非空即可进入阶段 9。
+
+    saved = ``validation`` 是非空 dict 且 ``status != "draft"``；
+    validation 缺失/空 dict 且 interpretation 为空 → 未就绪。
+    """
     data = _artifact(artifacts, STAGE_REQUIREMENT)
     if data is None or not _upstream_ready(STAGE_REQUIREMENT, artifacts):
         return False
@@ -155,8 +160,9 @@ def _ready_requirement(artifacts: Mapping[str, Any]) -> bool:
         return True
     meta = data.get("meta")
     validation = meta.get("validation") if isinstance(meta, dict) else None
-    status = str(validation.get("status") or "") if isinstance(validation, dict) else ""
-    return status != "draft"
+    if not isinstance(validation, dict) or not validation:
+        return False
+    return str(validation.get("status") or "") != "draft"
 
 
 def _ready_execution_plan(artifacts: Mapping[str, Any]) -> bool:

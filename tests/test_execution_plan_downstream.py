@@ -219,14 +219,15 @@ def _seed_chain(store: ArtifactStore) -> dict[str, str]:
             counts={"jd_kept": 1},
         )
     )
+    requirement_meta = _meta(
+        store,
+        state_machine.STAGE_REQUIREMENT,
+        "rp",
+        inputs={"evidence_run_id": evidence_id},
+    ).model_copy(update={"validation": {"status": "saved"}})
     requirement_id = store.save(
         RequirementProfile(
-            meta=_meta(
-                store,
-                state_machine.STAGE_REQUIREMENT,
-                "rp",
-                inputs={"evidence_run_id": evidence_id},
-            ),
+            meta=requirement_meta,
             evidence_run_id=evidence_id,
             sample_size_jd=3,
             sample_size_interview=1,
