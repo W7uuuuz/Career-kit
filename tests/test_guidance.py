@@ -32,9 +32,11 @@ from src.core.artifacts.models import (  # noqa: E402
 from src.core.artifacts.store import ArtifactStore  # noqa: E402
 from src.core.orchestrator import state_machine  # noqa: E402
 from src.core.progress import resolve_progress  # noqa: E402
+from src.core.state import State, resolve_state  # noqa: E402
 from src.guidance import (  # noqa: E402
     build_guide,
     goal_confirmed,
+    guide_for,
     mark_brief_shown,
     mark_goal_confirmed,
     render_guide,
@@ -206,10 +208,16 @@ def _save_requirement(store: ArtifactStore, evidence_id: str) -> str:
     )
 
 
-def _save_plan(store: ArtifactStore, requirement_id: str, applied: bool) -> str:
+def _save_plan(
+    store: ArtifactStore,
+    requirement_id: str,
+    applied: bool,
+    baseline_plan_id: str = "",
+) -> str:
     return store.save(
         ExecutionPlan(
             meta=_meta(store, state_machine.STAGE_EXECUTION_PLAN, "ep"),
+            baseline_plan_id=baseline_plan_id,
             requirement_profile_id=requirement_id,
             applied=applied,
         )
@@ -252,7 +260,12 @@ def _seed_chain(
     ids["company_pool_id"] = _save_pool(store)
     ids["evidence_run_id"] = _save_evidence(store, ids["company_pool_id"])
     ids["requirement_profile_id"] = _save_requirement(store, ids["evidence_run_id"])
-    ids["execution_plan_id"] = _save_plan(store, ids["requirement_profile_id"], applied)
+    ids["execution_plan_id"] = _save_plan(
+        store,
+        ids["requirement_profile_id"],
+        applied,
+        ids["baseline_plan_id"],
+    )
     if with_execution:
         ids["execution_state_id"] = _save_execution(store, ids["execution_plan_id"])
     return ids
@@ -284,15 +297,17 @@ def test_empty_profile_starts_with_brief():
     assert "首次进入" in render_guide(guide)  # 提示模型先发 [USER_BRIEF]
 
 
-def test_after_brief_waits_for_intake_before_goal():
+def test_after_brief_keeps_intake_card_until_sections():
     profile = CareerProfile()
     mark_brief_shown(profile)
 
     guide = build_guide(profile)
-    assert guide.status == "intake_wait"
-    assert "写进档案" in guide.ask
-    assert "不要重复提问" in guide.next_action
-    assert "本轮不用等确认" in render_guide(guide)
+    assert guide.status == "brief"
+    assert guide.kind == "intake"
+    assert not guide.brief_needed
+    assert "简历" in guide.ask and "4 项" in guide.ask
+    assert "parse_resume" in guide.next_action
+    assert "本轮需要你提供" in render_guide(guide)
 
     profile.want = {"scan_completed_at": "2026-11-03T10:00:00"}
     assert build_guide(profile).status == "goal"
@@ -313,12 +328,14 @@ def test_mark_brief_then_goal_confirmation():
     assert build_guide(profile).status == "profile"
 
 
-def test_legacy_profile_skips_brief_and_goal():
+def test_legacy_profile_does_not_resend_brief():
     profile = CareerProfile()
     profile.gap = {"match_score": 60}
 
     guide = build_guide(profile)
-    assert guide.status not in ("brief", "goal")
+    assert guide.status == "brief"  # 无 who/have/want/JD，仍是 EMPTY
+    assert not guide.brief_needed
+    assert "[USER_BRIEF]" not in guide_for(profile)
 
 
 def test_guide_follows_twelve_core_stages():
@@ -331,7 +348,7 @@ def test_guide_follows_twelve_core_stages():
     assert build_guide(profile).status == "profile"
 
     profile.core_state["profile_id"] = _save_profile_artifact(store)
-    assert build_guide(profile).status == "target"
+    assert build_guide(profile).status == "goal"
 
     profile.core_state["target_spec_id"] = _save_target(store)
     assert build_guide(profile).status == "market"
@@ -358,10 +375,15 @@ def test_guide_follows_twelve_core_stages():
     assert build_guide(profile).status == "alignment"
 
     # 执行版已生成但未应用：仍停在阶段 9（对齐），不能当成执行。
-    profile.core_state["execution_plan_id"] = _save_plan(store, requirement_id, applied=False)
+    baseline_id = profile.core_state["baseline_plan_id"]
+    profile.core_state["execution_plan_id"] = _save_plan(
+        store, requirement_id, applied=False, baseline_plan_id=baseline_id
+    )
     assert build_guide(profile).status == "alignment"
 
-    plan_id = _save_plan(store, requirement_id, applied=True)
+    plan_id = _save_plan(
+        store, requirement_id, applied=True, baseline_plan_id=baseline_id
+    )
     profile.core_state["execution_plan_id"] = plan_id
     guide = build_guide(profile)
     assert guide.status == "execution"
@@ -390,28 +412,32 @@ def test_optional_application_and_review_do_not_block_execution():
     assert "review_report_id" not in guide.next_action
 
 
-def test_legacy_fields_do_not_force_redo():
+def test_legacy_fields_without_anchor_artifacts_stay_at_profile():
+    """下游 profile 字段不能凭空证明阶段就绪；等 core.legacy 生成 anchor artifact。"""
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.research = {"report_md": "report.md"}
     profile.gap = {"match_score": 65}
     profile.plan = {"roadmap": {"phases": []}}
-    assert build_guide(profile).status == "company"
+    guide = build_guide(profile)
+    assert guide.status == "profile"
+    assert guide.index == 1
 
-    # 旧档案有 tasks 视为已进入执行；没有企业池 artifact 时与状态机一样停在阶段 6。
     profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
-    assert build_guide(profile).status == "company"
+    assert build_guide(profile).status == "profile"
 
     profile.tasks[0].status = "completed"
-    assert build_guide(profile).status == "company"
+    assert build_guide(profile).status == "profile"
 
 
-def test_legacy_gap_without_research_counts_market_done():
+def test_legacy_gap_field_without_artifacts_stays_at_profile():
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.gap = {"match_score": 60}
 
-    assert build_guide(profile).status == "plan"
+    guide = build_guide(profile)
+    assert guide.status == "profile"
+    assert guide.index == 1
 
 
 def test_guidance_matches_next_action_on_normal_chain():
@@ -445,7 +471,7 @@ def test_guidance_matches_next_action_on_chain_mismatch():
     assert guide.index == _STAGE_INDEX[action["stage"]] == 7
 
 
-def test_guidance_matches_next_action_on_legacy_profile():
+def test_guidance_legacy_profile_waits_for_anchor_artifacts():
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.research = {"report_md": "report.md"}
@@ -454,12 +480,13 @@ def test_guidance_matches_next_action_on_legacy_profile():
     profile.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
     profile_module.save_profile(profile, PROFILE_NAME)
 
+    snapshot = resolve_state(profile)
     guide = build_guide(profile)
-    action = state_machine.next_action(PROFILE_NAME)
 
-    assert action["stage"] == state_machine.STAGE_COMPANY_POOL
-    assert guide.status == "company"
-    assert guide.index == _STAGE_INDEX[action["stage"]] == 6
+    assert snapshot.state is State.PROFILE_READY
+    assert guide.status == "profile"
+    assert guide.index == snapshot.stage_index == _STAGE_INDEX["profile"] == 1
+    assert "finalize_profile" in guide.next_action
 
 
 def test_applied_plan_without_execution_state_stays_at_stage_ten():
@@ -977,7 +1004,8 @@ def test_save_current_detail_guides_generate_tasks(temp_profile):
     updated = profile_module.load_profile(PROFILE_NAME)
     guide = build_guide(updated)
     assert guide.status == "execution"
-    assert "细化" not in guide.ask
+    assert guide.options[0] == "推荐：生成任务"
+    assert "推荐：细化当前阶段" not in guide.options
     assert guide.next_action.startswith("generate_tasks")
 
 
@@ -1135,14 +1163,14 @@ def test_tool_layer_has_no_empty_profile_next_step_override():
         assert "parse_resume / intake(section='bundle')" not in text
 
 
-def test_intake_wait_user_section_has_no_tool_names():
-    """intake_wait 的 [GUIDE] 转述区不出现工具名；工具名只在 GUIDE_MODEL 之后。"""
+def test_intake_card_user_section_has_no_tool_names():
+    """采集卡的 [GUIDE] 转述区不出现工具名；工具名只在 GUIDE_MODEL 之后。"""
     from src.guidance import _STATUS_META
 
     profile = CareerProfile()
     mark_brief_shown(profile)
     guide = build_guide(profile)
-    assert guide.status == "intake_wait"
+    assert guide.status == "brief"
 
     text = render_guide(guide)
     user_part = text.split("[GUIDE_MODEL]", 1)[0]

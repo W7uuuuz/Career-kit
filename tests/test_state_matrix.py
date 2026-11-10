@@ -441,10 +441,21 @@ _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
 )
 
 
-def _snapshot(label: str, store: ArtifactStore):
+def build_case(label: str, store: ArtifactStore) -> tuple[SimpleNamespace, Any]:
+    """入口一致性测试复用同一套 fixture 构造，避免复制 13 套档案。"""
     case = dict(_CASES)[label]
-    snapshot = resolve_state(case(store), store)
+    profile = case(store)
+    snapshot = resolve_state(profile, store)
     assert allowed_tools(snapshot) == snapshot.allowed_tools
+    return profile, snapshot
+
+
+def persisted_case_labels() -> tuple[str, ...]:
+    return tuple(label for label, _case in _CASES)
+
+
+def _snapshot(label: str, store: ArtifactStore):
+    _profile, snapshot = build_case(label, store)
     return snapshot
 
 

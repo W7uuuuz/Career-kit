@@ -21,22 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from .core.artifacts.store import ArtifactStore
-from .core.progress import (
-    STAGE_BASELINE_PLAN,
-    STAGE_COMPANY_POOL,
-    STAGE_EVIDENCE,
-    STAGE_EXECUTING,
-    STAGE_EXECUTION,
-    STAGE_EXECUTION_PLAN,
-    STAGE_GAP,
-    STAGE_MARKET,
-    STAGE_PROFILE,
-    STAGE_REQUIREMENT,
-    STAGE_TARGET,
-    legacy_flags,
-    resolve_progress,
-)
+from .core.progress import legacy_flags
+from .core.state import State, StateSnapshot, resolve_state
 
 # ---------------------------------------------------------------------------
 # 旅程：12 个阶段，顺序固定，节奏由用户掌握
@@ -520,26 +506,6 @@ def _guide(
 
 
 def _profile_guide(profile: Any) -> Guide:
-    has_section = bool(
-        getattr(profile, "who", None)
-        or getattr(profile, "have", None)
-        or getattr(profile, "want", None)
-        or getattr(profile, "target_jd", None)
-    )
-    if not has_section:
-        return _guide(
-            "profile",
-            "profile",
-            INTAKE_CARD,
-            options=list(INTAKE_OPTIONS),
-            next_action=(
-                "用户给简历先调用 parse_resume，再 intake(section='bundle')；"
-                "一次回 4 项直接 intake(section='bundle', user_confirmed=用户是否亲口确认)；"
-                "收齐 who/have 后调用 finalize_profile；技能必须由用户确认，不能照抄简历"
-            ),
-            profile=profile,
-            kind="intake",
-        )
     return _guide(
         "profile",
         "profile",
@@ -554,10 +520,14 @@ def _profile_guide(profile: Any) -> Guide:
 def _target_guide(profile: Any) -> Guide:
     return _guide(
         "target",
-        "target",
+        "goal",
         goal_question(profile),
         options=["对，就是这样", "方向要改", "城市/届别要改"],
-        next_action="目标缺失时先用 explore_goals 选定方向；确认后写入目标，再继续调研",
+        next_action=(
+            "用户没有方向 → explore_goals；用户给出方向 → "
+            "intake(section='want', data 里带 user_confirmed=true)；"
+            "只确认缺失项：已亲口说过的方向/城市/届别直接采用，不再重复询问"
+        ),
         profile=profile,
     )
 
@@ -659,7 +629,7 @@ def _alignment_guide(profile: Any) -> Guide:
     )
 
 
-def _execution_guide(profile: Any, *, ready: bool) -> Guide:
+def _execution_guide(profile: Any, snapshot: StateSnapshot) -> Guide:
     plan = getattr(profile, "plan", None) or {}
     detail_ready = isinstance(plan, dict) and bool(plan.get("current_detail"))
     has_tasks = bool(getattr(profile, "tasks", None) or [])
@@ -672,108 +642,115 @@ def _execution_guide(profile: Any, *, ready: bool) -> Guide:
             next_action="generate_tasks（合并详细路线与打卡点）；随后 get_next_tasks",
             profile=profile,
         )
-    if not ready:
+    if snapshot.state in (State.EXECUTING, State.MAINTENANCE):
         return _guide(
             "execution",
             "execution",
-            "下一步把当前阶段拆成可执行任务：每个任务会给出怎么做、用什么资源、"
-            "怎么算完成。推荐现在细化；也可以先按里程碑生成粗任务，或先看职业地图。",
-            options=["推荐：细化当前阶段", "先按里程碑生成粗任务", "先看职业地图"],
-            next_action="detail_current_phase → save_current_detail → generate_tasks；"
-                        "用户拒绝细化时可直接 generate_tasks",
+            "当前是持续推进与维护：按当前阶段任务做，完成一项就打卡，"
+            "进度会沉淀为能力证据。也可以生成投递清单、登记投递或做周期复盘；"
+            "主线完成后同样是持续维护，不是新阶段。",
+            options=["推荐：先看下一步任务", "生成投递清单", "登记已投递", "做周检视/计划检查"],
+            next_action="get_next_tasks；完成后 checkin_task；"
+                        "批量投递用 build_application_list；"
+                        "投递进展用 record_application / delete_application；"
+                        "周期复盘用 get_weekly_review / check_plan_fit",
             profile=profile,
         )
     return _guide(
         "execution",
         "execution",
-        "当前是持续推进与维护：按当前阶段任务做，完成一项就打卡，"
-        "进度会沉淀为能力证据。也可以生成投递清单、登记投递或做周期复盘；"
-        "主线完成后同样是持续维护，不是新阶段。",
-        options=["推荐：先看下一步任务", "生成投递清单", "登记已投递", "做周检视/计划检查"],
-        next_action="get_next_tasks；完成后 checkin_task；"
-                    "批量投递用 build_application_list；"
-                    "投递进展用 record_application / delete_application；"
-                    "周期复盘用 get_weekly_review / check_plan_fit",
+        "下一步把当前阶段拆成可执行任务：每个任务会给出怎么做、用什么资源、"
+        "怎么算完成。推荐现在细化；也可以先按里程碑生成粗任务，或先看职业地图。",
+        options=["推荐：细化当前阶段", "先按里程碑生成粗任务", "先看职业地图"],
+        next_action="detail_current_phase → save_current_detail → generate_tasks；"
+                    "用户拒绝细化时可直接 generate_tasks",
         profile=profile,
     )
 
 
-_STAGE_GUIDES = {
-    STAGE_PROFILE: _profile_guide,
-    STAGE_TARGET: _target_guide,
-    STAGE_MARKET: _market_guide,
-    STAGE_GAP: _gap_guide,
-    STAGE_BASELINE_PLAN: _plan_guide,
-    STAGE_COMPANY_POOL: _company_guide,
-    STAGE_EVIDENCE: _evidence_guide,
-    STAGE_REQUIREMENT: _requirement_guide,
-    STAGE_EXECUTION_PLAN: _alignment_guide,
+# StateSnapshot -> GUIDE 状态词；状态词只决定用户看到的话术，不再决定位置。
+_STATE_STATUS: dict[State, str] = {
+    State.EMPTY: "brief",
+    State.PROFILE_COLLECTING: "goal",
+    State.PROFILE_READY: "profile",
+    State.MARKET_PENDING: "market",
+    State.GAP_PENDING: "gap",
+    State.BASELINE_PLAN_PENDING: "plan",
+    State.COMPANY_PENDING: "company",
+    State.EVIDENCE_PENDING: "evidence",
+    State.REQUIREMENT_DRAFT: "requirement",
+    State.REQUIREMENT_READY: "alignment",
+    State.EXECUTION_PLAN_DRAFT: "alignment",
+    State.EXECUTION_READY: "execution",
+    State.EXECUTING: "execution",
+    State.MAINTENANCE: "execution",
 }
 
 
-def _guide_from_progress(profile: Any) -> Guide:
-    """与状态机共用同一份解析结果，避免「引导看 key、状态机看引用链」。"""
-    progress = resolve_progress(profile, ArtifactStore())
-    stage = str(progress.get("stage") or "")
-    if stage == STAGE_EXECUTING:
-        return _execution_guide(profile, ready=True)
-    if stage == STAGE_EXECUTION:
-        has_detail = bool((getattr(profile, "plan", None) or {}).get("current_detail"))
-        # 执行就绪只认匹配当前 applied plan 的 ExecutionState 或已保存的 current_detail；
-        # 旧任务（has_tasks）本身不能把阶段推进到「持续推进与维护」。
-        ready = bool(progress.get("has_execution_state") or has_detail)
-        return _execution_guide(profile, ready=ready)
-    builder = _STAGE_GUIDES.get(stage)
-    if builder is not None:
-        return builder(profile)
-    return _profile_guide(profile)
+def _empty_guide(profile: Any, *, brief_needed: bool) -> Guide:
+    return _guide(
+        "profile",
+        "brief",
+        INTAKE_CARD,
+        options=list(INTAKE_OPTIONS),
+        next_action=(
+            "用户给简历 → parse_resume → intake(section='bundle')；"
+            "一次回 4 项 → intake(section='bundle', user_confirmed=用户是否亲口确认)；"
+            "用户亲口陈述即确认，不要追加第二个确认决策"
+        ),
+        profile=profile,
+        brief_needed=brief_needed,
+        kind="intake",
+    )
+
+
+def _finalize_guide(
+    guide: Guide, snapshot: StateSnapshot
+) -> Guide:
+    """位置、状态与下一步只来自同一个 StateSnapshot。"""
+    guide.index = snapshot.stage_index
+    guide.status = _STATE_STATUS[snapshot.state]
+    guide.ask = f"{snapshot.user_decision}：{guide.ask}"
+    if snapshot.next_tool:
+        decision = f"下一步：{snapshot.next_tool}"
+        guide.next_action = (
+            f"{guide.next_action}；{decision}" if guide.next_action else decision
+        )
+    return guide
+
+
+def _guide_from_state(profile: Any, snapshot: StateSnapshot) -> Guide:
+    """按 StateSnapshot 选择既有话术，不再各自解释 progress/goal。"""
+    state = snapshot.state
+    if state is State.EMPTY:
+        guide = _empty_guide(profile, brief_needed=not brief_shown(profile))
+    elif state is State.PROFILE_COLLECTING:
+        guide = _target_guide(profile)
+    elif state is State.PROFILE_READY:
+        guide = _profile_guide(profile)
+    elif state is State.MARKET_PENDING:
+        guide = _market_guide(profile)
+    elif state is State.GAP_PENDING:
+        guide = _gap_guide(profile)
+    elif state is State.BASELINE_PLAN_PENDING:
+        guide = _plan_guide(profile)
+    elif state is State.COMPANY_PENDING:
+        guide = _company_guide(profile)
+    elif state is State.EVIDENCE_PENDING:
+        guide = _evidence_guide(profile)
+    elif state is State.REQUIREMENT_DRAFT:
+        guide = _requirement_guide(profile)
+    elif state in (State.REQUIREMENT_READY, State.EXECUTION_PLAN_DRAFT):
+        guide = _alignment_guide(profile)
+    else:
+        guide = _execution_guide(profile, snapshot)
+    return _finalize_guide(guide, snapshot)
 
 
 def build_guide(profile: Any) -> Guide:
-    """从档案推导「当前位置 + 本轮唯一决策」。"""
-    if not brief_shown(profile):
-        return _guide(
-            "profile",
-            "brief",
-            INTAKE_CARD,
-            options=list(INTAKE_OPTIONS),
-            next_action=(
-                "用户给简历 → parse_resume → intake(section='bundle')；"
-                "一次回 4 项 → intake(section='bundle', user_confirmed=用户是否亲口确认)；"
-                "用户亲口陈述即确认，不要追加第二个确认决策"
-            ),
-            profile=profile,
-            brief_needed=True,
-            kind="intake",
-        )
-
-    if not goal_confirmed(profile):
-        if not _has_sections(profile):
-            return _guide(
-                "profile",
-                "intake_wait",
-                "先把你刚才说的信息写进档案，再继续。",
-                next_action=(
-                    "先调用 parse_resume 或 intake(section='bundle', user_confirmed=...)，"
-                    "不要重复提问。"
-                ),
-                profile=profile,
-                kind="intake",
-            )
-        return _guide(
-            "target",
-            "goal",
-            goal_question(profile),
-            options=["对，就是这样", "方向要改", "城市/届别要改"],
-            next_action=(
-                "用户没有方向 → explore_goals；用户给出方向 → "
-                "intake(section='want', data 里带 user_confirmed=true)；"
-                "只确认缺失项：已亲口说过的方向/城市/届别直接采用，不再重复询问"
-            ),
-            profile=profile,
-        )
-
-    return _guide_from_progress(profile)
+    """从唯一状态快照推导「当前位置 + 本轮唯一决策」。"""
+    snapshot = resolve_state(profile)
+    return _guide_from_state(profile, snapshot)
 
 
 # ---------------------------------------------------------------------------
