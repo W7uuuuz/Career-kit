@@ -34,7 +34,10 @@ from .progress import (
     STAGE_PROFILE,
     STAGE_REQUIREMENT,
     STAGE_TARGET,
+    is_legacy_profile,
+    profile_target_fingerprint,
     resolve_artifact,
+    stored_target_fingerprint,
 )
 
 
@@ -314,22 +317,12 @@ def _stage_ready(stage: str, artifacts: dict[str, Any]) -> bool:
 
 
 def _target_stale(profile: Any, artifact: dict[str, Any]) -> bool:
-    """want 在 TargetSpec 生成之后被改写时，旧 TargetSpec 失效。"""
-    updated = getattr(profile, "section_updated_at", None)
-    want_at = (
-        str((updated or {}).get("want") or "").strip()
-        if isinstance(updated, dict)
-        else ""
-    )
-    if not want_at:
+    """目标指纹变化时旧 TargetSpec 失效；无指纹的旧 artifact 保持兼容。"""
+    stored = stored_target_fingerprint(artifact)
+    if not stored:
         return False
-    meta = artifact.get("meta")
-    created = (
-        str(meta.get("created_at") or "").strip()
-        if isinstance(meta, dict)
-        else ""
-    )
-    return bool(created) and want_at > created
+    current = profile_target_fingerprint(profile)
+    return bool(current) and current != stored
 
 
 def _has_tasks(profile: Any) -> bool:
@@ -471,9 +464,12 @@ def resolve_state(
         return _snapshot(State.EMPTY, profile, artifacts, blockers)
 
     guidance = _guidance(profile)
-    goal_confirmed = bool(guidance.get("goal_confirmed_at"))
+    # 新流程只认 goal_confirmed_at；真 legacy（无 guidance/显式标记）按已确认兜底。
+    goal_confirmed = bool(guidance.get("goal_confirmed_at")) or is_legacy_profile(
+        profile
+    )
 
-    # 覆盖规则 2：TargetSpec 只在 goal_confirmed_at 存在时有效。
+    # 覆盖规则 2：TargetSpec 只在目标已确认时有效。
     target = artifacts.get(STAGE_TARGET)
     if target is not None:
         if not goal_confirmed:
@@ -484,7 +480,7 @@ def resolve_state(
         elif _target_stale(profile, target):
             artifacts[STAGE_TARGET] = None
             blockers.append(
-                Blocker("target_stale", "want 在 TargetSpec 之后被改写")
+                Blocker("target_stale", "目标字段已变化，旧 TargetSpec 失效")
             )
 
     # 覆盖规则 1：gap_stale 强制回到差距分析，下游 plan/tasks 不得覆盖。

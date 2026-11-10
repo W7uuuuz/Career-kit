@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from .artifacts.store import ArtifactStore
@@ -94,6 +96,19 @@ _OPTIONAL_EXECUTION_TOOLS = [
     "get_weekly_review",
 ]
 
+# TargetSpec 指纹字段：只包含目标身份字段。expected_outcome（求职结果预期）、
+# scan 元数据等补充信息不在其中，写它们不得让旧 TargetSpec 失效。
+TARGET_FINGERPRINT_FIELDS: tuple[str, ...] = (
+    "direction",
+    "role",
+    "city",
+    "target_tiers",
+    "bridge_tiers",
+    "graduation_year",
+    "constraints",
+)
+TARGET_FINGERPRINT_KEY = "target_fingerprint"
+
 
 def resolve_progress(
     profile: Any,
@@ -153,7 +168,7 @@ def resolve_progress(
     )
     # 新流程档案（有 guidance）即使还没 finalize，也不能按「旧档案已有 section」
     # 跳阶段，否则 GUIDE 会在 finalize 前跳到市场调研（复测 BUG #12-13）。
-    legacy_mode = _is_legacy_mode(profile)
+    legacy_mode = is_legacy_profile(profile)
 
     # 阶段 1：档案快照。只有旧档案（无 guidance）在有下游产物时才允许按 section 兜底跳过。
     profile_artifact = resolved[STAGE_PROFILE]
@@ -407,19 +422,20 @@ def legacy_flags(profile: Any) -> dict[str, bool]:
     }
 
 
-def _is_legacy_mode(profile: Any) -> bool:
-    """是否允许用 section 兜底推断阶段。
+def is_legacy_profile(profile: Any) -> bool:
+    """唯一的 legacy 判定：无 guidance 的旧档案，或显式 legacy 标记。
 
-    - 有 guidance 且没有下游产物：新流程，必须按 artifact 走（finalize 前不能跳步）。
-    - 有调研/差距/路线图/任务/投递：旧档案，允许兜底。
-    - 完全没有 guidance：旧档案，允许兜底。
+    - 有 guidance 的档案一律按新流程处理，即使已有 research/gap/plan/tasks/
+      applications；「有下游产物」不等于旧档案。
+    - 完全没有 guidance 才是旧档案；显式标记（guidance.legacy_migrated_at /
+      guidance.legacy_mode）用于 Phase 4 迁移后的旧档案，保持旧链路兜底。
     """
-    guidance = getattr(profile, "guidance", None) or {}
-    flags = legacy_flags(profile)
-    has_downstream = any(
-        flags[key] for key in ("research", "gap", "plan", "tasks", "applications")
-    )
-    return has_downstream or not guidance
+    guidance = getattr(profile, "guidance", None)
+    if isinstance(guidance, dict) and guidance:
+        return bool(
+            guidance.get("legacy_migrated_at") or guidance.get("legacy_mode")
+        )
+    return True
 
 
 def legacy_stage_done(profile: Any, stage: str) -> bool:
@@ -687,7 +703,7 @@ def _goal_confirmed(profile: Any) -> bool:
     guidance = getattr(profile, "guidance", None)
     if isinstance(guidance, dict) and guidance.get("goal_confirmed_at"):
         return True
-    return _is_legacy_mode(profile)
+    return is_legacy_profile(profile)
 
 
 def _has_want(profile: Any) -> bool:
@@ -740,17 +756,56 @@ def _baseline_execution_result(
     )
 
 
-def _target_stale(profile: Any, artifact: dict[str, Any]) -> bool:
-    """want 在 TargetSpec 生成之后被改写时，旧 TargetSpec 失效。"""
-    updated = getattr(profile, "section_updated_at", None)
-    want_at = str((updated or {}).get("want") or "").strip() if isinstance(updated, dict) else ""
-    if not want_at:
-        return False
-    meta = artifact.get("meta")
-    created = (
-        str(meta.get("created_at") or "").strip() if isinstance(meta, dict) else ""
+def _fingerprint_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple, set)):
+        return sorted(str(item).strip() for item in value if str(item).strip())
+    return str(value or "").strip()
+
+
+def target_fingerprint(spec: Any) -> str:
+    """TargetSpec 唯一指纹：只由目标身份字段决定，排除 expected_outcome 等补充信息。"""
+    if isinstance(spec, dict):
+        data = spec
+    elif hasattr(spec, "model_dump"):
+        data = spec.model_dump()
+    else:
+        data = {field: getattr(spec, field, None) for field in TARGET_FINGERPRINT_FIELDS}
+    payload = {
+        field: _fingerprint_value(data.get(field))
+        for field in TARGET_FINGERPRINT_FIELDS
+    }
+    canonical = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
-    return bool(created) and want_at > created
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def profile_target_fingerprint(profile: Any) -> str:
+    """从档案 want/who 计算当前目标指纹（与 sync_target 写 artifact 时一致）。"""
+    try:
+        from .adapters.legacy_profile import target_spec
+
+        return target_fingerprint(target_spec(profile))
+    except Exception:  # noqa: BLE001 - 畸形档案按空指纹处理，不误判失效
+        return ""
+
+
+def stored_target_fingerprint(artifact: dict[str, Any] | None) -> str:
+    """读取 TargetSpec artifact 保存的指纹；旧 artifact 无指纹时返回空串。"""
+    meta = artifact.get("meta") if isinstance(artifact, dict) else None
+    inputs = meta.get("inputs") if isinstance(meta, dict) else None
+    if not isinstance(inputs, dict):
+        return ""
+    return str(inputs.get(TARGET_FINGERPRINT_KEY) or "").strip()
+
+
+def _target_stale(profile: Any, artifact: dict[str, Any]) -> bool:
+    """目标指纹变化时旧 TargetSpec 失效；没有保存指纹的旧 artifact 保持兼容。"""
+    stored = stored_target_fingerprint(artifact)
+    if not stored:
+        return False
+    current = profile_target_fingerprint(profile)
+    return bool(current) and current != stored
 
 
 def _has_tasks(profile: Any) -> bool:
@@ -786,9 +841,15 @@ __all__ = [
     "STAGE_REQUIREMENT",
     "STAGE_REVIEW",
     "STAGE_TARGET",
+    "TARGET_FINGERPRINT_FIELDS",
+    "TARGET_FINGERPRINT_KEY",
     "downstream_exists",
+    "is_legacy_profile",
     "legacy_flags",
     "legacy_stage_done",
+    "profile_target_fingerprint",
     "resolve_artifact",
     "resolve_progress",
+    "stored_target_fingerprint",
+    "target_fingerprint",
 ]

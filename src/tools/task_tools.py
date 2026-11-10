@@ -1031,13 +1031,9 @@ def _backfill_core_state(profile):
     research = profile.research if isinstance(profile.research, dict) else {}
     plan = profile.plan if isinstance(profile.plan, dict) else {}
     roadmap = plan.get("roadmap")
-    # 新流程档案（有 guidance）在 finalize 前不能补 ProfileSnapshot，
-    # 否则状态报告会把「未 finalize」误判为阶段 1 已完成（BUG #12-13）。
-    profile_ready = (
-        bool(profile.summary)
-        or is_legacy(profile)
-        or not (profile.guidance or {})
-    )
+    # 只有真 legacy（无 guidance/显式标记）才补 ProfileSnapshot；新流程即使已有
+    # research/gap/plan/tasks，也必须等 finalize_profile，不能跳过建档。
+    profile_ready = bool(profile.summary) or is_legacy(profile)
     # 目标确认是 TargetSpec 的唯一门禁：只有用户确认（或旧档案兜底）才允许
     # 补 TargetSpec；未确认时也不能因为已有调研数据而推进市场基线。
     goal_ready = (

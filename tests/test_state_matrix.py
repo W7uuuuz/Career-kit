@@ -138,12 +138,15 @@ def _save_profile(store: ArtifactStore) -> str:
     )
 
 
-def _save_target(store: ArtifactStore, profile_id: str) -> str:
+def _save_target(
+    store: ArtifactStore, profile_id: str, *, fingerprint: str = ""
+) -> str:
+    inputs = {"profile_id": profile_id}
+    if fingerprint:
+        inputs[progress.TARGET_FINGERPRINT_KEY] = fingerprint
     return store.save(
         TargetArtifact(
-            meta=_meta(
-                store, progress.STAGE_TARGET, inputs={"profile_id": profile_id}
-            ),
+            meta=_meta(store, progress.STAGE_TARGET, inputs=inputs),
             role="AI Agent 开发",
             city="北京",
         )
@@ -438,6 +441,109 @@ def _case_15(store: ArtifactStore) -> SimpleNamespace:
     return _confirmed_profile(gap={"match_score": 58})
 
 
+def _case_16(store: ArtifactStore) -> SimpleNamespace:
+    """F16：确认目标后只补 expected_outcome → 指纹不变，TargetSpec 不失效。"""
+    profile = _confirmed_profile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={
+            "target_role": "AI Agent 开发",
+            "city": "北京",
+            "expected_outcome": "薪资优先",
+        },
+    )
+    fingerprint = progress.profile_target_fingerprint(
+        _confirmed_profile(
+            who={"name": "张三"},
+            have={"skills": ["Python"]},
+            want={"target_role": "AI Agent 开发", "city": "北京"},
+        )
+    )
+    profile_id = _save_profile(store)
+    _save_target(store, profile_id, fingerprint=fingerprint)
+    return profile
+
+
+def _case_17(store: ArtifactStore) -> SimpleNamespace:
+    """F17：target_role 变化 → 指纹变化，旧 TargetSpec 失效回到目标确认。"""
+    profile = _confirmed_profile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发", "city": "北京"},
+    )
+    profile_id = _save_profile(store)
+    _save_target(
+        store,
+        profile_id,
+        fingerprint=progress.profile_target_fingerprint(profile),
+    )
+    profile.want = {"target_role": "后端开发", "city": "北京"}
+    return profile
+
+
+def _case_18(store: ArtifactStore) -> SimpleNamespace:
+    """F18：新流程已有 research/gap/plan/tasks 但目标未确认 → 仍 PROFILE_COLLECTING。"""
+    return _profile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[SimpleNamespace(status="pending")],
+    )
+
+
+def _case_19(store: ArtifactStore) -> SimpleNamespace:
+    """F19：新流程已确认但未 finalize，下游产物不得跳过建档。"""
+    return _confirmed_profile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        guidance={
+            "goal_confirmed_at": "2026-11-09T00:00:00",
+            "brief_shown_at": "2026-11-09T00:00:00",
+        },
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[SimpleNamespace(status="pending")],
+    )
+
+
+def _case_20(store: ArtifactStore) -> SimpleNamespace:
+    """F20：真 legacy（无 guidance）仍按旧链路推进。"""
+    _seed_to_baseline(store)
+    return _profile(
+        who={"name": "旧用户"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[SimpleNamespace(status="pending")],
+        summary="旧档案",
+    )
+
+
+def _case_21(store: ArtifactStore) -> SimpleNamespace:
+    """F21：改 who.graduation_year（届别）→ 指纹变化，旧 TargetSpec 失效。"""
+    profile = _confirmed_profile(
+        who={"name": "张三", "graduation_year": "2027"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发", "city": "北京"},
+    )
+    profile_id = _save_profile(store)
+    _save_target(
+        store,
+        profile_id,
+        fingerprint=progress.profile_target_fingerprint(profile),
+    )
+    profile.who = {"name": "张三", "graduation_year": "2028"}
+    return profile
+
+
 _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("01", _case_01),
     ("02", _case_02),
@@ -453,6 +559,12 @@ _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("13", _case_13),
     ("14", _case_14),
     ("15", _case_15),
+    ("16", _case_16),
+    ("17", _case_17),
+    ("18", _case_18),
+    ("19", _case_19),
+    ("20", _case_20),
+    ("21", _case_21),
 )
 
 
@@ -465,8 +577,28 @@ def build_case(label: str, store: ArtifactStore) -> tuple[SimpleNamespace, Any]:
     return profile, snapshot
 
 
+# Phase 1 持久化 fixture：入口一致性测试（tests/test_entrypoint_consistency.py）
+# 逐条维护 EXPECTED，新增 Phase 3b-1 fixture（16-20）只做状态矩阵断言。
+_ENTRYPOINT_CASE_LABELS: tuple[str, ...] = (
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "10",
+    "11",
+    "13",
+    "14",
+    "15",
+)
+
+
 def persisted_case_labels() -> tuple[str, ...]:
-    return tuple(label for label, _case in _CASES)
+    return _ENTRYPOINT_CASE_LABELS
 
 
 def seed_executed_chain(store: ArtifactStore) -> dict[str, str]:
@@ -676,6 +808,95 @@ def test_fixture_15_market_skipped(store: ArtifactStore) -> None:
     assert snapshot.stage_index == 4
     assert snapshot.next_tool == "analyze_gaps"
     assert any(blocker.code == "market_skipped" for blocker in snapshot.blockers)
+
+
+def test_fixture_16_expected_outcome_keeps_target_spec(store: ArtifactStore) -> None:
+    snapshot = _snapshot("16", store)
+
+    assert snapshot.state is State.MARKET_PENDING
+    assert snapshot.next_tool == "gather_research_data"
+    assert snapshot.artifact_ids[progress.STAGE_KEYS[progress.STAGE_TARGET]]
+    assert not any(blocker.code == "target_stale" for blocker in snapshot.blockers)
+
+
+def test_fixture_17_target_change_invalidates_old_target_spec(
+    store: ArtifactStore,
+) -> None:
+    snapshot = _snapshot("17", store)
+
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
+    assert not snapshot.artifact_ids[progress.STAGE_KEYS[progress.STAGE_TARGET]]
+    assert any(blocker.code == "target_stale" for blocker in snapshot.blockers)
+
+
+def test_fixture_18_new_flow_downstream_does_not_skip_goal_confirmation(
+    store: ArtifactStore,
+) -> None:
+    snapshot = _snapshot("18", store)
+
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
+    assert not snapshot.artifact_ids[progress.STAGE_KEYS[progress.STAGE_TARGET]]
+    assert any(blocker.code == "target_unconfirmed" for blocker in snapshot.blockers)
+
+
+def test_fixture_19_new_flow_confirmed_but_not_finalized(
+    store: ArtifactStore,
+) -> None:
+    snapshot = _snapshot("19", store)
+
+    assert snapshot.state is State.PROFILE_READY
+    assert snapshot.next_tool == "finalize_profile"
+    assert not snapshot.completion[progress.STAGE_PROFILE]
+
+
+def test_fixture_20_true_legacy_still_follows_old_chain(store: ArtifactStore) -> None:
+    snapshot = _snapshot("20", store)
+
+    assert snapshot.state is State.COMPANY_PENDING
+    assert snapshot.next_tool == "select_target_companies"
+    assert snapshot.completion[progress.STAGE_BASELINE_PLAN] is True
+
+
+def test_fixture_21_graduation_year_change_invalidates_target(
+    store: ArtifactStore,
+) -> None:
+    snapshot = _snapshot("21", store)
+
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert snapshot.next_tool == "intake(want)"
+    assert not snapshot.artifact_ids[progress.STAGE_KEYS[progress.STAGE_TARGET]]
+    assert any(blocker.code == "target_stale" for blocker in snapshot.blockers)
+
+
+def test_new_flow_downstream_does_not_write_target_or_market(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """新流程有 research/gap/plan/tasks 但目标未确认：回填不得写 TargetSpec/market。"""
+    root = tmp_path / "data"
+    monkeypatch.setattr(paths, "PROFILE_DIR", root)
+    monkeypatch.setattr(profile_store, "PROFILE_DIR", root)
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[Task(id="task_001", name="任务", phase_id="phase_1")],
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    profile_store.set_active_profile_name(PROFILE_NAME)
+
+    status = get_workflow_status()
+
+    updated = profile_store.load_profile(PROFILE_NAME)
+    assert not updated.core_state.get(progress.STAGE_KEYS[progress.STAGE_TARGET])
+    assert not updated.core_state.get(progress.STAGE_KEYS[progress.STAGE_MARKET])
+    assert not updated.core_state.get(progress.STAGE_KEYS[progress.STAGE_PROFILE])
+    assert "**下一步**：intake(want)" in status
 
 
 def test_optional_stage_facts_do_not_change_state(store: ArtifactStore) -> None:

@@ -113,8 +113,12 @@ def _legacy_document() -> dict[str, Any]:
         "who": {"name": "旧用户", "education": "双非本", "city": "北京"},
         "have": {"skills": ["Python", "LangChain"]},
         "want": {"target_role": "AI Agent 开发", "city": "北京", "target_tiers": ["大厂"]},
-        # 旧档案迁移后目标由用户确认（Phase 4 legacy adapter 等价事实）。
-        "guidance": {"goal_confirmed_at": "2025-01-01T00:00:00"},
+        # 旧档案迁移后目标由用户确认（Phase 4 legacy adapter 等价事实）；显式
+        # legacy 标记是旧链路兜底的唯一依据，「有下游产物」不再算 legacy。
+        "guidance": {
+            "goal_confirmed_at": "2025-01-01T00:00:00",
+            "legacy_migrated_at": "2025-01-01T00:00:00",
+        },
         # anchor 回填需要的旧调研事实（报告存在即视为市场基线已落地）。
         "research": {"report_md": "C:/old/research.md", "counts": {}},
         "gap": {"match_score": 58, "start_level": "小厂"},
@@ -175,6 +179,33 @@ def compat_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(profile_store, "PROFILE_DIR", data_dir)
     monkeypatch.setattr(paths, "PROFILE_DIR", data_dir)
     return data_dir
+
+
+def test_legacy_judgment_ignores_downstream_for_new_flow() -> None:
+    """「有下游产物」不等于旧档案：新流程必须仍要求目标确认与 finalize。"""
+    from src.core.progress import is_legacy_profile
+
+    new_flow = CareerProfile(
+        who={"name": "新用户"},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan=_legacy_roadmap(),
+        tasks=_legacy_tasks(),
+        applications=[],
+    )
+    assert is_legacy_profile(new_flow) is False
+
+    legacy = CareerProfile(
+        who={"name": "旧用户"},
+        want={"target_role": "AI Agent 开发"},
+        research={"jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan=_legacy_roadmap(),
+        tasks=_legacy_tasks(),
+    )
+    assert is_legacy_profile(legacy) is True
 
 
 def test_legacy_json_profile_loads_without_core_state(compat_env: Path) -> None:

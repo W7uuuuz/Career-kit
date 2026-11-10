@@ -1332,6 +1332,88 @@ def test_rewritten_want_invalidates_old_target_spec(temp_profile):
     assert resolve_progress(updated)["next_tool"] == "intake(want)"
 
 
+def test_expected_outcome_write_keeps_confirmed_target(temp_profile):
+    """expected_outcome 是目标补充信息：不失效 TargetSpec、不要求重新确认、不重复同步。"""
+    from src.server import finalize_profile, intake, start_session
+
+    start_session()
+    intake("who", '{"name": "张三"}')
+    intake("have", '{"skills": []}')
+    intake(
+        "want",
+        '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
+    )
+    finalize_profile()
+
+    before = profile_module.load_profile(PROFILE_NAME)
+    target_id = before.core_state.get("target_spec_id")
+    assert target_id
+    target_count = len(ArtifactStore().list(PROFILE_NAME, state_machine.STAGE_TARGET))
+
+    intake("want", '{"expected_outcome": "薪资优先"}')
+
+    after = profile_module.load_profile(PROFILE_NAME)
+    assert after.core_state.get("target_spec_id") == target_id
+    assert after.guidance.get("goal_confirmed_at")
+    assert build_guide(after).status != "goal"
+    assert (
+        len(ArtifactStore().list(PROFILE_NAME, state_machine.STAGE_TARGET))
+        == target_count
+    )
+
+
+def test_city_change_invalidates_target_spec(temp_profile):
+    """城市是 TargetSpec 字段：变化后旧 TargetSpec 失效并要求重新确认。"""
+    from src.server import finalize_profile, intake, start_session
+
+    start_session()
+    intake("who", '{"name": "张三"}')
+    intake("have", '{"skills": []}')
+    intake(
+        "want",
+        '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
+    )
+    finalize_profile()
+    assert profile_module.load_profile(PROFILE_NAME).core_state.get("target_spec_id")
+
+    intake("want", '{"city": "北京"}')
+
+    updated = profile_module.load_profile(PROFILE_NAME)
+    assert not updated.core_state.get("target_spec_id")
+    assert build_guide(updated).status == "goal"
+    assert resolve_progress(updated)["next_tool"] == "intake(want)"
+
+
+def test_who_graduation_year_change_invalidates_target_and_rebuilds(temp_profile):
+    """intake(who) 改届别 → 清空旧 TargetSpec，且 sync_target 能按新指纹重建。"""
+    from src.core.sync import sync_target
+    from src.server import finalize_profile, intake, start_session
+
+    start_session()
+    intake("who", '{"name": "张三", "graduation_year": "2027"}')
+    intake("have", '{"skills": []}')
+    intake(
+        "want",
+        '{"target_role": "AI Agent", "city": "上海", "user_confirmed": true}',
+    )
+    finalize_profile()
+
+    before = profile_module.load_profile(PROFILE_NAME)
+    old_target_id = before.core_state.get("target_spec_id")
+    assert old_target_id
+
+    intake("who", '{"graduation_year": "2028"}')
+
+    updated = profile_module.load_profile(PROFILE_NAME)
+    assert not updated.core_state.get("target_spec_id")
+    assert build_guide(updated).status == "goal"
+
+    rebuilt = sync_target(PROFILE_NAME)
+    assert rebuilt and rebuilt != old_target_id
+    reloaded = profile_module.load_profile(PROFILE_NAME)
+    assert reloaded.core_state.get("target_spec_id") == rebuilt
+
+
 def test_old_tasks_do_not_make_execution_ready():
     """旧任务不能让 GUIDE 误判为执行就绪；就绪只认匹配当前 applied plan 的 ExecutionState。"""
     profile = _confirmed_profile()

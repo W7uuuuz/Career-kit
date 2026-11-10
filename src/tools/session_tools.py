@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..assets import profile_display_name
-from ..core.progress import resolve_progress
+from ..core.progress import profile_target_fingerprint, resolve_progress
 from ..guidance import (
     goal_confirmed,
     guide_for,
@@ -226,8 +226,19 @@ def intake(section: str, data: str, user_confirmed: bool = False) -> str:
 
     profile = load_profile()
     old_industry = industry_of(profile.want) if "want" in sections else ""
+    # 目标指纹只看目标身份字段；expected_outcome/scan 等补充信息不参与。
+    # who 也会影响指纹（届别、城市），改 who 同样要让旧 TargetSpec 失效。
+    target_section_touched = bool({"who", "want"} & set(sections))
+    old_target_fp = (
+        profile_target_fingerprint(profile) if target_section_touched else ""
+    )
     for name, value in sections.items():
         profile.merge(name, value)
+    new_target_fp = (
+        profile_target_fingerprint(profile) if target_section_touched else ""
+    )
+    target_changed = target_section_touched and new_target_fp != old_target_fp
+    existing_target_id = str((profile.core_state or {}).get("target_spec_id") or "")
 
     # 直接调用 intake（未走 start_session）时也要初始化 guidance：
     # 否则 progress 会按旧档案兜底，finalize 前跳到市场调研（复测 BUG #12-14）。
@@ -235,11 +246,12 @@ def intake(section: str, data: str, user_confirmed: bool = False) -> str:
         mark_brief_shown(profile)
 
     # 只有用户本人确认过才点亮「目标已确认」；模型推断写入的 want 不算。
+    # expected_outcome 等补充信息不改变目标指纹，不重置既有的目标确认。
     confirmed = bool(user_confirmed) or payload.get("user_confirmed") is True
     if "want" in sections:
         if confirmed:
             mark_goal_confirmed(profile)
-        else:
+        elif target_changed:
             reset_goal_confirmation(profile)
 
     result = (
@@ -268,8 +280,9 @@ def intake(section: str, data: str, user_confirmed: bool = False) -> str:
 
     save_profile(profile)
 
-    # want 改写：旧 TargetSpec 立即失效；用户确认后由 sync_target 按新目标重建。
-    if "want" in sections:
+    # 只有目标指纹变化才让旧 TargetSpec 失效；expected_outcome 等补充信息不动它。
+    # who.graduation_year 等 who 侧目标字段变化也需要清指针，后续 sync 才会重建。
+    if target_changed:
         try:
             from ..core.sync import merge_core_state
 
@@ -281,8 +294,12 @@ def intake(section: str, data: str, user_confirmed: bool = False) -> str:
         except Exception:  # noqa: BLE001 - 失效失败不阻断主工具
             pass
 
-    # Core v2 同步：用户本人确认目标后落 TargetSpec artifact（失败不阻断）
-    if "want" in sections and confirmed:
+    # Core v2 同步：目标变化后重建，或首次确认且有目标但尚未落 TargetSpec。
+    # 指纹未变时（如只写 expected_outcome）不触发同步，避免重复 artifact。
+    needs_sync = "want" in sections and confirmed and (
+        target_changed or not existing_target_id
+    )
+    if needs_sync:
         try:
             from ..core.sync import sync_target
 

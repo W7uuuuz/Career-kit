@@ -61,8 +61,12 @@ def _seed_legacy_profile() -> CareerProfile:
         who={"name": "旧用户", "education": "双非本", "city": "北京"},
         have={"skills": ["Python"]},
         want={"target_role": "AI Agent 开发", "city": "北京", "user_confirmed": True},
-        # 迁移后的旧档案等价于 Phase 4 生成 anchor artifacts：目标已确认。
-        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+        # 迁移后的旧档案等价于 Phase 4 生成 anchor artifacts：目标已确认且带
+        # 显式 legacy 标记，才能走旧链路兜底（「有下游产物」本身不再算 legacy）。
+        guidance={
+            "goal_confirmed_at": "2026-11-09T00:00:00",
+            "legacy_migrated_at": "2026-11-09T00:00:00",
+        },
         research={
             "report_md": "C:/old/research.md",
             "jd_samples": [{"title": "AI Agent", "company": "字节跳动", "url": "u1"}],
@@ -550,3 +554,164 @@ def test_sync_skips_half_artifacts_when_upstream_missing(data_dir: Path) -> None
     profile_store.save_profile(profile, PROFILE_NAME)
     assert core_sync.sync_baseline_plan(PROFILE_NAME) == ""
     assert ArtifactStore().list(PROFILE_NAME, "baseline_plan") == []
+
+def test_sync_target_tracks_fingerprint_and_dedupes(data_dir: Path) -> None:
+    from src.core import sync as core_sync
+    from src.core.progress import (
+        TARGET_FINGERPRINT_KEY,
+        profile_target_fingerprint,
+    )
+
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发", "city": "北京"},
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_profile(PROFILE_NAME).startswith("pf_")
+
+    first = core_sync.sync_target(PROFILE_NAME)
+    first_fp = _load_artifact(first)["meta"]["inputs"][TARGET_FINGERPRINT_KEY]
+
+    # 只写 expected_outcome：内容与指纹不变，dedupe 复用同一 artifact。
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.want["expected_outcome"] = "薪资优先"
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_target(PROFILE_NAME) == first
+
+    # 目标字段变化：指纹变化，必须生成新 artifact，不能返回旧指纹。
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.want["target_role"] = "后端开发"
+    profile_store.save_profile(profile, PROFILE_NAME)
+    updated = core_sync.sync_target(PROFILE_NAME)
+    updated_fp = _load_artifact(updated)["meta"]["inputs"][TARGET_FINGERPRINT_KEY]
+
+    assert updated != first
+    assert updated_fp != first_fp
+    assert updated_fp == profile_target_fingerprint(profile)
+    assert (
+        profile_store.load_profile(PROFILE_NAME).core_state[core_sync.KEY_TARGET]
+        == updated
+    )
+
+
+def test_target_fingerprint_reads_who_and_want_graduation_year() -> None:
+    """届别指纹 who 优先、want 兜底；expected_outcome 不参与指纹。"""
+    from src.core.progress import profile_target_fingerprint
+
+    who_year = CareerProfile(
+        who={"name": "张三", "graduation_year": "2027"},
+        want={"target_role": "AI Agent 开发"},
+    )
+    want_fallback = CareerProfile(
+        who={"name": "张三"},
+        want={"target_role": "AI Agent 开发", "graduation_year": "2027"},
+    )
+    who_wins = CareerProfile(
+        who={"name": "张三", "graduation_year": "2027"},
+        want={"target_role": "AI Agent 开发", "graduation_year": "2028"},
+    )
+    expected_outcome = CareerProfile(
+        who={"name": "张三", "graduation_year": "2027"},
+        want={"target_role": "AI Agent 开发", "expected_outcome": "薪资优先"},
+    )
+    changed_who = CareerProfile(
+        who={"name": "张三", "graduation_year": "2028"},
+        want={"target_role": "AI Agent 开发"},
+    )
+
+    who_fp = profile_target_fingerprint(who_year)
+    assert who_fp == profile_target_fingerprint(want_fallback)
+    assert who_fp == profile_target_fingerprint(who_wins)
+    assert who_fp == profile_target_fingerprint(expected_outcome)
+    assert who_fp != profile_target_fingerprint(changed_who)
+
+
+def test_who_graduation_year_change_invalidates_and_syncs_target(
+    data_dir: Path,
+) -> None:
+    from src.core import sync as core_sync
+    from src.core.progress import (
+        TARGET_FINGERPRINT_KEY,
+        profile_target_fingerprint,
+        stored_target_fingerprint,
+    )
+    from src.core.state import State, resolve_state
+
+    profile = CareerProfile(
+        who={"name": "张三", "graduation_year": "2027"},
+        have={"skills": ["Python"]},
+        want={
+            "target_role": "AI Agent 开发",
+            "city": "北京",
+            "expected_outcome": "薪资优先",
+        },
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_profile(PROFILE_NAME).startswith("pf_")
+    first = core_sync.sync_target(PROFILE_NAME)
+    first_fp = _load_artifact(first)["meta"]["inputs"][TARGET_FINGERPRINT_KEY]
+
+    # 届别变化属于目标身份字段：旧 TargetSpec 失效（指纹比较，不靠时间戳）。
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.who["graduation_year"] = "2028"
+    profile_store.save_profile(profile, PROFILE_NAME)
+    snapshot = resolve_state(profile)
+    assert snapshot.state is State.PROFILE_COLLECTING
+    assert any(blocker.code == "target_stale" for blocker in snapshot.blockers)
+
+    # sync 能用新指纹重建，而不是 dedupe 回旧 artifact。
+    rebuilt = core_sync.sync_target(PROFILE_NAME)
+    rebuilt_fp = stored_target_fingerprint(_load_artifact(rebuilt))
+    assert rebuilt and rebuilt != first
+    assert rebuilt_fp != first_fp
+    assert rebuilt_fp == profile_target_fingerprint(profile)
+
+    # expected_outcome 仍不参与指纹：写完复跑 sync 仍复用当前 artifact。
+    profile = profile_store.load_profile(PROFILE_NAME)
+    profile.want["expected_outcome"] = "稳定优先"
+    profile_store.save_profile(profile, PROFILE_NAME)
+    assert core_sync.sync_target(PROFILE_NAME) == rebuilt
+
+
+def test_sync_target_skips_unconfirmed_new_flow(data_dir: Path) -> None:
+    from src.core import sync as core_sync
+
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+        research={"report_md": "C:/r.md", "jd_samples": [{"title": "AI Agent"}]},
+        gap={"match_score": 58},
+        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
+        tasks=[Task(id="task_001", name="任务", phase_id="phase_1")],
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    assert core_sync.sync_target(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, "target") == []
+    assert core_sync.KEY_TARGET not in profile_store.load_profile(
+        PROFILE_NAME
+    ).core_state
+
+
+def test_sync_market_baseline_does_not_create_profile_for_new_flow(
+    data_dir: Path,
+) -> None:
+    from src.core import sync as core_sync
+
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"brief_shown_at": "2026-11-09T00:00:00"},
+        research={"report_md": "C:/r.md", "jd_samples": [{"title": "AI Agent"}]},
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+
+    assert core_sync.sync_market_baseline(PROFILE_NAME) == ""
+    assert ArtifactStore().list(PROFILE_NAME, "profile") == []
+    assert ArtifactStore().list(PROFILE_NAME, "market_baseline") == []

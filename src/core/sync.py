@@ -33,6 +33,7 @@ from .artifacts.models import (
     TargetSpec,
 )
 from .artifacts.store import ArtifactStore
+from .progress import TARGET_FINGERPRINT_KEY, is_legacy_profile, target_fingerprint
 
 STAGE_PROFILE = "profile"
 STAGE_TARGET = "target"
@@ -93,6 +94,10 @@ def sync_target(profile_name: str) -> str:
         profile = load_profile(profile_name)
         if not profile.want:
             return ""
+        guidance = profile.guidance if isinstance(profile.guidance, dict) else {}
+        # 新流程目标未由用户确认时不得写 TargetSpec；真 legacy 允许兜底。
+        if not guidance.get("goal_confirmed_at") and not is_legacy_profile(profile):
+            return ""
         state = _core_state(profile)
         store = ArtifactStore()
         # TargetSpec 不能反向创建 ProfileSnapshot：新流程必须等 finalize_profile，
@@ -103,7 +108,14 @@ def sync_target(profile_name: str) -> str:
         spec = target_spec(profile)
         artifact = _TargetArtifact(
             meta=_meta(
-                store, "ts", STAGE_TARGET, profile_name, {"profile_id": profile_id}
+                store,
+                "ts",
+                STAGE_TARGET,
+                profile_name,
+                {
+                    "profile_id": profile_id,
+                    TARGET_FINGERPRINT_KEY: target_fingerprint(spec),
+                },
             ),
             **spec.model_dump(),
         )
@@ -616,6 +628,10 @@ def _resolve_profile_id(
     latest = store.latest(profile_name, STAGE_PROFILE)
     if _matches_stage(latest, STAGE_PROFILE, profile_name):
         return _artifact_id(latest)
+    # 新流程没有 ProfileSnapshot 时必须等 finalize_profile 生成；只有真 legacy
+    # 才允许在这里补 anchor 快照，避免新流程绕过 finalize。
+    if not is_legacy_profile(profile):
+        return ""
     try:
         snapshot = profile_snapshot(profile)
     except Exception:

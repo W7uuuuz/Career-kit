@@ -630,7 +630,8 @@ def test_skip_flag_cannot_bypass_applied_plan_upstream_checks(
     profile_state["plan"] = {"roadmap": {"phases": [{"name": "基线", "milestones": []}]}}
     profile_state["tasks"] = [object()]
     profile_state["guidance"] = {
-        "enterprise_alignment_skipped_at": "2026-11-09T00:00:00"
+        "goal_confirmed_at": "2026-11-09T00:00:00",
+        "enterprise_alignment_skipped_at": "2026-11-09T00:00:00",
     }
 
     action = state_machine.next_action(PROFILE_NAME)
@@ -669,7 +670,8 @@ def test_skip_flag_cannot_bypass_stale_execution_state_generation(
     profile_state["plan"] = {"roadmap": {"phases": [{"name": "基线", "milestones": []}]}}
     profile_state["tasks"] = [object()]
     profile_state["guidance"] = {
-        "enterprise_alignment_skipped_at": "2026-11-09T00:00:00"
+        "goal_confirmed_at": "2026-11-09T00:00:00",
+        "enterprise_alignment_skipped_at": "2026-11-09T00:00:00",
     }
 
     action = state_machine.next_action(PROFILE_NAME)
