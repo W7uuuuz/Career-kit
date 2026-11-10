@@ -19,7 +19,7 @@
 | `bytedance` | 字节跳动 | JD | 社招 / 校招 | [guide](../src/scrapers/bytedance/guide.md) |
 | `tencent` | 腾讯 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/tencent/guide.md) |
 | `baidu` | 百度 | JD | 社招 / 校招 / 实习 | [guide](../src/scrapers/baidu/guide.md) |
-| `alibaba` | 阿里巴巴 | JD | 校招 / 实习 | [guide](../src/scrapers/alibaba/guide.md) |
+| `alibaba` | 阿里巴巴 | JD | 校招 / 实习（社招见 `alibaba_social`） | [guide](../src/scrapers/alibaba/guide.md) |
 | `meituan` | 美团 | JD | 社招 | [guide](../src/scrapers/meituan/guide.md) |
 | `netease` | 网易 | JD | 社招 | [guide](../src/scrapers/netease/guide.md) |
 | `jd` | 京东 | JD | 社招 | [guide](../src/scrapers/jd/guide.md) |
@@ -31,7 +31,7 @@
 | `ctrip` | 携程 | JD | 社招 | [guide](../src/scrapers/ctrip/guide.md) |
 | `bilibili` | 哔哩哔哩 | JD | 社招 | [guide](../src/scrapers/bilibili/guide.md) |
 | `xiaomi` | 小米 | JD | 社招 | [guide](../src/scrapers/xiaomi/guide.md) |
-| `alibaba_social` | 阿里巴巴（社招） | JD | 社招 | [guide](../src/scrapers/alibaba_social/guide.md) |
+| `alibaba_social` | 阿里巴巴（社招） | JD | 社招（校招/实习见 `alibaba`） | [guide](../src/scrapers/alibaba_social/guide.md) |
 | `boe` | 京东方 | JD | 社招 | [guide](../src/scrapers/boe/guide.md) |
 | `huawei` | 华为 | JD | 社招 | [guide](../src/scrapers/huawei/guide.md) |
 | `sany` | 三一集团 | JD | 社招 | [guide](../src/scrapers/sany/guide.md) |

@@ -26,7 +26,10 @@ from .education import (
     normalize_education_tag,
 )
 from .paths import KNOWLEDGE_DIR
-from .scrapers.loader import resolve_company as _resolve_company
+from .scrapers.loader import (
+    resolve_company as _resolve_company,
+    resolve_company_scrapers,
+)
 from .tools.knowledge_search import search_knowledge as _search_local
 
 _RECENT_DAYS = 730  # 近两年新鲜度全额分，之后线性衰减
@@ -134,9 +137,9 @@ def collect_cases(
 
     # ---- 源 4：company 匹配的官方/BOSS 源（面试要求） ----
     if company:
-        slug = resolve_company(company)
-        if slug and slug not in {"nowcoder", "github"}:
-            _feed(slug, _search_official(slug, role, city, edu_condition))
+        for slug in resolve_company_scrapers(company):
+            if slug and slug not in {"nowcoder", "github"}:
+                _feed(slug, _search_official(slug, role, city, edu_condition))
 
     cards = [_row_to_card(r) for r in raw_items]
     cards = [c for c in cards if c]

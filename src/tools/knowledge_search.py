@@ -16,6 +16,7 @@ from ..paths import KNOWLEDGE_DIR
 from ..scrapers.loader import (
     list_scrapers,
     resolve_company as _resolve_company,
+    resolve_company_scrapers,
 )
 
 SUPPORTED_EXTENSIONS = {".md", ".txt", ".json"}
@@ -57,9 +58,10 @@ def _company_sources_for_query(query: str) -> set[str]:
         token = token.strip()
         if len(token) < 2 or token in _STOP_WORDS:
             continue
-        canonical = resolve_company(token).lower()
-        if canonical in known:
-            sources.add(canonical)
+        for scraper_id in resolve_company_scrapers(token):
+            canonical = scraper_id.lower()
+            if canonical in known:
+                sources.add(canonical)
     return sources
 
 

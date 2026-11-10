@@ -4,7 +4,8 @@
 - https://github.com/HA7CH/job-pro （CSRF、batch 发现、搜索/详情字段）
 - https://github.com/Enzoding/JobHunt-CLI （阿里系站点矩阵）
 
-范围：仅校招（graduate）与实习（internship）。阿里社招在另一套站点，暂不覆盖。
+范围：仅校招（graduate）与实习（internship）。阿里社招见 alibaba_social，
+调用 fetch_company_jobs(company="alibaba_social") 查询。
 接口需要 XSRF-TOKEN：先 GET 校招页面拿 cookie，再带 X-XSRF-TOKEN 头 POST。
 """
 

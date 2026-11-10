@@ -180,6 +180,46 @@ def test_get_scraper_guide_resolves_alias():
     assert "美团" in result
 
 
+def test_resolve_company_scrapers_returns_all_sources():
+    from src.scrapers.loader import resolve_company_scrapers
+
+    alibaba_sources = resolve_company_scrapers("阿里")
+    assert "alibaba" in alibaba_sources
+    assert "alibaba_social" in alibaba_sources
+
+    # 单源企业只返回自身；平台返回自身；未知返回空
+    assert resolve_company_scrapers("美团") == ["meituan"]
+    assert resolve_company_scrapers("boss") == ["boss"]
+    assert resolve_company_scrapers("不存在") == []
+
+
+def test_get_scraper_guide_mentions_related_alibaba_social():
+    from src.tools.data_tools import get_scraper_guide
+
+    result = get_scraper_guide(company="阿里")
+    assert "alibaba_social" in result
+    assert "暂未接入" not in result
+
+
+def test_fetch_company_jobs_mentions_related_alibaba_social(monkeypatch):
+    import asyncio
+
+    import src.tools.data_tools as data_tools
+
+    def fake_search(company, **kwargs):
+        return {
+            "company": "阿里巴巴（校招/实习）",
+            "results": [{"title": "校招岗位", "url": "https://example.com/job/1"}],
+            "count": 1,
+        }
+
+    monkeypatch.setattr(data_tools, "search_company_jobs", fake_search)
+    out = asyncio.run(
+        data_tools.fetch_company_jobs(company="阿里", params='{"keyword":"AI"}')
+    )
+    assert "alibaba_social" in out
+
+
 def test_fetch_company_jobs_resolves_alias(monkeypatch):
     import asyncio
 

@@ -5,7 +5,8 @@
 搜索阿里巴巴集团校招与实习岗位。数据来自公开的 `campus-talent.alibaba.com`
 接口，需要先获取 `XSRF-TOKEN`，再按在招批次搜索。
 
-**范围说明**：本数据源只覆盖校招/实习。阿里社招在另一套站点，暂未接入。
+**范围说明**：本数据源只覆盖校招/实习。阿里社招见 `alibaba_social`，
+调用 `fetch_company_jobs(company="alibaba_social", params=...)` 查询。
 
 ## 参数
 

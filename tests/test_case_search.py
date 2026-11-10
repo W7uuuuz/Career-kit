@@ -215,6 +215,27 @@ def test_collect_cases_routes_company_alias(monkeypatch):
     assert "meituan" in calls, "search_cases 应通过统一别名入口路由到 meituan"
 
 
+def test_collect_cases_searches_all_company_scrapers(monkeypatch):
+    """企业有多个数据源时（阿里校招 + 社招）不能只看 primary。"""
+    import src.case_search as cs
+    import src.scrapers.loader as loader
+
+    calls: list[str] = []
+
+    def fake_loader_search(company, **kwargs):
+        calls.append(company)
+        return _loader_resp([])
+
+    monkeypatch.setattr(loader, "search_company_jobs", fake_loader_search)
+    monkeypatch.setattr(
+        cs, "_search_local", lambda q: {"results": [], "count": 0, "knowledge_dir": "x"}
+    )
+
+    cs.collect_cases("AI Agent 开发", company="阿里")
+    assert "alibaba" in calls
+    assert "alibaba_social" in calls
+
+
 def test_collect_cases_kind_filter_and_failures(monkeypatch):
     import src.case_search as cs
 

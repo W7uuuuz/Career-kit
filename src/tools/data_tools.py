@@ -9,7 +9,11 @@ import sys
 from ..guidance import login_action
 from ..mcp_app import mcp
 from ..scrapers import get_job_detail, list_scrapers, search_company_jobs
-from ..scrapers.loader import read_scraper_guide, resolve_company
+from ..scrapers.loader import (
+    read_scraper_guide,
+    resolve_company,
+    resolve_company_scrapers,
+)
 from .errors import error_response
 from .plan_importer import parse_plan_file
 from .profile import load_profile
@@ -21,6 +25,24 @@ def _field_text(value: object) -> str:
     if isinstance(value, (list, tuple, set)):
         return "、".join(str(item).strip() for item in value if str(item).strip())
     return str(value or "").strip()
+
+
+def _related_scrapers(company: str, primary: str) -> list[str]:
+    """该企业除 primary 外的其它已注册数据源。"""
+    return [s for s in resolve_company_scrapers(company) if s != primary]
+
+
+def _related_scrapers_hint(related: list[str], primary: str) -> str:
+    """提示同企业还有其它数据源，避免只查 primary 时静默漏源。"""
+    if not related:
+        return ""
+    labels = [f"{s}（社招源）" if "social" in s.lower() else s for s in related]
+    names = "、".join(labels)
+    return (
+        f"\n\n该企业还有其它数据源：{names}。"
+        f"本次只查询了 {primary}；"
+        f"可用 fetch_company_jobs(company=\"{related[0]}\", ...) 单独查询。"
+    )
 
 
 @mcp.tool()
@@ -126,7 +148,8 @@ def get_scraper_guide(company: str) -> str:
         company: 企业 ID（通过 list_data_sources 获取）
             示例：bytedance
     """
-    guide = read_scraper_guide(resolve_company(company))
+    scraper_id = resolve_company(company)
+    guide = read_scraper_guide(scraper_id)
     if guide is None:
         available = ", ".join(s["id"] for s in list_scrapers()) or "无"
         return (
@@ -134,7 +157,9 @@ def get_scraper_guide(company: str) -> str:
             f"可用数据源：{available}\n"
             "下一步：调用 list_data_sources 查看可用来源。"
         )
-    return guide + "\n\n下一步：按教程调用 fetch_company_jobs。"
+    related = _related_scrapers(company, scraper_id)
+    hint = _related_scrapers_hint(related, scraper_id)
+    return guide + hint + "\n\n下一步：按教程调用 fetch_company_jobs。"
 
 
 @mcp.tool()
@@ -211,6 +236,8 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
 
     # 别名统一解析后再路由；数据源内部只认 scraper id
     company_id = resolve_company(company)
+    related = _related_scrapers(company, company_id)
+    related_hint = _related_scrapers_hint(related, company_id)
 
     # BOSS 登录前置关卡：未登录时直接引导到 boss_login，不再问第二个问题
     if company_id == "boss":
@@ -275,6 +302,7 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
             f"{message}\n\n{server_fingerprint_line()}",
             {
                 "available": result.get("available", []),
+                "related_scrapers": related,
                 "recovery": recovery,
             },
         )
@@ -286,6 +314,7 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         return (
             f"「{company_name}」未找到匹配的岗位。\n\n"
             "建议：1) 换更宽泛的关键词重试 2) 尝试其他企业数据源（list_data_sources 查看）"
+            + related_hint
         )
 
     # 部分失败的警告信息
@@ -326,6 +355,8 @@ async def fetch_company_jobs(company: str, params: str = "{}") -> str:
         lines.append(
             "当前数据源未提供薪资；如需薪资行情，请补充 BOSS 直聘等含薪资来源。"
         )
+    if related_hint:
+        lines.append(related_hint)
     return "\n".join(lines)
 
 

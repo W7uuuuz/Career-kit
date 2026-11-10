@@ -37,4 +37,4 @@ fetch_company_jobs(company="alibaba_social", params='{"keyword":"Java","city":"�
 ## 注意
 - 列表响应已包含岗位职责与要求；`fetch_jd_detail` 使用搜索时的列表快照。
 - 未找到列表快照时，请先重新 `fetch_company_jobs`。
-- 校招/实习仍使用 `alibaba` 源。
+- 校招/实习见 `alibaba`，调用 `fetch_company_jobs(company="alibaba", params=...)` 查询。

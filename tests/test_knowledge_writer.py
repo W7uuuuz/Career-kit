@@ -434,3 +434,18 @@ def test_knowledge_search_company_alias_uses_loader(tmp_path, monkeypatch):
     normal = ks.search_knowledge("Agent")
     assert normal["count"] == 1
     assert normal["results"][0]["source"] == "jds/bytedance/2026-01-01_Agent工程师.json"
+
+
+def test_knowledge_search_matches_all_company_scrapers(tmp_path, monkeypatch):
+    """阿里别名应能命中 alibaba_social 目录，而不是只认 primary alibaba。"""
+    import src.tools.knowledge_search as ks
+
+    social = tmp_path / "jds" / "alibaba_social" / "2026-01-01_Java工程师.json"
+    social.parent.mkdir(parents=True)
+    social.write_text('{"title": "Java工程师", "description": "负责交易系统"}', encoding="utf-8")
+
+    monkeypatch.setattr(ks, "KNOWLEDGE_DIR", tmp_path)
+
+    result = ks.search_knowledge("阿里")
+    assert result["count"] >= 1
+    assert any(r["source"].startswith("jds/alibaba_social/") for r in result["results"])

@@ -77,12 +77,45 @@ def _platform_aliases() -> dict[str, str]:
     return mapping
 
 
+def resolve_company_scrapers(identifier: str) -> list[str]:
+    """别名 / 企业名 / 企业 id / scraper id → 该企业全部 scraper id。
+
+    返回企业目录中的 ``available_scrapers``；平台与单源返回自身；
+    未找到返回 ``[]``。别名可能对应多个数据源（如阿里校招 + 社招），
+    查询多个来源时应使用本函数，而不是只看 primary。
+    """
+    raw = (identifier or "").strip()
+    if not raw:
+        return []
+    key = raw.lower()
+
+    company = get_company(raw)
+    if company:
+        available = company.get("available_scrapers") or []
+        if available:
+            return list(available)
+
+    config = _load_config().get("scrapers", {})
+    for scraper_id in config:
+        if key == scraper_id.lower():
+            return [scraper_id]
+    for scraper_id, info in config.items():
+        if key == str(info.get("name") or "").strip().lower():
+            return [scraper_id]
+
+    platform_id = _platform_aliases().get(key)
+    if platform_id:
+        return [platform_id]
+    return []
+
+
 def resolve_company(identifier: str) -> str:
-    """别名 / 企业名 / 企业 id / scraper id → scraper id（唯一解析入口）。
+    """别名 / 企业名 / 企业 id / scraper id → primary scraper id（唯一解析入口）。
 
     顺序：注册表 id → 注册表显示名 → 平台别名（companies.yaml platforms）→
     企业目录（companies.yaml + catalog.get_company 的 id/名称/别名/scraper）。
     解析不到时原样返回，交由调用方给出「未找到 Scraper」的真实错误。
+    需要企业全部数据源时改用 resolve_company_scrapers。
     """
     raw = (identifier or "").strip()
     if not raw:
