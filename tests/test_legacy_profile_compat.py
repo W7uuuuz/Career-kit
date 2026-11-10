@@ -113,6 +113,10 @@ def _legacy_document() -> dict[str, Any]:
         "who": {"name": "旧用户", "education": "双非本", "city": "北京"},
         "have": {"skills": ["Python", "LangChain"]},
         "want": {"target_role": "AI Agent 开发", "city": "北京", "target_tiers": ["大厂"]},
+        # 旧档案迁移后目标由用户确认（Phase 4 legacy adapter 等价事实）。
+        "guidance": {"goal_confirmed_at": "2025-01-01T00:00:00"},
+        # anchor 回填需要的旧调研事实（报告存在即视为市场基线已落地）。
+        "research": {"report_md": "C:/old/research.md", "counts": {}},
         "gap": {"match_score": 58, "start_level": "小厂"},
         "plan": _legacy_roadmap(),
         "tasks": _legacy_tasks(),

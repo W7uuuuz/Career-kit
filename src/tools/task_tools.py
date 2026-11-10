@@ -6,6 +6,7 @@ from datetime import datetime
 
 from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
 from ..core.progress import STAGE_EXECUTING, STAGE_EXECUTION, resolve_progress
+from ..core.state import State, StateSnapshot, resolve_state
 from ..guidance import MAINTENANCE_CLOSING, guide_for, is_legacy
 from ..mcp_app import mcp
 from .dashboard import (
@@ -17,7 +18,7 @@ from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import get_active_profile_name, load_profile, save_profile
 from .resource_catalog import select_resources, validate_resources
-from .session_tools import _has_goal, _summarize_dict
+from .session_tools import _summarize_dict
 from .tool_helpers import _json, _parse_json_param
 
 _FINISHED_TASK_STATUSES = ("completed", "skipped")
@@ -1001,53 +1002,6 @@ def _review_nudge_hint() -> str:
     return ""
 
 
-_STAGE_NAMES = (
-    "职业档案构建",
-    "目标岗位定位",
-    "市场基线调研",
-    "能力差距诊断",
-    "培养方案规划",
-    "目标企业筛选",
-    "岗位与面经采集",
-    "企业需求分析",
-    "执行方案校准",
-    "任务执行与打卡",
-    "求职投递管理",
-    "周期复盘与计划调整",
-)
-
-_STAGE_NEXT_TOOLS = (
-    "finalize_profile",
-    "explore_goals / intake(section=\"want\")",
-    "gather_research_data",
-    "analyze_gaps",
-    "generate_roadmap",
-    "select_target_companies",
-    "collect_company_evidence",
-    "analyze_company_requirements",
-    "plan_execution_alignment",
-    "get_next_tasks",
-    "build_application_list / record_application",
-    "get_weekly_review",
-)
-
-_CORE_STAGE_INDEX = {
-    "profile": 1,
-    "target": 2,
-    "market_baseline": 3,
-    "gap": 4,
-    "baseline_plan": 5,
-    "company_pool": 6,
-    "evidence": 7,
-    "requirement": 8,
-    "execution_plan": 9,
-    "execution": 10,
-    "executing": 10,
-    "applications": 11,
-    "review": 12,
-}
-
-
 def _backfill_core_state(profile):
     """旧档案补齐：core_state 缺 key 且档案已有对应数据时补一次 sync。
 
@@ -1125,50 +1079,71 @@ def _backfill_core_state(profile):
     return load_profile() if changed else profile
 
 
-def _core_next_step_text(action: dict) -> str:
-    """把状态机输出转成「下一步」单行文案，保证与 [GUIDE] 同源。"""
-    tool = str((action or {}).get("next_tool") or "")
-    reason = str((action or {}).get("reason") or "")
-    return f"{tool}（{reason}）" if reason else tool
+def _stage_position(snapshot: StateSnapshot) -> tuple[int, str, str]:
+    """阶段位置与下一步只取 StateSnapshot，不再自维护阶段/工具映射。"""
+    return snapshot.stage_index, snapshot.stage_name, snapshot.next_tool
 
 
-def _stage_position(profile, core_action: dict) -> tuple[int, str, str]:
-    """根据状态机输出（缺失时回退 core_state）给出 12 阶段位置与下一步。"""
-    stage = str((core_action or {}).get("stage") or "")
-    index = _CORE_STAGE_INDEX.get(stage)
-    next_tool = str((core_action or {}).get("next_tool") or "")
+# 内部状态词只用于状态报告的兼容展示，不参与阶段/下一步推导。
+_STATE_PHASE: dict[State, str] = {
+    State.EMPTY: "not_started",
+    State.PROFILE_COLLECTING: "profile_building",
+    State.PROFILE_READY: "profile_building",
+    State.MARKET_PENDING: "research",
+    State.GAP_PENDING: "analysis",
+    State.BASELINE_PLAN_PENDING: "planning",
+    State.COMPANY_PENDING: "execution_prep",
+    State.EVIDENCE_PENDING: "execution_prep",
+    State.REQUIREMENT_DRAFT: "execution_prep",
+    State.REQUIREMENT_READY: "execution_prep",
+    State.EXECUTION_PLAN_DRAFT: "execution_prep",
+    State.EXECUTION_READY: "execution_prep",
+    State.EXECUTING: "execution",
+    State.MAINTENANCE: "completed",
+}
 
-    if index is None:
-        # 状态机不可用时按 core_state 指针退化推导，避免整份报告缺阶段信息
-        try:
-            from ..core import sync as core_sync
-        except Exception:  # noqa: BLE001 - 无核心模块时按建档起点处理
-            return 1, _STAGE_NAMES[0], _STAGE_NEXT_TOOLS[0]
-        state = profile.core_state if isinstance(profile.core_state, dict) else {}
-        # 完整 12 阶段 key：不能只遍历前 5 个再硬编码跳到执行阶段，
-        # 否则投递/复盘阶段永远显示不出来。
-        keys = (
-            core_sync.KEY_PROFILE,
-            core_sync.KEY_TARGET,
-            core_sync.KEY_MARKET_BASELINE,
-            core_sync.KEY_GAP,
-            core_sync.KEY_BASELINE_PLAN,
-            "company_pool_id",
-            "evidence_run_id",
-            "requirement_profile_id",
-            "execution_plan_id",
-            core_sync.KEY_EXECUTION,
-            core_sync.KEY_APPLICATIONS,
-            core_sync.KEY_REVIEW,
-        )
-        for position, key in enumerate(keys, start=1):
-            if not state.get(key):
-                return position, _STAGE_NAMES[position - 1], _STAGE_NEXT_TOOLS[position - 1]
-        index = len(keys)
+_NEXT_STEP_NOTE_CODES = (
+    "gap_stale",
+    "target_stale",
+    "execution_state_stale",
+    "enterprise_alignment_skipped",
+    "requirement_draft",
+    "execution_plan_not_applied",
+    "execution_plan_invalid",
+)
 
-    if not next_tool and index == 10:
-        next_tool = "get_next_tasks"
-    return index, _STAGE_NAMES[index - 1], next_tool
+
+def _next_step_note(snapshot: StateSnapshot) -> str:
+    for blocker in snapshot.blockers:
+        if blocker.code in _NEXT_STEP_NOTE_CODES and blocker.detail:
+            return blocker.detail
+    return ""
+
+
+def _completed_steps(profile) -> list[str]:
+    """已完成步骤只从档案事实推导，不参与阶段与下一步判断。"""
+    steps: list[str] = []
+    if profile.who or profile.have or profile.want or profile.summary:
+        steps.append("start_session")
+    if profile.who:
+        steps.append("intake(who)")
+    if profile.have:
+        steps.append("intake(have)")
+    if profile.want:
+        steps.append("intake(want)")
+    if profile.summary:
+        steps.append("finalize_profile")
+    research = profile.research if isinstance(profile.research, dict) else {}
+    if research.get("report_md"):
+        steps.extend(("research_market", "gather_research_data"))
+    if profile.gap:
+        steps.append("analyze_gaps")
+    plan = profile.plan if isinstance(profile.plan, dict) else {}
+    if plan.get("roadmap"):
+        steps.append("generate_roadmap")
+    if profile.tasks:
+        steps.append("generate_tasks")
+    return steps
 
 
 @mcp.tool()
@@ -1185,15 +1160,8 @@ def get_workflow_status() -> str:
     """
     # 旧档案补齐：缺 key 且已有数据时补一次 sync（只补缺失，不重建）
     profile = _backfill_core_state(load_profile())
-
-    # Core v2 状态机（只读）：12 阶段位置与企业适配建议
-    core_v2: dict = {}
-    try:
-        from ..core.orchestrator.state_machine import next_action as _core_next
-
-        core_v2 = _core_next(get_active_profile_name())
-    except Exception:  # noqa: BLE001 - 状态推导失败不能拖垮整份状态报告
-        core_v2 = {}
+    # 唯一状态源：阶段位置与下一步只来自 resolve_state。
+    snapshot = resolve_state(profile)
 
     # 目标变更检测（BUG-010）：want 是用户真实目标，变更要强告警；
     # target_jd 可能被示例/误导入污染，降级为「可核查提示」并附摘要，不再逼用户重分析
@@ -1216,154 +1184,18 @@ def get_workflow_status() -> str:
                     "若为误导入（如示例文本），可忽略本提示，或请 LLM 用 import_jd 覆盖为真实 JD。\n\n"
                 )
 
-    # 确定当前阶段
-    phase = "not_started"
-    completed_steps = []
-    next_step = "start_session"
-
-    # 换 JD 后旧分析失效（gap_stale_at）：最高优先级，强制重新分析——
-    # 防止基于旧 JD 分析直接规划（用户以为已经按新 JD 分析过）
-    if profile.gap and profile.gap_stale_at:
-        phase = "analysis"
-        next_step = "analyze_gaps（目标 JD 已更新，旧差距分析已过期，必须重新分析后才可重新规划）"
-
-    if profile.who or profile.have or profile.want:
-        phase = "profile_building"
-        completed_steps.append("start_session")
-
-        if profile.who:
-            completed_steps.append("intake(who)")
-        if profile.have:
-            completed_steps.append("intake(have)")
-        if profile.want:
-            completed_steps.append("intake(want)")
-
-        if not profile.summary:
-            next_step = "finalize_profile"
-        else:
-            completed_steps.append("finalize_profile")
-
-    # 换 JD 后旧分析失效（gap_stale_at）：最高优先级——常规阶段推进的
-    # next_step 一律改回重新分析，防止用户跳过分析直接规划/执行
-    stale_gap = bool(profile.gap and profile.gap_stale_at)
-    stale_step = (
-        "analyze_gaps（目标 JD 已更新，旧差距分析已过期，必须重新分析后才可重新规划）"
-    )
-
-    if profile.summary:
-        phase = "analysis"
-        has_research = bool((profile.research or {}).get("report_md"))
-        if has_research:
-            # 已完成步骤从实际产物推导，不依赖会话内事件（P1-3）
-            for done in ("research_market", "gather_research_data"):
-                if done not in completed_steps:
-                    completed_steps.append(done)
-        if stale_gap:
-            next_step = stale_step
-        elif not profile.gap:
-            if _has_goal(profile):
-                if not has_research:
-                    # 调研是独立一步（软引导，不硬挡）：报告是一切分析的地基
-                    phase = "research"
-                    next_step = (
-                        "research_market（推荐先做：真实市场是分析的地基）；"
-                        "也可直接 analyze_gaps"
-                    )
-                else:
-                    next_step = "analyze_gaps"
-            else:
-                next_step = "explore_goals（尚无明确目标——先用三轴定位选定方向，再 analyze_gaps）"
-        else:
-            completed_steps.append("analyze_gaps")
-
-    if profile.gap:
-        phase = "planning"
-        if stale_gap:
-            next_step = stale_step
-        elif not profile.plan.get("roadmap"):
-            next_step = "generate_roadmap"
-        else:
-            completed_steps.append("generate_roadmap")
-
-    if profile.plan.get("roadmap"):
-        phase = "execution_prep"
-        if stale_gap:
-            next_step = stale_step
-        elif not profile.tasks:
-            next_step = (
-                "detail_current_phase（建议先细化当前阶段，再 generate_tasks）；"
-                "不想细化也可直接 generate_tasks"
-            )
-        else:
-            completed_steps.append("generate_tasks")
-
-    if profile.tasks:
-        phase = "execution"
-        finished_status = ("completed", "skipped")
-        all_finished = all(t.status in finished_status for t in profile.tasks)
-
-        if all_finished:
-            roadmap = profile.plan.get("roadmap", profile.plan)
-            roadmap_phases = (
-                [p for p in roadmap.get("phases", []) if isinstance(p, dict)]
-                if isinstance(roadmap, dict)
-                else []
-            )
-            pending_phase = _next_phase_to_generate(profile, roadmap_phases) if roadmap_phases else ""
-            # 全部任务完成不等于「目标达成」：core_v2 可能还需要为新阶段生成任务。
-            if pending_phase or core_v2.get("next_tool") == "generate_tasks":
-                phase = "execution_prep"
-                if pending_phase:
-                    pending_name = next(
-                        (
-                            p.get("name") or pending_phase
-                            for idx, p in enumerate(roadmap_phases)
-                            if _roadmap_phase_id(p, idx) == pending_phase
-                        ),
-                        pending_phase,
-                    )
-                    next_step = (
-                        f"generate_tasks（当前任务已完成，路线图还有新阶段"
-                        f"「{pending_name}」待生成）"
-                    )
-                else:
-                    next_step = "generate_tasks（core v2 需要为新阶段生成任务）"
-            else:
-                phase = "completed"
-                next_step = "所有任务已完成——进入持续维护：继续投递、面试复盘与周期检视"
-        elif stale_gap:
-            next_step = stale_step
-        else:
-            next_step = "get_next_tasks"
-
-    # Core v2 企业适配：路线图已存在时，按 artifact 状态给出执行前的校准路径。
-    # 只做只读推导；不改变旧工作流，不自动改写档案。
-    if profile.plan.get("roadmap") and core_v2.get("next_tool") and not profile.tasks and not stale_gap:
-        next_step = (
-            f"{core_v2['next_tool']}（企业适配：{core_v2.get('reason', '')}）"
-        )
-
+    phase = _STATE_PHASE[snapshot.state]
+    completed_steps = _completed_steps(profile)
     fit = _plan_fit_result("manual") if profile.plan.get("roadmap") else {}
-    # 执行中（已有任务）时，企业适配/上游采集只是可选提示，不能覆盖主下一步。
-    if (
-        fit.get("status") in ("major_drift", "stale_evidence")
-        and fit.get("next_tool")
-        and not stale_gap
-        and not profile.tasks
-    ):
-        next_step = (
-            f"{fit['next_tool']}（计划失配：{fit.get('recommended_action', '')}）"
-        )
-
-    # 唯一事实源：core_v2（resolve_progress）有结论时，**下一步**只跟它走——
-    # 已有 tasks 也不能把阶段 6-9 的企业适配覆盖成 get_next_tasks。
-    if core_v2.get("next_tool"):
-        next_step = _core_next_step_text(core_v2)
 
     # 构建状态报告
     total_tasks = len(profile.tasks)
     completed_tasks = sum(1 for t in profile.tasks if t.status == "completed")
-    stage_index, stage_name, stage_next = _stage_position(profile, core_v2)
+    stage_index, stage_name, stage_next = _stage_position(snapshot)
+    next_step = snapshot.next_tool
+    next_step_note = _next_step_note(snapshot)
+    if next_step_note:
+        next_step = f"{next_step}（{next_step_note}）"
 
     lines = [guide_for(profile), ""]
     lines.append(f"## 当前阶段（12 步）：{stage_index}/12 {stage_name}")
@@ -1389,6 +1221,15 @@ def get_workflow_status() -> str:
     lines.append(f"- 总计：{total_tasks} 个")
     lines.append(f"- 已完成：{completed_tasks} 个")
     lines.append("")
+    applications = getattr(profile, "applications", None) or []
+    last_review = str(getattr(profile, "last_review_at", "") or "")
+    if applications or last_review:
+        lines.append("### 投递与复盘（可选事实）")
+        if applications:
+            lines.append(f"- 投递记录：{len(applications)} 条")
+        if last_review:
+            lines.append(f"- 上次周检视：{last_review}")
+        lines.append("")
     research = profile.research or {}
     if research.get("report_md"):
         counts = research.get("counts") or {}
@@ -1401,31 +1242,27 @@ def get_workflow_status() -> str:
         lines.append(f"- 报告：{report_html}")
         lines.append(f"- 资产总览：{research.get('index') or (get_assets_root() / INDEX_FILENAME)}")
         lines.append("")
-    if profile.plan.get("roadmap") and core_v2:
+    if profile.plan.get("roadmap"):
         lines.append("### 企业适配（Core v2）")
-        lines.append(f"- 阶段：{core_v2.get('stage', '')}")
-        if core_v2.get("next_tool"):
-            lines.append(f"- 下一步：{core_v2['next_tool']}（{core_v2.get('reason', '')}）")
-        artifact_ids = core_v2.get("artifact_ids") or {}
-        stored = [f"{key}={value}" for key, value in artifact_ids.items() if value]
+        lines.append(f"- 阶段：{snapshot.state.value.lower()}")
+        lines.append(f"- 下一步：{snapshot.next_tool}（{snapshot.user_decision}）")
+        stored = [f"{key}={value}" for key, value in snapshot.artifact_ids.items() if value]
         if stored:
             lines.append("- 已落库：" + "、".join(stored))
-        lines.append("- 说明：企业适配推荐执行；用户选择先按基线执行时会记录跳过事实，后续可补。")
+        if snapshot.skip_flags.get("enterprise_alignment"):
+            lines.append("- 说明：已记录企业适配跳过；补齐企业 artifact 后会自动恢复企业链路。")
+        else:
+            lines.append("- 说明：企业适配推荐执行；用户选择先按基线执行时会记录跳过事实，后续可补。")
         lines.append("")
     fit_lines = _plan_fit_lines(fit)
     if fit_lines:
         lines.extend(fit_lines)
         lines.append("")
     lines.append("### 工作流指南")
-    lines.append("- 建档：start_session → intake(who/have/want) → finalize_profile；无目标用 explore_goals 选方向")
-    lines.append("- 调研（建议在分析前）：research_market → gather_research_data → 报告落盘 ~/CareerKit（真实 JD + 同学历经历，带来源）")
-    lines.append("- 分析：explore_goals（无目标时）→ analyze_gaps（直接引用调研数据）→ save_gap_analysis")
-    lines.append("- 规划：generate_roadmap（按 step_template 分步：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿）→ save_roadmap")
-    lines.append("- 企业适配（推荐；可先按基线执行并记录跳过）：select_target_companies → collect_company_evidence → analyze_company_requirements → save_requirement_profile → plan_execution_alignment → save_execution_alignment")
-    lines.append("- 执行：detail_current_phase（建议先细化当前阶段）→ save_current_detail → generate_tasks → get_next_tasks → checkin_task → trigger_insight(stage_audit/event) → apply_insight")
-    lines.append("- 产出：export_dashboard 生成阶段进度仪表盘")
-    lines.append("- 投递：build_application_list 批量生成投递清单；投递/面试/offer 进展用 record_application 登记")
-    lines.append("- 复盘：get_weekly_review 做周检视；计划失配用 check_plan_fit")
+    lines.append(
+        "- 完整流程、前置条件与命令序列：见 career-kit://docs/workflow"
+        "（唯一事实源，状态报告不再重复维护命令清单）"
+    )
     lines.append("")
     if phase == "completed":
         lines.append(MAINTENANCE_CLOSING)

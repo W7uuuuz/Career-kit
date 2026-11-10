@@ -223,12 +223,21 @@ def test_detail_current_phase_exposes_resource_catalog(temp_profile):
     assert "how_to" in detail["instructions"]
 
 
-def test_completed_mainline_shows_maintenance_closing(temp_profile):
+def test_completed_mainline_shows_maintenance_closing(temp_profile, monkeypatch):
     """全部任务完成后的结束语：主线完成，后续是持续维护。"""
+    from src import paths
+    from src.core.artifacts.store import ArtifactStore
     from src.models import Task
     from src.server import get_next_tasks, get_progress, get_workflow_status
 
+    from test_state_matrix import PROFILE_NAME, seed_executed_chain
+
+    monkeypatch.setattr(paths, "PROFILE_DIR", temp_profile)
     profile = _profile_with_roadmap()
+    profile.want = {"target_role": "AI Agent 开发", "user_confirmed": True}
+    profile.guidance = {"goal_confirmed_at": "2026-11-09T00:00:00"}
+    profile.gap = {"match_score": 60}
+    profile.core_state = seed_executed_chain(ArtifactStore())
     profile.tasks = [Task(
         id="task_001",
         name="刷 LeetCode 热题 100",
@@ -236,7 +245,8 @@ def test_completed_mainline_shows_maintenance_closing(temp_profile):
         milestone_id="phase_1_ms_1",
         status="completed",
     )]
-    profile_module.save_profile(profile)
+    profile_module.save_profile(profile, PROFILE_NAME)
+    profile_module.set_active_profile_name(PROFILE_NAME)
 
     next_tasks = get_next_tasks()
     assert "主线任务已完成" in next_tasks

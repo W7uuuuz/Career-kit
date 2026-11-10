@@ -720,10 +720,11 @@ def test_workflow_status_routes_to_explore_goals_when_no_goal(temp_profile):
     out = get_workflow_status()
     assert "explore_goals" in out
 
-    # 有目标 → next_step 指向 analyze_gaps
+    # 有目标但未亲口确认：停在目标确认，不跳到 analyze_gaps（状态表 row 2）
     intake("want", '{"target_role": "AI 应用开发"}')
     out2 = get_workflow_status()
-    assert "analyze_gaps" in out2
+    assert "intake(want)" in out2
+    assert "**下一步**：analyze_gaps" not in out2
 
 
 def test_finalize_profile_reminds_when_no_goal(temp_profile):
@@ -1131,14 +1132,23 @@ def test_daily_same_day_is_idempotent(temp_profile):
 def test_save_roadmap_guides_execution_start(temp_profile, monkeypatch):
     """save_roadmap 的 next_steps 与 message 同源：推荐企业适配，也可先按基线执行。"""
     from src import paths
-    from src.server import intake, save_roadmap
+    from src.core.sync import sync_market_baseline
+    from src.server import finalize_profile, intake, save_gap_analysis, save_roadmap
+    from src.tools.profile import get_active_profile_name, load_profile, save_profile
 
     # temp_profile 只重定向 profile 存储；artifact store 也要一起隔离，避免读到历史链。
     monkeypatch.setattr(paths, "PROFILE_DIR", temp_profile)
 
     intake("who", '{"name": "张三"}')
-    intake("have", '{"skills": ["Python"]}')
+    intake("have", '{"skills": []}')
     intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
+    finalize_profile()
+    # 基线路线图要能推进到阶段 6，上游市场与差距 artifact 必须真实存在。
+    profile = load_profile()
+    profile.research = {"report_md": "research.md", "counts": {}}
+    save_profile(profile)
+    sync_market_baseline(get_active_profile_name())
+    save_gap_analysis(json.dumps({"match_score": 60, "skill_gaps": []}, ensure_ascii=False))
 
     roadmap = {"roadmap": {"strategy_summary": "测试", "phases": [
         {"type": "project", "name": "做项目", "resume_value": "项目",

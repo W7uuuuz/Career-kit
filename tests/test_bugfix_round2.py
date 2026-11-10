@@ -249,18 +249,32 @@ def test_kpi_without_counted_tasks_via_advisory(temp_profile):
 
 
 def test_import_jd_marks_gap_stale(temp_profile):
-    from src.server import get_workflow_status, import_jd, save_gap_analysis
+    from src.core.sync import sync_market_baseline
+    from src.server import (
+        finalize_profile,
+        get_workflow_status,
+        import_jd,
+        intake,
+        save_gap_analysis,
+    )
     from src.tools import profile as profile_module
 
     _mk()
+    # 状态模型要求目标亲口确认且档案 finalize；市场基线是差距 artifact 的上游。
+    intake("want", '{"target_role": "AI 工程师", "user_confirmed": true}')
+    finalize_profile(skip_probing=True)
+    profile = profile_module.load_profile()
+    profile.research = {"report_md": "research.md", "counts": {}}
+    profile_module.save_profile(profile)
+    sync_market_baseline(profile_module.get_active_profile_name())
     save_gap_analysis(json.dumps({
         "match_score": 62, "match_level": "partial_match", "start_level": "小厂",
         "skill_gaps": [{"skill": "TypeScript", "priority": "high", "current_level": "无",
                         "required_level": "熟练", "how_to_improve": "学习", "source": "测试"}],
     }, ensure_ascii=False))
 
-    # 换 JD 前：状态指向 generate_roadmap（phase=planning）
-    assert "generate_roadmap" in get_workflow_status()
+    # 换 JD 前：状态指向 generate_roadmap（BaselinePlan 尚未生成）
+    assert "**下一步**：generate_roadmap" in get_workflow_status()
 
     out = import_jd(json.dumps({
         "role": "新目标", "company": "某新厂",

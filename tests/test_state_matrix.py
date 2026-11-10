@@ -19,6 +19,7 @@ import pytest
 from src import paths
 from src.core import contracts, progress
 from src.core.artifacts.models import (
+    ApplicationState,
     ArtifactMeta,
     BaselinePlan,
     CompanyEntry,
@@ -30,10 +31,14 @@ from src.core.artifacts.models import (
     MarketBaseline,
     ProfileSnapshot,
     RequirementProfile,
+    ReviewReport,
     TargetSpec,
 )
 from src.core.artifacts.store import ArtifactStore
 from src.core.state import State, allowed_tools, resolve_state
+from src.models import CareerProfile, Task
+from src.tools import profile as profile_store
+from src.tools.task_tools import get_workflow_status
 
 PROFILE_NAME = "alice"
 
@@ -48,6 +53,8 @@ PREFIXES = {
     progress.STAGE_REQUIREMENT: "rp",
     progress.STAGE_EXECUTION_PLAN: "ep",
     progress.STAGE_EXECUTION: "es",
+    progress.STAGE_APPLICATIONS: "ap",
+    progress.STAGE_REVIEW: "rv",
 }
 
 
@@ -424,6 +431,13 @@ def _case_14(store: ArtifactStore) -> SimpleNamespace:
     return _confirmed_profile()
 
 
+def _case_15(store: ArtifactStore) -> SimpleNamespace:
+    """F15：无 MarketBaseline，但已有 gap 事实 → 视为跳过市场调研。"""
+    profile_id = _save_profile(store)
+    _save_target(store, profile_id)
+    return _confirmed_profile(gap={"match_score": 58})
+
+
 _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("01", _case_01),
     ("02", _case_02),
@@ -438,6 +452,7 @@ _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("11", _case_11),
     ("13", _case_13),
     ("14", _case_14),
+    ("15", _case_15),
 )
 
 
@@ -452,6 +467,65 @@ def build_case(label: str, store: ArtifactStore) -> tuple[SimpleNamespace, Any]:
 
 def persisted_case_labels() -> tuple[str, ...]:
     return tuple(label for label, _case in _CASES)
+
+
+def seed_executed_chain(store: ArtifactStore) -> dict[str, str]:
+    """Seed 完整 1-10 artifact 链（applied plan + 当前代际 ExecutionState）。
+
+    供入口测试复用：返回 {core_state key: artifact id}，可直接写入 profile.core_state。
+    """
+    profile_id = _save_profile(store)
+    target_id = _save_target(store, profile_id)
+    market_id = _save_market(store, target_id)
+    gap_id = _save_gap(store, profile_id, market_id)
+    baseline_id = _save_baseline(store, gap_id)
+    pool_id = _save_pool(store, baseline_id)
+    evidence_id = _save_evidence(store, pool_id)
+    requirement_id = _save_requirement(
+        store,
+        evidence_id,
+        validation={"status": "saved"},
+        interpretation={"summary": "RAG 是核心要求"},
+    )
+    plan_id = _save_plan(store, requirement_id, baseline_id)
+    execution_id = _save_execution(store, plan_id)
+    return {
+        progress.STAGE_KEYS[progress.STAGE_PROFILE]: profile_id,
+        progress.STAGE_KEYS[progress.STAGE_TARGET]: target_id,
+        progress.STAGE_KEYS[progress.STAGE_MARKET]: market_id,
+        progress.STAGE_KEYS[progress.STAGE_GAP]: gap_id,
+        progress.STAGE_KEYS[progress.STAGE_BASELINE_PLAN]: baseline_id,
+        progress.STAGE_KEYS[progress.STAGE_COMPANY_POOL]: pool_id,
+        progress.STAGE_KEYS[progress.STAGE_EVIDENCE]: evidence_id,
+        progress.STAGE_KEYS[progress.STAGE_REQUIREMENT]: requirement_id,
+        progress.STAGE_KEYS[progress.STAGE_EXECUTION_PLAN]: plan_id,
+        progress.STAGE_KEYS[progress.STAGE_EXECUTION]: execution_id,
+    }
+
+
+def save_optional_stage_facts(
+    store: ArtifactStore, execution_id: str
+) -> dict[str, str]:
+    """Seed 阶段 11/12 可选事实（投递/复盘），返回 core_state 指针。"""
+    application_id = store.save(
+        ApplicationState(
+            meta=_meta(store, progress.STAGE_APPLICATIONS),
+            applications=[{"company": "ACME", "role": "AI 工程师", "status": "applied"}],
+            funnel={"applied": 1},
+        )
+    )
+    review_id = store.save(
+        ReviewReport(
+            meta=_meta(store, progress.STAGE_REVIEW),
+            execution_state_id=execution_id,
+            weekly_facts={"days": 7, "checkins": 1},
+            recommendations=["继续推进任务"],
+        )
+    )
+    return {
+        progress.STAGE_KEYS[progress.STAGE_APPLICATIONS]: application_id,
+        progress.STAGE_KEYS[progress.STAGE_REVIEW]: review_id,
+    }
 
 
 def _snapshot(label: str, store: ArtifactStore):
@@ -594,6 +668,42 @@ def test_fixture_14_execution_state_old_generation(store: ArtifactStore) -> None
     assert "generate_tasks" in snapshot.allowed_tools
 
 
+def test_fixture_15_market_skipped(store: ArtifactStore) -> None:
+    snapshot = _snapshot("15", store)
+
+    assert snapshot.state is not State.MARKET_PENDING
+    assert snapshot.state is State.GAP_PENDING
+    assert snapshot.stage_index == 4
+    assert snapshot.next_tool == "analyze_gaps"
+    assert any(blocker.code == "market_skipped" for blocker in snapshot.blockers)
+
+
+def test_optional_stage_facts_do_not_change_state(store: ArtifactStore) -> None:
+    ids = seed_executed_chain(store)
+    optional_ids = save_optional_stage_facts(
+        store, ids[progress.STAGE_KEYS[progress.STAGE_EXECUTION]]
+    )
+    profile = _confirmed_profile(
+        core_state={**ids, **optional_ids},
+        tasks=[SimpleNamespace(status="pending")],
+        applications=[{"company": "ACME", "status": "applied"}],
+        last_review_at="2026-11-10T00:00:00",
+    )
+
+    executing = resolve_state(profile, store)
+    assert executing.state is State.EXECUTING
+    assert executing.stage_index == 10
+    assert executing.next_tool == "get_next_tasks"
+    assert executing.completion[progress.STAGE_APPLICATIONS] is True
+    assert executing.completion[progress.STAGE_REVIEW] is True
+
+    profile.tasks = [SimpleNamespace(status="completed")]
+    maintenance = resolve_state(profile, store)
+    assert maintenance.state is State.MAINTENANCE
+    assert maintenance.stage_index == 10
+    assert maintenance.next_tool == "build_application_list"
+
+
 def _assert_contract_agreement(
     label: str, snapshot: Any, artifacts: dict[str, Any]
 ) -> None:
@@ -639,3 +749,36 @@ def test_state_and_contracts_ready_agree(tmp_path: Path) -> None:
         snapshot = resolve_state(case(store), store)
         artifacts = _artifacts_from_snapshot(store, snapshot)
         _assert_contract_agreement(label, snapshot, artifacts)
+
+
+def test_workflow_status_shows_optional_facts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "data"
+    monkeypatch.setattr(paths, "PROFILE_DIR", root)
+    monkeypatch.setattr(profile_store, "PROFILE_DIR", root)
+    store = ArtifactStore()
+    ids = seed_executed_chain(store)
+    optional_ids = save_optional_stage_facts(
+        store, ids[progress.STAGE_KEYS[progress.STAGE_EXECUTION]]
+    )
+    profile = CareerProfile(
+        who={"name": "张三"},
+        have={"skills": ["Python"]},
+        want={"target_role": "AI Agent 开发", "user_confirmed": True},
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+        summary="已确认",
+        core_state={**ids, **optional_ids},
+        tasks=[Task(id="task_001", name="任务", phase_id="phase_1", status="pending")],
+        applications=[{"id": "app_001", "company": "ACME", "role": "AI 工程师"}],
+        last_review_at="2026-11-10T00:00:00",
+    )
+    profile_store.save_profile(profile, PROFILE_NAME)
+    profile_store.set_active_profile_name(PROFILE_NAME)
+
+    status = get_workflow_status()
+
+    assert "## 当前阶段（12 步）：10/12 任务执行与打卡" in status
+    assert "**下一步**：get_next_tasks" in status
+    assert "投递记录：1 条" in status
+    assert "上次周检视：2026-11-10T00:00:00" in status

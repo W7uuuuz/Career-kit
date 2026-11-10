@@ -351,7 +351,8 @@ def _seed_profile(chain: dict[str, str]) -> CareerProfile:
                 {"task": "旧基础任务", "completed_at": "2026-01-02T10:00:00", "notes": "手写练习"}
             ],
         },
-        want={"target_role": "AI Agent 开发", "city": "北京"},
+        want={"target_role": "AI Agent 开发", "city": "北京", "user_confirmed": True},
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         gap={"start_level": "小厂", "match_score": 60},
         plan=_baseline_plan(),
         plan_saved_at="2026-01-01T00:00:00",
@@ -697,28 +698,30 @@ def test_create_tasks_reuses_old_id_when_milestone_id_is_missing() -> None:
     assert tasks[0].status == "completed"
 
 
-def test_stage_position_fallback_walks_all_twelve_keys() -> None:
-    """状态机不可用时，兜底要遍历完整 12 个 core_state key，而不是硬编码 10。"""
+def test_stage_position_comes_from_state_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """阶段位置与下一步只来自 resolve_state，不再按 core_state key 自维护。"""
+    from src.core.state import resolve_state
+
+    root = tmp_path / "data"
+    monkeypatch.setattr(paths, "PROFILE_DIR", root)
+    monkeypatch.setattr(profile_store, "PROFILE_DIR", root)
+    _seed_upstream(ArtifactStore())
     profile = CareerProfile(
-        core_state={
-            "profile_id": "pf_1",
-            "target_spec_id": "ts_1",
-            "market_baseline_id": "mb_1",
-            "gap_report_id": "gr_1",
-            "baseline_plan_id": "bp_1",
-            "company_pool_id": "cp_1",
-            "evidence_run_id": "ev_1",
-            "requirement_profile_id": "rp_1",
-            "execution_plan_id": "ep_1",
-            "execution_state_id": "es_1",
-        }
+        who={"name": "张三"},
+        want={"target_role": "AI Agent 开发"},
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
     )
 
-    index, name, next_tool = task_tools._stage_position(profile, {})
+    snapshot = resolve_state(profile)
+    index, name, next_tool = task_tools._stage_position(snapshot)
 
-    assert index == 11
-    assert name == "求职投递管理"
-    assert next_tool == "build_application_list / record_application"
+    assert (index, name, next_tool) == (
+        6,
+        "目标企业筛选",
+        "select_target_companies",
+    )
 
 
 def test_workflow_status_plan_fit_does_not_override_core_v2(
@@ -728,7 +731,9 @@ def test_workflow_status_plan_fit_does_not_override_core_v2(
     _isolate_profile(tmp_path, monkeypatch)
     profile = CareerProfile(
         who={"name": "张三"},
+        want={"target_role": "AI Agent 开发"},
         summary="已确认",
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         plan={
             "roadmap": {
                 "phases": [
@@ -776,7 +781,9 @@ def test_workflow_status_all_finished_without_company_pool_selects_companies(
     _isolate_profile(tmp_path, monkeypatch)
     profile = CareerProfile(
         who={"name": "张三"},
+        want={"target_role": "AI Agent 开发"},
         summary="已确认",
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         plan={
             "roadmap": {
                 "phases": [

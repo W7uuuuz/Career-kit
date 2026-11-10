@@ -487,8 +487,15 @@ def resolve_state(
         return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
 
     if not _stage_ready(STAGE_MARKET, artifacts):
-        blockers.append(Blocker("artifact_missing", "尚未生成 MarketBaseline"))
-        return _snapshot(State.MARKET_PENDING, profile, artifacts, blockers)
+        # 覆盖规则：市场调研可跳过。档案已有差距/路线图/任务事实时，不再要求
+        # MarketBaseline，标记跳过并继续按后续 artifact 事实判定。
+        plan = getattr(profile, "plan", None)
+        roadmap_exists = isinstance(plan, dict) and bool(plan.get("roadmap"))
+        if getattr(profile, "gap", None) or roadmap_exists or _has_tasks(profile):
+            blockers.append(Blocker("market_skipped", "用户选择跳过市场调研"))
+        else:
+            blockers.append(Blocker("artifact_missing", "尚未生成 MarketBaseline"))
+            return _snapshot(State.MARKET_PENDING, profile, artifacts, blockers)
 
     if not _stage_ready(STAGE_GAP, artifacts):
         blockers.append(Blocker("artifact_missing", "尚未生成 GapReport"))

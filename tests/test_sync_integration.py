@@ -60,7 +60,9 @@ def _seed_legacy_profile() -> CareerProfile:
     profile = CareerProfile(
         who={"name": "旧用户", "education": "双非本", "city": "北京"},
         have={"skills": ["Python"]},
-        want={"target_role": "AI Agent 开发", "city": "北京"},
+        want={"target_role": "AI Agent 开发", "city": "北京", "user_confirmed": True},
+        # 迁移后的旧档案等价于 Phase 4 生成 anchor artifacts：目标已确认。
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         research={
             "report_md": "C:/old/research.md",
             "jd_samples": [{"title": "AI Agent", "company": "字节跳动", "url": "u1"}],

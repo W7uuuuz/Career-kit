@@ -706,7 +706,10 @@ def test_intake_want_before_finalize_does_not_jump_to_market(temp_profile):
     guide = build_guide(profile_module.load_profile())
     assert guide.status in ("profile", "goal")
     assert guide.index < 3
-    assert "finalize_profile" in get_workflow_status()
+    # 未亲口确认目标：下一步是目标确认，不是 finalize 或市场调研。
+    status = get_workflow_status()
+    assert "**下一步**：intake(want)" in status
+    assert "**下一步**：finalize_profile" not in status
 
     intake(
         "want",
@@ -928,7 +931,7 @@ def test_finalize_rejects_empty_profile(temp_profile):
 
 
 def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
-    """start_session / get_workflow_status / save_roadmap 的下一步与 resolve_progress 同源。"""
+    """start_session / get_workflow_status / save_roadmap 的下一步与 resolve_state 同源。"""
     from src.server import (
         finalize_profile,
         get_workflow_status,
@@ -959,8 +962,10 @@ def test_next_step_shared_across_start_status_and_roadmap(temp_profile):
             ],
         }
     }
+    from src.core.state import resolve_state
+
     saved = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
-    expected = resolve_progress(profile_module.load_profile())["next_tool"]
+    expected = resolve_state(profile_module.load_profile()).next_tool
 
     assert saved["next_steps"][0] == expected
     assert f"**下一步**：{expected}" in get_workflow_status()

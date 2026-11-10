@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from ..core.progress import resolve_progress
+from ..core.state import State, StateSnapshot, resolve_state
 from ..guidance import guide_for, verdict_label
 from ..mcp_app import mcp
 from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
@@ -394,23 +395,18 @@ def _roadmap_hash(parsed: dict) -> str:
 
 
 
-def _next_step_message(next_tool: str) -> str:
-    """按 resolve_progress 的 next_tool 生成与 next_steps 同源的下一步文案。"""
-    if next_tool == "select_target_companies":
+def _next_step_message(snapshot: StateSnapshot) -> str:
+    """下一步文案只取 StateSnapshot，与 next_steps 同源。"""
+    if snapshot.state is State.COMPANY_PENDING:
         return (
             "两条路都可以：\n"
-            "1. 推荐先做企业适配：select_target_companies → collect_company_evidence → "
+            f"1. 推荐先做企业适配：{snapshot.next_tool} → collect_company_evidence → "
             "analyze_company_requirements → save_requirement_profile → "
             "plan_execution_alignment → save_execution_alignment，把基线路线图校准为执行版；\n"
             "2. 也可以先按基线执行：detail_current_phase → generate_tasks，"
             "会记录企业适配跳过事实，后续可随时补。"
         )
-    if next_tool in {"intake(want)", "explore_goals"}:
-        return (
-            f"下一步先确认目标岗位（{next_tool}）：明确方向/城市/届别后，"
-            "再进入市场调研与企业适配。"
-        )
-    return f"下一步：{next_tool or '按 GUIDE 继续完善档案'}。"
+    return f"下一步：{snapshot.next_tool}（{snapshot.user_decision}）。"
 
 
 @mcp.tool()
@@ -565,12 +561,11 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     except Exception:  # noqa: BLE001 - sync 失败不阻断主工具
         pass
 
-    # 同步会写 core_state；重新读档后统一推导下一步与 GUIDE，避免本地对象看不到基线 artifact。
+    # 同步会写 core_state；重新读档后统一从 StateSnapshot 推导下一步与文案。
     profile = load_profile()
-    progress = resolve_progress(profile)
-    next_tool = str(progress.get("next_tool") or "")
-    next_steps = [next_tool] if next_tool else ["select_target_companies"]
-    if next_tool == "select_target_companies":
+    snapshot = resolve_state(profile)
+    next_steps = [snapshot.next_tool]
+    if snapshot.state is State.COMPANY_PENDING:
         # 推荐企业适配，也允许先按基线执行（detail_current_phase → generate_tasks）。
         next_steps.append("detail_current_phase")
 
@@ -624,7 +619,7 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             )
             + "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
             "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
-            + _next_step_message(next_tool)
+            + _next_step_message(snapshot)
             + "\n\n"
             + f"{guide_for(profile)}"
         ),
