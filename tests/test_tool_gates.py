@@ -209,6 +209,35 @@ def test_gated_tool_decision_follows_snapshot(
         assert payload["details"]["next_tool"] == snapshot.next_tool
 
 
+# 修复/补齐路径的正向门禁：期望表显式写死 (state, tool)，不从 snapshot 反推。
+_POSITIVE_GATES: tuple[tuple[State, str], ...] = (
+    (State.REQUIREMENT_READY, "save_execution_alignment"),
+    (State.EXECUTING, "select_target_companies"),
+    (State.EXECUTING, "collect_company_evidence"),
+    (State.COMPANY_PENDING, "generate_tasks"),
+    (State.COMPANY_PENDING, "detail_current_phase"),
+    (State.MARKET_PENDING, "save_gap_analysis"),
+    (State.MARKET_PENDING, "save_roadmap"),
+)
+
+
+@pytest.mark.parametrize(
+    ("state", "tool"),
+    _POSITIVE_GATES,
+    ids=[f"{state.value}:{tool}" for state, tool in _POSITIVE_GATES],
+)
+def test_repair_path_tools_are_allowed(
+    state: State, tool: str, store: ArtifactStore
+) -> None:
+    profile, snapshot = _build_state(state, store)
+    assert snapshot.state is state
+
+    result = require_state(profile, tool)
+
+    assert isinstance(result, StateSnapshot), result
+    assert result.state is state
+
+
 def _persist_fixture(profile: SimpleNamespace, snapshot: StateSnapshot) -> None:
     data = vars(profile).copy()
     data.pop("name", None)

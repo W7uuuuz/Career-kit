@@ -149,6 +149,18 @@ READ_ONLY_TOOLS = frozenset(
     }
 )
 
+# 企业适配补齐/返工工具：EXECUTION_READY/EXECUTING/MAINTENANCE 放行，
+# 覆盖“企业跳过→基线执行→补企业→恢复”的修复路径（D2）。
+_ENTERPRISE_REPAIR_TOOLS = frozenset(
+    {
+        "select_target_companies",
+        "collect_company_evidence",
+        "analyze_company_requirements",
+        "plan_execution_alignment",
+        "save_execution_alignment",
+    }
+)
+
 _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
     State.EMPTY: frozenset(
         {"parse_resume", "import_jd", "import_jd_file", "intake", "start_session"}
@@ -167,6 +179,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "boss_login",
             "analyze_gaps",
             "save_gap_analysis",
+            "generate_roadmap",
+            "save_roadmap",
             "import_jd",
             "import_jd_file",
         }
@@ -200,7 +214,12 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
         {"analyze_company_requirements", "save_requirement_profile"}
     ),
     State.REQUIREMENT_READY: frozenset(
-        {"plan_execution_alignment", "read_research_details", "fetch_jd_detail"}
+        {
+            "plan_execution_alignment",
+            "save_execution_alignment",
+            "read_research_details",
+            "fetch_jd_detail",
+        }
     ),
     State.EXECUTION_PLAN_DRAFT: frozenset({"save_execution_alignment"}),
     State.EXECUTION_READY: frozenset(
@@ -211,7 +230,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "get_next_tasks",
             "export_dashboard",
         }
-    ),
+    )
+    | _ENTERPRISE_REPAIR_TOOLS,
     State.EXECUTING: frozenset(
         {
             "get_next_tasks",
@@ -227,7 +247,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "get_weekly_review",
             "export_dashboard",
         }
-    ),
+    )
+    | _ENTERPRISE_REPAIR_TOOLS,
     State.MAINTENANCE: frozenset(
         {
             "build_application_list",
@@ -237,7 +258,8 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "get_next_tasks",
             "export_dashboard",
         }
-    ),
+    )
+    | _ENTERPRISE_REPAIR_TOOLS,
 }
 
 _ENTERPRISE_STAGES: tuple[str, ...] = (
