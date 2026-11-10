@@ -1,4 +1,4 @@
-"""旧 `CareerProfile` → Core v2 输入适配。
+"""当前 `CareerProfile` → Core v2 输入映射。
 
 只读取档案字段并返回新模型，不修改原档案；缺失字段按契约兜底。
 """

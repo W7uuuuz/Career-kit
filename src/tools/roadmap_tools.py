@@ -510,9 +510,6 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     # 审计记录绑定路线图版本：内容变化只标记过期，不删除历史
     new_hash = _roadmap_hash(parsed)
     audit = dict(profile.audit or {})
-    legacy_audit = (profile.plan or {}).get("audit") if isinstance(profile.plan, dict) else None
-    if legacy_audit and not audit:
-        audit = dict(legacy_audit)
     if audit and audit.get("roadmap_hash") and audit.get("roadmap_hash") != new_hash:
         audit["stale"] = True
 
@@ -711,9 +708,6 @@ def save_roadmap_audit(audit_json: str) -> str:
         )
 
     audit = dict(profile.audit or {})
-    legacy = (profile.plan or {}).get("audit")
-    if legacy and not audit:
-        audit = dict(legacy)
     rounds = audit.get("rounds") or []
     if not isinstance(rounds, list):
         rounds = []

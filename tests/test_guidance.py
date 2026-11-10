@@ -330,14 +330,14 @@ def test_mark_brief_then_goal_confirmation():
     assert build_guide(profile).status == "profile"
 
 
-def test_legacy_profile_does_not_resend_brief():
+def test_profile_without_sections_sends_brief():
     profile = CareerProfile()
     profile.gap = {"match_score": 60}
 
     guide = build_guide(profile)
-    assert guide.status == "brief"  # 无 who/have/want/JD，仍是 EMPTY
-    assert not guide.brief_needed
-    assert "[USER_BRIEF]" not in guide_for(profile)
+    assert guide.status == "brief"
+    assert guide.brief_needed
+    assert "[USER_BRIEF]" in guide_for(profile)
 
 
 def test_guide_follows_twelve_core_stages():
@@ -414,8 +414,8 @@ def test_optional_application_and_review_do_not_block_execution():
     assert "review_report_id" not in guide.next_action
 
 
-def test_legacy_fields_without_anchor_artifacts_stay_at_profile():
-    """下游 profile 字段不能凭空证明阶段就绪；等 core.legacy 生成 anchor artifact。"""
+def test_profile_fields_without_anchor_artifacts_stay_at_profile():
+    """下游 profile 字段不能凭空证明阶段就绪；必须先有 artifact。"""
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.research = {"report_md": "report.md"}
@@ -432,7 +432,7 @@ def test_legacy_fields_without_anchor_artifacts_stay_at_profile():
     assert build_guide(profile).status == "profile"
 
 
-def test_legacy_gap_field_without_artifacts_stays_at_profile():
+def test_gap_field_without_artifacts_stays_at_profile():
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.gap = {"match_score": 60}
@@ -473,7 +473,7 @@ def test_guidance_matches_next_action_on_chain_mismatch():
     assert guide.index == _STAGE_INDEX[action["stage"]] == 7
 
 
-def test_guidance_legacy_profile_waits_for_anchor_artifacts():
+def test_guidance_profile_waits_for_anchor_artifacts():
     profile = _confirmed_profile()
     profile.want = {"target_role": "AI Agent", "city": "上海"}
     profile.research = {"report_md": "report.md"}

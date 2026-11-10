@@ -30,7 +30,6 @@ from .. import contracts
 from ..artifacts.models import ArtifactMeta, ExecutionPlan, PlanChange
 from ..artifacts.store import ArtifactStore
 from ..orchestrator import state_machine
-from ..progress import is_legacy_profile
 from .base import (
     StageContext,
     StageResult,
@@ -247,7 +246,7 @@ def _save(
     _check_requirement_chain(profile, requirement, requirement_profile_id)
 
     # 基线只能来自 BaselinePlan artifact：profile.plan 是应用后的可变副本，
-    # 不能作为血缘来源；缺失时直接拒绝（真 legacy 返回迁移错误）。
+    # 不能作为血缘来源；缺失时一律拒绝。
     baseline_plan_id = _resolve_checked_baseline_plan_id(
         store, profile_name, profile, data.get("baseline_plan_id")
     )
@@ -523,8 +522,8 @@ def _resolve_checked_baseline_plan_id(
 
     - core_state 已有指针但指向非本档案 BaselinePlan：拒绝，避免覆盖链路；
     - 调用方显式传入 baseline_plan_id 时必须存在且与当前链路一致；
-    - 没有 BaselinePlan artifact 时一律拒绝：新流程要求重新 save_roadmap，
-      真 legacy 返回明确的迁移错误，不产生「已应用但状态机不可达」的 artifact。
+    - 没有 BaselinePlan artifact 时一律拒绝：要求重新 save_roadmap，
+      不产生「已应用但状态机不可达」的 artifact。
     """
     core_state = profile.core_state if isinstance(profile.core_state, dict) else {}
     core_id = str(core_state.get("baseline_plan_id") or "").strip()
@@ -536,7 +535,7 @@ def _resolve_checked_baseline_plan_id(
         )
     resolved = _resolve_baseline_plan_id(store, profile_name, profile)
     if not resolved:
-        raise _missing_baseline_error(profile)
+        raise _missing_baseline_error()
     requested_id = str(requested or "").strip()
     if not requested_id:
         return resolved
@@ -586,14 +585,7 @@ def _baseline_roadmap(
     return roadmap
 
 
-def _missing_baseline_error(profile: CareerProfile) -> ExecutionPlanError:
-    if is_legacy_profile(profile):
-        return ExecutionPlanError(
-            "LEGACY_MIGRATION_REQUIRED",
-            "旧档案没有 BaselinePlan artifact，暂不自动应用执行方案；"
-            "需先完成 legacy 迁移（Phase 4）再校准。",
-            {"missing": "baseline_plan", "legacy": True},
-        )
+def _missing_baseline_error() -> ExecutionPlanError:
     return ExecutionPlanError(
         "MISSING_BASELINE_PLAN",
         "档案还没有 BaselinePlan artifact——请先 save_roadmap 生成基线。",

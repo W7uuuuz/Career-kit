@@ -233,6 +233,7 @@ def _seed_profile(chain: dict[str, Any]) -> CareerProfile:
             ],
         },
         want={"target_role": "AI Agent 开发", "city": "北京"},
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         plan=_baseline_plan(),
         plan_saved_at="2026-01-01T00:00:00",
         tasks=[

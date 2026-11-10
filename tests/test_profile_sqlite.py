@@ -36,15 +36,15 @@ def test_sqlite_is_source_of_truth(temp_profile):
     assert load_profile().who["name"] == "数据库"
 
 
-def test_legacy_json_is_migrated(temp_profile):
-    legacy = {"who": {"name": "旧档案"}, "version": 3}
-    (temp_profile / "legacy.json").write_text(
-        json.dumps(legacy, ensure_ascii=False), encoding="utf-8"
+def test_json_only_profile_is_not_imported(temp_profile):
+    json_only = {"who": {"name": "旧档案"}, "version": 3}
+    (temp_profile / "orphan.json").write_text(
+        json.dumps(json_only, ensure_ascii=False), encoding="utf-8"
     )
 
     profiles = list_profiles()
-    assert any(p["name"] == "legacy" for p in profiles)
-    assert load_profile("legacy").who["name"] == "旧档案"
+    assert all(p["name"] != "orphan" for p in profiles)
+    assert load_profile("orphan").who == {}
 
 
 def test_delete_and_restore_round_trip(temp_profile):

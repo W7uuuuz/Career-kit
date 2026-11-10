@@ -1,4 +1,4 @@
-"""共享进度解析——artifact 引用链 + 旧档案兜底（只读）。
+"""共享进度解析——artifact 引用链（只读）。
 
 状态机与用户引导都从这里取「当前阶段」，避免一个只看 ``core_state`` key、
 另一个看 artifact 引用链，导致同一份档案出现两个位置。
@@ -115,7 +115,7 @@ def resolve_progress(
     store: ArtifactStore | None = None,
     profile_name: str = "",
 ) -> dict[str, Any]:
-    """解析当前进度：阶段、下一步工具、artifact ids 与旧档案兜底标记。"""
+    """解析当前进度：阶段、下一步工具与 artifact ids。"""
     store = store if store is not None else ArtifactStore()
     core_state = _core_state(profile)
     if not profile_name:
@@ -127,7 +127,6 @@ def resolve_progress(
         resolved[stage] = resolve_artifact(store, profile_name, stage, artifact_id)
 
     artifact_ids: dict[str, str] = dict.fromkeys(ARTIFACT_KEYS, "")
-    legacy = legacy_flags(profile)
     has_tasks = _has_tasks(profile)
 
     # 目标确认是 TargetSpec 的唯一门禁：未由用户确认，或 want 在 TargetSpec
@@ -150,62 +149,36 @@ def resolve_progress(
             "analyze_gaps",
             "目标 JD 已更新，旧差距分析已过期，必须先重新分析",
             resolved_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
 
     # 用户选择「先按基线执行」并已记录跳过事实时，基线任务不再被企业适配链路
     # （CompanyPool/Evidence/Requirement/ExecutionPlan）卡住；已应用的执行版仍走
     # 原有代际校验，避免绕过 6C 的 ExecutionState 匹配规则。
-    baseline = _baseline_execution_result(
-        profile, resolved, legacy=legacy, has_tasks=has_tasks
-    )
+    baseline = _baseline_execution_result(profile, resolved, has_tasks=has_tasks)
     if baseline is not None:
         return baseline
 
-    has_required_artifact = any(
-        resolved[stage] is not None for stage in REQUIRED_STAGES
-    )
-    # 新流程档案（有 guidance）即使还没 finalize，也不能按「旧档案已有 section」
-    # 跳阶段，否则 GUIDE 会在 finalize 前跳到市场调研（复测 BUG #12-13）。
-    legacy_mode = is_legacy_profile(profile)
-
-    # 阶段 1：档案快照。只有旧档案（无 guidance）在有下游产物时才允许按 section 兜底跳过。
+    # 阶段 1：档案快照。没有 ProfileSnapshot 时必须停在 finalize，即使
+    # TargetSpec 已由 intake(want, user_confirmed=true) 同步存在。
     profile_artifact = resolved[STAGE_PROFILE]
     if profile_artifact is not None:
         artifact_ids[STAGE_KEYS[STAGE_PROFILE]] = _artifact_id(profile_artifact)
     else:
-        legacy_profile_done = (
-            legacy_mode
-            and not has_required_artifact
-            and legacy_stage_done(profile, STAGE_PROFILE)
-        )
-        # 新流程（有 guidance）没有 ProfileSnapshot 时必须停在 finalize，
-        # 即使 TargetSpec 已由 intake(want, user_confirmed=true) 同步存在。
-        if not legacy_profile_done:
-            early = _profile_stage_result(
-                profile, artifact_ids, legacy=legacy, has_tasks=has_tasks
-            )
-            if early is not None:
-                return early
+        early = _profile_stage_result(profile, artifact_ids, has_tasks=has_tasks)
+        if early is not None:
+            return early
 
     # 阶段 2-5：缺 artifact 不得因为下游 artifact 存在而跳过；
     # 已有 artifact 必须引用上游 id，空引用视为不满足。
     for stage in (STAGE_TARGET, STAGE_MARKET, STAGE_GAP, STAGE_BASELINE_PLAN):
         artifact = resolved[stage]
         if artifact is None:
-            if (
-                legacy_mode
-                and not has_required_artifact
-                and legacy_stage_done(profile, stage)
-            ):
-                continue
             return _result(
                 stage,
                 _core_stage_tool(profile, stage),
                 _core_stage_reason(profile, stage),
                 artifact_ids,
-                legacy=legacy,
                 has_tasks=has_tasks,
             )
         problems = _upstream_problems(stage, artifact, artifact_ids)
@@ -215,7 +188,6 @@ def resolve_progress(
                 _core_stage_tool(profile, stage),
                 "；".join(problems),
                 artifact_ids,
-                legacy=legacy,
                 has_tasks=has_tasks,
             )
         artifact_ids[STAGE_KEYS[stage]] = _artifact_id(artifact)
@@ -227,7 +199,6 @@ def resolve_progress(
             "select_target_companies",
             "尚未生成 CompanyPool",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     problems = _upstream_problems(STAGE_COMPANY_POOL, pool, artifact_ids)
@@ -237,7 +208,6 @@ def resolve_progress(
             "select_target_companies",
             "；".join(problems),
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_COMPANY_POOL]] = _artifact_id(pool)
@@ -247,7 +217,6 @@ def resolve_progress(
             "select_target_companies",
             "CompanyPool 尚未确认",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
 
@@ -258,7 +227,6 @@ def resolve_progress(
             "collect_company_evidence",
             "缺少与当前 CompanyPool 匹配的 EvidenceRun",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     problems = _upstream_problems(STAGE_EVIDENCE, evidence, artifact_ids)
@@ -268,7 +236,6 @@ def resolve_progress(
             "collect_company_evidence",
             "；".join(problems),
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_EVIDENCE]] = _artifact_id(evidence)
@@ -280,7 +247,6 @@ def resolve_progress(
             "analyze_company_requirements",
             "缺少与当前 EvidenceRun 匹配的 RequirementProfile",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     problems = _upstream_problems(STAGE_REQUIREMENT, requirement, artifact_ids)
@@ -290,7 +256,6 @@ def resolve_progress(
             "analyze_company_requirements",
             "；".join(problems),
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_REQUIREMENT]] = _artifact_id(requirement)
@@ -303,7 +268,6 @@ def resolve_progress(
             "save_requirement_profile",
             "需求画像仍是未解读草稿，先调用 save_requirement_profile 写入 interpretation",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
 
@@ -314,7 +278,6 @@ def resolve_progress(
             "plan_execution_alignment",
             "缺少与当前 RequirementProfile 匹配的 ExecutionPlan",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     problems = _upstream_problems(
@@ -329,7 +292,6 @@ def resolve_progress(
             "plan_execution_alignment",
             "；".join(problems),
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     artifact_ids[STAGE_KEYS[STAGE_EXECUTION_PLAN]] = _artifact_id(plan)
@@ -340,7 +302,6 @@ def resolve_progress(
             "save_execution_alignment",
             "ExecutionPlan 已生成但未应用",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
 
@@ -359,7 +320,6 @@ def resolve_progress(
                 applied=True,
                 has_execution_state=True,
                 has_tasks=has_tasks,
-                legacy=legacy,
             )
 
     reason = (
@@ -374,7 +334,6 @@ def resolve_progress(
         artifact_ids,
         applied=True,
         has_tasks=has_tasks,
-        legacy=legacy,
     )
 
 
@@ -393,66 +352,6 @@ def resolve_artifact(
         return None
     data = store.latest(profile_name, stage)
     return data if _matches_stage(data, stage, profile_name) else None
-
-
-def legacy_flags(profile: Any) -> dict[str, bool]:
-    """旧档案兜底标记：只读已有 section，不要求 artifact。"""
-    plan = getattr(profile, "plan", None) or {}
-    research = getattr(profile, "research", None) or {}
-    want = getattr(profile, "want", None) or {}
-    tasks = getattr(profile, "tasks", None) or []
-    applications = getattr(profile, "applications", None) or []
-    has_plan = isinstance(plan, dict) and bool(plan.get("roadmap"))
-    has_gap = bool(getattr(profile, "gap", None))
-    has_research = isinstance(research, dict) and bool(
-        research.get("report_md") or research.get("jd_samples") or research.get("cases")
-    )
-    return {
-        "profile": bool(
-            getattr(profile, "summary", "")
-            or getattr(profile, "who", None)
-            or getattr(profile, "have", None)
-        ),
-        "target": isinstance(want, dict) and bool(want),
-        "research": has_research,
-        "gap": has_gap,
-        "plan": has_plan,
-        "tasks": bool(tasks),
-        "applications": bool(applications),
-    }
-
-
-def is_legacy_profile(profile: Any) -> bool:
-    """唯一的 legacy 判定：无 guidance 的旧档案，或显式 legacy 标记。
-
-    - 有 guidance 的档案一律按新流程处理，即使已有 research/gap/plan/tasks/
-      applications；「有下游产物」不等于旧档案。
-    - 完全没有 guidance 才是旧档案；显式标记（guidance.legacy_migrated_at /
-      guidance.legacy_mode）用于 Phase 4 迁移后的旧档案，保持旧链路兜底。
-    """
-    guidance = getattr(profile, "guidance", None)
-    if isinstance(guidance, dict) and guidance:
-        return bool(
-            guidance.get("legacy_migrated_at") or guidance.get("legacy_mode")
-        )
-    return True
-
-
-def legacy_stage_done(profile: Any, stage: str) -> bool:
-    """旧档案没有 artifact 时，用已有 section 推断阶段完成。"""
-    flags = legacy_flags(profile)
-    downstream = (
-        flags["research"] or flags["gap"] or flags["plan"] or flags["tasks"]
-    )
-    done = {
-        STAGE_PROFILE: flags["profile"] or downstream,
-        STAGE_TARGET: flags["target"] or downstream,
-        STAGE_MARKET: downstream,
-        STAGE_GAP: flags["gap"] or flags["plan"] or flags["tasks"],
-        STAGE_BASELINE_PLAN: flags["plan"] or flags["tasks"],
-        STAGE_EXECUTION: flags["tasks"],
-    }
-    return bool(done.get(stage, False))
 
 
 def downstream_exists(
@@ -497,7 +396,6 @@ def _profile_stage_result(
     profile: Any,
     artifact_ids: dict[str, str],
     *,
-    legacy: dict[str, bool],
     has_tasks: bool,
 ) -> dict[str, Any] | None:
     """阶段 1 缺失 artifact 时的分流：采集卡 / 目标确认 / finalize。
@@ -511,11 +409,10 @@ def _profile_stage_result(
             "intake(section='bundle')",
             "尚无档案内容，先采集基本信息",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     # 目标未由用户确认时停在目标阶段；已有目标字段则请用户确认，
-    # 完全没有目标则先探索方向。legacy 档案按已确认处理。
+    # 完全没有目标则先探索方向。
     if not _goal_confirmed(profile):
         if _has_want(profile) or bool(getattr(profile, "target_jd", None)):
             return _result(
@@ -523,7 +420,6 @@ def _profile_stage_result(
                 "intake(want)",
                 "目标已存在但尚未由用户确认",
                 artifact_ids,
-                legacy=legacy,
                 has_tasks=has_tasks,
             )
         return _result(
@@ -531,7 +427,6 @@ def _profile_stage_result(
             "explore_goals",
             "尚未确定目标岗位",
             artifact_ids,
-            legacy=legacy,
             has_tasks=has_tasks,
         )
     return _result(
@@ -539,7 +434,6 @@ def _profile_stage_result(
         "finalize_profile",
         "尚未建立 ProfileSnapshot",
         artifact_ids,
-        legacy=legacy,
         has_tasks=has_tasks,
     )
 
@@ -628,7 +522,6 @@ def _result(
     applied: bool = False,
     has_execution_state: bool = False,
     has_tasks: bool = False,
-    legacy: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     return {
         "stage": stage,
@@ -641,7 +534,6 @@ def _result(
         "applied": applied,
         "has_execution_state": has_execution_state,
         "has_tasks": has_tasks,
-        "legacy": dict(legacy or {}),
     }
 
 
@@ -701,14 +593,12 @@ def _has_any_section(profile: Any) -> bool:
 
 
 def _goal_confirmed(profile: Any) -> bool:
-    """目标是否由用户确认；legacy 档案按已确认处理。
+    """目标是否由用户确认。
 
     延迟到本地读取 guidance，避免 progress 反向 import guidance 造成循环依赖。
     """
     guidance = getattr(profile, "guidance", None)
-    if isinstance(guidance, dict) and guidance.get("goal_confirmed_at"):
-        return True
-    return is_legacy_profile(profile)
+    return bool(isinstance(guidance, dict) and guidance.get("goal_confirmed_at"))
 
 
 def _has_want(profile: Any) -> bool:
@@ -720,7 +610,6 @@ def _baseline_execution_result(
     profile: Any,
     resolved: dict[str, dict[str, Any] | None],
     *,
-    legacy: dict[str, bool],
     has_tasks: bool,
 ) -> dict[str, Any] | None:
     """「先按基线执行」记录存在时，优先返回执行阶段（不越过已应用的执行版）。"""
@@ -736,7 +625,7 @@ def _baseline_execution_result(
     execution_plan = resolved.get(STAGE_EXECUTION_PLAN)
     if execution_plan is not None and bool(execution_plan.get("applied")):
         return None
-    if resolved.get(STAGE_PROFILE) is None and not legacy.get("profile"):
+    if resolved.get(STAGE_PROFILE) is None:
         return None
 
     artifact_ids = {
@@ -749,7 +638,6 @@ def _baseline_execution_result(
             "已按基线执行，企业适配已记录跳过；可按当前阶段任务推进",
             artifact_ids,
             has_tasks=True,
-            legacy=legacy,
         )
     return _result(
         STAGE_EXECUTION,
@@ -757,7 +645,6 @@ def _baseline_execution_result(
         "已按基线执行，企业适配已记录跳过；先生成当前阶段任务",
         artifact_ids,
         has_tasks=False,
-        legacy=legacy,
     )
 
 
@@ -788,7 +675,7 @@ def target_fingerprint(spec: Any) -> str:
 def profile_target_fingerprint(profile: Any) -> str:
     """从档案 want/who 计算当前目标指纹（与 sync_target 写 artifact 时一致）。"""
     try:
-        from .adapters.legacy_profile import target_spec
+        from .adapters.profile_mapping import target_spec
 
         return target_fingerprint(target_spec(profile))
     except Exception:  # noqa: BLE001 - 畸形档案按空指纹处理，不误判失效
@@ -849,9 +736,6 @@ __all__ = [
     "TARGET_FINGERPRINT_FIELDS",
     "TARGET_FINGERPRINT_KEY",
     "downstream_exists",
-    "is_legacy_profile",
-    "legacy_flags",
-    "legacy_stage_done",
     "profile_target_fingerprint",
     "resolve_artifact",
     "resolve_progress",

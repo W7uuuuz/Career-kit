@@ -31,6 +31,7 @@ def _profile() -> CareerProfile:
     profile = CareerProfile()
     profile.who = {"name": "测试"}
     profile.summary = "应届生"
+    profile.guidance = {"goal_confirmed_at": "2026-11-09T00:00:00"}
     profile.gap = {"start_level": "小厂"}
     profile.plan = {"roadmap": {"strategy_summary": "先补基础", "phases": [{
         "id": "phase_1", "name": "基础补齐", "type": "learn", "goal": "能手写",
@@ -276,8 +277,8 @@ def _save_alignment_artifacts(profile_name: str) -> dict[str, str]:
     }
 
 
-def test_build_state_alignment_absent_for_legacy_profile(temp_profile):
-    """旧档案没有 core_state 时，alignment 也要存在且不崩。"""
+def test_build_state_alignment_absent_without_core_state(temp_profile):
+    """档案没有 core_state 时，alignment 也要存在且不崩。"""
     profile_module.save_profile(_profile())
 
     alignment = build_state()["alignment"]
@@ -287,7 +288,7 @@ def test_build_state_alignment_absent_for_legacy_profile(temp_profile):
     assert alignment["evidence"] is None
     assert alignment["requirement"] is None
     assert alignment["execution_plan"] is None
-    assert alignment["next_tool"] == "select_target_companies"
+    assert alignment["next_tool"] == "finalize_profile"
 
 
 def test_build_state_alignment_reads_artifacts(temp_profile):

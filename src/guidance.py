@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from .core.progress import is_legacy_profile
 from .core.state import State, StateSnapshot, resolve_state
 
 # ---------------------------------------------------------------------------
@@ -221,11 +220,6 @@ def _guidance(profile: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def is_legacy(profile: Any) -> bool:
-    """与 progress/state 共用同一判定：无 guidance 的旧档案或显式 legacy 标记。"""
-    return is_legacy_profile(profile)
-
-
 def _has_sections(profile: Any) -> bool:
     return bool(
         getattr(profile, "who", None)
@@ -235,35 +229,14 @@ def _has_sections(profile: Any) -> bool:
     )
 
 
-def _is_blank_profile(profile: Any) -> bool:
-    """全新空档案（无任何 section/调研/差距/路线图/任务/投递/摘要）。"""
-    return not bool(
-        getattr(profile, "who", None)
-        or getattr(profile, "have", None)
-        or getattr(profile, "want", None)
-        or getattr(profile, "target_jd", None)
-        or getattr(profile, "research", None)
-        or getattr(profile, "gap", None)
-        or getattr(profile, "plan", None)
-        or getattr(profile, "tasks", None)
-        or getattr(profile, "applications", None)
-        or getattr(profile, "summary", "")
-    )
-
-
 def brief_shown(profile: Any) -> bool:
-    """简介只发一次：已经填过任何 section 的档案不再重复首屏。
-
-    无 guidance 的空档案按新流程处理（仍发首屏简介），避免把全新用户误当旧用户。
-    """
-    if bool(_guidance(profile).get("brief_shown_at")) or _has_sections(profile):
-        return True
-    return is_legacy(profile) and not _is_blank_profile(profile)
+    """简介只发一次：已经填过任何 section 的档案不再重复首屏。"""
+    return bool(_guidance(profile).get("brief_shown_at")) or _has_sections(profile)
 
 
 def goal_confirmed(profile: Any) -> bool:
-    """目标是否由用户确认过；老档案视为已确认。"""
-    return bool(_guidance(profile).get("goal_confirmed_at")) or is_legacy(profile)
+    """目标是否由用户确认过。"""
+    return bool(_guidance(profile).get("goal_confirmed_at"))
 
 
 def mark_brief_shown(profile: Any) -> None:
@@ -869,7 +842,6 @@ __all__ = [
     "goal_confirmed",
     "goal_question",
     "guide_for",
-    "is_legacy",
     "login_action",
     "mark_brief_shown",
     "mark_goal_confirmed",

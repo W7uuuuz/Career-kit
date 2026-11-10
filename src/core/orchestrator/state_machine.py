@@ -33,7 +33,6 @@ from ..progress import (
     STAGE_REVIEW,
     STAGE_TARGET,
     downstream_exists,
-    legacy_stage_done,
     resolve_artifact,
     resolve_progress,
 )
@@ -79,10 +78,6 @@ def _downstream_exists(
     resolved: dict[str, dict[str, Any] | None], stage: str
 ) -> bool:
     return downstream_exists(resolved, stage)
-
-
-def _legacy_stage_done(profile: Any, stage: str) -> bool:
-    return legacy_stage_done(profile, stage)
 
 
 def _resolve(

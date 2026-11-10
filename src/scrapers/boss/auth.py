@@ -5,7 +5,7 @@
 - 有效期同时参考 CDP 可用性：端口已就绪，或本机有可启动的 Chrome/Edge
   （抓取时会自动拉起专用 profile，因此「浏览器暂时关闭」不等于登录态失效）。
 - API 返回「您的环境存在异常」时主动销毁登录态并让调用方走重新登录。
-- 旧版没有时间戳的 state.json 一律视为过期——避免历史登录态静默失效。
+- 缺时间戳或非 CDP 标记一律视为过期——避免历史登录态静默失效。
 """
 
 from __future__ import annotations
@@ -82,25 +82,6 @@ def _write_state(state: dict[str, Any]) -> None:
     )
 
 
-def load_cookies() -> dict[str, str]:
-    """加载 cookies，返回 {name: value} 字典（CDP 模式通常为空）。"""
-    return _state_cookies(_read_state())
-
-
-def save_cookies(cookies: dict[str, str]) -> None:
-    """保存旧版 cookie 登录态（保留兼容）；时间戳是有效性的唯一依据。"""
-    now = time.time()
-    _write_state(
-        {
-            "saved_at": datetime.now(UTC).isoformat(),
-            "saved_at_ts": now,
-            "ttl_seconds": LOGIN_TTL_SECONDS,
-            "cookies": _serialize_cookies(cookies),
-            "origins": [],
-        }
-    )
-
-
 def save_login_marker(cookies: dict[str, str] | None = None) -> None:
     """写入 CDP 扫码登录标记。
 
@@ -153,15 +134,13 @@ def auth_status() -> dict[str, Any]:
 def validity() -> dict[str, Any]:
     """登录态有效性的唯一判定：登录标记 + TTL + CDP 可用。
 
-    - 缺时间戳 / 超过 TTL → 无效且 expired=True（调用方可据此销毁标记）；
-    - CDP 标记但浏览器不可用 → 无效、expired=False（浏览器暂关不等于登录失效）；
-    - 旧版 cookie 登录态 → TTL 内且存在 wt2 才算有效。
+    - 缺时间戳 / 超过 TTL / 非 CDP 标记 → 无效且 expired=True（调用方可据此销毁标记）；
+    - CDP 标记但浏览器不可用 → 无效、expired=False（浏览器暂关不等于登录失效）。
 
     只做只读判定，不删除 state.json；销毁由 ``has_valid_cookies`` 负责。
     """
     state = _read_state()
-    cookies = _state_cookies(state)
-    mode = state.get("mode") or "cookie"
+    mode = str(state.get("mode") or "")
     saved_at = state.get("saved_at_ts")
     age = (
         None
@@ -187,16 +166,13 @@ def validity() -> dict[str, Any]:
     if age is not None and age >= LOGIN_TTL_SECONDS:
         result.update(reason="ttl_expired", expired=True)
         return result
-    if mode == "cdp":
-        if cdp_available:
-            result.update(valid=True, reason="ok")
-        else:
-            result.update(reason="cdp_unavailable")
+    if mode != "cdp":
+        result.update(reason="not_cdp", expired=True)
         return result
-    if cookies.get("wt2"):
+    if cdp_available:
         result.update(valid=True, reason="ok")
     else:
-        result.update(reason="missing_wt2", expired=True)
+        result.update(reason="cdp_unavailable")
     return result
 
 
@@ -216,6 +192,6 @@ def has_valid_cookies() -> bool:
     current = validity()
     if current["valid"]:
         return True
-    if current["reason"] in ("missing_saved_at", "ttl_expired"):
+    if current["reason"] in ("missing_saved_at", "ttl_expired", "not_cdp"):
         invalidate_auth(current["reason"])
     return False

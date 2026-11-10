@@ -129,8 +129,9 @@ def _full_profile() -> CareerProfile:
                 ],
             )
         ],
-        summary="完整旧档案",
-        core_state={"custom_key": "keep", "company_pool_id": "cp_legacy"},
+        guidance={"goal_confirmed_at": "2026-01-01T00:00:00"},
+        summary="完整档案",
+        core_state={"custom_key": "keep", "company_pool_id": "cp_preserved"},
     )
 
 
@@ -228,7 +229,7 @@ def test_sync_writes_each_artifact_and_core_state(data_dir: Path) -> None:
     assert state["stage"] == sync.STAGE_EXECUTION
     assert state["updated_at"]
     assert state["custom_key"] == "keep"
-    assert state["company_pool_id"] == "cp_legacy"
+    assert state["company_pool_id"] == "cp_preserved"
 
 
 def test_sync_artifacts_match_profile_data(data_dir: Path) -> None:
@@ -239,7 +240,7 @@ def test_sync_artifacts_match_profile_data(data_dir: Path) -> None:
     assert profile_artifact["name"] == "张三"
     assert profile_artifact["who"]["city"] == "北京"
     assert profile_artifact["have"]["skills"] == ["Python", "LangChain"]
-    assert profile_artifact["summary"] == "完整旧档案"
+    assert profile_artifact["summary"] == "完整档案"
 
     target_artifact = _load_artifact(ids["ts"])
     assert target_artifact["role"] == "AI Agent 开发"
@@ -423,15 +424,8 @@ def test_sync_baseline_plan_rejects_malformed_roadmap(data_dir: Path) -> None:
     assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_BASELINE_PLAN) == []
 
 
-def test_sync_gap_requires_resolvable_profile_snapshot(
-    data_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_sync_gap_requires_existing_profile_snapshot(data_dir: Path) -> None:
     _save(CareerProfile(gap={"match_score": 50}))
-
-    def _broken_snapshot(profile: CareerProfile) -> Any:
-        raise RuntimeError("snapshot unparsable")
-
-    monkeypatch.setattr(sync, "profile_snapshot", _broken_snapshot)
 
     assert sync.sync_gap(PROFILE_NAME) == ""
     assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_GAP) == []
@@ -441,10 +435,11 @@ def test_sync_gap_requires_resolvable_profile_snapshot(
 def test_sync_gap_skips_half_artifact_when_market_missing(data_dir: Path) -> None:
     _save(CareerProfile(who={"name": "张三"}, gap={"match_score": 50}))
 
-    # 缺 TargetSpec/MarketBaseline 时只允许补 ProfileSnapshot 锚点，
-    # 不允许写 profile_snapshot_id 有值但 market_baseline_id 为空的半成品 GapReport。
+    # 缺 ProfileSnapshot/TargetSpec/MarketBaseline 时不得写半成品 GapReport，
+    # 也不允许补 anchor artifact。
     assert sync.sync_gap(PROFILE_NAME) == ""
     assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_GAP) == []
+    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_PROFILE) == []
     assert sync.KEY_GAP not in profile_store.load_profile(PROFILE_NAME).core_state
 
 
@@ -540,19 +535,6 @@ def test_sync_execution_state_writes_after_new_generation(data_dir: Path) -> Non
     }
 
 
-def test_backfill_does_not_sync_preserved_only_tasks(data_dir: Path) -> None:
-    from src.tools import task_tools
-
-    _save(_preserved_only_profile())
-    _save_applied_plan_with_preserved(["task_001", "task_002"])
-    profile_store.set_active_profile_name(PROFILE_NAME)
-
-    profile = task_tools._backfill_core_state(profile_store.load_profile(PROFILE_NAME))
-
-    assert ArtifactStore().list(PROFILE_NAME, sync.STAGE_EXECUTION) == []
-    assert sync.KEY_EXECUTION not in profile.core_state
-
-
 def test_sync_review_requires_execution_state_of_current_plan(data_dir: Path) -> None:
     _save(_full_profile())
     current_plan_id = _save_applied_execution_plan()
@@ -595,12 +577,14 @@ def test_market_baseline_profile_id_points_to_resolved_snapshot(
             "city": "北京",
             "user_confirmed": True,
         },
+        guidance={"goal_confirmed_at": "2026-01-01T00:00:00"},
         research={
             "report_md": "C:/reports/research.md",
             "jd_samples": [{"title": "AI Agent 工程师", "company": "字节跳动"}],
         },
     )
     _save(profile)
+    assert sync.sync_profile(PROFILE_NAME)
 
     market_id = sync.sync_market_baseline(PROFILE_NAME)
 

@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import paths
-from src.core.adapters.legacy_profile import profile_snapshot, target_spec
+from src.core.adapters.profile_mapping import profile_snapshot, target_spec
 from src.core.artifacts.models import (
     ArtifactMeta,
     BaselinePlan,
@@ -74,7 +74,10 @@ def core_state(monkeypatch: pytest.MonkeyPatch) -> dict[str, dict[str, Any]]:
     monkeypatch.setattr(
         state_machine,
         "load_profile",
-        lambda name: SimpleNamespace(core_state=state["value"]),
+        lambda name: SimpleNamespace(
+            core_state=state["value"],
+            guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
+        ),
     )
     return state
 
@@ -451,7 +454,7 @@ def test_artifact_models_minimal_construction() -> None:
     assert plan.changes == []
 
 
-def test_legacy_adapter_maps_snapshot_and_target_spec() -> None:
+def test_profile_mapping_maps_snapshot_and_target_spec() -> None:
     profile = CareerProfile(
         who={"name": "张三", "city": "上海", "graduation_year": "2027"},
         have={"skills": ["Python"]},
@@ -488,7 +491,7 @@ def test_legacy_adapter_maps_snapshot_and_target_spec() -> None:
     assert spec.constraints == ["不加班", "上海优先"]
 
 
-def test_legacy_adapter_defaults_for_empty_profile() -> None:
+def test_profile_mapping_defaults_for_empty_profile() -> None:
     profile = CareerProfile()
     spec = target_spec(profile)
     assert spec.role == ""

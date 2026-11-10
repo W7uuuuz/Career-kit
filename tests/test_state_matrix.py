@@ -367,11 +367,10 @@ def _case_06(store: ArtifactStore) -> SimpleNamespace:
 
 
 def _case_07(store: ArtifactStore) -> SimpleNamespace:
-    # legacy 场景：fixture 显式 seed Phase 4 将由 core/legacy.py 生成的 anchor
-    # artifacts；state.py 本身不读 legacy_mode。
+    # fixture 显式 seed 到基线 artifacts，并保留下游 profile 字段。
     _seed_to_baseline(store)
     return _profile(
-        who={"name": "旧用户"},
+        who={"name": "已有档案"},
         have={"skills": ["Python"]},
         want={"target_role": "AI Agent 开发"},
         research={"jd_samples": [{"title": "AI Agent"}]},
@@ -379,7 +378,7 @@ def _case_07(store: ArtifactStore) -> SimpleNamespace:
         plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
         tasks=[SimpleNamespace(status="pending")],
         guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
-        summary="旧档案",
+        summary="已有档案",
     )
 
 
@@ -512,21 +511,6 @@ def _case_19(store: ArtifactStore) -> SimpleNamespace:
     )
 
 
-def _case_20(store: ArtifactStore) -> SimpleNamespace:
-    """F20：真 legacy（无 guidance）仍按旧链路推进。"""
-    _seed_to_baseline(store)
-    return _profile(
-        who={"name": "旧用户"},
-        have={"skills": ["Python"]},
-        want={"target_role": "AI Agent 开发"},
-        research={"jd_samples": [{"title": "AI Agent"}]},
-        gap={"match_score": 58},
-        plan={"roadmap": {"phases": [{"id": "phase_1", "name": "基础"}]}},
-        tasks=[SimpleNamespace(status="pending")],
-        summary="旧档案",
-    )
-
-
 def _case_21(store: ArtifactStore) -> SimpleNamespace:
     """F21：改 who.graduation_year（届别）→ 指纹变化，旧 TargetSpec 失效。"""
     profile = _confirmed_profile(
@@ -563,7 +547,6 @@ _CASES: tuple[tuple[str, Callable[[ArtifactStore], SimpleNamespace]], ...] = (
     ("17", _case_17),
     ("18", _case_18),
     ("19", _case_19),
-    ("20", _case_20),
     ("21", _case_21),
 )
 
@@ -578,7 +561,7 @@ def build_case(label: str, store: ArtifactStore) -> tuple[SimpleNamespace, Any]:
 
 
 # Phase 1 持久化 fixture：入口一致性测试（tests/test_entrypoint_consistency.py）
-# 逐条维护 EXPECTED，新增 Phase 3b-1 fixture（16-20）只做状态矩阵断言。
+# 逐条维护 EXPECTED，新增 fixture 只做状态矩阵断言。
 _ENTRYPOINT_CASE_LABELS: tuple[str, ...] = (
     "01",
     "02",
@@ -729,7 +712,7 @@ def test_fixture_06_gap_stale(store: ArtifactStore) -> None:
     assert any(blocker.code == "gap_stale" for blocker in snapshot.blockers)
 
 
-def test_fixture_07_legacy_downstream(store: ArtifactStore) -> None:
+def test_fixture_07_baseline_with_downstream_fields(store: ArtifactStore) -> None:
     snapshot = _snapshot("07", store)
 
     assert snapshot.state is State.COMPANY_PENDING
@@ -849,14 +832,6 @@ def test_fixture_19_new_flow_confirmed_but_not_finalized(
     assert snapshot.state is State.PROFILE_READY
     assert snapshot.next_tool == "finalize_profile"
     assert not snapshot.completion[progress.STAGE_PROFILE]
-
-
-def test_fixture_20_true_legacy_still_follows_old_chain(store: ArtifactStore) -> None:
-    snapshot = _snapshot("20", store)
-
-    assert snapshot.state is State.COMPANY_PENDING
-    assert snapshot.next_tool == "select_target_companies"
-    assert snapshot.completion[progress.STAGE_BASELINE_PLAN] is True
 
 
 def test_fixture_21_graduation_year_change_invalidates_target(

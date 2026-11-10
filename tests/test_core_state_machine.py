@@ -1,4 +1,4 @@
-"""12 阶段状态机回归——按 artifact 顺序推进、可选阶段不阻塞、旧档案兜底。
+"""12 阶段状态机回归——按 artifact 顺序推进、可选阶段不阻塞。
 
 所有用例使用 tmp_path 隔离数据目录，不读写真实 ~/.career-kit。
 """
@@ -83,6 +83,7 @@ def profile_state(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "gap": {},
         "plan": {},
         "tasks": [],
+        "guidance": {"goal_confirmed_at": "2026-11-09T00:00:00"},
     }
     monkeypatch.setattr(
         state_machine,
@@ -380,34 +381,6 @@ def test_optional_stages_do_not_block_execution(
     assert "get_weekly_review" in action["optional_next_tools"]
 
 
-def test_legacy_plan_counts_as_baseline_done(
-    store: ArtifactStore, profile_state: dict[str, Any]
-) -> None:
-    profile_state["who"] = {"name": "旧用户"}
-    profile_state["summary"] = "旧档案"
-    profile_state["want"] = {"target_role": "AI Agent 开发"}
-    profile_state["gap"] = {"match_score": 58}
-    profile_state["plan"] = {"roadmap": {"phases": []}}
-
-    action = state_machine.next_action(PROFILE_NAME)
-
-    assert action["stage"] == state_machine.STAGE_COMPANY_POOL
-    assert action["next_tool"] == "select_target_companies"
-    assert all(value == "" for value in action["artifact_ids"].values())
-
-
-def test_legacy_plan_without_research_is_not_forced_to_redo(
-    store: ArtifactStore, profile_state: dict[str, Any]
-) -> None:
-    profile_state["gap"] = {"match_score": 58}
-    profile_state["plan"] = {"roadmap": {"phases": []}}
-
-    action = state_machine.next_action(PROFILE_NAME)
-
-    assert action["stage"] == state_machine.STAGE_COMPANY_POOL
-    assert action["next_tool"] == "select_target_companies"
-
-
 def test_core_state_artifact_ids_take_precedence(
     store: ArtifactStore, profile_state: dict[str, Any]
 ) -> None:
@@ -436,6 +409,8 @@ def test_optional_artifacts_do_not_skip_core_stages(
     profile_state["who"] = {"name": "张三"}
     profile_state["have"] = {"skills": ["Python"]}
     profile_state["want"] = {"target_role": "AI Agent 开发"}
+    _save_profile(store)
+    _save_target(store)
     _save_application(store)
     _save_review(store)
 

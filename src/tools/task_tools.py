@@ -7,7 +7,7 @@ from datetime import datetime
 from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
 from ..core.progress import STAGE_EXECUTING, STAGE_EXECUTION, resolve_progress
 from ..core.state import State, StateSnapshot, resolve_state
-from ..guidance import MAINTENANCE_CLOSING, guide_for, is_legacy
+from ..guidance import MAINTENANCE_CLOSING, guide_for
 from ..mcp_app import mcp
 from .dashboard import (
     render_progress_html as _render_progress_html,
@@ -1016,79 +1016,6 @@ def _review_nudge_hint() -> str:
     return ""
 
 
-def _backfill_core_state(profile):
-    """旧档案补齐：core_state 缺 key 且档案已有对应数据时补一次 sync。
-
-    只补缺失 key，已有 key 不重建；任何 sync 失败都静默跳过，不影响状态报告。
-    返回补齐后重新加载的档案（无补齐时返回原对象）。
-    """
-    try:
-        from ..core import sync as core_sync
-    except Exception:  # noqa: BLE001 - 导入失败视为无旧档案可补
-        return profile
-
-    state = profile.core_state if isinstance(profile.core_state, dict) else {}
-    research = profile.research if isinstance(profile.research, dict) else {}
-    plan = profile.plan if isinstance(profile.plan, dict) else {}
-    roadmap = plan.get("roadmap")
-    # 只有真 legacy（无 guidance/显式标记）才补 ProfileSnapshot；新流程即使已有
-    # research/gap/plan/tasks，也必须等 finalize_profile，不能跳过建档。
-    profile_ready = bool(profile.summary) or is_legacy(profile)
-    # 目标确认是 TargetSpec 的唯一门禁：只有用户确认（或旧档案兜底）才允许
-    # 补 TargetSpec；未确认时也不能因为已有调研数据而推进市场基线。
-    goal_ready = (
-        bool((profile.want or {}).get("user_confirmed"))
-        or bool((profile.guidance or {}).get("goal_confirmed_at"))
-        or is_legacy(profile)
-    )
-    checks = (
-        (
-            core_sync.KEY_PROFILE,
-            bool(profile.who or profile.have or profile.want or profile.summary)
-            and profile_ready,
-            core_sync.sync_profile,
-        ),
-        (
-            core_sync.KEY_TARGET,
-            bool(profile.want) and goal_ready,
-            core_sync.sync_target,
-        ),
-        (
-            core_sync.KEY_MARKET_BASELINE,
-            goal_ready
-            and bool(
-                research.get("report_md")
-                or research.get("jd_samples")
-                or research.get("cases")
-            ),
-            core_sync.sync_market_baseline,
-        ),
-        (core_sync.KEY_GAP, bool(profile.gap), core_sync.sync_gap),
-        (
-            core_sync.KEY_BASELINE_PLAN,
-            bool(isinstance(roadmap, dict) and roadmap),
-            core_sync.sync_baseline_plan,
-        ),
-        (core_sync.KEY_EXECUTION, bool(profile.tasks), core_sync.sync_execution_state),
-        (
-            core_sync.KEY_APPLICATIONS,
-            bool(profile.applications),
-            core_sync.sync_application_state,
-        ),
-    )
-
-    changed = False
-    for key, has_data, sync_fn in checks:
-        if not has_data or state.get(key):
-            continue
-        try:
-            sync_fn(get_active_profile_name())
-            changed = True
-        except Exception:  # noqa: BLE001 - 补齐失败不影响主流程
-            continue
-    return load_profile() if changed else profile
-
-
 def _stage_position(snapshot: StateSnapshot) -> tuple[int, str, str]:
     """阶段位置与下一步只取 StateSnapshot，不再自维护阶段/工具映射。"""
     return snapshot.stage_index, snapshot.stage_name, snapshot.next_tool
@@ -1168,8 +1095,7 @@ def get_workflow_status() -> str:
     Returns:
         包含当前阶段、已完成步骤、下一步建议的字典
     """
-    # 旧档案补齐：缺 key 且已有数据时补一次 sync（只补缺失，不重建）
-    profile = _backfill_core_state(load_profile())
+    profile = load_profile()
     # 唯一状态源：阶段位置与下一步只来自 resolve_state。
     snapshot = resolve_state(profile)
 

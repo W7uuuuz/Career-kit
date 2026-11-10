@@ -93,7 +93,7 @@ EXPECTED: tuple[ExpectedEntry, ...] = (
     ),
     ExpectedEntry(
         "07",
-        "legacy 有 research/gap/plan/tasks",
+        "已有基线 artifact 与下游 profile 字段",
         State.COMPANY_PENDING,
         6,
         "目标企业筛选",

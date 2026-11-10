@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..core.adapters.legacy_profile import target_spec
+from ..core.adapters.profile_mapping import target_spec
 from ..core.artifacts.store import ArtifactStore
 from ..core.stages import target_companies
 from ..core.stages.base import StageContext, StageResult

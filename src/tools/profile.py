@@ -1,7 +1,7 @@
 """档案管理——初始化会话、逐步填充、确认档案、多档案切换。
 
 多档案机制：
-- 档案文件为 PROFILE_DIR/{name}.json，名称任意（默认 "default"）。
+- 档案以 SQLite（PROFILE_DIR/career-kit.db）为准，JSON 镜像仅用于查看与外部工具读取。
 - 当前活跃档案记录在 PROFILE_DIR/.active_profile，无记录时回退 "default"。
 - 不传 name 的所有读写操作都作用于当前活跃档案；
   显式传 name 的操作不受影响（测试/切换场景用）。
@@ -115,24 +115,8 @@ def _connect() -> sqlite3.Connection:
     key = str(path)
     if key not in _DB_READY:
         conn.execute("PRAGMA journal_mode=WAL")
-        # 一次性导入已有 JSON 档案，兼容旧版本
-        _import_json_profiles(conn)
         _DB_READY.add(key)
     return conn
-
-
-def _import_json_profiles(conn: sqlite3.Connection) -> None:
-    for json_path in PROFILE_DIR.glob("*.json"):
-        try:
-            data = json_path.read_text(encoding="utf-8")
-            conn.execute(
-                "INSERT OR IGNORE INTO profiles(name, data, updated_at) "
-                "VALUES (?, ?, ?)",
-                (json_path.stem, data, datetime.now().isoformat()),
-            )
-        except OSError:
-            continue
-    conn.commit()
 
 
 def _read_profile_data(name: str) -> str | None:
@@ -200,22 +184,18 @@ def set_active_profile_name(name: str) -> None:
 
 
 def profile_exists(name: str) -> bool:
-    """档案是否存在（SQLite 为主，JSON 为兼容镜像）。非法档案名抛 ValueError。"""
+    """档案是否存在（SQLite 为准）。非法档案名抛 ValueError。"""
     validate_profile_name(name)
-    return (
-        _read_profile_data(name) is not None
-        or (PROFILE_DIR / f"{name}.json").exists()
-    )
+    return _read_profile_data(name) is not None
 
 
 def list_profiles() -> list[dict[str, Any]]:
-    """列出所有档案（SQLite 为主，JSON 为兼容镜像）。"""
+    """列出所有档案（SQLite 为准）。"""
     if not PROFILE_DIR.exists():
         return []
     active = get_active_profile_name()
     conn = _connect()
     try:
-        _import_json_profiles(conn)
         rows = conn.execute(
             "SELECT name, data, updated_at FROM profiles ORDER BY name"
         ).fetchall()
@@ -338,11 +318,6 @@ def load_profile(name: str | None = None) -> CareerProfile:
     data = _read_profile_data(name)
     if data is not None:
         return CareerProfile.model_validate_json(data)
-    path = PROFILE_DIR / f"{name}.json"
-    if path.exists():
-        text = path.read_text(encoding="utf-8")
-        _write_profile_data(name, text)
-        return CareerProfile.model_validate_json(text)
     return CareerProfile()
 
 
@@ -361,7 +336,7 @@ def save_profile(profile: CareerProfile, name: str | None = None) -> None:
     data = profile.model_dump_json(indent=2)
     with profile_lock(name):
         _write_profile_data(name, data)
-        # JSON 镜像：兼容 E2E harness、用户手工查看与旧版本回滚
+        # JSON 镜像：供 E2E harness、用户手工查看与外部工具读取
         temp = path.with_name(f".{path.name}.tmp")
         temp.write_text(data, encoding="utf-8")
         os.replace(temp, path)

@@ -34,7 +34,6 @@ from .progress import (
     STAGE_PROFILE,
     STAGE_REQUIREMENT,
     STAGE_TARGET,
-    is_legacy_profile,
     profile_target_fingerprint,
     resolve_artifact,
     stored_target_fingerprint,
@@ -464,10 +463,7 @@ def resolve_state(
         return _snapshot(State.EMPTY, profile, artifacts, blockers)
 
     guidance = _guidance(profile)
-    # 新流程只认 goal_confirmed_at；真 legacy（无 guidance/显式标记）按已确认兜底。
-    goal_confirmed = bool(guidance.get("goal_confirmed_at")) or is_legacy_profile(
-        profile
-    )
+    goal_confirmed = bool(guidance.get("goal_confirmed_at"))
 
     # 覆盖规则 2：TargetSpec 只在目标已确认时有效。
     target = artifacts.get(STAGE_TARGET)

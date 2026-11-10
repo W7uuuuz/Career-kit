@@ -63,7 +63,7 @@
 | `analyze_company_requirements` | 阶段 8：用代码统计 JD/面经频率、公司覆盖、Wilson 区间与逐条硬门槛，返回受约束的分析提示；只落「草稿」artifact，置信度只按样本量计算 |
 | `save_requirement_profile` | 阶段 8：保存 LLM 的定性解读并标记需求画像为已保存；未保存或其他没有非空 interpretation 的草稿不得进入阶段 9；必须能从 EvidenceRun 复算统计，缺失或损坏时拒绝落库；数字、列表与 evidence_ids 由代码重算，interpretation 一旦引用证据 id 必须真实存在 |
 | `plan_execution_alignment` | 阶段 9：返回校准方法论、基线路线图、已完成能力与需求摘要，供设计执行版方案；RequirementProfile 必须 saved 或 interpretation 非空（D5 OR），两者都没有时拒绝；基线读取自 BaselinePlan artifact |
-| `save_execution_alignment` | 阶段 9：预览或应用执行版；RequirementProfile 必须 saved（validation 存在且 status 非 draft）或 interpretation 非空（D5 OR），两者都没有时拒绝预览/应用；ExecutionPlan 必须引用当前 `baseline_plan_id` 与 `requirement_profile_id`，基线来自真实 BaselinePlan artifact 且 `profile.plan` 与 artifact roadmap 一致，显式传入的 baseline_plan_id 不一致、artifact 缺失或 profile.plan 分叉都拒绝落库；无 BaselinePlan 的旧档案返回 `LEGACY_MIGRATION_REQUIRED`，不写已应用 artifact；每条变更必须带非空 evidence_ids 且属于当前 RequirementProfile，未知或空 id 拒绝落库；确认后替换计划、保留完成历史并记录调整 |
+| `save_execution_alignment` | 阶段 9：预览或应用执行版；RequirementProfile 必须 saved（validation 存在且 status 非 draft）或 interpretation 非空（D5 OR），两者都没有时拒绝预览/应用；ExecutionPlan 必须引用当前 `baseline_plan_id` 与 `requirement_profile_id`，基线来自真实 BaselinePlan artifact 且 `profile.plan` 与 artifact roadmap 一致，显式传入的 baseline_plan_id 不一致、artifact 缺失或 profile.plan 分叉都拒绝落库；无 BaselinePlan 返回 `MISSING_BASELINE_PLAN`，不写已应用 artifact；每条变更必须带非空 evidence_ids 且属于当前 RequirementProfile，未知或空 id 拒绝落库；确认后替换计划、保留完成历史并记录调整 |
 | `check_plan_fit` | 计划失配检测：只读检查证据新鲜度、链路一致性、要求覆盖率与漏斗信号，返回给用户的询问话术；不自动改计划 |
 
 ### 任务执行与求职漏斗工具（8）

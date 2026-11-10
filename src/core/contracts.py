@@ -5,12 +5,12 @@
 解析与契约表各自维护一套上游关系。
 
 ``ready`` 只读 artifact 映射（stage -> artifact dict），不读 profile 的临时
-字段；legacy 归一化由 ``core.legacy``（Phase 4）负责。
+字段。
 
-这些 ``ready`` 谓词是阶段就绪的唯一判定：``core.state`` 直接复用，progress
-的旧判定保留到 Phase 3 删除。``STAGE_PROFILE`` 的 next_tool 是
-``finalize_profile``；EMPTY 是尚未解析出 profile artifact 的 pre-stage 状态，
-由 ``core.state`` 在 profile contract 之前判定，不属于 profile contract。
+这些 ``ready`` 谓词是阶段就绪的唯一判定：``core.state`` 与 ``core.progress``
+都直接复用。``STAGE_PROFILE`` 的 next_tool 是 ``finalize_profile``；EMPTY 是
+尚未解析出 profile artifact 的 pre-stage 状态，由 ``core.state`` 在 profile
+contract 之前判定，不属于 profile contract。
 """
 
 from __future__ import annotations

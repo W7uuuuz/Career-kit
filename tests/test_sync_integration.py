@@ -37,10 +37,10 @@ def _load_artifact(artifact_id: str) -> dict:
     return data
 
 
-def _seed_legacy_profile() -> CareerProfile:
+def _seed_profile() -> CareerProfile:
     roadmap = {
         "roadmap": {
-            "strategy_summary": "旧基线策略",
+            "strategy_summary": "基线策略",
             "phases": [
                 {
                     "id": "phase_1",
@@ -58,17 +58,12 @@ def _seed_legacy_profile() -> CareerProfile:
         }
     }
     profile = CareerProfile(
-        who={"name": "旧用户", "education": "双非本", "city": "北京"},
+        who={"name": "测试用户", "education": "双非本", "city": "北京"},
         have={"skills": ["Python"]},
         want={"target_role": "AI Agent 开发", "city": "北京", "user_confirmed": True},
-        # 迁移后的旧档案等价于 Phase 4 生成 anchor artifacts：目标已确认且带
-        # 显式 legacy 标记，才能走旧链路兜底（「有下游产物」本身不再算 legacy）。
-        guidance={
-            "goal_confirmed_at": "2026-11-09T00:00:00",
-            "legacy_migrated_at": "2026-11-09T00:00:00",
-        },
+        guidance={"goal_confirmed_at": "2026-11-09T00:00:00"},
         research={
-            "report_md": "C:/old/research.md",
+            "report_md": "C:/reports/research.md",
             "jd_samples": [{"title": "AI Agent", "company": "字节跳动", "url": "u1"}],
             "cases": [{"title": "双非进大厂", "source": "nowcoder", "url": "u2"}],
             "counts": {"jd_samples": 1, "cases": 1},
@@ -82,6 +77,22 @@ def _seed_legacy_profile() -> CareerProfile:
     )
     profile_store.save_profile(profile, PROFILE_NAME)
     return profile
+
+
+def _seed_to_market() -> None:
+    from src.core import sync
+
+    _seed_profile()
+    assert sync.sync_profile(PROFILE_NAME)
+    assert sync.sync_target(PROFILE_NAME)
+    assert sync.sync_market_baseline(PROFILE_NAME)
+
+
+def _seed_to_gap() -> None:
+    from src.core import sync
+
+    _seed_to_market()
+    assert sync.sync_gap(PROFILE_NAME)
 
 
 def test_finalize_profile_syncs_profile_artifact(data_dir: Path) -> None:
@@ -102,11 +113,7 @@ def test_finalize_profile_syncs_profile_artifact(data_dir: Path) -> None:
 def test_save_gap_analysis_syncs_gap_artifact(data_dir: Path) -> None:
     from src.tools.analysis_tools import save_gap_analysis
 
-    from conftest import promote_profile
-
-    seeded = _seed_legacy_profile()
-    seeded.plan = {}
-    promote_profile(seeded, PROFILE_NAME)
+    _seed_to_market()
     gap = {"match_score": 60, "skill_gaps": [{"skill": "RAG", "source": "JD"}]}
     out = save_gap_analysis(gap_json=json.dumps(gap, ensure_ascii=False))
     assert json.loads(out).get("isError") is not True
@@ -120,9 +127,7 @@ def test_save_gap_analysis_syncs_gap_artifact(data_dir: Path) -> None:
 def test_save_roadmap_syncs_baseline_plan_artifact(data_dir: Path) -> None:
     from src.tools.roadmap_tools import save_roadmap
 
-    from conftest import promote_profile
-
-    promote_profile(_seed_legacy_profile(), PROFILE_NAME)
+    _seed_to_gap()
     roadmap = {
         "roadmap": {
             "strategy_summary": "基线策略",
@@ -352,37 +357,32 @@ def test_get_weekly_review_syncs_review_artifact(data_dir: Path) -> None:
     assert isinstance(artifact["recommendations"], list)
 
 
-def test_workflow_status_backfills_legacy_and_returns_12_stage(data_dir: Path) -> None:
+def test_workflow_status_does_not_create_artifacts(data_dir: Path) -> None:
     from src.tools.task_tools import get_workflow_status
 
-    _seed_legacy_profile()
+    _seed_profile()
 
     out = get_workflow_status()
     assert isinstance(out, str)
 
     profile = profile_store.load_profile(PROFILE_NAME)
     state = profile.core_state
-    assert state.get("profile_id", "").startswith("pf_")
-    assert state.get("target_spec_id", "").startswith("ts_")
-    assert state.get("market_baseline_id", "").startswith("mb_")
-    assert state.get("gap_report_id", "").startswith("gr_")
-    assert state.get("baseline_plan_id", "").startswith("bp_")
-    # 没有 applied ExecutionPlan 时不写半成品 ExecutionState（I5）。
+    assert not state.get("profile_id")
+    assert not state.get("target_spec_id")
+    assert not state.get("market_baseline_id")
+    assert not state.get("gap_report_id")
+    assert not state.get("baseline_plan_id")
     assert not state.get("execution_state_id")
 
-    # 12 阶段位置：企业基线链路已补齐，当前停在阶段 6（目标企业筛选）
+    # 没有 artifact 的档案按新用户/待建档处理，不自动迁移。
     assert "12 步" in out
-    assert "6/12" in out
-    assert "目标企业筛选" in out
-    # 保留旧的企业适配区块与旧流程提示
-    assert "企业适配（Core v2）" in out
-    assert "select_target_companies" in out
+    assert "1/12" in out
 
 
 def test_workflow_status_keeps_existing_core_keys(data_dir: Path) -> None:
     from src.tools.task_tools import get_workflow_status
 
-    profile = _seed_legacy_profile()
+    profile = _seed_profile()
     profile.core_state = {"target_spec_id": "ts_keep", "custom_key": "keep"}
     profile_store.save_profile(profile, PROFILE_NAME)
 
@@ -391,7 +391,7 @@ def test_workflow_status_keeps_existing_core_keys(data_dir: Path) -> None:
     profile = profile_store.load_profile(PROFILE_NAME)
     assert profile.core_state.get("target_spec_id") == "ts_keep", "已有 key 不应重建"
     assert profile.core_state.get("custom_key") == "keep"
-    assert profile.core_state.get("profile_id", "").startswith("pf_")
+    assert not profile.core_state.get("profile_id")
 
 
 def test_record_application_duplicate_branch_writes_no_artifact(data_dir: Path) -> None:

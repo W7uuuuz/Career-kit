@@ -1,6 +1,6 @@
-"""旧档案 → Core v2 artifact 同步层（全 12 阶段迁移）。
+"""`CareerProfile` → Core v2 artifact 同步层（全 12 阶段）。
 
-把旧 `CareerProfile` 中已有的数据写成新 artifact，并在档案 `core_state`
+把 `CareerProfile` 中已有的数据写成新 artifact，并在档案 `core_state`
 里写入对应指针。纪律：
 
 - 只从档案复制事实，除 `core_state` 外不修改任何字段；
@@ -19,7 +19,7 @@ from ..models import CareerProfile
 from ..tools.application_tracker import funnel_stats
 from ..tools.profile import load_profile, profile_lock, save_profile
 from ..tools.task_manager import resolve_current_phase
-from .adapters.legacy_profile import profile_snapshot, target_spec
+from .adapters.profile_mapping import profile_snapshot, target_spec
 from .artifacts.models import (
     ApplicationCandidate,
     ApplicationState,
@@ -33,7 +33,7 @@ from .artifacts.models import (
     TargetSpec,
 )
 from .artifacts.store import ArtifactStore
-from .progress import TARGET_FINGERPRINT_KEY, is_legacy_profile, target_fingerprint
+from .progress import TARGET_FINGERPRINT_KEY, target_fingerprint
 
 STAGE_PROFILE = "profile"
 STAGE_TARGET = "target"
@@ -95,8 +95,8 @@ def sync_target(profile_name: str) -> str:
         if not profile.want:
             return ""
         guidance = profile.guidance if isinstance(profile.guidance, dict) else {}
-        # 新流程目标未由用户确认时不得写 TargetSpec；真 legacy 允许兜底。
-        if not guidance.get("goal_confirmed_at") and not is_legacy_profile(profile):
+        # 目标未由用户确认时不得写 TargetSpec。
+        if not guidance.get("goal_confirmed_at"):
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
@@ -133,9 +133,8 @@ def sync_market_baseline(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
-        # 旧档案迁移时允许先补 ProfileSnapshot 锚点，再由 TargetSpec/MarketBaseline 引用。
-        # meta.inputs.profile_id 必须指向本次解析/创建的快照，不能用解析前的旧 state。
-        profile_id = _resolve_profile_id(store, profile, profile_name, state)
+        # meta.inputs.profile_id 必须指向本次解析到的快照，不能用解析前的旧 state。
+        profile_id = _resolve_profile_id(store, profile_name, state)
         if not profile_id:
             return ""
         target_id = _resolve_target_spec_id(store, profile_name, state)
@@ -176,7 +175,7 @@ def sync_gap(profile_name: str) -> str:
             return ""
         state = _core_state(profile)
         store = ArtifactStore()
-        profile_id = _resolve_profile_id(store, profile, profile_name, state)
+        profile_id = _resolve_profile_id(store, profile_name, state)
         if not profile_id:
             return ""
         market_id = _resolve_market_baseline_id(store, profile_name, state)
@@ -611,14 +610,12 @@ def _existing_profile_id(
 
 def _resolve_profile_id(
     store: ArtifactStore,
-    profile: CareerProfile,
     profile_name: str,
     state: dict[str, Any],
 ) -> str:
     """解析 GapReport 依赖的 ProfileSnapshot id。
 
-    优先 core_state 指针，其次该档案最新的 ProfileSnapshot；都没有时尝试从
-    当前档案生成可解析的快照并落库。无法生成时返回空字符串。
+    优先 core_state 指针，其次该档案最新的 ProfileSnapshot；都没有时返回空字符串。
     """
     profile_id = str(state.get(KEY_PROFILE) or "")
     if profile_id and _matches_stage(
@@ -628,30 +625,7 @@ def _resolve_profile_id(
     latest = store.latest(profile_name, STAGE_PROFILE)
     if _matches_stage(latest, STAGE_PROFILE, profile_name):
         return _artifact_id(latest)
-    # 新流程没有 ProfileSnapshot 时必须等 finalize_profile 生成；只有真 legacy
-    # 才允许在这里补 anchor 快照，避免新流程绕过 finalize。
-    if not is_legacy_profile(profile):
-        return ""
-    try:
-        snapshot = profile_snapshot(profile)
-    except Exception:
-        return ""
-    if not (
-        snapshot.who
-        or snapshot.have
-        or snapshot.want
-        or snapshot.gap
-        or snapshot.plan
-        or snapshot.summary
-    ):
-        return ""
-    artifact = _ProfileArtifact(
-        meta=_meta(store, "pf", STAGE_PROFILE, profile_name, {}),
-        **snapshot.model_dump(),
-    )
-    new_id = store.save(artifact, dedupe=True)
-    merge_core_state(profile_name, {KEY_PROFILE: new_id}, advance_stage=False)
-    return new_id
+    return ""
 
 
 def _resolve_market_baseline_id(

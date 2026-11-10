@@ -266,8 +266,7 @@ collect_company_evidence(
   core_state 或显式传入的 `baseline_plan_id` 与当前链路不一致时拒绝落库。
 - 基线只来自 BaselinePlan artifact，且 `profile.plan` 与其 roadmap 必须一致：
   artifact 缺失、baseline_plan_id 缺失或两者分叉时拒绝落库。
-- 没有 BaselinePlan 的旧档案不自动 apply：真 legacy 返回
-  `LEGACY_MIGRATION_REQUIRED`，由 Phase 4 迁移；不写「已应用但状态机不可达」的 artifact。
+- 没有 BaselinePlan 一律拒绝 apply（`MISSING_BASELINE_PLAN`）；不写「已应用但状态机不可达」的 artifact。
 - 每条 change 必须带 `evidence_ids`；没有证据的变更不允许落库。
 - 已完成/已跳过任务是历史，不能删除；旧 pending/in_progress 不迁移。
 - 用户确认是硬门禁：未确认只返回 diff 预览，不改档案。

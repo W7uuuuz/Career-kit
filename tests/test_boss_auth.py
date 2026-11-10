@@ -36,17 +36,18 @@ class FakeCache:
         self.set_calls += 1
 
 
-def test_login_state_has_timestamp_and_is_valid(auth_path):
-    auth.save_cookies({"wt2": "token", "bst": "value"})
+def test_login_marker_has_timestamp_and_is_valid(auth_path, monkeypatch):
+    auth.save_login_marker({"wt2": "token", "bst": "value"})
     state = json.loads(auth_path.read_text(encoding="utf-8"))
     assert state["saved_at_ts"] <= time.time()
     assert state["ttl_seconds"] == auth.LOGIN_TTL_SECONDS
+    monkeypatch.setattr(auth, "cdp_backend_available", lambda *a, **k: True)
     assert auth.has_valid_cookies() is True
-    assert auth.load_cookies()["wt2"] == "token"
+    assert state["cookies"][0]["name"] == "wt2"
 
 
-def test_login_state_expires_after_ttl(auth_path):
-    auth.save_cookies({"wt2": "token"})
+def test_login_marker_expires_after_ttl(auth_path):
+    auth.save_login_marker({"wt2": "token"})
     state = json.loads(auth_path.read_text(encoding="utf-8"))
     state["saved_at_ts"] = time.time() - auth.LOGIN_TTL_SECONDS - 1
     auth_path.write_text(json.dumps(state), encoding="utf-8")
@@ -55,13 +56,27 @@ def test_login_state_expires_after_ttl(auth_path):
     assert not auth_path.exists(), "过期登录态应被销毁"
 
 
-def test_legacy_state_without_timestamp_is_invalidated(auth_path):
+def test_state_without_timestamp_is_invalidated(auth_path):
     auth_path.write_text(
         json.dumps({"cookies": [{"name": "wt2", "value": "old"}]}),
         encoding="utf-8",
     )
     assert auth.has_valid_cookies() is False
     assert not auth_path.exists()
+
+
+def test_non_cdp_state_is_invalidated(auth_path):
+    auth_path.write_text(
+        json.dumps(
+            {
+                "cookies": [{"name": "wt2", "value": "old"}],
+                "saved_at_ts": time.time(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert auth.has_valid_cookies() is False
+    assert not auth_path.exists(), "非 CDP 登录态不再兼容"
 
 
 def test_cdp_login_marker_requires_cdp_backend(auth_path, monkeypatch):
@@ -107,7 +122,7 @@ def test_cdp_login_marker_expires(auth_path, monkeypatch):
 
 
 def test_search_rejects_cache_when_login_expired(auth_path, monkeypatch):
-    auth.save_cookies({"wt2": "token"})
+    auth.save_login_marker({"wt2": "token"})
     state = json.loads(auth_path.read_text(encoding="utf-8"))
     state["saved_at_ts"] = time.time() - auth.LOGIN_TTL_SECONDS - 1
     auth_path.write_text(json.dumps(state), encoding="utf-8")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import sqlite3
 
 import pytest
 
@@ -10,6 +10,30 @@ from e2e.data import WANT, WHO
 from e2e.drivers import flow
 
 pytestmark = pytest.mark.e2e
+
+
+def _seed_profile(sandbox, name: str, who: str) -> None:
+    """按当前 SQLite + JSON 镜像格式写入一份档案，不使用旧 JSON 自动导入。"""
+    from src.models import CareerProfile
+
+    data = CareerProfile(
+        who={"name": who}, want={"target_role": "AI 工程师"}
+    ).model_dump_json()
+    conn = sqlite3.connect(sandbox.data_dir / "career-kit.db")
+    try:
+        with conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS profiles ("
+                "name TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO profiles(name, data, updated_at) "
+                "VALUES (?, ?, ?)",
+                (name, data, "2026-01-01T00:00:00"),
+            )
+    finally:
+        conn.close()
+    (sandbox.data_dir / f"{name}.json").write_text(data, encoding="utf-8")
 
 
 async def test_multi_profile_switch_delete_restore(sandbox):
@@ -20,13 +44,7 @@ async def test_multi_profile_switch_delete_restore(sandbox):
 
         # 模拟用户已有两份档案
         for name, who in (("alice", "Alice"), ("bob", "Bob")):
-            (sandbox.data_dir / f"{name}.json").write_text(
-                json.dumps(
-                    {"who": {"name": who}, "want": {"target_role": "AI 工程师"}},
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
+            _seed_profile(sandbox, name, who)
 
         listed = await driver.list_profiles()
         listed.assert_contains("default", "alice", "bob", "当前使用")
