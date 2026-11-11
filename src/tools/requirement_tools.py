@@ -192,7 +192,7 @@ def save_requirement_profile(analysis_json: str) -> str:
         )
     try:
         evidence = EvidenceRun.model_validate(evidence_data)
-        stats = requirements.compute_statistics(evidence)
+        stats = requirements.compute_statistics(evidence, profile=profile)
     except Exception as exc:  # noqa: BLE001 —— 证据损坏必须拒绝，不沿用草稿数字
         return error_response(
             "EVIDENCE_RUN_CORRUPT",

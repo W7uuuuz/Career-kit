@@ -223,6 +223,10 @@ collect_company_evidence(
 
 **关键规则**：
 - 只抓已确认且可抓的企业；城市是硬筛选。
+- 目标岗位关键词只从 TargetSpec 读取：`role` 优先，为空时回退 `direction`；
+  逐家抓取按各源 `PARAMS` 透传 `keyword`/`city`，不支持的源不硬塞参数。
+- 按标题/正文做岗位相关性过滤：低于阈值的岗位不进证据池，
+  剔除数量与样本标题写入 `counts.dropped_irrelevant` 与数据缺口。
 - 目标城市非空时，`location` 为空的岗位按硬筛剔除，同时计入 `unknown_city`
   与 `dropped_city`，并写入数据缺口（空 location 不能静默放行）。
 - 官方源 JD 必须抓到详情；无详情剔除并计入 `dropped_no_detail`。
@@ -231,7 +235,9 @@ collect_company_evidence(
   与 list-only 缺口；保留的 list-only 行只保留薪资/公司/地点/技能等列表字段，
   需要全文时由用户显式调用 `fetch_jd_detail`。
 - 单源失败不拖垮整批，失败原因进 `source_status` 与 `gaps`。
-- 复用 `profile.research` 中 7 天内的样本，按 URL/公司+标题去重。
+- 复用 `profile.research` 中 7 天内的样本，按 URL/公司+标题去重；
+  复用样本标注来源轮次与所属企业池，池外复用单独计数并写入缺口。
+- 面经源在 `target.role` 为空时回退到方向关键词 + 城市搜索，不直接失败。
 - 置信度只按样本量计算（与 RequirementProfile 同口径）：
   JD <15 low / 15-29 medium / >=30 high；
   面经 <10 low / 10-19 medium / >=20 high。
@@ -259,6 +265,8 @@ collect_company_evidence(
   （validation 存在且 status 非 draft）或 interpretation 非空，任一成立即可；
   只有草稿/缺 validation 且 interpretation 同时为空时才拒绝。
 - 频率、公司覆盖、Wilson 95% 区间、逐条硬门槛全部由代码计算。
+- 聚合前按用户学历/届别/经验与 JD 字段做硬门槛预筛：不满足的 JD 进入
+  `excluded_jd` 与数据缺口，不参与高频词统计；档案缺字段时只标注缺失，不猜测。
 - 高频共性：`jd_frequency >= 0.5` 且 `company_count >= 2`；样本不足时降级为观察。
 - 不再使用「必备项」：区分高频共性要求、单 JD 硬门槛、面经高频考点、
   公司差异化要求、加分项。

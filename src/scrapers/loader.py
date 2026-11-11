@@ -240,6 +240,21 @@ def get_scraper(company: str) -> CompanyScraper | None:
     return _instantiate_scraper(resolve_company(company))
 
 
+def scraper_params(company: str) -> dict[str, Any]:
+    """返回指定源声明的搜索参数（类属性 PARAMS 优先，回退 config.yaml）。
+
+    调用方据此决定能透传哪些参数；返回空字典表示本源没有可确认的参数能力，
+    不要硬塞 keyword/city。
+    """
+    resolved = resolve_company(company)
+    scraper = get_scraper(resolved) if resolved else None
+    config = _load_config().get("scrapers", {}).get(resolved, {})
+    params = getattr(scraper, "PARAMS", None) if scraper is not None else None
+    if not isinstance(params, dict):
+        params = config.get("params")
+    return dict(params) if isinstance(params, dict) else {}
+
+
 def list_scrapers() -> list[dict[str, Any]]:
     """列出所有已注册的企业 Scraper。
 

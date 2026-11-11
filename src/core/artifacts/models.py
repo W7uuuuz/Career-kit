@@ -100,6 +100,9 @@ class JDEvidence(BaseModel):
     fetched_at: str = ""
     detail_status: Literal["ok", "missing", "failed", "list_only"] = "missing"
     reused: bool = False
+    reused_from: str = ""
+    reused_pool_id: str = ""
+    reused_in_pool: bool = False
 
 
 class InterviewEvidence(BaseModel):
@@ -117,6 +120,9 @@ class InterviewEvidence(BaseModel):
     content: str = ""
     fetched_at: str = ""
     reused: bool = False
+    reused_from: str = ""
+    reused_pool_id: str = ""
+    reused_in_pool: bool = False
 
 
 class EvidenceRun(BaseModel):
@@ -175,6 +181,7 @@ class RequirementProfile(BaseModel):
     hard_requirements: list[HardRequirement] = Field(default_factory=list)
     nice_to_have: list[RequirementItem] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
+    excluded_jd: list[dict[str, Any]] = Field(default_factory=list)
     interpretation: dict[str, Any] = Field(default_factory=dict)
 
 

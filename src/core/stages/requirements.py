@@ -54,6 +54,19 @@ _EXPERIENCE_PATTERN = re.compile(
 # 单条证据的统计输入：evidence_id、company_key、company_label、tier
 _Hit = tuple[str, str, str, str]
 
+_DEGREE_RANK = {"专科": 0, "本科": 1, "硕士": 2, "博士": 3}
+_USER_EXPERIENCE_KEYS = (
+    "experience_years",
+    "work_years",
+    "years_of_experience",
+    "工作经验",
+    "经验年限",
+)
+_GRADUATION_KEYS = ("graduation_year", "graduation", "届别")
+_PREFERRED_DEGREE_RE = re.compile(
+    r"[^，。；;\n]*(?:优先|加分)[^，。；;\n]*"
+)
+
 
 def wilson_interval(
     count: int, total: int, z: float = _WILSON_Z
@@ -224,6 +237,156 @@ def _extract_experience(text: str) -> str:
     return "；".join(tokens)
 
 
+def _profile_sections(profile: Any) -> list[dict[str, Any]]:
+    if profile is None:
+        return []
+    return [
+        section
+        for section in (
+            getattr(profile, "who", None),
+            getattr(profile, "have", None),
+            getattr(profile, "want", None),
+        )
+        if isinstance(section, dict)
+    ]
+
+
+def _parse_year(value: Any) -> int | None:
+    match = re.search(r"(20\d{2}|\d{2})", str(value or ""))
+    if not match:
+        return None
+    year = int(match.group(1))
+    return year + 2000 if year < 100 else year
+
+
+def _user_experience_years(profile: Any) -> float | None:
+    for section in _profile_sections(profile):
+        for key in _USER_EXPERIENCE_KEYS:
+            value = section.get(key)
+            if value is None or value == "":
+                continue
+            if isinstance(value, (int, float)):
+                return max(float(value), 0.0)
+            text = str(value)
+            if "应届" in text or "无经验" in text:
+                return 0.0
+            match = _EXPERIENCE_PATTERN.search(text)
+            if match:
+                return max(float(match.group(1)), 0.0)
+    for section in _profile_sections(profile):
+        for key in ("identity", "status", "tag"):
+            text = str(section.get(key) or "")
+            if any(word in text for word in ("学生", "在校", "应届")):
+                return 0.0
+    return None
+
+
+def _graduation_year(profile: Any) -> int | None:
+    for section in _profile_sections(profile):
+        for key in _GRADUATION_KEYS:
+            year = _parse_year(section.get(key))
+            if year is not None:
+                return year
+    return None
+
+
+def _user_gate(profile: Any) -> dict[str, Any]:
+    if profile is None:
+        return {"degree": "", "experience_years": None, "missing": []}
+    education_parts: list[str] = []
+    for section in _profile_sections(profile):
+        for key in ("education", "education_tag", "degree", "tier"):
+            value = str(section.get(key) or "").strip()
+            if value:
+                education_parts.append(value)
+    degree = normalize_education_tag(" ".join(education_parts))["degree"]
+    experience = _user_experience_years(profile)
+    graduation = _graduation_year(profile)
+    if experience is None and graduation is not None and graduation >= datetime.now().year:
+        experience = 0.0
+    missing: list[str] = []
+    if not degree:
+        missing.append("学历")
+    if experience is None:
+        missing.append("经验/届别")
+    return {"degree": degree, "experience_years": experience, "missing": missing}
+
+
+def _required_degree(text: str) -> str:
+    cleaned = _PREFERRED_DEGREE_RE.sub(" ", text)
+    return normalize_education_tag(cleaned)["degree"]
+
+
+def _required_experience_years(text: str) -> float | None:
+    values = [float(match.group(1)) for match in _EXPERIENCE_PATTERN.finditer(text)]
+    if values:
+        return max(values)
+    if "应届" in text or "实习" in text:
+        return 0.0
+    return None
+
+
+def _hard_gate_reason(item: JDEvidence, gate: dict[str, Any]) -> str:
+    text = " ".join((item.title, item.description, item.requirements))
+    required_degree = _required_degree(text)
+    user_degree = str(gate.get("degree") or "")
+    if (
+        required_degree
+        and user_degree
+        and _DEGREE_RANK.get(required_degree, -1) > _DEGREE_RANK.get(user_degree, -1)
+    ):
+        return f"JD 要求{required_degree}，高于用户{user_degree}"
+    required_experience = _required_experience_years(text)
+    user_experience = gate.get("experience_years")
+    if (
+        required_experience is not None
+        and user_experience is not None
+        and required_experience > float(user_experience) + _TOLERANCE
+    ):
+        return (
+            f"JD 要求{required_experience:g}年经验，"
+            f"用户{float(user_experience):g}年"
+        )
+    return ""
+
+
+def _apply_hard_gate(
+    jd_items: list[JDEvidence], profile: Any
+) -> tuple[list[JDEvidence], list[dict[str, Any]], list[str]]:
+    gate = _user_gate(profile)
+    kept: list[JDEvidence] = []
+    excluded: list[dict[str, Any]] = []
+    for item in jd_items:
+        reason = _hard_gate_reason(item, gate)
+        if not reason:
+            kept.append(item)
+            continue
+        excluded.append(
+            {
+                "evidence_id": item.id,
+                "company": item.company or item.company_id,
+                "title": item.title,
+                "reason": reason,
+            }
+        )
+    gaps: list[str] = []
+    if excluded:
+        samples = "、".join(
+            f"{entry['evidence_id']} {entry['title']}（{entry['reason']}）"
+            for entry in excluded[:10]
+        )
+        if len(excluded) > 10:
+            samples += " 等"
+        gaps.append(
+            f"硬门槛预筛剔除 {len(excluded)} 条 JD，不进入高频词统计；样本：{samples}"
+        )
+    if profile is not None and gate["missing"]:
+        gaps.append(
+            "档案缺少" + "、".join(gate["missing"]) + "字段，对应硬门槛未预筛（不猜测）"
+        )
+    return kept, excluded, gaps
+
+
 def _extract_hard_requirements(jd_items: list[JDEvidence]) -> list[HardRequirement]:
     results: list[HardRequirement] = []
     for item in jd_items:
@@ -260,20 +423,24 @@ def _confidence(sample: int, medium_at: int, high_at: int) -> str:
     return "low"
 
 
-def _build_gaps(run: EvidenceRun) -> list[str]:
-    jd_sample = len(run.jd_items)
+def _build_gaps(
+    run: EvidenceRun,
+    jd_items: list[JDEvidence],
+    hard_gate_gaps: list[str],
+) -> list[str]:
+    jd_sample = len(jd_items)
     interview_sample = len(run.interview_items)
     gaps: list[str] = []
 
     if jd_sample == 0:
-        gaps.append("本批次没有 JD 样本，无法形成需求画像")
+        gaps.append("本批次没有可用 JD 样本，无法形成需求画像")
     elif jd_sample < 15:
         gaps.append(
             f"JD 样本仅 {jd_sample} 条（<15），统计置信度低，结论只能作方向参考"
         )
 
     missing_requirements = sum(
-        1 for item in run.jd_items if not (item.requirements or "").strip()
+        1 for item in jd_items if not (item.requirements or "").strip()
     )
     if missing_requirements:
         if missing_requirements == jd_sample:
@@ -291,7 +458,7 @@ def _build_gaps(run: EvidenceRun) -> list[str]:
         )
 
     missing_source_jd = sum(
-        1 for item in run.jd_items if not (item.source or item.url)
+        1 for item in jd_items if not (item.source or item.url)
     )
     if missing_source_jd:
         gaps.append(f"{missing_source_jd} 条 JD 缺少来源链接，可追溯性不足")
@@ -305,16 +472,20 @@ def _build_gaps(run: EvidenceRun) -> list[str]:
         )
 
     unknown_company_jd = sum(
-        1 for item in run.jd_items if not (item.company_id or item.company)
+        1 for item in jd_items if not (item.company_id or item.company)
     )
     if unknown_company_jd:
         gaps.append(
             f"{unknown_company_jd} 条 JD 未标注公司，公司覆盖统计可能失真"
         )
 
-    missing_detail = sum(1 for item in run.jd_items if item.detail_status != "ok")
+    missing_detail = sum(1 for item in jd_items if item.detail_status != "ok")
     if missing_detail:
         gaps.append(f"{missing_detail} 条 JD 详情不完整，关键词统计可能偏低")
+
+    for gap in hard_gate_gaps:
+        if gap not in gaps:
+            gaps.append(gap)
 
     for gap in run.gaps:
         text = str(gap).strip()
@@ -323,19 +494,22 @@ def _build_gaps(run: EvidenceRun) -> list[str]:
     return gaps
 
 
-def compute_statistics(run: EvidenceRun) -> dict[str, Any]:
+def compute_statistics(
+    run: EvidenceRun, profile: Any | None = None
+) -> dict[str, Any]:
     """从 EvidenceRun 计算 RequirementProfile 的全部确定性字段。"""
+    jd_items, excluded_jd, hard_gate_gaps = _apply_hard_gate(run.jd_items, profile)
     tier_by_company = {
         _company_key(item.company_id, item.company): item.tier
-        for item in run.jd_items
+        for item in jd_items
     }
     high_frequency, nice_to_have, company_specific = _jd_keyword_analysis(
-        run.jd_items
+        jd_items
     )
     interview_topics = _interview_keyword_analysis(
         run.interview_items, tier_by_company
     )
-    jd_sample = len(run.jd_items)
+    jd_sample = len(jd_items)
     interview_sample = len(run.interview_items)
     return {
         "sample_size_jd": jd_sample,
@@ -345,9 +519,10 @@ def compute_statistics(run: EvidenceRun) -> dict[str, Any]:
         "high_frequency": high_frequency,
         "company_specific": company_specific,
         "interview_topics": interview_topics,
-        "hard_requirements": _extract_hard_requirements(run.jd_items),
+        "hard_requirements": _extract_hard_requirements(jd_items),
         "nice_to_have": nice_to_have,
-        "gaps": _build_gaps(run),
+        "excluded_jd": excluded_jd,
+        "gaps": _build_gaps(run, jd_items, hard_gate_gaps),
     }
 
 
@@ -377,7 +552,8 @@ def build_requirement_profile(
     ctx: StageContext, evidence: EvidenceRun, evidence_run_id: str
 ) -> RequirementProfile:
     """生成 RequirementProfile 草稿：统计字段由代码计算，interpretation 为空。"""
-    stats = compute_statistics(evidence)
+    profile = load_profile(ctx.profile_name)
+    stats = compute_statistics(evidence, profile=profile)
     meta = ArtifactMeta(
         id=ctx.store.new_id("rp"),
         stage=STAGE_ID,
@@ -641,6 +817,7 @@ def summary_dict(artifact: RequirementProfile) -> dict[str, Any]:
         "hard_requirements": [
             item.model_dump() for item in artifact.hard_requirements
         ],
+        "excluded_jd": list(artifact.excluded_jd),
         "gaps": list(artifact.gaps),
         "interpretation": artifact.interpretation,
     }
