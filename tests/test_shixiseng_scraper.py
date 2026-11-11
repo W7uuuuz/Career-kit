@@ -58,6 +58,18 @@ window.__NUXT__=(function(a,b,c,d,e,f,g,h,i,j){return {layout:"default",data:[{i
 </script></body></html>
 """
 
+NUXT_DETAIL_HTML = """
+<html><body><script>
+window.__NUXT__=(function(a,b,c,d,e,f){return {state:{internInfo:{
+iname:"量化研究员",cname:"测试资产",city:d,address:"上海市/浦东新区",
+degree:e,salary_desc:"1000-1800/天",
+info:"岗位职责：\\n1. 做因子研究\\n任职要求：\\n1. 硕士及以上",
+job_requirements:"",refresh:"2026-10-14 09:22:35",endtime:"2026-11-13",
+chance:"可转正",industry:f,day:4,month:6,skills:["Python","SQL"],attraction:["餐补","双休"]
+}},serverRendered:true}})(false,0,"","上海","硕士","金融/经济");
+</script></body></html>
+"""
+
 DETAIL_HTML = """
 <div class="intern-detail-page">
   <div class="job-box">
@@ -172,6 +184,31 @@ def test_detail_parses_description_and_requirements(monkeypatch):
     assert "截止日期：2026-12-01" in detail["requirements"]
     assert detail["benefits"] == "周末双休、导师带教"
     assert detail["updated_at"] == "2026-11-10 12:00:00"
+
+
+def test_detail_prefers_nuxt_structured_data(monkeypatch):
+    monkeypatch.setattr(shixiseng, "_fetch_html", lambda url, params: NUXT_DETAIL_HTML)
+    detail = shixiseng.Scraper().get_detail(
+        "https://www.shixiseng.com/intern/inn_nuxt_detail"
+    )
+
+    assert detail["title"] == "量化研究员"
+    assert detail["company"] == "测试资产"
+    assert detail["location"] == "上海"
+    assert detail["address"] == "上海市/浦东新区"
+    assert detail["salary"] == "1000-1800/天"
+    assert detail["degree"] == "硕士"
+    assert detail["industry"] == "金融/经济"
+    assert detail["weekly_days"] == 4
+    assert detail["duration_months"] == 6
+    assert detail["deadline"] == "2026-11-13"
+    assert detail["chance"] == "可转正"
+    assert "做因子研究" in detail["description"]
+    assert "硕士及以上" in detail["requirements"]
+    assert detail["skills"] == ["Python", "SQL"]
+    assert detail["tags"] == ["餐补", "双休"]
+    assert detail["education"] == "硕士"
+    assert detail["updated_at"] == "2026-10-14 09:22:35"
 
 
 def test_detail_falls_back_to_list_snapshot(monkeypatch):

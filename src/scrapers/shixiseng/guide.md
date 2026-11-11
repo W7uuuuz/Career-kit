@@ -27,7 +27,7 @@ fetch_company_jobs(company="shixiseng", params='{"keyword":"量化","city":"上�
 
 列表：`title`、`url`、`company`、`location`、`salary`、`department`、`summary`、`job_type`、`job_id`、`source`。
 
-详情：`title`、`company`、`location`、`address`、`salary`、`degree`、`description`、`requirements`、`benefits`、`job_type`、`source`、`url`、`updated_at`。
+详情：`title`、`company`、`location`、`address`、`salary`、`degree` / `education`、`industry`、`weekly_days`、`duration_months`、`deadline`、`chance`、`description`、`requirements`、`skills`、`tags`、`benefits`、`job_type`、`source`、`url`、`updated_at`。
 
 ## 注意事项
 

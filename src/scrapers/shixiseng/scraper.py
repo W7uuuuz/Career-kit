@@ -174,6 +174,11 @@ class Scraper(CompanyScraper):
         except ScraperHttpError as exc:
             return {"error": f"实习僧详情页抓取失败：{exc}", "url": url}
 
+        nuxt_detail = _parse_nuxt_detail(page_html)
+        if nuxt_detail:
+            nuxt_detail["url"] = url
+            return nuxt_detail
+
         title = _clean_text(_first(_DETAIL_TITLE_RE, page_html))
         company = _clean_text(_first(_DETAIL_COMPANY_RE, page_html))
         if not company:
@@ -254,28 +259,152 @@ def _parse_card(chunk: str) -> dict[str, Any] | None:
 
 
 def _parse_nuxt_jobs(page_html: str) -> list[dict[str, Any]]:
-    """解析 SSR 内嵌的 __NUXT__ 数据。
+    """解析列表页 SSR 内嵌的 __NUXT__ 数据。
 
     列表卡片里的薪资、周天、月数被自定义字体转成私有区字符，但 Nuxt 数据里
-    保留了明文 minsalary / maxsalary 与技能标签 i_tags，可直接复用；标题仍可能
-    含私有区字符，按现有口径只剥离不解析。解析失败时返回空列表，回退 HTML 卡片。
+    保留了明文 minsalary / maxsalary 与技能标签 i_tags，可直接复用。
+    解析失败时返回空列表，回退 HTML 卡片。
     """
+    context = _nuxt_context(page_html)
+    if context is None:
+        return []
+    var_map, body, _ = context
+    data_at = body.find("interns:{data:[")
+    if data_at < 0:
+        return []
+    array_open = body.find("[", data_at)
+    array_close = _matching(body, array_open, "[", "]")
+    if array_open < 0 or array_close < 0:
+        return []
+
+    jobs: list[dict[str, Any]] = []
+    for chunk in _split_objects(body[array_open + 1 : array_close]):
+        job = _nuxt_job(chunk, var_map)
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _parse_nuxt_detail(page_html: str) -> dict[str, Any] | None:
+    """解析详情页 __NUXT__ 的 internInfo，优先于 HTML 正则。"""
+    context = _nuxt_context(page_html)
+    if context is None:
+        return None
+    var_map, body, inner = context
+    chunk = _nuxt_detail_chunk(body, inner)
+    if not chunk:
+        return None
+
+    title = _clean_text(str(_resolve(_raw_field(chunk, "iname"), var_map) or ""))
+    company = _clean_text(str(_resolve(_raw_field(chunk, "cname"), var_map) or ""))
+    description = _block_text(str(_resolve(_raw_field(chunk, "info"), var_map) or ""))
+    if not title or not description:
+        return None
+
+    requirements = _block_text(
+        str(_resolve(_raw_field(chunk, "job_requirements"), var_map) or "")
+    )
+    if not requirements:
+        requirements = _requirement_section(description)
+
+    detail = {
+        "title": title,
+        "company": company,
+        "location": _clean_text(str(_resolve(_raw_field(chunk, "city"), var_map) or "")),
+        "address": _clean_text(str(_resolve(_raw_field(chunk, "address"), var_map) or "")),
+        "salary": _clean_text(str(_resolve(_raw_field(chunk, "salary_desc"), var_map) or "")),
+        "degree": _clean_text(str(_resolve(_raw_field(chunk, "degree"), var_map) or "")),
+        "education": _clean_text(str(_resolve(_raw_field(chunk, "degree"), var_map) or "")),
+        "industry": _clean_text(str(_resolve(_raw_field(chunk, "industry"), var_map) or "")),
+        "weekly_days": _to_int(_resolve(_raw_field(chunk, "day"), var_map)),
+        "duration_months": _to_int(_resolve(_raw_field(chunk, "month"), var_map)),
+        "deadline": _clean_text(str(_resolve(_raw_field(chunk, "endtime"), var_map) or "")),
+        "chance": _clean_text(str(_resolve(_raw_field(chunk, "chance"), var_map) or "")),
+        "description": description,
+        "requirements": requirements,
+        "skills": _tag_values(chunk, "skills"),
+        "tags": _tag_values(chunk, "attraction"),
+        "job_type": "实习",
+        "source": "shixiseng",
+        "updated_at": _clean_text(str(_resolve(_raw_field(chunk, "refresh"), var_map) or "")),
+    }
+    return {key: value for key, value in detail.items() if value}
+
+
+def _nuxt_detail_chunk(body: str, inner: str) -> str:
+    """取出详情页 internInfo 对象；兼容内联对象与 `internInfo:g` 引用两种写法。"""
+    info_at = body.find("internInfo:{")
+    if info_at >= 0:
+        object_start = body.find("{", info_at)
+        object_end = _matching(body, object_start, "{", "}")
+        if object_start >= 0 and object_end >= 0:
+            return body[object_start : object_end + 1]
+
+    match = re.search(r"\binternInfo:(\w+)", body)
+    if not match:
+        return ""
+    fields = _assignment_fields(inner, match.group(1))
+    if not fields:
+        return ""
+    return "{" + ",".join(f"{key}:{value}" for key, value in fields.items()) + "}"
+
+
+def _assignment_fields(inner: str, var: str) -> dict[str, str]:
+    """解析 `g.field=value;` 形式的变量赋值，返回字段 -> 原始 JS 值。"""
+    fields: dict[str, str] = {}
+    for match in re.finditer(rf"\b{re.escape(var)}\.(\w+)=", inner):
+        value_start = match.end()
+        end = _statement_end(inner, value_start)
+        if end < 0:
+            continue
+        fields[match.group(1)] = inner[value_start:end].strip()
+    return fields
+
+
+def _statement_end(text: str, start: int) -> int:
+    """从 start 找到顶层分号，跳过字符串与括号内部分号。"""
+    depth = 0
+    quote = ""
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == ";" and depth == 0:
+            return index
+    return -1
+
+
+def _nuxt_context(page_html: str) -> tuple[dict[str, Any], str, str] | None:
+    """提取 __NUXT__ 的变量映射、返回对象文本与函数体内部文本。"""
     nuxt = page_html.find("__NUXT__=")
     if nuxt < 0:
-        return []
+        return None
     params_start = page_html.find("(function(", nuxt)
     if params_start < 0:
-        return []
+        return None
     params_start += len("(function(")
     params_end = page_html.find(")", params_start)
     if params_end < 0:
-        return []
+        return None
     params = [p.strip() for p in page_html[params_start:params_end].split(",") if p.strip()]
 
     body_start = page_html.find("{", params_end)
     body_end = _matching(page_html, body_start, "{", "}")
     if body_start < 0 or body_end < 0:
-        return []
+        return None
     script_end = page_html.find("</script>", body_end)
     if script_end < 0:
         script_end = len(page_html)
@@ -283,24 +412,13 @@ def _parse_nuxt_jobs(page_html: str) -> list[dict[str, Any]]:
     open_paren = tail.find("(")
     close_paren = _matching(tail, open_paren, "(", ")")
     if open_paren < 0 or close_paren <= open_paren:
-        return []
+        return None
     args = [_parse_js_scalar(item) for item in _split_js_args(tail[open_paren + 1 : close_paren])]
-    var_map = dict(zip(params, args, strict=False))
-
-    data_at = page_html.find("interns:{data:[", body_start, body_end)
-    if data_at < 0:
-        return []
-    array_open = page_html.find("[", data_at)
-    array_close = _matching(page_html, array_open, "[", "]")
-    if array_open < 0 or array_close < 0:
-        return []
-
-    jobs: list[dict[str, Any]] = []
-    for chunk in _split_objects(page_html[array_open + 1 : array_close]):
-        job = _nuxt_job(chunk, var_map)
-        if job:
-            jobs.append(job)
-    return jobs
+    return (
+        dict(zip(params, args, strict=False)),
+        page_html[body_start : body_end + 1],
+        page_html[body_start + 1 : body_end],
+    )
 
 
 def _nuxt_job(chunk: str, var_map: dict[str, Any]) -> dict[str, Any] | None:
@@ -339,6 +457,14 @@ def _nuxt_job(chunk: str, var_map: dict[str, Any]) -> dict[str, Any] | None:
         "job_id": job_id,
         "source": "shixiseng",
     }
+
+
+def _requirement_section(description: str) -> str:
+    for marker in ("任职要求", "岗位要求", "任职资格", "职位要求"):
+        index = description.find(marker)
+        if index >= 0:
+            return description[index + len(marker) :].lstrip("：: \n")
+    return ""
 
 
 def _raw_field(chunk: str, name: str) -> str:

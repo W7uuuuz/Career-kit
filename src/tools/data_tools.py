@@ -442,6 +442,11 @@ async def fetch_jd_detail(url: str, company: str = "") -> str:
         ("招聘者状态", "boss_active_status"),
         ("详情状态", "detail_status"),
         ("技能要求", "skills"),
+        ("标签", "tags"),
+        ("实习天数/周", "weekly_days"),
+        ("实习时长/月", "duration_months"),
+        ("截止日期", "deadline"),
+        ("转正机会", "chance"),
     ):
         value = _field_text(result.get(key))
         if value:
