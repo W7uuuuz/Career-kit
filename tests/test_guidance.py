@@ -292,9 +292,9 @@ def test_empty_profile_starts_with_brief():
 
     assert guide.status == "brief"
     assert guide.index == 1 and guide.brief_needed
-    assert "简历" in guide.ask and "4 项" in guide.ask
+    assert "简历" in guide.ask and "想做什么" in guide.ask
     assert guide.kind == "intake"
-    assert guide.options == ["我有简历，给路径", "我一次说 4 项", "先只定方向"]
+    assert guide.options == ["发简历给你", "直接说我的情况", "还没想好方向"]
     assert "首次进入" in render_guide(guide)  # 提示模型先发 [USER_BRIEF]
 
 
@@ -306,9 +306,10 @@ def test_after_brief_keeps_intake_card_until_sections():
     assert guide.status == "brief"
     assert guide.kind == "intake"
     assert not guide.brief_needed
-    assert "简历" in guide.ask and "4 项" in guide.ask
+    assert "简历" in guide.ask and "想做什么" in guide.ask
     assert "parse_resume" in guide.next_action
-    assert "本轮需要你提供" in render_guide(guide)
+    assert "可选回答" in render_guide(guide)
+    assert "本轮需要你提供" not in render_guide(guide)
 
     profile.want = {"scan_completed_at": "2026-11-03T10:00:00"}
     assert build_guide(profile).status == "goal"
@@ -591,7 +592,7 @@ def test_render_guide_has_one_question_and_no_internal_ids():
     guide = build_guide(CareerProfile())
     text = render_guide(guide)
 
-    assert "位置：" in text and "本轮需要你提供" in text
+    assert "位置：" in text and "先聊聊" in text
     assert "转述纪律" in text
     assert "不要追加第二个决策" in text
     assert "少打扰" not in text and "一次问完" not in text
@@ -1199,7 +1200,7 @@ def test_workflow_status_empty_profile_matches_start_session(temp_profile):
 
     guide = build_guide(CareerProfile())
     assert guide.kind == "intake"
-    assert "4 项" in guide.ask
+    assert "想做什么" in guide.ask
 
     status = get_workflow_status()
     assert "**下一步**：finalize_profile" not in status

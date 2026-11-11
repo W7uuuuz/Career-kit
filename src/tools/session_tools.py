@@ -117,7 +117,7 @@ def start_session() -> str:
         f"{summary_note}"
         f"\n[服务自检] {server_fingerprint_line()}\n"
         f"\n{next_line}先把 [USER_BRIEF] 原样发给用户（若存在），"
-        "再按采集卡推进；首轮优先邀请简历，没有简历就一次回 4 项。"
+        "再按开场问题推进；首轮优先邀请简历，没有简历就请用户随口说说自己的情况。"
     )
 
 

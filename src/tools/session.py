@@ -23,7 +23,7 @@ WELCOME_PROMPT = """\
 - 调用工具前先说明「做什么 + 会看到什么」；落盘产物给完整路径。
 
 ## 建档与摸排（硬纪律）
-- 首轮优先邀请简历；没有简历就一次回 4 项（方向/城市/届别学历/实习项目），
+- 首轮优先邀请简历；没有简历就请用户用自己的话说说方向、城市、届别学历和经历，
   用 `intake(section="bundle")` 一次写入，不追加第二个决策。
 - `start_session` → `parse_resume`（可选）→ `intake(who/have/want/bundle)` → `finalize_profile`。
 - 简历是素材不是事实：技能逐项求证，必须标 `authorship`

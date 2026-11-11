@@ -117,7 +117,7 @@ _STATE_STAGE_INDEX: dict[State, int] = {
 }
 
 _STATE_USER_DECISION: dict[State, str] = {
-    State.EMPTY: "给简历或一次回 4 项",
+    State.EMPTY: "给简历或说说自己的情况",
     State.PROFILE_COLLECTING: "确认方向/城市/届别",
     State.PROFILE_READY: "确认建档",
     State.MARKET_PENDING: "是否先做市场调研",

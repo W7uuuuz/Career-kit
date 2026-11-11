@@ -120,20 +120,16 @@ FAMILIARITY_OPTIONS: tuple[str, ...] = (
     "已经有明确目标",
 )
 
-# 首轮采集卡：只有一个决策（给简历 / 一次回 4 项）。
+# 首轮开场：自然对话，不列编号清单，不强调一次要说几项。
 INTAKE_CARD = (
-    "有简历就直接发我（文件或路径），我会读出学历、届别、经历和技能；\n"
-    "没有简历，就一次回我 4 项：\n"
-    "1) 方向/岗位（不确定写「不知道」）\n"
-    "2) 城市\n"
-    "3) 届别 + 学历/专业\n"
-    "4) 实习/项目（没有写「没有」）"
+    "先聊聊你自己：现在在读还是工作，之后想做什么？\n"
+    "城市、毕业届别、学历专业知道多少说多少；有简历直接发我文件或路径也行，读完我再和你确认。"
 )
 
 INTAKE_OPTIONS: tuple[str, ...] = (
-    "我有简历，给路径",
-    "我一次说 4 项",
-    "先只定方向",
+    "发简历给你",
+    "直接说我的情况",
+    "还没想好方向",
 )
 
 BOSS_LOGIN_URL = "https://www.zhipin.com/web/user/?ka=header-login"
@@ -387,9 +383,9 @@ class Guide:
 # 每个状态的「在做什么 / 怎么做 / 结果怎么读」——先解释，再判定
 _STATUS_META: dict[str, tuple[str, str, str]] = {
     "brief": (
-        "介绍 Career Kit，并邀请你给简历或一次说清基本情况",
-        "先带你看完整 12 步，再只问一个决策；不需要准备材料",
-        "有简历就发简历，没有就一次回 4 项，没有标准答案",
+        "介绍 Career Kit，并邀请你聊聊自己的情况",
+        "先带你看完整 12 步，再问一个开场问题；不需要准备材料",
+        "有简历就发简历，没有就随口说说，没有标准答案",
     ),
     "intake_wait": (
         "把你刚才说的信息写入档案",
@@ -691,7 +687,7 @@ def _empty_guide(profile: Any, *, brief_needed: bool) -> Guide:
         options=list(INTAKE_OPTIONS),
         next_action=(
             "用户给简历 → parse_resume → intake(section='bundle')；"
-            "一次回 4 项 → intake(section='bundle', user_confirmed=用户是否亲口确认)；"
+            "用户直接口述 → intake(section='bundle', user_confirmed=用户是否亲口确认)；"
             "用户亲口陈述即确认，不要追加第二个确认决策"
         ),
         profile=profile,
@@ -706,9 +702,9 @@ def _finalize_guide(
     """位置、状态与下一步只来自同一个 StateSnapshot。"""
     guide.index = snapshot.stage_index
     guide.status = _STATE_STATUS[snapshot.state]
-    # 只有存在可选决策时才加决策前缀；MARKET_PENDING 等无 options 的引导
-    # 直接开始执行，不再出现「是否先做市场调研」这类二次确认。
-    if guide.options:
+    # 只有存在可选决策时才加决策前缀；开场采集卡本身已是完整问句，
+    # 再拼决策词会变成「给简历或说说自己的情况：先聊聊你自己…」的重复。
+    if guide.options and guide.kind != "intake":
         guide.ask = f"{snapshot.user_decision}：{guide.ask}"
     if snapshot.next_tool:
         decision = f"下一步：{snapshot.next_tool}"
@@ -804,7 +800,7 @@ def render_guide(guide: Guide) -> str:
         lines.append(f"结果怎么读：{guide.how_to_read}")
     if guide.options:
         if guide.kind == "intake":
-            lines.append(f"本轮需要你提供：{guide.ask}")
+            lines.append(guide.ask)
         else:
             lines.append(f"本轮只问一个决策：{guide.ask}")
         lines.append("可选回答：" + " / ".join(guide.options))
