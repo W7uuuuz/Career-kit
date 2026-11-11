@@ -26,7 +26,9 @@ def test_industry_packs_have_required_fields():
     from src.industries.loader import _load_all
 
     packs = _load_all()
-    assert {"internet", "energy", "electronics", "mechanical", "electrical"} <= set(packs)
+    assert {
+        "internet", "energy", "electronics", "mechanical", "electrical", "finance"
+    } <= set(packs)
     for pid, pack in packs.items():
         assert pack.get("name"), pid
         assert pack.get("aliases"), pid

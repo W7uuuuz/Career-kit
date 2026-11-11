@@ -8,8 +8,8 @@
 >
 > 本文档只做索引与链接，不复制通用参数表。
 >
-> 当前注册 58 个数据源（55 个企业招聘源 + BOSS 直聘 + 牛客 + GitHub），
-> 企业目录收录 68 家，其中 54 家可自动抓取。
+> 当前注册 59 个数据源（55 个企业招聘源 + BOSS 直聘 + 牛客 + GitHub + 实习僧），
+> 企业目录收录 90 家，其中 54 家可自动抓取。
 
 ## 已收录企业
 
@@ -73,6 +73,7 @@
 | `momo` | 陌陌 | JD | 社招 | [guide](../src/scrapers/momo/guide.md) |
 | `nowcoder` | 牛客网 | 面经 | — | [guide](../src/scrapers/nowcoder/guide.md) |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — | [guide](../src/scrapers/github/guide.md) |
+| `shixiseng` | 实习僧 | JD（近一月实习） | 实习 | [guide](../src/scrapers/shixiseng/guide.md) |
 
 > `get_scraper_guide(company)` 运行时读取同一份 guide.md。新增企业时在包内附
 > guide.md 即自动生效（模板见 `_template/guide.md`）。
@@ -91,6 +92,10 @@
 > `LOGIN_TTL_SECONDS`）。研究阶段 BOSS 默认 **list-only**：保留薪资、
 > 公司、地点、技能标签与福利，不逐条补 JD；需要全文时用 `fetch_jd_detail(url)`
 > 交互式补抓。失败原因会如实写入报告来源状态与数据缺口。
+>
+> 实习僧（`shixiseng`）匿名解析公开 SSR 页面，只收录近一月刷新的实习岗位；
+> 列表页不逐条补详情，需要 JD 全文时用 `fetch_jd_detail(url)`。站点用 iconfont
+> 私有区字符渲染部分汉字与数字，scraper 只剥离不解析，残缺薪资如实留空。
 
 企业档位（大厂 / 中厂 / 小厂）、行业与别名由 `src/scrapers/companies.yaml` 维护；
 `list_data_sources` 会显示每个源的档位与行业。目录也收录暂未接入 scraper 的企业，

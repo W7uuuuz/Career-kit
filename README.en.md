@@ -40,13 +40,13 @@ Order is fixed; pace is yours. One decision per phase, and unsupported conclusio
 
 ## Supported sites
 
-Data comes from 58 collected sources across internet / AI, manufacturing / energy, and hardware / semiconductors:
+Data comes from 59 collected sources across internet / AI, manufacturing / energy, hardware / semiconductors, and finance:
 
 - **Company career sources (55)**: ByteDance / Tencent / Alibaba / Baidu / Meituan / NetEase / JD / Kuaishou / Pinduoduo / Xiaohongshu / Bilibili / Xiaomi / DiDi / Ctrip / Vipshop / DJI / Dewu / Soul / MiniMax and other internet, AI, and gaming companies, plus Huawei / BOE / Sany / CRRC / Inovance / Sungrow in manufacturing, energy, and hardware — gap analysis works beyond the internet industry too.
-- **Recruiting platform**: BOSS Zhipin — public salary ranges for market-rate context.
+- **Recruiting platforms**: BOSS Zhipin — public salary ranges for market-rate context; Shixiseng — recent internship postings, including finance.
 - **Experience posts**: Nowcoder interview reports and GitHub experience threads, as evidence of how people with the same background got through.
 
-The company catalog lists 68 companies, 54 of which are auto-scrapable; the rest are marked for manual application.
+The company catalog lists 90 companies, 54 of which are auto-scrapable; the rest are marked for manual application.
 
 **[All sources, data types, and usage guides →](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)** · community additions welcome ([CONTRIBUTING.md](https://github.com/W7uuuuz/Career-kit/blob/main/CONTRIBUTING.md), see `src/scrapers/_template/`); scraping reads public pages only.
 

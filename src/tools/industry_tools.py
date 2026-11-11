@@ -30,9 +30,11 @@ async def get_industry_snapshot(
     不是独立产品模式，不要求简历，不替代后续目标选择/规划。
 
     Args:
-        industry: 行业 id、名称或别名（MVP 支持 internet / 互联网 / 软件 / 计算机；
+        industry: 行业 id、名称或别名（支持 internet / 互联网 / 软件 / 计算机；
             energy / 能源 / 能源动力 / 电力 / 新能源；
-            electronics / 电子 / 半导体 / 芯片 / 集成电路 / 通信）
+            electronics / 电子 / 半导体 / 芯片 / 集成电路 / 通信；
+            mechanical / 机械 / 装备制造；electrical / 电气 / 电力设备；
+            finance / 金融 / 银行 / 证券 / 基金 / 保险 / 投行 / 资管）
         major: 可选，用于展示“你的专业在行业中的位置”；专业不是入口
         school: 可选，当前仅记录，不用于同校过滤
         degree: 可选，当前仅记录

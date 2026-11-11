@@ -6,7 +6,7 @@
 
 必填：
 
-- 行业：默认互联网/软件行业（`industry="internet"`）；也可选能源动力行业（`industry="energy"`）
+- 行业：默认互联网/软件行业（`industry="internet"`）；也可选能源动力（`industry="energy"`）、电子/半导体/通信（`electronics`）、机械/装备（`mechanical`）、电气/电力（`electrical`）、金融（`finance`）
 
 可选：
 

@@ -489,3 +489,11 @@ scrapers:
     description: GitHub 秋招/春招经验帖（Search API），offer 复盘与面经，无需登录
     url_patterns:
       - "github.com"
+
+  shixiseng:
+    name: 实习僧
+    module: shixiseng.scraper
+    class: Scraper
+    description: 实习僧（shixiseng.com）实习岗位聚合平台，公开 HTML，近一月刷新，不公开完整薪资
+    url_patterns:
+      - "shixiseng.com"

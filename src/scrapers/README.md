@@ -9,9 +9,9 @@
 本文件与 [docs/scrapers.md](../../docs/scrapers.md) 只做索引与链接，不复制通用参数表。
 企业档位（大厂 / 中厂 / 小厂）、行业、别名与 scraper 映射见 `companies.yaml`；
 查询入口是 `catalog.py`（`list_companies` / `get_company` / `tier_for_scraper`）。
-企业目录收录 68 家，其中 54 家可自动抓取；其余标注为需手动投递。
+企业目录收录 90 家，其中 54 家可自动抓取；其余标注为需手动投递。
 
-## 已注册企业（58）
+## 已注册企业（59）
 
 | ID | 名称 | 数据类型 | 支持渠道 |
 |----|------|----------|----------|
@@ -73,6 +73,7 @@
 | `momo` | 陌陌 | JD | 社招 |
 | `nowcoder` | 牛客网 | 面经 | — |
 | `github` | GitHub 经验帖 | 成功经验/面经（issue 帖） | — |
+| `shixiseng` | 实习僧 | JD（近一月实习） | 实习 |
 
 每个源的完整教程是同目录下的 `guide.md`（`get_scraper_guide` 与 MCP Resource 同源）。
 

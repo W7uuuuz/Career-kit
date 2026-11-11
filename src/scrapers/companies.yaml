@@ -502,6 +502,161 @@ companies:
     aliases: [好未来, 学而思, TAL]
     scrapers: [tal]
 
+  # ---------------- 金融（当前未接入企业官网爬虫，标注为手动投递） ----------------
+  - id: cicc
+    name: 中金公司
+    tier: 大厂
+    industry: 金融
+    aliases: [中金, 中金公司, CICC]
+    scrapers: []
+
+  - id: citics
+    name: 中信证券
+    tier: 大厂
+    industry: 金融
+    aliases: [中信证券, CITIC Securities]
+    scrapers: []
+
+  - id: htsc
+    name: 华泰证券
+    tier: 大厂
+    industry: 金融
+    aliases: [华泰证券, 华泰, HTSC]
+    scrapers: []
+
+  - id: gtja
+    name: 国泰海通
+    tier: 大厂
+    industry: 金融
+    aliases: [国泰海通, 国泰君安, 海通证券]
+    scrapers: []
+
+  - id: csc
+    name: 中信建投
+    tier: 大厂
+    industry: 金融
+    aliases: [中信建投, 建投证券, CSC]
+    scrapers: []
+
+  - id: cmb
+    name: 招商银行
+    tier: 大厂
+    industry: 金融
+    aliases: [招商银行, 招行, CMB]
+    scrapers: []
+
+  - id: pingan
+    name: 中国平安
+    tier: 大厂
+    industry: 金融
+    aliases: [中国平安, 平安, 平安集团, Ping An]
+    scrapers: []
+
+  - id: efund
+    name: 易方达基金
+    tier: 大厂
+    industry: 金融
+    aliases: [易方达, 易方达基金, E Fund]
+    scrapers: []
+
+  - id: chinaamc
+    name: 华夏基金
+    tier: 大厂
+    industry: 金融
+    aliases: [华夏基金, 华夏, ChinaAMC]
+    scrapers: []
+
+  - id: harvest
+    name: 嘉实基金
+    tier: 大厂
+    industry: 金融
+    aliases: [嘉实基金, 嘉实, Harvest Fund]
+    scrapers: []
+
+  - id: gf
+    name: 广发证券
+    tier: 中厂
+    industry: 金融
+    aliases: [广发证券, 广发, GF Securities]
+    scrapers: []
+
+  - id: cms
+    name: 招商证券
+    tier: 中厂
+    industry: 金融
+    aliases: [招商证券, CMS]
+    scrapers: []
+
+  - id: xyzq
+    name: 兴业证券
+    tier: 中厂
+    industry: 金融
+    aliases: [兴业证券, 兴业, Industrial Securities]
+    scrapers: []
+
+  - id: eastmoney
+    name: 东方财富
+    tier: 中厂
+    industry: 金融
+    aliases: [东方财富, 东财, East Money]
+    scrapers: []
+
+  - id: chinagalaxy
+    name: 中国银河
+    tier: 中厂
+    industry: 金融
+    aliases: [中国银河, 银河证券, 银河, Galaxy Securities]
+    scrapers: []
+
+  - id: guosen
+    name: 国信证券
+    tier: 中厂
+    industry: 金融
+    aliases: [国信证券, 国信, Guosen]
+    scrapers: []
+
+  - id: swhy
+    name: 申万宏源
+    tier: 中厂
+    industry: 金融
+    aliases: [申万宏源, 申万, 宏源证券, Shenwan Hongyuan]
+    scrapers: []
+
+  - id: lombarda
+    name: 中欧基金
+    tier: 中厂
+    industry: 金融
+    aliases: [中欧基金, 中欧, Lombarda]
+    scrapers: []
+
+  - id: southernfund
+    name: 南方基金
+    tier: 中厂
+    industry: 金融
+    aliases: [南方基金, 南方, Southern Fund]
+    scrapers: []
+
+  - id: fullgoal
+    name: 富国基金
+    tier: 中厂
+    industry: 金融
+    aliases: [富国基金, 富国, Fullgoal]
+    scrapers: []
+
+  - id: chinalife
+    name: 中国人寿
+    tier: 中厂
+    industry: 金融
+    aliases: [中国人寿, 国寿, China Life]
+    scrapers: []
+
+  - id: taikang
+    name: 泰康保险集团
+    tier: 中厂
+    industry: 金融
+    aliases: [泰康保险集团, 泰康, 泰康保险, Taikang]
+    scrapers: []
+
 # 平台级数据源别名（不是企业，不参与企业目录/档位统计）。
 # 与企业别名同放在本文件，保证别名只有一个事实源。
 platforms:
@@ -514,3 +669,6 @@ platforms:
   - id: github
     name: GitHub 经验帖
     aliases: [github, github经验帖, 经验帖]
+  - id: shixiseng
+    name: 实习僧
+    aliases: [shixiseng, 实习僧, 实习僧网, 实习僧网站]

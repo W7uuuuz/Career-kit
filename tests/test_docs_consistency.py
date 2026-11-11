@@ -173,7 +173,7 @@ def _source_caliber() -> tuple[int, int, int, int]:
         (REPO_ROOT / "src" / "scrapers" / "companies.yaml").read_text(encoding="utf-8")
     )["companies"]
     total = len(config["scrapers"])
-    company_sources = total - 3
+    company_sources = total - 4
     registered = set(config["scrapers"])
     scrapable = sum(
         1
@@ -278,7 +278,7 @@ def test_companies_yaml_covers_registered_scrapers():
         for item in companies
         for scraper in item.get("scrapers", [])
     }
-    platforms = {"boss", "nowcoder", "github"}
+    platforms = {"boss", "nowcoder", "github", "shixiseng"}
     missing = sorted(set(config["scrapers"]) - platforms - mapped)
     assert not missing, f"companies.yaml 缺少 scraper 映射：{missing}"
 
