@@ -33,7 +33,7 @@
 | `list_data_sources` | 列出可用企业数据源及各自支持的参数 |
 | `get_scraper_guide` | 读取指定企业源的完整使用教程 |
 | `boss_login` | 管理 BOSS 直聘登录会话：`status` 只读检查（零副作用，`live=true` 才做后台真实探测）/ `login` 打开可见登录页、用户只扫码，成功后浏览器窗口常驻复用 / `close` 关闭专用浏览器；TTL 唯一来源 `LOGIN_TTL_SECONDS` |
-| `fetch_company_jobs` | 抓取真实岗位/面经，自动写入知识库 |
+| `fetch_company_jobs` | 抓取真实岗位/面经，自动写入知识库；实习岗位优先 `shixiseng`（转正机会/实习月数/每周天数可核验），BOSS 只作薪资与广度补充 |
 | `fetch_jd_detail` | 获取 JD 全文或面经正文 |
 | `search_knowledge` | 检索本地知识库 `~/.career-kit/knowledge/` |
 | `get_industry_snapshot` | 轻量行业快照（扫盲子流程）：行业地图 + 岗位卡 + 当前招聘样本/薪资 + 相关专业 + 来源/缺口；默认互联网/软件，支持能源动力、电子/半导体/通信、机械/装备、电气/电力、金融 |

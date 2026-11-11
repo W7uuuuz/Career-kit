@@ -102,6 +102,8 @@ evidence / requirement / execution_plan / execution / applications / review`；
 
 **关键规则**：
 - 报告 100% 代码渲染自抓取数据，每条带来源链接、平台、抓取时间。
+- 实习岗位优先 `shixiseng`（日薪/每周天数/实习月数/转正机会可核验）；BOSS 只作薪资与广度补充，
+  不作为实习主参考；指定公司的要求以官网 JD 为准。
 - 任一源失败不中断，失败原因进来源状态面板；未获取内容写「未获取」，不编造。
 - 全部失败时返回 `MISSING_DATA`，引导 `import_jd` / `import_jd_file`。
 - BOSS 登录缺失时直接调用 `boss_login(action="login")`（用户只需扫码），不二次询问是否登录。
