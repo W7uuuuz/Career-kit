@@ -39,8 +39,8 @@
 | `get_industry_snapshot` | 轻量行业快照（扫盲子流程）：行业地图 + 岗位卡 + 当前招聘样本/薪资 + 相关专业 + 来源/缺口；默认互联网/软件，支持能源动力、电子/半导体/通信、机械/装备、电气/电力、金融 |
 | `search_cases` | 聚合搜寻他人经验（牛客/GitHub/本地面经）与企业要求（目标企业 JD/BOSS）；两类卡片分开展示并标注「他人经验」/「企业要求」，本地 JD 来源标为 local |
 | `research_market` | 返回市场调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析） |
-| `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；单源/总预算超时不会拖垮整批，已完成来源写入断点缓存、重跑续抓；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源只问一次并传 `boss_confirmed=true`；确认但未登录返回 `ACTION_REQUIRED` / `next_tool=boss_login`，直接调用 `boss_login(action="login")`（用户只扫码），不再追问第二次 |
-| `read_research_details` | 按花名册标识读取调研详情：不传 `ids` 返回花名册、聚合摘要与子 Agent 委派方案（`delegate`，对应 `research-analyst`）；传 `ids` 读取选定条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径），单次上限 10 条 |
+| `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；单源超时默认 25 秒，可用 `source_timeout` 或 `CAREER_KIT_RESEARCH_SOURCE_TIMEOUT` 配置，单源失败自动重试 1 次；断点缓存按「来源 + 查询」续抓；源维度每源只保留一个最终状态（ok/empty/failed），过滤/剔除按条目维度单独计数且保留标题与原因；抽取届别/学历下限/每周天数/实习月数等硬门槛字段（抽不到留空）；岗位来源集中度过高时给出单一来源风险与已注册替代源建议；面经全文在调研时落盘；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源只问一次并传 `boss_confirmed=true`；确认但未登录返回 `ACTION_REQUIRED` / `next_tool=boss_login`，直接调用 `boss_login(action="login")`（用户只扫码），不再追问第二次 |
+| `read_research_details` | 按花名册标识读取调研详情：不传 `ids` 返回花名册、聚合摘要与子 Agent 委派方案（`delegate`，对应 `research-analyst`）；传 `ids` 读取选定条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径），单次上限 10 条；读取本地已落盘内容，零网络请求，未落盘的案例会明确标注 |
 
 ### 证据引用工具（2）
 
