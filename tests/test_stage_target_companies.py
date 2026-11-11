@@ -155,6 +155,26 @@ def _save_target(
     return store.save(artifact)
 
 
+def _save_target_fields(
+    store: ArtifactStore,
+    profile_name: str = "default",
+    base_id: str = "",
+    **fields: Any,
+) -> str:
+    base = store.load(base_id) if base_id else None
+    if base and isinstance(base.get("meta"), dict):
+        meta = ArtifactMeta.model_validate(base["meta"])
+    else:
+        meta = ArtifactMeta(
+            id=store.new_id("ts_"),
+            stage=state_machine.STAGE_TARGET,
+            profile_name=profile_name,
+            created_at="2026-01-01T00:00:02",
+        )
+    artifact = _TargetArtifact(meta=meta, **fields)
+    return store.save(artifact)
+
+
 @pytest.fixture()
 def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "data"
@@ -380,37 +400,109 @@ def test_conflicting_target_spec_is_rejected(data_dir: Path) -> None:
     assert store.latest("default", state_machine.STAGE_COMPANY_POOL) is None
 
 
-def test_tier_override_does_not_change_body_target_spec(data_dir: Path) -> None:
+def test_tier_override_updates_body_target_spec_but_not_upstream_artifact(
+    data_dir: Path,
+) -> None:
     store = ArtifactStore()
     chain = _seed_upstream(store)
 
     result, artifact = _run(
         store,
-        {"target_tiers": "中厂", "bridge_tiers": "中厂", "industry": "互联网"},
+        {"target_tiers": "中厂", "bridge_tiers": "小厂", "industry": "互联网"},
     )
 
     assert result.status in {"ok", "needs_confirmation", "insufficient_data"}
+    assert artifact["target_spec"]["target_tiers"] == ["中厂"]
+    assert artifact["target_spec"]["bridge_tiers"] == ["小厂"]
+    assert artifact["target_spec"]["role"] == "AI Agent 开发"
+
     target_artifact = store.load(chain["target_spec_id"])
     assert target_artifact is not None
-    body = {
-        key: artifact["target_spec"][key]
-        for key in (
-            "role",
-            "direction",
-            "city",
-            "target_tiers",
-            "bridge_tiers",
-        )
-    }
-    expected = {
-        key: target_artifact[key]
-        for key in (
-            "role",
-            "direction",
-            "city",
-            "target_tiers",
-            "bridge_tiers",
-        )
-    }
-    assert body == expected
+    assert target_artifact["target_tiers"] == ["大厂"]
+    assert target_artifact["bridge_tiers"] == ["中厂"]
     assert artifact["meta"]["inputs"]["target_spec_id"] == chain["target_spec_id"]
+
+
+def test_explicit_role_fills_empty_artifact_field(data_dir: Path) -> None:
+    store = ArtifactStore()
+    chain = _seed_upstream(store)
+    _save_target_fields(
+        store,
+        base_id=chain["target_spec_id"],
+        role="",
+        direction="AI Agent 开发",
+        city="北京",
+        target_tiers=["大厂"],
+        bridge_tiers=["中厂"],
+    )
+
+    result, artifact = _run(
+        store, {"role": "Agent 开发", "target_spec": {"role": "Agent 开发"}}
+    )
+
+    assert result.status == "needs_confirmation"
+    assert artifact["target_spec"]["role"] == "Agent 开发"
+
+
+def test_explicit_tiers_drive_echo_counts_and_pool(data_dir: Path) -> None:
+    store = ArtifactStore()
+    _seed_upstream(store)
+
+    result, artifact = _run(
+        store,
+        {"target_tiers": "中厂", "bridge_tiers": "小厂", "industry": "互联网"},
+    )
+
+    assert result.status in {"ok", "needs_confirmation"}
+    assert artifact["target_spec"]["target_tiers"] == ["中厂"]
+    assert artifact["target_spec"]["bridge_tiers"] == ["小厂"]
+
+    tier_counts = {
+        key: value for key, value in artifact["counts"].items() if key.startswith("tier:")
+    }
+    selected_tiers = {
+        f"tier:{item['tier']}"
+        for item in artifact["companies"]
+        if item["status"] != "excluded"
+    }
+    assert set(tier_counts) == selected_tiers
+    assert selected_tiers <= {"tier:中厂", "tier:小厂"}
+
+
+def test_select_target_companies_tool_explicit_role_over_empty_artifact(
+    data_dir: Path,
+) -> None:
+    store = ArtifactStore()
+    chain = _seed_upstream(store)
+    _save_target_fields(
+        store,
+        base_id=chain["target_spec_id"],
+        role="",
+        direction="AI Agent 开发",
+        city="北京",
+        target_tiers=["大厂"],
+        bridge_tiers=["中厂"],
+    )
+
+    payload = json.loads(select_target_companies(role="Agent 开发"))
+
+    assert payload["status"] == "needs_confirmation"
+    assert payload["target"]["role"] == "Agent 开发"
+
+
+def test_select_target_companies_tool_honors_explicit_tiers(data_dir: Path) -> None:
+    _seed_upstream(ArtifactStore())
+
+    payload = json.loads(
+        select_target_companies(
+            target_tiers="中厂", bridge_tiers="小厂", industry="互联网"
+        )
+    )
+
+    assert payload["target"]["target_tiers"] == ["中厂"]
+    assert payload["target"]["bridge_tiers"] == ["小厂"]
+    tier_counts = {
+        key for key in payload["counts"] if key.startswith("tier:")
+    }
+    assert {key.split(":", 1)[1] for key in tier_counts} == set(payload["by_tier"])
+    assert tier_counts <= {"tier:中厂", "tier:小厂"}

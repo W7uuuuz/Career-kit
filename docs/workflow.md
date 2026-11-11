@@ -193,8 +193,10 @@ evidence / requirement / execution_plan / execution / applications / review`；
 - 未接入抓取的企业保留在名单中并标「需手动投递」，不编造岗位。
 - 企业池未确认时不得进入采集。
 - 支持 include/exclude；同一企业同时出现时 include 优先。
-- 有 TargetSpec 时，`CompanyPool.target_spec` 必须与 `target_spec_id` 指向的 artifact 一致；
-  身份字段冲突时拒绝落库。档位参数只影响本次筛选，不改写 body。
+- 有 TargetSpec 时，`CompanyPool.target_spec` 由一次解析得到的唯一 TargetSpec 驱动；
+  显式身份参数只能填充 artifact 的空字段，双方均有值且冲突时拒绝落库。
+- 档位参数（target_tiers / bridge_tiers）优先级为「显式入参 > TargetSpec > 档案默认」，
+  并同时用于 `target_spec` 回显、`counts/by_tier` 统计与企业池，不再只影响筛选。
 
 ---
 

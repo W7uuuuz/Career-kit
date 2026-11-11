@@ -65,7 +65,7 @@
 
 | 工具 | 作用 |
 |------|------|
-| `select_target_companies` | 阶段 6：按目标档/过渡档/行业筛选企业池；支持 include/exclude；未确认只生成推荐池，确认后才能进入采集。有 TargetSpec 时必须让 CompanyPool 的 `target_spec` 与 `target_spec_id` 指向的 artifact 一致，不一致拒绝落库；档位参数只影响本次筛选，不改写 body |
+| `select_target_companies` | 阶段 6：按目标档/过渡档/行业筛选企业池；支持 include/exclude；未确认只生成推荐池，确认后才能进入采集。显式参数优先于 TargetSpec 与档案默认值；身份字段只能填充 TargetSpec 空字段，双方均有值且冲突时拒绝落库。档位参数同时用于 `target_spec` 回显、`counts/by_tier` 统计与企业池，保证同一份数据只有一套档位口径 |
 | `collect_company_evidence` | 阶段 7：批量抓取目标企业 JD 与面经，城市硬筛、详情补抓、去重；目标城市非空时 location 为空的岗位按硬筛剔除，并计入 `unknown_city` 与 `dropped_city`；单源失败不拖垮整批；产物落盘证据池报告；可选 `include_boss=true` 补充 BOSS 薪资与广度（需先确认并扫码登录）。BOSS 的 `detail_status=list_only` 仅豁免详情补抓/详情缺失剔除，不豁免城市硬筛：空 location 的 list-only 行按城市剔除并计入 `dropped_city`、`unknown_city` 与 list-only 缺口；保留的 list-only 行只保留列表字段 |
 | `analyze_company_requirements` | 阶段 8：用代码统计 JD/面经频率、公司覆盖、Wilson 区间与逐条硬门槛，返回受约束的分析提示；只落「草稿」artifact，置信度只按样本量计算 |
 | `save_requirement_profile` | 阶段 8：保存 LLM 的定性解读并标记需求画像为已保存；未保存或其他没有非空 interpretation 的草稿不得进入阶段 9；必须能从 EvidenceRun 复算统计，缺失或损坏时拒绝落库；数字、列表与 evidence_ids 由代码重算，interpretation 一旦引用证据 id 必须真实存在 |
