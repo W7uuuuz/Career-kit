@@ -82,6 +82,8 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
   登录只打开一个专用窗口（清理恢复的旧标签页），成功后窗口保持；不会出现多个扫码页。
   成功登录后窗口会切到「登录成功」提示页，不会停在登录页。
 - 数据真实：没抓到就写「未获取」；失败源如实展示。
+- 调研口径：源维度每源一个最终状态（ok/empty/failed），过滤/剔除按条目单独计数并留痕；
+  面经全文调研时落盘、读取不联网；薪资按日/月/年分别统计，不得把「有日薪」说成「均未公开」。
 - 企业适配（推荐校准）：select_target_companies → collect_company_evidence →
   analyze_company_requirements → save_requirement_profile → plan_execution_alignment →
   save_execution_alignment；数字由代码计算，LLM 只写 interpretation，每条变更必须带 evidence_ids。

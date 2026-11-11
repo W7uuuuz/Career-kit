@@ -52,8 +52,8 @@ _KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
 
 _KEYWORDS: list[str] = [word for group in _KEYWORD_GROUPS.values() for word in group]
 
-_SALARY_RANGE_K = re.compile(r"(\d+(?:\.\d+)?)\s*[-~–]\s*(\d+(?:\.\d+)?)\s*[kK]")
-_SALARY_SINGLE_K = re.compile(r"(\d+(?:\.\d+)?)\s*[kK]")
+_SALARY_RANGE = re.compile(r"(\d+(?:\.\d+)?)\s*[-~–—至]\s*(\d+(?:\.\d+)?)")
+_SALARY_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _CITY_SPLIT = re.compile(r"[、,，/|·\s]+")
 
 # 城市归一：后缀与常见行政区（避免「上海/上海市」「徐汇区」被重复计数）
@@ -106,20 +106,53 @@ def _jd_text(sample: dict[str, Any]) -> str:
     )
 
 
-def _salary_k(sample: dict[str, Any]) -> tuple[float, float] | None:
-    """解析月薪区间（K）；日薪/年薪/面议不计入，避免口径混杂。"""
-    text = str(sample.get("salary") or "")
-    if "天" in text or "年" in text:
+def parse_salary(text: Any) -> dict[str, Any] | None:
+    """解析薪资原文，区分日薪/月薪/年薪，不做跨口径换算。
+
+    返回 {"type": daily|monthly|annual, "low", "high", "unit"}；
+    面议/无数字/无法判断口径时返回 None（宁可留空，不猜）。
+    """
+    raw = str(text or "").strip()
+    if not raw or any(token in raw for token in ("面议", "保密", "未公开")):
         return None
-    match = _SALARY_RANGE_K.search(text)
+    numbers = _SALARY_NUMBER.findall(raw)
+    if not numbers:
+        return None
+    match = _SALARY_RANGE.search(raw)
     if match:
         low, high = float(match.group(1)), float(match.group(2))
-        return (low, high) if low <= high else (high, low)
-    match = _SALARY_SINGLE_K.search(text)
-    if match:
-        value = float(match.group(1))
-        return (value, value)
+    else:
+        low = high = float(numbers[0])
+    if low > high:
+        low, high = high, low
+
+    lowered = raw.lower()
+    if "天" in raw:
+        return {"type": "daily", "low": low, "high": high, "unit": "元/天"}
+    if "年" in raw:
+        return {"type": "annual", "low": low, "high": high, "unit": "万/年"}
+    if "万" in raw:
+        if "月" in raw:
+            return {
+                "type": "monthly",
+                "low": round(low * 10, 1),
+                "high": round(high * 10, 1),
+                "unit": "K/月",
+            }
+        return {"type": "annual", "low": low, "high": high, "unit": "万/年"}
+    if "月" in raw or "k" in lowered:
+        if "k" not in lowered and low >= 1000 and high >= 1000:
+            low, high = low / 1000, high / 1000
+        return {"type": "monthly", "low": low, "high": high, "unit": "K/月"}
     return None
+
+
+def _salary_k(sample: dict[str, Any]) -> tuple[float, float] | None:
+    """兼容旧调用：只返回月薪区间（K），日薪/年薪不计入。"""
+    parsed = parse_salary(sample.get("salary"))
+    if not parsed or parsed["type"] != "monthly":
+        return None
+    return (float(parsed["low"]), float(parsed["high"]))
 
 
 def _median(values: list[float]) -> float:
@@ -146,6 +179,12 @@ def build_digest(
     salary_lows: list[float] = []
     salary_highs: list[float] = []
     salary_mids: list[float] = []
+    daily_lows: list[float] = []
+    daily_highs: list[float] = []
+    daily_mids: list[float] = []
+    annual_lows: list[float] = []
+    annual_highs: list[float] = []
+    annual_mids: list[float] = []
 
     for sample in jd_samples:
         text = _jd_text(sample)
@@ -183,14 +222,30 @@ def build_digest(
         elif "社招" in title:
             level_signals["社招"] += 1
 
-        salary = _salary_k(sample)
+        salary = parse_salary(sample.get("salary"))
         if salary:
-            low, high = salary
-            salary_lows.append(low)
-            salary_highs.append(high)
-            salary_mids.append((low + high) / 2)
+            low, high = float(salary["low"]), float(salary["high"])
+            if salary["type"] == "daily":
+                daily_lows.append(low)
+                daily_highs.append(high)
+                daily_mids.append((low + high) / 2)
+            elif salary["type"] == "annual":
+                annual_lows.append(low)
+                annual_highs.append(high)
+                annual_mids.append((low + high) / 2)
+            else:
+                salary_lows.append(low)
+                salary_highs.append(high)
+                salary_mids.append((low + high) / 2)
 
-    salary_digest: dict[str, Any] = {"count": len(salary_lows)}
+    with_salary = len(salary_lows) + len(daily_lows) + len(annual_lows)
+    salary_digest: dict[str, Any] = {
+        "count": with_salary,
+        "with_salary": with_salary,
+        "monthly_count": len(salary_lows),
+        "daily_count": len(daily_lows),
+        "annual_count": len(annual_lows),
+    }
     if salary_lows:
         salary_digest.update(
             {
@@ -199,6 +254,61 @@ def build_digest(
                 "median_k": _median(salary_mids),
             }
         )
+    if daily_lows:
+        salary_digest.update(
+            {
+                "daily_min": round(min(daily_lows), 1),
+                "daily_max": round(max(daily_highs), 1),
+                "daily_median": _median(daily_mids),
+            }
+        )
+    if annual_lows:
+        salary_digest.update(
+            {
+                "annual_min_wan": round(min(annual_lows), 1),
+                "annual_max_wan": round(max(annual_highs), 1),
+                "annual_median_wan": _median(annual_mids),
+            }
+        )
+    salary_digest["monthly"] = {
+        "count": len(salary_lows),
+        **(
+            {
+                "min_k": round(min(salary_lows), 1),
+                "max_k": round(max(salary_highs), 1),
+                "median_k": _median(salary_mids),
+                "unit": "K/月",
+            }
+            if salary_lows
+            else {}
+        ),
+    }
+    salary_digest["daily"] = {
+        "count": len(daily_lows),
+        **(
+            {
+                "min": round(min(daily_lows), 1),
+                "max": round(max(daily_highs), 1),
+                "median": _median(daily_mids),
+                "unit": "元/天",
+            }
+            if daily_lows
+            else {}
+        ),
+    }
+    salary_digest["annual"] = {
+        "count": len(annual_lows),
+        **(
+            {
+                "min_wan": round(min(annual_lows), 1),
+                "max_wan": round(max(annual_highs), 1),
+                "median_wan": _median(annual_mids),
+                "unit": "万/年",
+            }
+            if annual_lows
+            else {}
+        ),
+    }
 
     case_kinds: dict[str, int] = {}
     for case in cases:
@@ -257,13 +367,26 @@ def render_digest_lines(digest: dict[str, Any]) -> list[str]:
         lines.append(line)
 
     salary = digest.get("salary") or {}
-    if salary.get("count"):
+    monthly_count = salary.get("monthly_count", salary.get("count") or 0)
+    if monthly_count:
         lines.append(
-            f"- 薪资：{salary['count']} 条有数据；"
+            f"- 薪资（月薪）：{monthly_count} 条有数据；"
             f"区间 {salary.get('min_k')}-{salary.get('max_k')}K/月，"
             f"中位 {salary.get('median_k')}K（按下界/上界/中点统计）"
         )
-    else:
+    if salary.get("daily_count"):
+        lines.append(
+            f"- 薪资（日薪）：{salary['daily_count']} 条有数据；"
+            f"区间 {salary.get('daily_min')}-{salary.get('daily_max')} 元/天，"
+            f"中位 {salary.get('daily_median')} 元/天（按下界/上界/中点统计）"
+        )
+    if salary.get("annual_count"):
+        lines.append(
+            f"- 薪资（年薪）：{salary['annual_count']} 条有数据；"
+            f"区间 {salary.get('annual_min_wan')}-{salary.get('annual_max_wan')} 万/年，"
+            f"中位 {salary.get('annual_median_wan')} 万/年（按下界/上界/中点统计）"
+        )
+    if not salary.get("with_salary"):
         lines.append("- 薪资：本次岗位均未公开薪资（数据缺口，不推断）")
 
     terms = digest.get("top_requirements") or []

@@ -96,9 +96,10 @@ def test_case_counts_expose_raw_and_filtered():
         },
     })
     assert report["counts"]["cases"] == 1
-    assert report["counts"]["cases_raw"] == 2
-    assert report["counts"]["cases_filtered"] == 1
-    assert report["digest"]["case_count_raw"] == 2
+    assert report["counts"]["cases_raw"] == 1
+    assert report["counts"]["cases_filtered"] == 0
+    assert report["counts"]["jd_from_cases"] == 1, "本地 JD 不计入案例数"
+    assert report["digest"]["case_count_raw"] == 1
 
 
 # ============ 审计持久化 ============

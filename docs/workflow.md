@@ -94,12 +94,14 @@ evidence / requirement / execution_plan / execution / applications / review`；
 1. research_market()                              # 方法论与 4 步模板
 2. 向用户播报调研菜单（抓哪家、耗时、报告落在哪），宣告即执行
 3. 名单含 BOSS 时先问一次是否纳入；确认后未登录直接 boss_login(action="login")
-4. gather_research_data(jd_specs, case_query, boss_confirmed)
+4. gather_research_data(jd_specs, case_query, boss_confirmed, source_timeout=0)
    - 目标公司 1 家 + 同方向对照 2-4 家
    - 逐条补抓岗位详情；无详情岗位剔除并计入缺口
-   - 单源 25 秒 / 总预算 50 秒；超过 2 个源建议拆批；失败不拖垮整批，已完成来源写断点缓存
+   - 单源默认 25 秒（可用 source_timeout / CAREER_KIT_RESEARCH_SOURCE_TIMEOUT 配置）/
+     总预算 50 秒；单源失败自动重试 1 次；超过 2 个源建议拆批；
+     失败不拖垮整批，已完成来源按「来源 + 查询」写断点缓存
 5. 报告三件套自动落盘（代码渲染，不经 LLM）
-6. 按需读取全文：read_research_details(ids=..., kind="jd"/"case")
+6. 按需读取全文：read_research_details(ids=..., kind="jd"/"case")，读取已落盘内容，零网络请求
 ```
 
 **产物**：`MarketBaseline`（`mb_`）+ `~/CareerKit/<档案>/调研报告/<日期_方向>.{md,html,json}`。
@@ -109,6 +111,10 @@ evidence / requirement / execution_plan / execution / applications / review`；
 - 实习岗位优先 `shixiseng`（日薪/每周天数/实习月数/转正机会可核验）；BOSS 只作薪资与广度补充，
   不作为实习主参考；指定公司的要求以官网 JD 为准。
 - 任一源失败不中断，失败原因进来源状态面板；未获取内容写「未获取」，不编造。
+- 口径分离：源维度每源只计一个最终状态（ok/empty/failed）；过滤/剔除属于条目维度，
+  单独统计并保留被过滤标题与原因，不反向改写源状态；薪资按日薪/月薪/年薪分别统计。
+- 单一来源集中度过高时，报告会给出偏差风险、重试失败源与已注册替代源建议。
+- 面经/案例全文在调研时落盘到报告 JSON 与 `profile.research`；读取时不再联网，未落盘会明确标注。
 - 全部失败时返回 `MISSING_DATA`，引导 `import_jd` / `import_jd_file`。
 - BOSS 登录缺失时直接调用 `boss_login(action="login")`（用户只需扫码），不二次询问是否登录。
   登录页为 `https://www.zhipin.com/web/user/?ka=header-login`；成功后窗口常驻并切到

@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from datetime import datetime
 from html import escape
 from pathlib import Path
@@ -18,7 +20,7 @@ from .assets import (
     rebuild_index,
     write_asset_text,
 )
-from .research_digest import build_digest
+from .research_digest import build_digest, parse_salary
 from .tools.profile import get_active_profile_name, load_profile, save_profile
 
 # 展示层预览长度（表格单元用）；报告结构与 json 保留原文，不再二次截断
@@ -75,6 +77,260 @@ def _clip(text: Any, limit: int) -> str:
     return s[: limit - 1] + "…"
 
 
+# 源维度：一个来源只能有一个最终状态（ok > failed > empty）。
+# 任一路径失败都按失败计，避免「失败」被「无结果」掩盖；source_status 仍保留
+# 逐 scope 明细供复核，汇总/播报统一走最终状态，避免同一源被重复计数。
+_SOURCE_RANK = {"ok": 3, "failed": 2, "empty": 1}
+
+
+def _source_final_states(
+    source_status: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for item in source_status:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("slug") or item.get("source") or "").strip()
+        if not key:
+            continue
+        entry = merged.get(key)
+        if entry is None:
+            entry = {
+                "source": str(item.get("source") or key),
+                "slug": key,
+                "status": str(item.get("status") or "empty"),
+                "scopes": [],
+                "count": 0,
+                "attempts": 0,
+                "retried": False,
+                "errors": [],
+            }
+            merged[key] = entry
+        status = str(item.get("status") or "empty")
+        if _SOURCE_RANK.get(status, 0) > _SOURCE_RANK.get(entry["status"], 0):
+            entry["status"] = status
+        scope = str(item.get("scope") or "jd")
+        if scope not in entry["scopes"]:
+            entry["scopes"].append(scope)
+        entry["count"] = int(entry["count"]) + int(item.get("count") or 0)
+        entry["attempts"] = max(
+            int(entry["attempts"] or 0), int(item.get("attempts") or 0)
+        )
+        entry["retried"] = bool(entry["retried"] or item.get("retried"))
+        error = _one_line(item.get("error") or "")
+        if error and error not in entry["errors"]:
+            entry["errors"].append(error)
+        if not str(item.get("source") or "").startswith("案例·"):
+            entry["source"] = str(item.get("source") or entry["source"])
+    states = list(merged.values())
+    for state in states:
+        state["error"] = "；".join(state.pop("errors"))
+    return states
+
+
+def _is_jd_item(item: dict[str, Any]) -> bool:
+    """判断案例列表里的一条实际是 JD（企业要求）还是面经/经验帖。"""
+    category = str(item.get("category") or "")
+    if category == "jd":
+        return True
+    if category == "case":
+        return False
+    if str(item.get("origin") or "") == "local_jd":
+        return True
+    source = str(item.get("source") or "").lower()
+    if source in {"github", "nowcoder", "local", ""}:
+        return False
+    return str(item.get("kind") or "") == "interview_requirements"
+
+
+def _case_source_key(case: dict[str, Any], known: set[str]) -> str:
+    """案例归属源：本地知识库命中（有 local_path）归 local，其余按卡片来源。"""
+    source = str(case.get("source") or "unknown")
+    if source in known:
+        return source
+    if case.get("local_path") or case.get("origin") == "local":
+        return "local"
+    return source
+
+
+_GRAD_YEAR_RANGE = re.compile(r"(20\d{2})\s*[-/／、~至]\s*(20\d{2})")
+_GRAD_YEAR = re.compile(r"(20\d{2})\s*届")
+_EDU_MIN_PATTERNS = (
+    re.compile(r"(博士|硕士|本科|大专|专科)(?:学历)?(?:及以上|以上|或以上|起)"),
+    re.compile(r"学历(?:要求)?[：:]\s*(博士|硕士|本科|大专|专科)"),
+)
+_WEEKLY_DAYS_PATTERNS = (
+    re.compile(r"每周(?:到岗|出勤|实习|工作)?\s*(\d)\s*(?:[-~至]\s*\d\s*)?天"),
+    re.compile(r"(?:一周|每星期)\s*(\d)\s*天"),
+    re.compile(r"(\d)\s*天\s*/\s*周"),
+    re.compile(r"至少\s*(\d)\s*天"),
+)
+_DURATION_PATTERNS = (
+    re.compile(r"实习(?:期|时间)?\s*(\d+)\s*[-~至]\s*(\d+)\s*个月"),
+    re.compile(r"实习(?:期|时间)?\s*(\d+)\s*个月"),
+    re.compile(r"至少\s*(\d+)\s*个月"),
+    re.compile(r"(\d+)\s*个月(?:以上|起)"),
+)
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _extract_graduation_years(text: str) -> list[int]:
+    years: set[int] = set()
+    for match in _GRAD_YEAR_RANGE.finditer(text):
+        start, end = int(match.group(1)), int(match.group(2))
+        if 0 <= end - start <= 4:
+            years.update(range(start, end + 1))
+    for match in _GRAD_YEAR.finditer(text):
+        years.add(int(match.group(1)))
+    return sorted(years)
+
+
+def _extract_education_min(text: str) -> str:
+    for pattern in _EDU_MIN_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _extract_weekly_days(text: str) -> int | None:
+    for pattern in _WEEKLY_DAYS_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            days = _positive_int(match.group(1))
+            if days and days <= 7:
+                return days
+    return None
+
+
+def _extract_duration_months(text: str) -> int | None:
+    for pattern in _DURATION_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            months = _positive_int(match.group(1))
+            if months and months <= 24:
+                return months
+    return None
+
+
+def _hard_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """结构化硬门槛字段；抽不到留空，不猜测。"""
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ("title", "summary", "description", "requirements")
+    )
+    degree = str(row.get("degree") or row.get("education") or "").strip()
+    if degree in {"博士", "硕士", "本科", "大专", "专科"}:
+        education_min = degree
+    else:
+        education_min = _extract_education_min(degree) or _extract_education_min(text)
+    if not degree and education_min:
+        degree = education_min
+    return {
+        "degree": degree,
+        "education_min": education_min,
+        "graduation_years": _extract_graduation_years(text),
+        "weekly_days": _positive_int(row.get("weekly_days"))
+        or _extract_weekly_days(text),
+        "duration_months": _positive_int(row.get("duration_months"))
+        or _extract_duration_months(text),
+        "chance": str(row.get("chance") or "").strip(),
+    }
+
+
+def _concentration_info(
+    jd_samples: list[dict[str, Any]],
+    source_status: list[dict[str, Any]],
+) -> dict[str, Any]:
+    total = len(jd_samples)
+    if not total:
+        return {}
+    counts = Counter(
+        str(sample.get("source") or "unknown") for sample in jd_samples
+    )
+    top_source, top_count = counts.most_common(1)[0]
+    share = round(top_count / total, 2)
+    distinct = len(counts)
+    if distinct == 1:
+        risk = "high"
+    elif share >= 0.6:
+        risk = "medium"
+    else:
+        risk = "low"
+    states = _source_final_states(source_status)
+    failed = [s["source"] for s in states if s.get("status") == "failed"]
+    used = {str(s.get("slug") or "") for s in states}
+    used.add(top_source)
+    alternatives = _registered_alternatives(used) if risk != "low" else []
+    return {
+        "sample_count": total,
+        "distinct_sources": distinct,
+        "top_source": top_source,
+        "top_count": top_count,
+        "top_share": share,
+        "risk": risk,
+        "failed_sources": failed,
+        "alternatives": alternatives,
+    }
+
+
+def _registered_alternatives(used: set[str]) -> list[str]:
+    """从已注册源里给出替代候选，不虚构来源。"""
+    try:
+        from .scrapers.loader import list_scrapers
+
+        names = [
+            str(item.get("name") or item.get("id") or "")
+            for item in list_scrapers()
+            if str(item.get("id") or "") not in used
+            and str(item.get("id") or "") not in {"boss", "nowcoder", "github"}
+            and "keyword" in (item.get("params") or {})
+        ]
+    except Exception:  # noqa: BLE001 - 注册表异常时不给候选，不编造
+        return []
+    return [name for name in names if name][:3]
+
+
+def _concentration_gap(
+    jd_samples: list[dict[str, Any]],
+    source_status: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    info = _concentration_info(jd_samples, source_status)
+    if not info or info.get("risk") == "low":
+        return []
+    top_source = info["top_source"]
+    top_count = int(info.get("top_count") or 0)
+    risk_text = "高" if info["risk"] == "high" else "偏高"
+    risk_label = "单一来源集中度" if info["risk"] == "high" else "来源集中度"
+    reason = (
+        f"{info['distinct_sources']} 个来源返回了岗位样本，"
+        "单一来源偏差会影响需求分析与硬筛结论"
+    )
+    action_bits = []
+    if info["failed_sources"]:
+        action_bits.append("重试失败源：" + "、".join(info["failed_sources"]))
+    if info["alternatives"]:
+        action_bits.append("补充已注册官方源：" + "、".join(info["alternatives"]))
+    action_bits.append("或用 import_jd 导入手头 JD 交叉验证")
+    return [
+        {
+            "missing": (
+                f"岗位样本{risk_label}风险{risk_text}："
+                f"{top_count}/{info['sample_count']} 条来自「{top_source}」"
+            ),
+            "reason": reason,
+            "suggestion": "；".join(action_bits),
+        }
+    ]
+
+
 def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     """把 gather 的抓取结果清洗为报告结构。
 
@@ -125,6 +381,10 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         list_only = int(family.get("list_only") or 0)
         list_only_total += list_only
         label = family.get("label") or family.get("slug") or "未知来源"
+        filtered_samples = [
+            item for item in (family.get("filtered_samples") or [])
+            if isinstance(item, dict)
+        ]
         source_status.append(
             {
                 "source": label,
@@ -136,7 +396,14 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
                 "error": _one_line(family.get("error") or ""),
                 "dropped_no_detail": dropped,
                 "filtered_irrelevant": filtered,
+                "filtered_titles": [
+                    str(item.get("title") or "") for item in filtered_samples
+                ][:10],
+                "filtered_samples": filtered_samples[:10],
                 "list_only": list_only,
+                "attempts": int(family.get("attempts") or 1),
+                "retried": bool(family.get("retried")),
+                "from_cache": bool(family.get("from_cache")),
             }
         )
         if dropped:
@@ -156,12 +423,19 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         for row in rows:
             if not isinstance(row, dict) or row.get("error"):
                 continue
+            hard = _hard_fields(row)
             jd_samples.append(
                 {
                     "company": _clip(row.get("company") or label, 40),
                     "title": _clip(row.get("title"), 120),
                     "location": _clip(row.get("location"), 60),
                     "salary": _clip(row.get("salary"), 40),
+                    "degree": hard["degree"],
+                    "education_min": hard["education_min"],
+                    "graduation_years": hard["graduation_years"],
+                    "weekly_days": hard["weekly_days"],
+                    "duration_months": hard["duration_months"],
+                    "chance": hard["chance"],
                     # 薪资来源说明：salary_source 记录实际返回薪资的数据源，
                     # salary_provenance 保留抓取器原始标记（如 BOSS 的 api/api_empty）。
                     # 只展示事实，不做估算或跨源补全。
@@ -193,21 +467,26 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         _norm_title(sample["title"]) for sample in jd_samples if sample["title"]
     }
 
-    raw_cases = cases_result.get("cases") or []
+    raw_cases = [
+        case for case in (cases_result.get("cases") or [])
+        if isinstance(case, dict) and not case.get("error")
+    ]
+    raw_case_items = [case for case in raw_cases if not _is_jd_item(case)]
+    jd_from_cases = len(raw_cases) - len(raw_case_items)
     cases: list[dict[str, Any]] = []
-    for case in raw_cases:
-        if not isinstance(case, dict) or case.get("error"):
-            continue
+    for case in raw_case_items:
         bg = case.get("background") or {}
         case_url = str(case.get("url") or "").strip()
         case_title = _clip(case.get("title"), 120)
-        if case.get("origin") == "local_jd" and (
-            (case_url and case_url in jd_urls) or _norm_title(case_title) in jd_titles
-        ):
+        if case_url and case_url in jd_urls:
             continue
+        if not case_url and _norm_title(case_title) in jd_titles:
+            continue
+        content = str(case.get("content") or "").strip()
         cases.append(
             {
                 "kind": _clip(case.get("kind"), 30),
+                "category": "case",
                 "title": case_title,
                 "education_tag": _clip(bg.get("education_tag"), 20),
                 "year": _clip(bg.get("year"), 12),
@@ -222,6 +501,12 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
                 "source": _clip(case.get("source"), 20),
                 "url": case_url,
                 "local_path": str(case.get("local_path") or ""),
+                "content": content,
+                "content_status": (
+                    str(case.get("content_status") or "")
+                    or ("ok" if content else "unavailable")
+                ),
+                "content_error": _one_line(case.get("content_error") or ""),
                 "date": _clip(case.get("date"), 20),
                 "match_score": case.get("match_score"),
             }
@@ -230,14 +515,17 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     for idx, case in enumerate(cases, 1):
         case["id"] = f"CS{idx:02d}"
 
-    # 案例源计数口径：用「最终进入花名册的条数」，与汇报和花名册保持一致
-    # （原始抓取数只作补充说明，避免 5 条 vs 12 条的自相矛盾，P1-1）。
+    # 案例源计数口径：只统计实际案例（category=case），本地 JD/企业要求不计入案例数。
+    known_case_sources = {str(slug) for slug in case_sources}
     kept_by_source: dict[str, int] = {}
     for case in cases:
-        src = str(case.get("source") or "unknown")
+        src = _case_source_key(case, known_case_sources)
         kept_by_source[src] = kept_by_source.get(src, 0) + 1
-    for slug, raw_count in case_sources.items():
-        raw = int(raw_count or 0)
+    raw_by_source = Counter(
+        _case_source_key(case, known_case_sources) for case in raw_case_items
+    )
+    for slug, _raw_count in case_sources.items():
+        raw = int(raw_by_source.get(str(slug), 0))
         kept = kept_by_source.get(str(slug), 0)
         error = ""
         for warning in case_warnings:
@@ -268,8 +556,9 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    source_states = _source_final_states(source_status)
     digest = build_digest(
-        jd_samples, cases, dropped_no_detail, raw_case_count=len(raw_cases)
+        jd_samples, cases, dropped_no_detail, raw_case_count=len(raw_case_items)
     )
 
     gaps = _derive_gaps(jd_samples, cases, source_status)
@@ -278,17 +567,19 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     counts = {
         "jd_samples": len(jd_samples),
         "cases": len(cases),
-        "cases_raw": len(raw_cases),
-        "cases_filtered": max(0, len(raw_cases) - len(cases)),
+        "cases_raw": len(raw_case_items),
+        "cases_filtered": max(0, len(raw_case_items) - len(cases)),
+        "jd_from_cases": jd_from_cases,
         "dropped_no_detail": dropped_no_detail,
         "filtered_irrelevant": filtered_irrelevant,
         "list_only": list_only_total,
-        "source_ok": sum(1 for s in source_status if s["status"] == "ok"),
-        "source_fail": sum(1 for s in source_status if s["status"] == "failed"),
-        "source_empty": sum(1 for s in source_status if s["status"] == "empty"),
+        "source_ok": sum(1 for s in source_states if s["status"] == "ok"),
+        "source_fail": sum(1 for s in source_states if s["status"] == "failed"),
+        "source_empty": sum(1 for s in source_states if s["status"] == "empty"),
     }
 
     salary = _build_salary_summary(jd_samples, source_status)
+    concentration = _concentration_info(jd_samples, source_status)
 
     return {
         "type": "research_report",
@@ -300,6 +591,8 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         "jd_samples": jd_samples,
         "cases": cases,
         "source_status": source_status,
+        "source_states": source_states,
+        "source_concentration": concentration,
         "case_warnings": [_one_line(w) for w in case_warnings][:10],
         "gaps": gaps,
         "digest": digest,
@@ -322,10 +615,12 @@ def _boss_status(source_status: list[dict[str, Any]]) -> str:
     ]
     if not entries:
         return "not_included"
-    if any(e.get("status") == "failed" for e in entries):
-        return "failed"
-    if any(e.get("status") == "ok" for e in entries):
+    jd_entries = [s for s in entries if str(s.get("scope") or "jd") == "jd"]
+    states = _source_final_states(jd_entries or entries)
+    if any(state.get("status") == "ok" for state in states):
         return "ok"
+    if any(state.get("status") == "failed" for state in states):
+        return "failed"
     return "empty"
 
 
@@ -339,10 +634,13 @@ def _build_salary_summary(
     """
     sources: list[str] = []
     with_salary = 0
+    by_type: Counter[str] = Counter()
     for sample in jd_samples:
-        if not str(sample.get("salary") or "").strip():
+        parsed = parse_salary(sample.get("salary"))
+        if not parsed:
             continue
         with_salary += 1
+        by_type[str(parsed["type"])] += 1
         label = str(
             sample.get("salary_source") or sample.get("source") or ""
         ).strip()
@@ -352,6 +650,9 @@ def _build_salary_summary(
     return {
         "sample_count": len(jd_samples),
         "with_salary": with_salary,
+        "monthly_count": by_type.get("monthly", 0),
+        "daily_count": by_type.get("daily", 0),
+        "annual_count": by_type.get("annual", 0),
         "sources": sources,
         "boss_included": boss != "not_included",
         "boss_status": boss,
@@ -426,11 +727,21 @@ def _salary_render_line(info: dict[str, Any]) -> str:
         )
     sources = "、".join(str(s) for s in (info.get("sources") or []) if s)
     detail = f"{with_salary}/{total} 条含明文薪资"
+    type_bits = "、".join(
+        f"{label} {info.get(key)} 条"
+        for key, label in (
+            ("monthly_count", "月薪"), ("daily_count", "日薪"),
+            ("annual_count", "年薪"),
+        )
+        if info.get(key)
+    )
+    if type_bits:
+        detail += f"（{type_bits}）"
     if sources:
         detail += f"（来源：{sources}）"
     return (
-        f"薪资数据：{detail}。未含薪资仅表示该来源未返回薪资字段，"
-        "不代表岗位无薪资。"
+        f"薪资数据：{detail}。日薪/月薪/年薪按原文分别统计，未做跨口径换算；"
+        "未含薪资仅表示该来源未返回薪资字段，不代表岗位无薪资。"
     )
 
 
@@ -441,12 +752,13 @@ def _derive_gaps(
 ) -> list[dict[str, str]]:
     """自动生成数据缺口清单——不猜测，只陈述没拿到什么与建议补偿方式。"""
     gaps: list[dict[str, str]] = []
-    for s in source_status:
+    # 源维度：一个源只报一次最终状态，避免同一源同时出现在「失败」与「无结果」。
+    for s in _source_final_states(source_status):
         if s["status"] == "failed":
             gaps.append(
                 {
                     "missing": f"来源「{s['source']}」本次未获取到数据",
-                    "reason": _one_line(s["error"]) or "抓取失败",
+                    "reason": _one_line(s.get("error")) or "抓取失败",
                     "suggestion": "见来源状态面板；必要时提供手头 JD 用 import_jd 补充",
                 }
             )
@@ -458,13 +770,33 @@ def _derive_gaps(
                     "suggestion": "换关键词重跑，或补充手头 JD",
                 }
             )
+    # 条目维度：过滤/剔除单独统计，并可复核被过滤样本。
+    for s in source_status:
         filtered = int(s.get("filtered_irrelevant") or 0)
         if filtered:
+            samples = [
+                item for item in (s.get("filtered_samples") or [])
+                if isinstance(item, dict)
+            ]
+            titles = [
+                str(item.get("title") or "").strip()
+                for item in samples if str(item.get("title") or "").strip()
+            ]
+            reason = "搜索结果混入与本轮方向无关的岗位（如 AI-HR 培训生）"
+            if samples:
+                reason = "；".join(
+                    f"{item.get('title') or '未命名'}：{item.get('reason') or '方向不匹配'}"
+                    for item in samples[:3]
+                )
             gaps.append(
                 {
                     "missing": f"来源「{s['source']}」有 {filtered} 条岗位因方向不匹配被过滤",
-                    "reason": "搜索结果混入与本轮方向无关的岗位（如 AI-HR 培训生）",
-                    "suggestion": "换更精确的关键词重跑，或放宽条件后人工筛选",
+                    "reason": reason,
+                    "suggestion": (
+                        "被过滤示例：" + "、".join(titles[:5]) + "；"
+                        if titles
+                        else ""
+                    ) + "换更精确的关键词重跑，或放宽条件后人工复核",
                 }
             )
         list_only = int(s.get("list_only") or 0)
@@ -480,6 +812,7 @@ def _derive_gaps(
                 }
             )
     gaps.extend(_salary_gap(jd_samples, source_status))
+    gaps.extend(_concentration_gap(jd_samples, source_status))
     if not cases:
         gaps.append(
             {
@@ -628,6 +961,18 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
 
     lines.append("## 三、来源状态面板（失败也如实展示）")
     lines.append("")
+    states = report.get("source_states") or _source_final_states(
+        report.get("source_status") or []
+    )
+    state_counts = Counter(str(s.get("status") or "empty") for s in states)
+    lines.append(
+        "来源维度（每源只计一个最终状态）："
+        f"成功 {state_counts.get('ok', 0)} · 失败 {state_counts.get('failed', 0)} · "
+        f"无结果 {state_counts.get('empty', 0)}；"
+        f"条目维度：过滤 {counts.get('filtered_irrelevant', 0)} 条、"
+        f"剔除无详情 {counts.get('dropped_no_detail', 0)} 条。"
+    )
+    lines.append("")
     lines.append("| 来源 | 状态 | 条数 | 耗时(秒) | 备注 |")
     lines.append("|---|---|---|---|---|")
     for s in report.get("source_status") or []:
@@ -635,8 +980,12 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
             s.get("status"), s.get("status", "")
         )
         note_bits = [_md_escape_md(s.get("error", "") or "—")]
+        if s.get("attempts", 1) > 1:
+            note_bits.append(f"（重试后成功/结束，共 {s['attempts']} 次）")
         if s.get("dropped_no_detail"):
             note_bits.append(f"（剔除 {s['dropped_no_detail']} 条无详情岗位）")
+        if s.get("filtered_irrelevant"):
+            note_bits.append(f"（过滤 {s['filtered_irrelevant']} 条方向不匹配）")
         if s.get("list_only"):
             note_bits.append(f"（{s['list_only']} 条仅列表数据，未抓 JD 详情）")
         lines.append(
@@ -665,6 +1014,8 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
         f"{counts.get(k)} {label}" for k, label in
         (("jd_samples", "条岗位"), ("cases", "条案例")) if counts.get(k) is not None
     )
+    if counts.get("jd_from_cases"):
+        counts_text += f"；另有 {counts['jd_from_cases']} 条本地 JD 归入企业要求，未计案例"
     lines.append(
         f"---\n样本统计：{counts_text}。原始数据在同名 .json；本报告及全部来源"
         "可在资产中心（index.html）直达。本报告由抓取数据代码渲染生成，"
@@ -692,6 +1043,7 @@ def _html_text(text: Any) -> str:
 def render_html(report: dict[str, Any]) -> str:
     """报告 HTML 阅读版（同 dashboard 视觉风格；底部返回资产中心）。"""
     ctx = report.get("context") or {}
+    counts = report.get("counts") or {}
     jds = report.get("jd_samples") or []
     cases = report.get("cases") or []
     parts: list[str] = []
@@ -808,6 +1160,17 @@ def render_html(report: dict[str, Any]) -> str:
         )
 
     parts.append("<h2>三、来源状态面板（失败也如实展示）</h2>")
+    states = report.get("source_states") or _source_final_states(
+        report.get("source_status") or []
+    )
+    state_counts = Counter(str(s.get("status") or "empty") for s in states)
+    parts.append(
+        f'<p class="compact">来源维度（每源只计一个最终状态）：'
+        f"成功 {state_counts.get('ok', 0)} · 失败 {state_counts.get('failed', 0)} · "
+        f"无结果 {state_counts.get('empty', 0)}；"
+        f"条目维度：过滤 {escape(str(counts.get('filtered_irrelevant', 0)))} 条、"
+        f"剔除无详情 {escape(str(counts.get('dropped_no_detail', 0)))} 条。</p>"
+    )
     srows = []
     for s in report.get("source_status") or []:
         status = s.get("status")
@@ -816,8 +1179,12 @@ def render_html(report: dict[str, Any]) -> str:
             status, str(status or "")
         )
         note = escape(str(s.get("error") or "—"))
+        if s.get("attempts", 1) > 1:
+            note += f"（重试后成功/结束，共 {escape(str(s['attempts']))} 次）"
         if s.get("dropped_no_detail"):
             note += f"（剔除 {escape(str(s['dropped_no_detail']))} 条无详情岗位）"
+        if s.get("filtered_irrelevant"):
+            note += f"（过滤 {escape(str(s['filtered_irrelevant']))} 条方向不匹配）"
         if s.get("list_only"):
             note += f"（{escape(str(s['list_only']))} 条仅列表数据，未抓 JD 详情）"
         srows.append(
@@ -885,6 +1252,22 @@ def _dedupe_samples(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return kept
 
 
+def _merge_filtered_traces(
+    first: Any, second: Any
+) -> list[dict[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    merged: list[dict[str, str]] = []
+    for item in [*(first or []), *(second or [])]:
+        if not isinstance(item, dict):
+            continue
+        key = (str(item.get("title") or ""), str(item.get("reason") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(dict(item))
+    return merged
+
+
 def _merge_source_status(
     previous: list[dict[str, Any]], current: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -904,19 +1287,27 @@ def _merge_source_status(
         new_ok = status.get("status") == "ok"
         if old_ok and not new_ok:
             continue
-        if old_ok and new_ok:
-            combined = dict(status)
-            for field in (
-                "count", "raw_count", "dropped_no_detail", "filtered_irrelevant",
-                "list_only",
-            ):
-                if field in old or field in status:
-                    combined[field] = max(
-                        int(old.get(field) or 0), int(status.get(field) or 0)
-                    )
-            merged[key] = combined
-            continue
-        merged[key] = dict(status)
+        combined = dict(status)
+        for field in (
+            "count", "raw_count", "dropped_no_detail", "filtered_irrelevant",
+            "list_only",
+        ):
+            if field in old or field in status:
+                combined[field] = max(
+                    int(old.get(field) or 0), int(status.get(field) or 0)
+                )
+        combined["filtered_samples"] = _merge_filtered_traces(
+            old.get("filtered_samples"), status.get("filtered_samples")
+        )
+        combined["filtered_titles"] = [
+            str(item.get("title") or "")
+            for item in combined["filtered_samples"]
+        ]
+        combined["attempts"] = max(
+            int(old.get("attempts") or 1), int(status.get("attempts") or 1)
+        )
+        combined["retried"] = bool(old.get("retried") or status.get("retried"))
+        merged[key] = combined
     return list(merged.values())
 
 
@@ -927,9 +1318,11 @@ def merge_reports(
     jd_samples = _dedupe_samples(
         list(previous.get("jd_samples") or []) + list(current.get("jd_samples") or [])
     )
-    cases = _dedupe_samples(
+    all_cases = _dedupe_samples(
         list(previous.get("cases") or []) + list(current.get("cases") or [])
     )
+    cases = [case for case in all_cases if not _is_jd_item(case)]
+    jd_from_merged_cases = len(all_cases) - len(cases)
     for idx, sample in enumerate(jd_samples, 1):
         sample["id"] = f"JD{idx:02d}"
     for idx, case in enumerate(cases, 1):
@@ -954,17 +1347,23 @@ def merge_reports(
         for s in source_status
         if str(s.get("scope") or "") == "cases"
     ) or len(cases)
+    source_states = _source_final_states(source_status)
     counts = {
         "jd_samples": len(jd_samples),
         "cases": len(cases),
         "cases_raw": raw_cases,
         "cases_filtered": max(0, raw_cases - len(cases)),
+        "jd_from_cases": max(
+            jd_from_merged_cases,
+            int((previous.get("counts") or {}).get("jd_from_cases") or 0)
+            + int((current.get("counts") or {}).get("jd_from_cases") or 0),
+        ),
         "dropped_no_detail": dropped,
         "filtered_irrelevant": filtered_irrelevant,
         "list_only": list_only,
-        "source_ok": sum(1 for s in source_status if s.get("status") == "ok"),
-        "source_fail": sum(1 for s in source_status if s.get("status") == "failed"),
-        "source_empty": sum(1 for s in source_status if s.get("status") == "empty"),
+        "source_ok": sum(1 for s in source_states if s.get("status") == "ok"),
+        "source_fail": sum(1 for s in source_states if s.get("status") == "failed"),
+        "source_empty": sum(1 for s in source_states if s.get("status") == "empty"),
     }
     warnings = list(
         dict.fromkeys(
@@ -980,6 +1379,8 @@ def merge_reports(
         "jd_samples": jd_samples,
         "cases": cases,
         "source_status": source_status,
+        "source_states": source_states,
+        "source_concentration": _concentration_info(jd_samples, source_status),
         "case_warnings": warnings[:10],
         "gaps": _derive_gaps(jd_samples, cases, source_status),
         "digest": build_digest(
@@ -1078,9 +1479,12 @@ def save_report(
         "jd_samples": report.get("jd_samples") or [],
         "cases": report.get("cases") or [],
         "source_status": report.get("source_status") or [],
+        "source_states": report.get("source_states") or [],
+        "source_concentration": report.get("source_concentration") or {},
         "gaps": report.get("gaps") or [],
         "digest": report.get("digest") or {},
         "counts": report.get("counts") or {},
+        "salary": report.get("salary") or {},
     }
     current = load_profile(name)
     current.research = payload

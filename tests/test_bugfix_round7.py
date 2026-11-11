@@ -82,7 +82,8 @@ def test_gather_partial_cache_resumes_finished_source(temp_profile, monkeypatch)
     fail["baidu"] = True
     first = asyncio.run(rt.gather_research_data(specs, json.dumps({"role": "AI Agent"})))
     assert "市场调研完成" in first
-    assert calls == ["baidu", "tencent"]
+    # 单源失败自动重试 1 次：tencent 首轮调用 2 次（原始 + 重试），baidu 成功不重试。
+    assert calls == ["baidu", "tencent", "tencent"]
 
     calls.clear()
     fail["baidu"] = False
