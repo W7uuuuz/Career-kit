@@ -49,6 +49,29 @@ BOSS_SOURCE = "boss"
 _REMOTE_HINTS = ("远程", "全国", "不限", "remote", "anywhere")
 _CONFIDENCE_LEVELS = ("low", "medium", "high")
 
+# 采集层岗位相关性：目标岗位关键词，以及岗位族扩展词。
+# 只做字面命中，不做语义推断；宁可少收，也不让跑偏岗位污染统计。
+_GENERIC_ROLE_TERMS = frozenset(
+    {"开发", "工程师", "研发", "经理", "专员", "主管", "总监", "助理", "实习", "岗位"}
+)
+_AI_SIGNALS = (
+    "ai", "agent", "llm", "大模型", "模型", "算法", "机器学习", "深度学习",
+    "nlp", "rag", "langchain", "langgraph", "智能",
+)
+_AI_FAMILY_TERMS = (
+    "ai", "agent", "llm", "大模型", "模型", "算法", "机器学习", "深度学习",
+    "nlp", "rag", "langchain", "langgraph", "prompt", "智能",
+)
+_ENGINEERING_SIGNALS = ("开发", "工程师", "研发", "后端", "服务端", "backend", "engineer", "developer")
+_ENGINEERING_TERMS = (
+    "开发", "工程师", "研发", "后端", "服务端", "python", "java", "go", "golang",
+    "微服务", "分布式", "高并发",
+)
+_ROLE_TOKEN_SPLIT_RE = re.compile(r"[\s,，、;；/|()（）\-]+")
+_ASCII_TOKEN_RE = re.compile(r"[a-z][a-z0-9+#.\-]*")
+_CJK_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}")
+
+
 
 def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     """同步入口（Stage 协议）；异步内部实现见 `run_async`。"""
@@ -78,6 +101,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         )
 
     target = pool.target_spec.model_copy(deep=True)
+    target_keyword = _target_search_keyword(target)
     per_company_limit = _as_int(inputs.get("per_company_limit"), DEFAULT_PER_COMPANY_LIMIT, 1)
     max_companies = _as_int(inputs.get("max_companies"), DEFAULT_MAX_COMPANIES, 1)
     max_jd = _as_int(inputs.get("max_jd"), DEFAULT_MAX_JD, 0)
@@ -104,14 +128,17 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
 
     jd_tasks = [
         _search_company_jobs(
-            entry, slug, target.role, target.city, per_company_limit, deadline, semaphore
+            entry, slug, target_keyword, target.city, per_company_limit, deadline, semaphore
         )
         for entry in selected
         for slug in _entry_scrapers(entry)
     ]
     if include_boss and max_jd != 0:
         jd_tasks.append(
-            _search_boss_jobs(target, _boss_limit(max_jd, per_company_limit), deadline, semaphore)
+            _search_boss_jobs(
+                target, target_keyword, _boss_limit(max_jd, per_company_limit),
+                deadline, semaphore,
+            )
         )
     jd_results = await asyncio.gather(*jd_tasks)
     source_status: list[dict[str, Any]] = [
@@ -126,7 +153,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         for result in jd_results
     ]
     interview_status, raw_cases = await _collect_interviews(
-        target, education, max_interviews, deadline, semaphore
+        target, target_keyword, education, max_interviews, deadline, semaphore
     )
     source_status.extend(interview_status)
 
@@ -146,6 +173,10 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         "interviews": 0,
         "reused_jd": 0,
         "reused_interviews": 0,
+        "reused_jd_outside_pool": 0,
+        "reused_interviews_outside_pool": 0,
+        "reused_outside_pool": 0,
+        "dropped_irrelevant": 0,
         "unknown_city": 0,
         "boss_jobs": 0,
         "list_only": 0,
@@ -154,6 +185,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     }
 
     fresh_jd, counts = await _enrich_jobs(jd_results, target.city, deadline, semaphore, counts)
+    fresh_jd, irrelevant_samples = _filter_relevant_jobs(fresh_jd, target_keyword, counts)
     fresh_jd = _dedupe_jobs(fresh_jd)
     fresh_jd = _truncate_per_company(fresh_jd, per_company_limit)
 
@@ -170,7 +202,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     fresh_interviews = _dedupe_interviews(fresh_interviews)
     reused_interviews: list[InterviewEvidence] = []
     if reuse_research:
-        reused_interviews = _reuse_interviews(profile)
+        reused_interviews = _reuse_interviews(profile, pool)
     final_interviews = _merge_interviews(fresh_interviews, reused_interviews, max_interviews)
 
     _assign_ids(final_jd, "JD")
@@ -181,12 +213,30 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     counts["reused_jd"] = sum(1 for item in final_jd if item.reused)
     counts["fresh_jobs"] = len(final_jd) - counts["reused_jd"]
     counts["reused_interviews"] = sum(1 for item in final_interviews if item.reused)
+    counts["reused_jd_outside_pool"] = sum(
+        1 for item in final_jd if item.reused and not item.reused_in_pool
+    )
+    counts["reused_interviews_outside_pool"] = sum(
+        1 for item in final_interviews if item.reused and not item.reused_in_pool
+    )
+    counts["reused_outside_pool"] = (
+        counts["reused_jd_outside_pool"] + counts["reused_interviews_outside_pool"]
+    )
     counts["boss_jobs"] = sum(1 for item in final_jd if item.source == BOSS_SOURCE)
     confidence = {
         "jd": _confidence(len(final_jd), low=15, medium=30),
         "interview": _confidence(len(final_interviews), low=10, medium=20),
     }
-    gaps = _build_gaps(pool, source_status, counts, confidence, target.city)
+    gaps = _build_gaps(
+        pool,
+        source_status,
+        counts,
+        confidence,
+        target.city,
+        jd_items=final_jd,
+        interview_items=final_interviews,
+        irrelevant_samples=irrelevant_samples,
+    )
 
     meta = ArtifactMeta(
         id=store.new_id("ev_"),
@@ -407,25 +457,114 @@ def _entry_scrapers(entry: CompanyEntry) -> list[str]:
     return scrapers or [entry.id]
 
 
-def _scraper_params(slug: str) -> set[str]:
+def _scraper_params(slug: str) -> dict[str, Any]:
     try:
-        scraper = loader.get_scraper(slug)
+        return loader.scraper_params(slug)
     except Exception:  # noqa: BLE001 - 参数发现失败时只传 limit
-        return set()
-    spec = getattr(scraper, "PARAMS", None) if scraper is not None else None
-    if not isinstance(spec, dict):
-        return set()
-    return set(spec)
+        return {}
 
 
 def _search_params(slug: str, role: str, city: str, limit: int) -> dict[str, Any]:
     supported = _scraper_params(slug)
     params: dict[str, Any] = {"limit": limit}
-    if role and (not supported or "keyword" in supported):
+    if not supported:
+        # 未声明参数能力的源不硬塞 keyword/city，避免 loader 判定未知参数。
+        return params
+    if role and "keyword" in supported:
         params["keyword"] = role
     if city and "city" in supported:
         params["city"] = city
     return params
+
+
+def _target_search_keyword(target: TargetSpec) -> str:
+    """目标岗位关键词的唯一来源：TargetSpec.role 优先，空时回退 direction。"""
+    return (target.role or "").strip() or (target.direction or "").strip()
+
+
+def _keyword_terms(keyword: str) -> tuple[list[str], list[str]]:
+    """把目标关键词拆成核心词与岗位族扩展词（只做字面匹配）。"""
+    text = str(keyword or "").strip().lower()
+    if not text:
+        return [], []
+    core: list[str] = [part for part in _ROLE_TOKEN_SPLIT_RE.split(text) if part]
+    if not core:
+        core = [text]
+    core.extend(match.group(0) for match in _ASCII_TOKEN_RE.finditer(text))
+    core.extend(match.group(0) for match in _CJK_TOKEN_RE.finditer(text))
+    core = _dedupe_terms(core)
+
+    family: list[str] = []
+    if any(signal in text for signal in _AI_SIGNALS):
+        family.extend(_AI_FAMILY_TERMS)
+    if any(signal in text for signal in _ENGINEERING_SIGNALS):
+        family.extend(_ENGINEERING_TERMS)
+    return core, _dedupe_terms(family)
+
+
+def _dedupe_terms(terms: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for term in terms:
+        value = str(term or "").strip().lower()
+        if len(value) < 2 or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _term_in(term: str, text: str) -> bool:
+    if term.isascii():
+        pattern = rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])"
+        return re.search(pattern, text) is not None
+    return term in text
+
+
+def _job_is_relevant(title: str, text: str, keyword: str) -> bool:
+    """按标题/正文与目标岗位关键词打分：宁少不脏。"""
+    phrase = " ".join(str(keyword or "").lower().split())
+    if not phrase:
+        return True
+    haystack_title = str(title or "").lower()
+    haystack_text = str(text or "").lower()
+    if phrase in haystack_title or phrase.replace(" ", "") in haystack_title.replace(" ", ""):
+        return True
+
+    core, family = _keyword_terms(phrase)
+    terms = _dedupe_terms(core + family)
+    matched_core = {term for term in core if _term_in(term, haystack_title) or _term_in(term, haystack_text)}
+    matched_all = {
+        term
+        for term in terms
+        if _term_in(term, haystack_title) or _term_in(term, haystack_text)
+    }
+    if len(matched_all) >= 2:
+        return True
+    # 中文核心词（如「市场」）单独命中即可；通用词（如「开发」）不算。
+    return any(
+        not term.isascii()
+        and term not in _GENERIC_ROLE_TERMS
+        and _term_in(term, haystack_title)
+        for term in matched_core
+    )
+
+
+def _filter_relevant_jobs(
+    items: list[JDEvidence], keyword: str, counts: dict[str, int]
+) -> tuple[list[JDEvidence], list[str]]:
+    if not keyword:
+        return items, []
+    kept: list[JDEvidence] = []
+    dropped: list[str] = []
+    for item in items:
+        text = " ".join((item.summary, item.description, item.requirements))
+        if _job_is_relevant(item.title, text, keyword):
+            kept.append(item)
+        else:
+            counts["dropped_irrelevant"] += 1
+            dropped.append(item.title)
+    return kept, dropped
 
 
 def _boss_limit(max_jd: int, per_company_limit: int) -> int:
@@ -435,16 +574,17 @@ def _boss_limit(max_jd: int, per_company_limit: int) -> int:
 
 async def _search_boss_jobs(
     target: TargetSpec,
+    keyword: str,
     limit: int,
     deadline: float,
     semaphore: asyncio.Semaphore,
 ) -> dict[str, Any]:
     """抓取 BOSS 直聘作为跨公司补充源；不占企业池名额。"""
-    if not target.role:
+    if not keyword:
         return _source_result(
             None, BOSS_SOURCE, "failed", 0, "目标岗位为空，无法搜索 BOSS", 0.0
         )
-    params: dict[str, Any] = {"limit": limit, "keyword": target.role}
+    params: dict[str, Any] = {"limit": limit, "keyword": keyword}
     if target.city:
         params["city"] = target.city
 
@@ -794,6 +934,25 @@ def _truncate_per_company(items: list[JDEvidence], limit: int) -> list[JDEvidenc
     return kept
 
 
+def _research_round_label(profile: Any) -> str:
+    research = getattr(profile, "research", None)
+    if not isinstance(research, dict):
+        return ""
+    generated_at = str(research.get("generated_at") or "").strip()
+    direction = str(research.get("direction") or research.get("role") or "").strip()
+    city = str(research.get("city") or "").strip()
+    bits = [part for part in (direction, city) if part]
+    detail = f"（{' / '.join(bits)}）" if bits else ""
+    return f"research {generated_at or '未知时间'}{detail}"
+
+
+def _pool_has_company(name: str, pool: CompanyPool) -> bool:
+    key = str(name or "").strip().lower()
+    if not key:
+        return False
+    return any(key in {entry.id.lower(), entry.name.lower()} for entry in pool.companies)
+
+
 def _reuse_jobs(
     profile: Any,
     pool: CompanyPool,
@@ -803,6 +962,7 @@ def _reuse_jobs(
     samples, _cases, fresh = _research_samples(profile)
     if not fresh:
         return [], counts
+    round_label = _research_round_label(profile)
     reused: list[JDEvidence] = []
     for sample in samples:
         company_raw = str(sample.get("company") or "").strip()
@@ -821,6 +981,7 @@ def _reuse_jobs(
             counts["dropped_city"] += 1
             continue
         company_id, company, tier = _match_company(company_raw, pool)
+        in_pool = _pool_has_company(company_raw, pool)
         reused.append(
             JDEvidence(
                 id="",
@@ -838,6 +999,9 @@ def _reuse_jobs(
                 fetched_at=str(sample.get("fetched_at") or "").strip(),
                 detail_status="ok",
                 reused=True,
+                reused_from=round_label,
+                reused_pool_id=pool.meta.id if in_pool else "",
+                reused_in_pool=in_pool,
             )
         )
     return reused, counts
@@ -870,12 +1034,13 @@ def _merge_jobs(
 
 async def _collect_interviews(
     target: TargetSpec,
+    keyword: str,
     education: str,
     limit: int,
     deadline: float,
     semaphore: asyncio.Semaphore,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not target.role:
+    if not keyword:
         return (
             [
                 {
@@ -883,11 +1048,17 @@ async def _collect_interviews(
                     "scope": "cases",
                     "status": "failed",
                     "count": 0,
-                    "error": "目标岗位为空，无法搜索面经",
+                    "error": "目标岗位与方向均为空，无法搜索面经",
                     "elapsed": 0.0,
                 }
             ],
             [],
+        )
+    fallback_note = ""
+    if not (target.role or "").strip():
+        fallback_note = (
+            f"目标岗位为空，面经已回退使用方向「{keyword}」"
+            f" + 城市「{target.city or '不限'}」搜索"
         )
     loop = asyncio.get_running_loop()
     started = loop.time()
@@ -912,7 +1083,7 @@ async def _collect_interviews(
             result = await asyncio.wait_for(
                 asyncio.to_thread(
                     collect_cases,
-                    role=target.role,
+                    role=keyword,
                     company="",
                     city=target.city,
                     education=education,
@@ -982,6 +1153,7 @@ async def _collect_interviews(
                     "count": count,
                     "error": error,
                     "elapsed": round(elapsed, 3),
+                    "note": fallback_note,
                 }
             )
     else:
@@ -993,6 +1165,7 @@ async def _collect_interviews(
                 "count": len(cases),
                 "error": "；".join(warnings),
                 "elapsed": round(elapsed, 3),
+                "note": fallback_note,
             }
         )
     return statuses, cases
@@ -1071,10 +1244,11 @@ def _interview_key(item: InterviewEvidence) -> tuple[str, ...]:
     return ("title", _norm_text(item.source), _norm_text(item.title))
 
 
-def _reuse_interviews(profile: Any) -> list[InterviewEvidence]:
+def _reuse_interviews(profile: Any, pool: CompanyPool) -> list[InterviewEvidence]:
     _samples, cases, fresh = _research_samples(profile)
     if not fresh:
         return []
+    round_label = _research_round_label(profile)
     now = datetime.now().isoformat()
     result: list[InterviewEvidence] = []
     for case in cases:
@@ -1083,6 +1257,7 @@ def _reuse_interviews(profile: Any) -> list[InterviewEvidence]:
             continue
         company_raw = str(case.get("company") or "").strip()
         company_id, company = _map_interview_company(company_raw)
+        in_pool = _pool_has_company(company_raw, pool)
         highlights = [str(item).strip() for item in case.get("highlights") or [] if str(item).strip()]
         result.append(
             InterviewEvidence(
@@ -1098,6 +1273,9 @@ def _reuse_interviews(profile: Any) -> list[InterviewEvidence]:
                 content="\n".join(highlights),
                 fetched_at=now,
                 reused=True,
+                reused_from=round_label,
+                reused_pool_id=pool.meta.id if in_pool else "",
+                reused_in_pool=in_pool,
             )
         )
     return result
@@ -1163,6 +1341,10 @@ def _build_gaps(
     counts: dict[str, int],
     confidence: dict[str, str],
     city: str,
+    *,
+    jd_items: list[JDEvidence] | None = None,
+    interview_items: list[InterviewEvidence] | None = None,
+    irrelevant_samples: list[str] | None = None,
 ) -> list[str]:
     gaps: list[str] = []
     unscrapable = [
@@ -1177,6 +1359,19 @@ def _build_gaps(
             gaps.append(f"{scope}来源 {status.get('source')} 失败：{detail}")
         elif status.get("status") == "empty":
             gaps.append(f"{scope}来源 {status.get('source')} 无结果")
+        note = str(status.get("note") or "").strip()
+        if note:
+            gaps.append(note)
+    if counts.get("dropped_irrelevant"):
+        samples = [title for title in irrelevant_samples or [] if title]
+        sample_text = "、".join(samples[:10])
+        if len(samples) > 10:
+            sample_text += " 等"
+        gaps.append(
+            f"岗位相关性过滤剔除 {counts['dropped_irrelevant']} 条 JD"
+            f"（标题/正文未命中目标岗位关键词）"
+            + (f"，样本：{sample_text}" if sample_text else "")
+        )
     if counts["dropped_city"]:
         gaps.append(f"城市硬筛剔除 {counts['dropped_city']} 条 JD（目标城市：{city or '不限'}）")
     if counts.get("unknown_city"):
@@ -1196,6 +1391,23 @@ def _build_gaps(
         gaps.append(
             f"BOSS 直聘 list-only 有 {counts['list_only_dropped_city']} 条因城市硬筛剔除"
             "（list-only 仅豁免详情补抓，不豁免城市硬筛）"
+        )
+    if counts.get("reused_outside_pool"):
+        outside_jd = [
+            item.title for item in (jd_items or []) if item.reused and not item.reused_in_pool
+        ]
+        outside_interviews = [
+            item.title
+            for item in (interview_items or [])
+            if item.reused and not item.reused_in_pool
+        ]
+        samples = "、".join((outside_jd + outside_interviews)[:10])
+        gaps.append(
+            f"池外复用 {counts['reused_outside_pool']} 条历史样本"
+            f"（JD {counts.get('reused_jd_outside_pool', 0)} 条 / "
+            f"面经 {counts.get('reused_interviews_outside_pool', 0)} 条），"
+            "不属于本次企业池"
+            + (f"，样本：{samples}" if samples else "")
         )
     if not counts["kept_jobs"]:
         gaps.append("未采集到任何 JD")

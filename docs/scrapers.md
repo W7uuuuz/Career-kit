@@ -6,6 +6,10 @@
 > - 参数 = 各源 `scraper.py` 的 `PARAMS`
 > - 教程 = 各源包内的 `guide.md`
 >
+> 批量采集（`collect_company_evidence`）从 TargetSpec 读取目标岗位关键词，
+> 按每个源的 `PARAMS` 透传 `keyword`/`city`；源未声明对应参数时只传 `limit`，
+> 不退化为按公司拉全量最新岗位。
+>
 > 本文档只做索引与链接，不复制通用参数表。
 >
 > 当前注册 59 个数据源（55 个企业招聘源 + BOSS 直聘 + 牛客 + GitHub + 实习僧），

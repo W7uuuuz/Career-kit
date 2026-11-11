@@ -648,3 +648,56 @@ def test_interpretation_evidence_ids_must_exist(store: ArtifactStore) -> None:
     stored = store.load(profile_id)
     assert stored is not None
     assert stored["meta"]["version"] == good["version"]
+
+def test_hard_gate_prefilters_by_user_degree_and_experience() -> None:
+    from src.models import CareerProfile
+
+    jd_items = [
+        _jd(
+            "JD001", "bytedance", "字节跳动", "大厂", "AI Agent 工程师",
+            "本科及以上；Agent、Python、RAG",
+        ),
+        _jd(
+            "JD002", "bytedance", "字节跳动", "大厂", "大模型算法专家",
+            "硕士及以上；Agent、LLM、算法",
+        ),
+        _jd(
+            "JD003", "meituan", "美团", "中厂", "AI Agent 高级工程师",
+            "本科及以上；5年以上经验；Agent、LLM",
+        ),
+        _jd(
+            "JD004", "meituan", "美团", "中厂", "AI Agent 实习生",
+            "应届毕业生；Agent、Python",
+        ),
+    ]
+    run = _run_in_memory(jd_items=jd_items, interview_items=[])
+    profile = CareerProfile(who={"education": "本科", "graduation_year": "2026"})
+
+    stats = requirements.compute_statistics(run, profile=profile)
+
+    assert stats["sample_size_jd"] == 2
+    assert {item["evidence_id"] for item in stats["excluded_jd"]} == {"JD002", "JD003"}
+    assert all(item.evidence_id not in {"JD002", "JD003"} for item in stats["hard_requirements"])
+    assert any(
+        "硬门槛" in gap and "硕士" in gap and "5年" in gap for gap in stats["gaps"]
+    )
+    agent = _find(stats["high_frequency"], "Agent")
+    assert agent.evidence_ids == ["JD001", "JD004"]
+
+
+def test_hard_gate_marks_missing_profile_fields_instead_of_guessing() -> None:
+    from src.models import CareerProfile
+
+    jd_items = [
+        _jd(
+            "JD001", "bytedance", "字节跳动", "大厂", "AI Agent 工程师",
+            "硕士及以上；5年以上经验；Agent",
+        )
+    ]
+    run = _run_in_memory(jd_items=jd_items, interview_items=[])
+
+    stats = requirements.compute_statistics(run, profile=CareerProfile())
+
+    assert stats["sample_size_jd"] == 1
+    assert stats["excluded_jd"] == []
+    assert any("缺少学历" in gap or "缺少经验" in gap for gap in stats["gaps"])

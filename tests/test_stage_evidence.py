@@ -1,4 +1,4 @@
-"""Core v2 阶段 7：岗位与面经采集回归。
+﻿"""Core v2 阶段 7：岗位与面经采集回归。
 
 所有抓取函数均 monkeypatch，不联网；档案与 artifact 使用 tmp_path 隔离，
 不读写真实 ~/.career-kit 或 ~/CareerKit。
@@ -251,8 +251,8 @@ def test_empty_location_kept_when_target_city_is_empty(
     jobs = {
         "bytedance": {
             "results": [
-                {"title": "未写地点岗位", "location": "", "url": "https://jobs/1",
-                 "description": "地点未知"},
+                {"title": "AI Agent 未写地点岗位", "location": "", "url": "https://jobs/1",
+                 "description": "Agent 开发，地点未知"},
             ]
         }
     }
@@ -262,7 +262,7 @@ def test_empty_location_kept_when_target_city_is_empty(
 
     assert result.status == "ok"
     run = _load(store, result.artifact_id)
-    assert [item.title for item in run.jd_items] == ["未写地点岗位"]
+    assert [item.title for item in run.jd_items] == ["AI Agent 未写地点岗位"]
     assert run.counts["dropped_city"] == 0
     assert run.counts["unknown_city"] == 0
 
@@ -274,9 +274,9 @@ def test_detail_fetch_success_and_drop_without_detail(
     jobs = {
         "bytedance": {
             "results": [
-                {"title": "有详情岗位", "location": "北京", "url": "https://jobs/ok"},
-                {"title": "详情失败岗位", "location": "北京", "url": "https://jobs/fail"},
-                {"title": "没有链接岗位", "location": "北京", "url": ""},
+                {"title": "AI Agent 有详情岗位", "location": "北京", "url": "https://jobs/ok"},
+                {"title": "AI Agent 详情失败岗位", "location": "北京", "url": "https://jobs/fail"},
+                {"title": "AI Agent 没有链接岗位", "location": "北京", "url": ""},
             ]
         }
     }
@@ -292,7 +292,7 @@ def test_detail_fetch_success_and_drop_without_detail(
     result = _run(store)
 
     run = _load(store, result.artifact_id)
-    assert [item.title for item in run.jd_items] == ["有详情岗位"]
+    assert [item.title for item in run.jd_items] == ["AI Agent 有详情岗位"]
     assert run.jd_items[0].description == "完整 JD 正文"
     assert run.jd_items[0].detail_status == "ok"
     assert run.counts["dropped_no_detail"] == 2
@@ -413,7 +413,7 @@ def test_reuses_recent_research_by_url_and_title(
         "bytedance": {
             "results": [
                 {
-                    "title": "新抓 JD",
+                    "title": "新抓 AI Agent JD",
                     "location": "北京",
                     "url": "https://jobs/fresh",
                     "description": "新正文",
@@ -481,7 +481,7 @@ def test_stale_or_invalid_research_is_not_reused(
             "bytedance": {
                 "results": [
                     {
-                        "title": "新 JD",
+                        "title": "新 AI Agent JD",
                         "location": "北京",
                         "url": "https://jobs/new",
                         "description": "正文",
@@ -495,7 +495,7 @@ def test_stale_or_invalid_research_is_not_reused(
 
     run = _load(store, result.artifact_id)
     assert run.counts["reused_jd"] == 0
-    assert [item.title for item in run.jd_items] == ["新 JD"]
+    assert [item.title for item in run.jd_items] == ["新 AI Agent JD"]
 
 
 def test_interview_company_mapping_and_generic_fallback(
@@ -819,7 +819,7 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
                         "detail_status": "list_only",
                     },
                     {
-                        "title": "BOSS 小厂 Agent",
+                        "title": "BOSS 小厂 Agent 工程师",
                         "company": "某未收录小厂",
                         "location": "北京",
                         "url": "https://zhipin/job/2",
@@ -827,7 +827,7 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
                         "detail_status": "list_only",
                     },
                     {
-                        "title": "重复 URL",
+                        "title": "重复 AI Agent 工程师",
                         "company": "字节跳动",
                         "location": "北京",
                         "url": "https://jobs/official",
@@ -861,14 +861,14 @@ async def test_mcp_tool_boss_merges_jobs_with_mapping_and_dedupe(
 
     run = _load(store, payload["artifact_id"])
     boss_items = [item for item in run.jd_items if item.source == "boss"]
-    assert {item.title for item in boss_items} == {"BOSS Agent 工程师", "BOSS 小厂 Agent"}
+    assert {item.title for item in boss_items} == {"BOSS Agent 工程师", "BOSS 小厂 Agent 工程师"}
 
     mapped = next(item for item in boss_items if item.title == "BOSS Agent 工程师")
     assert mapped.company_id == "bytedance"
     assert mapped.tier == "大厂"
     assert mapped.salary == "25-45K"
 
-    unmapped = next(item for item in boss_items if item.title == "BOSS 小厂 Agent")
+    unmapped = next(item for item in boss_items if item.title == "BOSS 小厂 Agent 工程师")
     assert unmapped.company_id == ""
     assert unmapped.tier == "未收录"
     assert unmapped.salary == "10-20K"
@@ -888,7 +888,7 @@ def test_list_only_counts_are_recomputed_after_per_company_truncation(
     _seed(store, _pool(store))
     rows = [
         {
-            "title": f"BOSS list-only {index}",
+            "title": f"BOSS Agent 工程师 list-only {index}",
             "company": "字节跳动",
             "location": "北京",
             "url": f"https://zhipin/job/{index}",
@@ -970,4 +970,150 @@ def test_list_only_empty_location_is_still_city_filtered(
     assert any(
         "list-only" in gap and "城市硬筛" in gap for gap in run.gaps
     )
+
+
+def test_irrelevant_jobs_are_filtered_and_reported(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store))
+    jobs = {
+        "bytedance": {
+            "results": [
+                {
+                    "title": "AI Agent 工程师",
+                    "location": "北京",
+                    "url": "https://jobs/agent",
+                    "description": "负责 Agent 与大模型应用开发",
+                },
+                {
+                    "title": "客服质管专员",
+                    "location": "北京",
+                    "url": "https://jobs/cs",
+                    "description": "负责客服质检与排班",
+                },
+                {
+                    "title": "市场总监",
+                    "location": "北京",
+                    "url": "https://jobs/mkt",
+                    "description": "负责品牌市场推广",
+                },
+                {
+                    "title": "产品经理",
+                    "location": "北京",
+                    "url": "https://jobs/pm",
+                    "description": "负责产品需求与沟通",
+                },
+            ]
+        }
+    }
+    _patch_sources(monkeypatch, jobs)
+
+    result = _run(store)
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
+    assert [item.title for item in run.jd_items] == ["AI Agent 工程师"]
+    assert run.counts["dropped_irrelevant"] == 3
+    assert any(
+        "岗位相关性" in gap and "客服质管专员" in gap and "市场总监" in gap
+        for gap in run.gaps
+    )
+
+
+def test_interview_falls_back_to_direction_when_role_empty(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pool = _pool(store)
+    pool.target_spec.role = ""
+    _seed(store, pool)
+    cases = {
+        "cases": [
+            {
+                "title": "方向面经",
+                "source": "nowcoder",
+                "url": "https://cases/fallback",
+                "highlights": ["考点"],
+                "background": {"company": "字节跳动", "education_tag": "本科", "year": "2026"},
+            }
+        ],
+        "warnings": [],
+        "sources": {"nowcoder": 1},
+    }
+    captured = _patch_sources(
+        monkeypatch,
+        {"bytedance": {"results": []}},
+        cases=cases,
+    )
+
+    result = _run(store)
+
+    assert result.status == "ok"
+    assert captured["cases"][0]["role"] == "AI 应用"
+    assert captured["cases"][0]["city"] == "北京"
+    run = _load(store, result.artifact_id)
+    assert run.counts["interviews"] == 1
+    assert any("回退" in gap and "AI 应用" in gap for gap in run.gaps)
+
+
+def test_search_params_only_pass_keyword_when_source_supports_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_params(slug: str) -> dict[str, Any]:
+        if slug == "with_keyword":
+            return {"keyword": {}, "city": {}, "limit": {}}
+        return {"limit": {}}
+
+    monkeypatch.setattr(evidence.loader, "scraper_params", fake_params)
+
+    supported = evidence._search_params("with_keyword", "AI Agent 开发", "北京", 5)
+    assert supported["keyword"] == "AI Agent 开发"
+    assert supported["city"] == "北京"
+
+    unsupported = evidence._search_params("limit_only", "AI Agent 开发", "北京", 5)
+    assert unsupported == {"limit": 5}
+
+
+def test_reused_samples_outside_pool_are_labelled_and_counted(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    research = {
+        "generated_at": generated_at,
+        "direction": "AI 应用",
+        "city": "北京",
+        "jd_samples": [
+            {
+                "company": "百度",
+                "title": "池外复用 JD",
+                "location": "北京",
+                "url": "https://research/outside-jd",
+                "description": "AI Agent 平台开发",
+            }
+        ],
+        "cases": [
+            {
+                "company": "百度",
+                "title": "池外复用面经",
+                "source": "nowcoder",
+                "url": "https://research/outside-case",
+                "highlights": ["Agent 考点"],
+            }
+        ],
+    }
+    _seed(store, _pool(store), research=research)
+    _patch_sources(monkeypatch, {"bytedance": {"results": []}})
+
+    result = _run(store)
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
+    reused_jd = next(item for item in run.jd_items if item.reused)
+    assert reused_jd.reused_from
+    assert generated_at in reused_jd.reused_from
+    assert reused_jd.reused_in_pool is False
+    assert run.counts["reused_jd_outside_pool"] == 1
+    reused_case = next(item for item in run.interview_items if item.reused)
+    assert reused_case.reused_from
+    assert run.counts["reused_interviews_outside_pool"] == 1
+    assert any("池外复用" in gap and "池外复用 JD" in gap for gap in run.gaps)
 

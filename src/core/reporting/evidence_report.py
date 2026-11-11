@@ -88,7 +88,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     )
     lines.append(
         f"- 复用历史样本：JD {counts.get('reused_jd', 0)} 条 / "
-        f"面经 {counts.get('reused_interviews', 0)} 条"
+        f"面经 {counts.get('reused_interviews', 0)} 条；其中池外复用 "
+        f"{counts.get('reused_outside_pool', 0)} 条"
+    )
+    lines.append(
+        f"- 岗位相关性剔除：{counts.get('dropped_irrelevant', 0)} 条"
     )
     lines.append("")
 
@@ -214,6 +218,8 @@ def render_html(report: dict[str, Any]) -> str:
         ("城市未知", counts.get("unknown_city", 0)),
         ("复用 JD", counts.get("reused_jd", 0)),
         ("复用面经", counts.get("reused_interviews", 0)),
+        ("池外复用", counts.get("reused_outside_pool", 0)),
+        ("相关性剔除", counts.get("dropped_irrelevant", 0)),
     ]
     for label, value in stat_items:
         parts.append(
