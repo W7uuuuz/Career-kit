@@ -8,11 +8,13 @@ from ..assets import profile_display_name
 from ..core.progress import profile_target_fingerprint
 from ..core.state import resolve_state
 from ..guidance import (
+    build_guide,
     goal_confirmed,
     guide_for,
     mark_brief_shown,
     mark_goal_confirmed,
     opening_blocks,
+    render_guide,
     reset_goal_confirmation,
 )
 from ..mcp_app import mcp
@@ -135,6 +137,13 @@ def parse_resume(file_path: str) -> str:
     except ValueError as e:
         return error_response("INVALID_JSON", str(e), {"file_path": file_path})
 
+    # 简历解析只登记「素材已提供」，不代表完成建档：状态机据此要求 have 摸排。
+    profile = load_profile()
+    guidance = dict(profile.guidance or {})
+    guidance.setdefault("resume_parsed_at", datetime.now().isoformat())
+    profile.guidance = guidance
+    save_profile(profile)
+
     return (
         f"--- RESUME CONTENT ---\n{text}\n--- END ---\n\n"
         "以上是候选素材，不是已确认的事实。\n\n"
@@ -154,7 +163,7 @@ def parse_resume(file_path: str) -> str:
         '示例：intake(section="who", data=\'{"name":"张三", "education":"..."}\')\n'
         "下一步：自评与求证完成后调用 intake(section=\"have\")；"
         "目标明确后调用 intake(section=\"want\")。\n\n"
-        + guide_for(load_profile())
+        + render_guide(build_guide(load_profile()))
     )
 
 
@@ -330,7 +339,20 @@ def finalize_profile(skip_probing: bool = False) -> str:
     profile = load_profile()
     gate = require_state(profile, "finalize_profile")
     if isinstance(gate, str):
-        return gate
+        # 简历路径下 have 已有素材但摸排未完成时，仍走原 PROBING_REQUIRED 门禁，
+        # 保持错误码与文案兼容；have 为空才按状态门禁提示先补 evidence。
+        have = profile.have or {}
+        skills = _collect_skills(have)
+        has_evidence = bool(
+            have.get("evidence")
+            or have.get("capability_evidence")
+            or any(is_verified_skill(s) for s in skills)
+        )
+        probe_pending = bool(skills) and (
+            not has_evidence or bool(find_self_assessment_issues(have))
+        )
+        if not probe_pending:
+            return gate
 
     # 空档案不放行：没有 who/have/want/target_jd 时生成摘要只会制造假进度。
     if not (profile.who or profile.have or profile.want or profile.target_jd):
@@ -463,10 +485,14 @@ def finalize_profile(skip_probing: bool = False) -> str:
 
 
 def _summarize_dict(d: dict) -> str:
-    """将字典转为简洁的文本摘要。"""
-    items = [f"{k}={v}" for k, v in d.items() if k != "raw"]
+    """将字典转为简洁的文本摘要；空值用明确占位，不显示 `key=`。"""
+    items = [
+        f"{k}={str(v).strip() or '未填写'}"
+        for k, v in d.items()
+        if k != "raw"
+    ]
     if not items and "raw" in d:
-        return str(d["raw"])
+        return str(d["raw"]).strip() or "未填写"
     return "，".join(items)
 
 

@@ -47,6 +47,10 @@ evidence / requirement / execution_plan / execution / applications / review`；
 > 阶段 1 的 finalize 以目标确认为前提：who/have 就绪后先确认方向/城市/届别，再
 > `finalize_profile`。目标未确认时状态停在 `PROFILE_COLLECTING`（第 2 步目标确认），
 > `finalize_profile` 会被门禁拒绝；不能跳过目标确认直接建档。
+>
+> `parse_resume` 只登记「简历素材已提供」，不等同于完成建档：状态机停留在第 1 步，
+> 直到 `have` 写入并完成技能证据与 authorship / control_level / self_assessment 自评，
+> 才允许进入目标定位。
 
 > 摸排硬门禁：技能无用户确认证据，或缺 authorship/control_level/self_assessment 时，
 > finalize 与 analyze_gaps 都会拒绝放行；authorship/control_level 必须来自用户本人回答，

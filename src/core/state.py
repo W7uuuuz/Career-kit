@@ -34,6 +34,7 @@ from .progress import (
     STAGE_PROFILE,
     STAGE_REQUIREMENT,
     STAGE_TARGET,
+    profile_probe_pending,
     profile_target_fingerprint,
     resolve_artifact,
     stored_target_fingerprint,
@@ -483,6 +484,8 @@ def _next_tool_for(
     if state == State.EMPTY:
         return "parse_resume"
     if state == State.PROFILE_COLLECTING:
+        if profile_probe_pending(profile):
+            return "intake(have)"
         has_goal = bool(
             getattr(profile, "want", None) or getattr(profile, "target_jd", None)
         )
@@ -534,12 +537,18 @@ def _snapshot(
 ) -> StateSnapshot:
     stage_index = _STATE_STAGE_INDEX[state]
     artifact_ids = _artifact_ids(artifacts)
+    user_decision = _STATE_USER_DECISION[state]
+    # 摸排硬门禁：简历已解析但 have 未完成自评时停留在第 1 步建档，
+    # 状态仍是 PROFILE_COLLECTING，但位置与下一步不得跳到目标定位。
+    if state == State.PROFILE_COLLECTING and profile_probe_pending(profile):
+        stage_index = 1
+        user_decision = "先补做技能摸排"
     return StateSnapshot(
         state=state,
         stage_index=stage_index,
         stage_name=STAGE_NAMES[stage_index - 1],
         next_tool=_next_tool_for(state, profile, artifacts),
-        user_decision=_STATE_USER_DECISION[state],
+        user_decision=user_decision,
         allowed_tools=_allowed_for_state(state),
         blockers=tuple(blockers),
         artifact_ids=artifact_ids,
@@ -608,7 +617,17 @@ def resolve_state(
         # 目标确认优先于一切下游陈旧标记：目标未确认先回到目标采集，
         # gap_stale 不得短路目标确认（新流程有旧 gap 也必须先确认目标）。
         if not goal_confirmed:
-            blockers.append(Blocker("target_unconfirmed", "目标尚未由用户确认"))
+            if profile_probe_pending(profile):
+                blockers.append(
+                    Blocker(
+                        "profile_probe_required",
+                        "have 尚未完成摸排，暂不能进入目标定位",
+                    )
+                )
+            else:
+                blockers.append(
+                    Blocker("target_unconfirmed", "目标尚未由用户确认")
+                )
             return _snapshot(State.PROFILE_COLLECTING, profile, artifacts, blockers)
 
         if not _stage_ready(STAGE_PROFILE, artifacts):

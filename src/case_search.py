@@ -50,6 +50,11 @@ _REQUIREMENT_HINTS = (
     "招聘", "面试题", "真题", "八股",
 )
 
+# 材料口径：他人经验（面经/经验帖）与企业要求（JD/岗位）必须可区分、不混列。
+CATEGORY_CASE = "case"
+CATEGORY_JD = "jd"
+CATEGORY_LABELS = {CATEGORY_CASE: "他人经验", CATEGORY_JD: "企业要求"}
+
 
 def resolve_company(company: str) -> str:
     """公司别名 → 源 slug（唯一入口在 scrapers.loader.resolve_company）。"""
@@ -254,6 +259,14 @@ def _local_row_to_item(row: dict) -> dict:
 
     snippet = _json_snippet(meta) if is_json else _md_meta_strip(content)[:280]
     norm_src = src.replace("\\", "/")
+    origin = "local_jd" if norm_src.startswith("jds/") or "/jds/" in norm_src else "local"
+    # 本地缓存 JD 的抓取来源是 local，不冒用原始 scraper 名（避免与失败源重复计数）。
+    source = (
+        "local"
+        if origin == "local_jd"
+        else meta.get("source", "")
+        or ("github" if "/experiences/github/" in src else "local")
+    )
     return {
         "title": meta.get("title") or Path(src).stem,
         "url": meta.get("url", ""),
@@ -262,14 +275,14 @@ def _local_row_to_item(row: dict) -> dict:
         "description": str(meta.get("description") or "").strip(),
         "requirements": str(meta.get("requirements") or "").strip(),
         "date": str(meta.get("date") or meta.get("_fetched_at") or "")[:10],
-        "source": meta.get("source", "") or ("github" if "/experiences/github/" in src else "local"),
+        "source": source,
         "company": str(meta.get("company") or "").strip(),
         "position": str(meta.get("position") or "").strip(),
         "location": str(meta.get("location") or "").strip(),
         "salary": str(meta.get("salary") or "").strip(),
         "education_tag": meta.get("education_tag", ""),
         "year_tag": meta.get("year_tag", ""),
-        "origin": "local_jd" if norm_src.startswith("jds/") or "/jds/" in norm_src else "local",
+        "origin": origin,
         "local_path": str(full_path),
         "_rel_path": src,
     }
@@ -313,6 +326,7 @@ def _row_to_card(row: dict) -> dict | None:
         kind = _classify_kind(title, text)
         return _card({
             "kind": kind,
+            "category": CATEGORY_CASE,
             "title": title,
             "source": source or "local",
             "url": row.get("url", ""),
@@ -324,9 +338,15 @@ def _row_to_card(row: dict) -> dict | None:
             "origin": row.get("origin", ""),
         })
 
-    # 官方/BOSS/本地 JD → 面试要求口径
+    # 本地/官方/BOSS JD → 企业要求口径，与面经案例分开
+    category = (
+        CATEGORY_JD
+        if row.get("origin") == "local_jd" or source not in {"local", ""}
+        else CATEGORY_CASE
+    )
     return _card({
         "kind": "interview_requirements",
+        "category": category,
         "title": title,
         "source": source or "official",
         "url": row.get("url", ""),
@@ -367,8 +387,11 @@ def _highlights(row: dict, kind: str) -> list[str]:
 
 
 def _card(base: dict) -> dict:
+    category = base.get("category") or CATEGORY_CASE
     card = {
         "kind": base["kind"],
+        "category": category,
+        "category_label": CATEGORY_LABELS[category],
         "title": base["title"],
         "source": base["source"],
         "url": base.get("url") or "",
@@ -467,6 +490,19 @@ def _freshness(date_str: str, now: datetime) -> float:
     return max(decay, 0.0)
 
 
+def _card_category(card: dict) -> str:
+    """卡片材料口径：显式 category 优先；旧卡片按来源/路径兜底，不把 JD 当案例。"""
+    category = str(card.get("category") or "")
+    if category in (CATEGORY_CASE, CATEGORY_JD):
+        return category
+    if str(card.get("origin") or "") == "local_jd":
+        return CATEGORY_JD
+    source = str(card.get("source") or "").lower()
+    if source in {"github", "nowcoder", "local", ""}:
+        return CATEGORY_CASE
+    return CATEGORY_JD
+
+
 def render_cases(result: dict[str, Any], role: str, education: str, company: str) -> str:
     """聚合结果 → 给 LLM 直接转述的文本（案例卡按组展示带来源）。"""
     cases = result.get("cases") or []
@@ -496,20 +532,34 @@ def render_cases(result: dict[str, Any], role: str, education: str, company: str
         ])
         return "\n".join(lines)
 
-    success = [c for c in cases if c["kind"] == "success_experience"]
-    requirements = [c for c in cases if c["kind"] == "interview_requirements"]
+    success = [
+        c for c in cases
+        if c["kind"] == "success_experience" and _card_category(c) == CATEGORY_CASE
+    ]
+    case_requirements = [
+        c for c in cases
+        if c["kind"] == "interview_requirements" and _card_category(c) == CATEGORY_CASE
+    ]
+    jd_requirements = [c for c in cases if _card_category(c) == CATEGORY_JD]
 
     lines = [header]
-    lines.append(f"— 共 {len(cases)} 条（成功经验 {len(success)} · 面试要求 {len(requirements)}）")
+    lines.append(
+        f"— 共 {len(cases)} 条（他人经验 {len(success) + len(case_requirements)} · "
+        f"企业要求 {len(jd_requirements)}）"
+    )
     lines.append("来源：" + " ".join(f"{slug}={n}" for slug, n in sources.items()))
 
     if success:
-        lines.extend(["", "## 同背景成功经验"])
+        lines.extend(["", "## 同背景成功经验（他人经验）"])
         for i, c in enumerate(success, 1):
             lines.extend(_case_line(i, c))
-    if requirements:
-        lines.extend(["", "## 面试要求（JD/面经口径）"])
-        for i, c in enumerate(requirements, 1):
+    if case_requirements:
+        lines.extend(["", "## 面试要求（他人经验 · 面经）"])
+        for i, c in enumerate(case_requirements, 1):
+            lines.extend(_case_line(i, c))
+    if jd_requirements:
+        lines.extend(["", "## 企业要求（岗位 JD · 面试要求）"])
+        for i, c in enumerate(jd_requirements, 1):
             lines.extend(_case_line(i, c))
 
     if warnings:
@@ -531,7 +581,8 @@ def render_cases(result: dict[str, Any], role: str, education: str, company: str
 def _case_line(i: int, c: dict) -> list[str]:
     bg = c.get("background") or {}
     hits = c.get("hit_terms") or []
-    meta = [c.get("source", ""), bg.get("education_tag", ""), bg.get("year", ""),
+    label = CATEGORY_LABELS[_card_category(c)]
+    meta = [label, c.get("source", ""), bg.get("education_tag", ""), bg.get("year", ""),
             c.get("date", ""), c.get("salary", ""), c.get("location", "")]
     meta_str = " | ".join(m for m in meta if str(m).strip())
     lines = [f"{i}. **{c['title']}**（{meta_str or '无元数据'}）"]
