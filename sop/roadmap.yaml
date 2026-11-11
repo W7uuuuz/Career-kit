@@ -1,5 +1,5 @@
 name: 路线图生成
-version: "5.0"
+version: "6.0"
 description: 从差距分析出发，生成可执行的分阶段职业路线图。产品不规划时间——只定义顺序、产出与完成标准，节奏由用户掌握。分步产出 + 审计第二意见：起点判定→目标拆解→阶段序列→逐阶段细化→审计→定稿
 
 methodology:
@@ -14,6 +14,12 @@ methodology:
     - "知识光谱纪律：公司名与选人特点是公开常识，可直接写（如「某司卡学历」、「某司欢迎双非」）；
        但具体 JD 细节（岗位职责/技能要求/薪资）必须有真实数据支撑——企业数据源有的抓取，
        没有的引导用户导入，两者都没有就只写阶段目标与完成标准，绝不编造要求细节"
+    - "证据先行：先读档案里的调研案例、JD 样本与 claim，再设计路径；结论必须有来源。
+       数字（实习段数、月数、比例、薪资、时间窗口）没有 claim 或真实样本就不写具体数字；
+       从业者经验要记录 source（说话人/渠道）与 scope（适用范围），不得包装成统计事实"
+    - "通道现实：大厂目标不得只排一条通道；涉及实习转正必须写 conversion_risk 与至少一条
+       fallback_paths；校招/实习阶段写 time_window。产品不替用户安排学习时长，但实习时长与
+       校招时间点是客观外部约束，必须进入计划"
     - "起点决定路径：intern/过渡阶段优先从「进入该阶段时可进入的企业层级」出发；
        但层级是命中率参考，不是准入许可——跨级不禁止，请在阶段理由中说明证据（作品集/内推/前序交付）"
     - "分步产出，禁止一步到位：起点判定、目标拆解、阶段序列、逐阶段细化必须分步完成，
@@ -54,20 +60,27 @@ methodology:
         - 等价证据（生产级系统交付、开源作品、内推、竞赛）同样计入，不要求必须有「大厂实习」
         - 输出：start_level（参考档位）+ 各维度依据 + 证据清单
 
-        【步骤 2｜目标拆解】
-        - 从 want/target_jd 提取目标角色与目标公司
-        - 判断目标岗位需要哪些证据（项目/实习/开源/内推/技能），当前已经具备什么
-        - 输出：目标角色 + 证据缺口 + 投递通道（校招/实习转正/内推/社招/开源等）
+        【步骤 2｜证据校准】
+        - 先读档案里的调研案例、JD 样本与 claim，逐项核对四类证据：
+          招聘通道（校招/暑期实习/实习转正/内推）、转正机会与风险、
+          同背景真实门槛（学历/实习段数/时长/项目）、校招时间窗口
+        - 每项标注「有证据 / 样本不足 / 缺失」并给出 claim id、案例 id 或 JD id；
+          没有证据的断言只写「经验规则（未验证）」，不写具体数字
+        - 输出：目标角色 + 证据状态 + 证据缺口
 
         【步骤 3｜阶段序列】（用户确认）
         - 按「补齐证据 → 提高命中率」设计阶段序列（learn → project → intern → ...）
         - 阶段数由差距与目标决定（通常 3-6 段），不要为凑数强行 4 段：简单目标 3 段即可，
           多缺口可 5-6 段；每个阶段都要能说清补齐什么证据、提高哪种命中率，没有独立价值的阶段应合并
+        - intern / 校招阶段必须写清：
+          access_paths（主通道至少两条，每条含 channel/rationale/evidence_ids）、
+          fallback_paths（至少一条保底）、conversion_risk（涉及转正必填）、
+          time_window（提前批/秋招/春招或实习时长）、decision_gate（触发条件与换道动作）、
+          claims（引用已记录的 claim id）
         - 层级不是准入许可：跨级不禁止，但请在阶段理由中说明依据（作品集/内推/前序交付）
         - 复评升级（start_level_after）只影响后续阶段的参考，不写回差距分析；
           请写清复评标准（evidence_gate）
-        - 每个阶段标注：类型、目标、需要补齐的证据（evidence_gate）、投递通道（access_path）、理由
-        - 输出：完整阶段序列 + 每阶段一句话定位
+        - 输出：完整阶段序列 + 每阶段一句话定位 + 通道/保底/风险/时间窗
 
         【步骤 4｜逐阶段细化】
         - 对每个阶段深入展开：
@@ -76,6 +89,8 @@ methodology:
           - 任务：粒度「一次坐下来可完成」，含 name/description/priority；
             时间节奏词与伞形描述只作建议提示，不再硬拒绝
           - jd 三件套：company/rationale（常识可写）+ jd/jd_status（真实数据才填）
+          - 通道四件套：access_paths / fallback_paths / conversion_risk / time_window
+            （intern 与校招阶段必填；claims 只能引用已存在的 claim id）
 
         【步骤 5｜保存雏形 + 审计（第二意见）】
         - 先调用 save_roadmap(roadmap_json) 保存当前雏形（结构校验通过即可）
@@ -112,7 +127,9 @@ methodology:
           local_paths: []
       quality_gate: "每个阶段有 KPI 和 resume_value（learn 类型除外），每个里程碑有完成标准，
       全程无时长字段；intern 阶段符合 jd 三件套约束（有据填 jd，无据占位）；
-      通过 career-roadmap-auditor 审计（届别/层级/起点/前置/量化/jd 三件套）"
+      大厂/实习阶段有至少两条主通道、至少一条保底、转正风险与时间窗口；
+      带数字的结论有 claim 或真实样本引用；
+      通过 career-roadmap-auditor 审计（届别/层级/起点/前置/量化/jd 三件套/通道现实/引用）"
       depends_on: [gather_market_data]
 
   start_level_rubric:
@@ -235,6 +252,16 @@ methodology:
         label: 阶段字段完备
         severity: note
         check: "target_level/graduation_year 等字段缺失只作提示；不因此阻断定稿"
+      - id: channel_reality
+        label: 通道现实
+        severity: note
+        check: "大厂/实习阶段是否至少两条主通道、一条保底、转正风险与时间窗口；
+              单通道、把转正当确定结果、没有 fallback 时提示风险，不禁止投递"
+      - id: evidence_citation
+        label: 来源引用
+        severity: note
+        check: "带数字的结论是否有 claim 或真实样本；从业者经验是否标 source 与 scope；
+              引用 id 是否存在、是否过期；无来源数字只作提示，不阻断定稿"
     verdict:
       - pass: "全部通过 → PASS"
       - pass_with_notes: "无硬矛盾但有建议 → PASS_WITH_NOTES（可定稿，建议清单供参考）"
@@ -250,8 +277,18 @@ methodology:
       - resume_value: 如何写到简历上（learn 可空）
       - target_level: 可选。本阶段目标层级（大厂/中厂/小厂/暂不可入）——仅作命中率参考，
         不作为投递许可；跨级请在 rationale/condition 说明依据
-      - access_path: 可选。投递通道（校招/实习转正/内推/社招/开源/外包转正/其他）——
-        用于说明为什么该阶段可达，不参与硬校验
+      - access_paths: intern/校招阶段必填。主通道列表，至少两条；每条包含
+        {channel, rationale, evidence_ids}。channel 如「暑期实习」「秋招提前批」「内推」
+      - fallback_paths: intern/校招阶段必填。保底通道列表，至少一条；
+        如「中厂正式批」「日常实习转正」「春招补录」
+      - conversion_risk: 任何通道涉及实习转正时必填。
+        {level: 高/中/低, reason: 为什么不确定, evidence_ids: []}；转正不是承诺
+      - time_window: intern/校招阶段必填。外部时间约束，不排学习时长：
+        {window: 如「秋招提前批 7-8 月」, deadline: 截止日期, note: 说明}
+      - decision_gate: 可选但建议填。触发条件与换道动作：
+        {condition: 触发条件, action: 换到哪条通道/阶段}
+      - claims: 本阶段引用的结论 id 列表（必须先用 record_claim 记录）；
+        带数字的结论必须有 claim 或真实样本支撑
       - evidence_gate: 可选。进入该阶段前应具备的证据（项目/实习/开源/技能）——
         帮助 LLM 与审计员判断路径是否自洽，不要求逐项机器校验
       - start_level_after: 可选。本阶段复评达标后的参考起点（只影响后续阶段，不写回差距分析）
@@ -268,4 +305,5 @@ methodology:
       - milestones: { name, tasks[], deliverable, done_criteria }
       每个 task 包含：name, description, priority
       注意：不要输出任何 duration/total_duration/estimated_days 类字段；
-      任务名禁伞形描述（专题/批量/全部）与时间节奏词（每周/每天）
+      任务名禁伞形描述（专题/批量/全部）与时间节奏词（每周/每天）。
+      time_window 与实习时长是外部约束（校招时间点、岗位要求），不属于学习排期，可以写。

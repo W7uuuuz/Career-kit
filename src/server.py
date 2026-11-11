@@ -7,6 +7,7 @@ from .tools.application_list_tools import build_application_list
 from .tools.application_tools import delete_application, record_application
 from .tools.boss_tools import boss_login
 from .tools.case_tools import search_cases
+from .tools.claim_tools import list_claims, record_claim
 from .tools.company_selection_tools import select_target_companies
 from .tools.dashboard import (
     render_progress_html as _render_progress_html,

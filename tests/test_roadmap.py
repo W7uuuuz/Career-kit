@@ -219,6 +219,71 @@ def test_format_roadmap():
     print(f"{'-' * 40}\n")
 
 
+def test_format_roadmap_renders_channels_risk_and_claims():
+    """通道、保底、转正风险、时间窗、决策门与来源都要出现在文本报告里。"""
+    roadmap_data = {
+        "roadmap": {
+            "strategy_summary": "暑期实习冲高，秋招并行，中厂保底",
+            "phases": [
+                {
+                    "id": "phase_1",
+                    "type": "intern",
+                    "name": "暑期实习",
+                    "goal": "拿到大厂暑期实习",
+                    "kpi": {"metric": "暑期实习 offer", "target": "1个"},
+                    "resume_value": "大厂实习经历",
+                    "access_paths": [
+                        {"channel": "暑期实习", "rationale": "主通道"},
+                        {"channel": "秋招提前批", "rationale": "并行通道"},
+                    ],
+                    "fallback_paths": [
+                        {"channel": "中厂正式批", "rationale": "保底"},
+                    ],
+                    "conversion_risk": {"level": "高", "reason": "HC 受部门影响"},
+                    "time_window": {"window": "提前批 7-8 月", "deadline": "2027-08-31"},
+                    "decision_gate": {
+                        "condition": "暑期实习未 offer",
+                        "action": "转提前批 + 中厂保底",
+                    },
+                    "claims": ["cl_001"],
+                    "milestones": [],
+                }
+            ],
+        }
+    }
+    claims = [{
+        "id": "cl_001",
+        "statement": "双非进大厂常见多段实习",
+        "claim_type": "practitioner_experience",
+        "source": {"name": "阿里 HR", "date": "2026-11-11"},
+        "limitation": "单一口述，未做统计",
+    }]
+
+    report = format_roadmap(roadmap_data, claims=claims)
+
+    assert "主通道" in report and "暑期实习" in report and "秋招提前批" in report
+    assert "保底通道" in report and "中厂正式批" in report
+    assert "转正风险" in report and "HC 受部门影响" in report
+    assert "时间窗口" in report and "提前批 7-8 月" in report
+    assert "决策门" in report and "转提前批" in report
+    assert "依据" in report and "cl_001" in report and "阿里 HR" in report
+    assert "经验" in report
+
+
+def test_parse_roadmap_defaults_channel_fields():
+    """缺少通道字段时补空结构，保证后续渲染与校验可用。"""
+    result = parse_roadmap(json.dumps({
+        "phases": [{"type": "intern", "name": "实习", "goal": "g"}]
+    }, ensure_ascii=False))
+    phase = result["roadmap"]["phases"][0]
+    assert phase["access_paths"] == []
+    assert phase["fallback_paths"] == []
+    assert phase["conversion_risk"] == {}
+    assert phase["time_window"] == {}
+    assert phase["decision_gate"] == {}
+    assert phase["claims"] == []
+
+
 def test_build_roadmap_context():
     """测试路线图方法论上下文构建。"""
     print("=" * 60)

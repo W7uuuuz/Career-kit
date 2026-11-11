@@ -154,6 +154,31 @@ class JourneyEntry(BaseModel):
     plan_changes: dict[str, Any] = Field(default_factory=dict)  # 计划调整
 
 
+class ClaimSource(BaseModel):
+    """结论来源。经验口述也要有说话人和时间，不能只有一句结论。"""
+    type: str = "other"  # jd | case | interview | practitioner | official | other
+    name: str = ""  # 来源名称/说话人（如「阿里 HR」）
+    url: str = ""
+    date: str = ""
+    sample_size: int = 0
+
+
+class Claim(BaseModel):
+    """可引用结论：事实 / 从业者经验 / 推断，必须带来源与适用范围。
+
+    路线图阶段通过 claim id 引用；交付时展示来源与置信度。
+    """
+    id: str = ""
+    statement: str
+    claim_type: str = "inference"  # fact | practitioner_experience | inference
+    source: ClaimSource = Field(default_factory=ClaimSource)
+    scope: dict[str, str] = Field(default_factory=dict)
+    confidence: str = "low"  # high | medium | low
+    limitation: str = ""
+    captured_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    expires_at: str = ""
+
+
 class CareerProfile(BaseModel):
     """职业档案。只强制 5 个 section，内部放什么由 LLM 根据用户情况决定。"""
 
@@ -173,6 +198,10 @@ class CareerProfile(BaseModel):
     advisories: dict[str, Any] = Field(
         default_factory=dict,
         description="质量建议持久化：gap / roadmap 各含 items 与 updated_at",
+    )
+    claims: list[Claim] = Field(
+        default_factory=list,
+        description="结论引用记录：事实/从业者经验/推断，带来源、范围与有效期",
     )
 
     # TODO: 后续扩展 - 支持多个目标 JD 对比

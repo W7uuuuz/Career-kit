@@ -139,7 +139,7 @@ Career Kit：打卡记录 → 沉淀能力证据 → 阶段完成自动审计
 Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 ```
 
-底层是 50 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、分析规划、企业适配、任务与漏斗、洞察产出七大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
+底层是 52 个 MCP 工具，覆盖建档、档案管理、数据获取（含市场调研）、证据引用、分析规划、企业适配、任务与漏斗、洞察产出八大类。完整清单与调用时机见[工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)。
 
 ## 隐私与数据边界
 
@@ -153,7 +153,7 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 - [LLM 使用指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)：工作流、规则、常见场景
 - [工作流详解](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)：各阶段前置条件、输入输出
 - [安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)：源码安装、一键脚本、本地控制台、常见问题
-- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：50 个 MCP 工具的唯一事实源
+- [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：52 个 MCP 工具的唯一事实源
 - [企业库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)：已收录企业、数据源说明
 - [知识库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)：目录结构、文件格式
 - [示例](https://github.com/W7uuuuz/Career-kit/blob/main/docs/examples/README.md)：可交互职业地图与场景示例

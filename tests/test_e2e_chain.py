@@ -552,6 +552,8 @@ def test_step8_mcp_tools_registered():
         "fetch_jd_detail", "boss_login", "search_knowledge", "search_cases",
         "research_market", "gather_research_data", "read_research_details",
         "get_industry_snapshot",
+        # 证据引用
+        "record_claim", "list_claims",
         "explore_goals", "analyze_gaps", "save_gap_analysis",
         # 规划
         "generate_roadmap", "save_roadmap", "save_roadmap_audit",

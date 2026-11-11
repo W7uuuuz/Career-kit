@@ -157,13 +157,19 @@ evidence / requirement / execution_plan / execution / applications / review`；
 
 **关键规则**：
 - `save_roadmap` 只做结构校验；质量项以 `advisories` 返回并持久化。
+- 证据先行：`generate_roadmap` 附带 `evidence`（claims / 案例 / JD 样本 / 缺口）与四类必查证据
+  （通道、转正风险、同背景门槛、校招时间窗）；第 2 步逐项标「有证据 / 样本不足 / 缺失」。
+- 方案必须可追溯：数字结论先 `record_claim` 再在阶段 `claims` 中引用；
+  从业者经验要带 `source.name`、`scope` 与 `limitation`，不得写成统计事实。
+- 通道现实：大厂/实习阶段至少两条主通道、一条保底、转正风险与时间窗口；
+  单通道、转正未标风险、无保底、无引用数字都会进 advisories（不阻断保存）。
+- 时间口径：产品不排用户学习时长；实习时长与校招时间点（提前批/秋招/春招）是外部约束，必须写进 `time_window`。
 - 市场跳过时 `BaselinePlan` 继承 `validation.market_skipped=true`；目标变化后旧基线失效。
 - `import_plan` 可直接走基线：设置 `plan_imported_at` 后调用 `save_roadmap`，
   无 `GapReport` 时写入 `validation.imported=true` 的 `BaselinePlan`，状态进入企业适配。
 - 层级是命中率参考，不是准入许可；跨级不禁止，建议说明证据。
 - 审计是第二意见：FAIL 只用于硬矛盾，最多 3 条 must_fix。
 - JD 细节必须有真实数据；没有就留空并标 `jd_status=pending_user_import`。
-- 产品不排期：任务名不带时间节奏词。
 
 ---
 

@@ -60,6 +60,8 @@ def generate_roadmap() -> str:
         "next_steps": next_steps,
         "methodology": ctx["methodology"],
         "profile": ctx["profile"],
+        "evidence": _evidence_pack(profile),
+        "required_evidence": [dict(item) for item in _REQUIRED_EVIDENCE],
         "step_template": [
             {
                 "step": 1,
@@ -76,24 +78,36 @@ def generate_roadmap() -> str:
             },
             {
                 "step": 2,
-                "name": "目标拆解",
-                "action": "从 want/target_jd 提取目标角色与目标公司；层级只作命中率参考，"
-                          "重点判断目标岗位需要哪些证据（项目/实习/开源/内推），当前缺什么",
-                "output": {"target_role": "", "target_level": "参考档位（可选）", "evidence_needed": [], "evidence_have": []},
+                "name": "证据校准",
+                "action": "先读本工具返回的 evidence（claims / cases / jd_samples / gaps），"
+                          "逐项核对 required_evidence：每项标「有证据 / 样本不足 / 缺失」，"
+                          "并写明依据（claim id、案例 id 或 JD id）。证据包为空或缺少某一项时，"
+                          "先用 search_cases / fetch_company_jobs / fetch_jd_detail 补齐；"
+                          "仍拿不到就保留「缺失」，不得用常识补成事实。"
+                          "发现新事实或从业者经验时，先调用 record_claim 记录，再进入阶段设计；"
+                          "没有证据的断言只能标为「经验规则（未验证）」，禁止写成事实。"
+                          "数字（实习段数、月数、比例、薪资、时间窗口）必须有 claim 或真实样本支撑，"
+                          "否则不写具体数字。",
+                "output": {"target_role": "", "target_level": "参考档位（可选）", "evidence_status": [{"id": "channel", "status": "有证据|样本不足|缺失", "basis": "claim/案例/JD 标识"}], "evidence_gaps": []},
                 "checkpoint": False,
             },
             {
                 "step": 3,
                 "name": "阶段序列设计",
                 "action": "按「补齐证据 → 提高命中率」设计阶段序列（learn/project/intern/...）；"
-                          "阶段数由差距与目标决定（通常 3-6 段），不要为凑数强行 4 段——"
-                          "简单目标 3 段即可，多缺口可 5-6 段；每个阶段都要能说清补齐什么证据、"
-                          "提高哪种命中率；"
-                          "层级不是准入许可，跨级不禁止，但请在阶段理由中说明依据（作品集/内推/前序交付）；"
-                          "每阶段标注类型、目标、需要补齐的证据、投递通道",
-                "output": {"phases_sequence": [{"type": "", "name": "", "target_level": "", "evidence_gate": [], "access_path": "", "transition_reason": ""}]},
+                          "阶段数由差距与目标决定（通常 3-6 段），不要为凑数强行 4 段。"
+                          "每个 intern / 校招阶段必须写清："
+                          "access_paths（主通道，至少两条；每条带 channel/rationale/evidence_ids）、"
+                          "fallback_paths（至少一条保底，如中厂、日常实习转正、春招补录）、"
+                          "conversion_risk（任何通道涉及转正时必须写风险与原因）、"
+                          "time_window（校招/实习阶段写提前批/秋招/春招或实习时长；"
+                          "这是外部约束，不是学习排期）、"
+                          "decision_gate（触发条件与换道动作）、"
+                          "claims（引用已记录的 claim id）。"
+                          "层级不是准入许可，跨级不禁止，但请在理由中说明依据（作品集/内推/前序交付）。",
+                "output": {"phases_sequence": [{"type": "", "name": "", "target_level": "", "evidence_gate": [], "access_paths": [], "fallback_paths": [], "conversion_risk": {}, "time_window": {}, "decision_gate": {}, "claims": [], "transition_reason": ""}]},
                 "checkpoint": True,
-                "checkpoint_note": "把阶段序列展示给用户确认后再逐阶段细化",
+                "checkpoint_note": "把阶段序列与通道/保底/风险展示给用户确认后再逐阶段细化",
             },
             {
                 "step": 4,
@@ -101,7 +115,9 @@ def generate_roadmap() -> str:
                 "action": "对每个阶段深入展开：KPI（尽量可验证）、里程碑（带完成标准）、"
                           "任务（一次坐下可完成粒度）、jd 三件套（company/rationale 常识可写，jd/jd_status 真实数据才填——"
                           "优先引用档案 research 里的调研 JD 样本与来源，不再重复抓取；拿不到就占位 pending_user_import，"
-                          "并说明「后续自动抓取」会由企业适配阶段按目标企业和你的届别补齐，也可先用 import_jd 补充）",
+                          "并说明「后续自动抓取」会由企业适配阶段按目标企业和你的届别补齐，也可先用 import_jd 补充）。"
+                          "阶段 JSON 必须保留步骤 3 的 access_paths / fallback_paths / conversion_risk / "
+                          "time_window / decision_gate / claims 字段；claims 只能引用已存在的 claim id。",
                 "output": "完整 roadmap JSON（strategy_summary + phases，符合 roadmap.yaml output_schema）",
                 "checkpoint": False,
             },
@@ -120,7 +136,7 @@ def generate_roadmap() -> str:
                 "step": 6,
                 "name": "定稿交付",
                 "action": "按需采纳审计建议与质量提示后，再次调用 save_roadmap(roadmap_json) 完成定稿；"
-                          "一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由），"
+                          "一次性展示全流程雏形（所有阶段/目标/KPI/里程碑/顺序理由/通道/保底/风险/来源），"
                           "保存后如实复述质量建议与审计未解决项，由用户决定是否继续调整",
                 "output": "save_roadmap(roadmap_json)",
                 "checkpoint": True,
@@ -129,7 +145,7 @@ def generate_roadmap() -> str:
         ],
         "instructions": (
             "步骤预告（提高心理预期）：第一轮回复先向用户报完整菜单——"
-            "「路线图分 6 步：① 起点判定 ② 目标拆解 ③ 阶段序列 ④ 逐阶段细化 "
+            "「路线图分 6 步：① 起点判定 ② 证据校准 ③ 阶段序列 ④ 逐阶段细化 "
             "⑤ 审计（第二意见） ⑥ 定稿交付」——报完再动手，禁止无预告直接执行。\n"
             "播报纪律：每个工具调用前用一句话告诉用户这步在干什么——全程禁止静默连调工具。\n"
             "请严格按照 step_template 的 6 步分步执行，禁止一步到位。\n"
@@ -146,7 +162,16 @@ def generate_roadmap() -> str:
             "拿不到就 jd 占位（pending_user_import）——告诉用户这只是占位，"
             "后续自动抓取会由企业适配阶段按目标企业和届别补齐，也可先用 import_jd 补充；绝不编造\n"
             "6. 最终调用 save_roadmap(roadmap_json) 保存；保存后向用户复述质量建议与未解决项；"
-            "定稿产物除结构化数据外还有一份路线图 HTML 活地图，交付时要向用户说明它的用途与用法"
+            "定稿产物除结构化数据外还有一份路线图 HTML 活地图，交付时要向用户说明它的用途与用法\n"
+            "7. 证据纪律：数字（实习段数/月数/比例/薪资/时间窗口）必须有 claim 或真实样本支撑；"
+            "没有来源就不写具体数字，只写方向性描述。没有同背景案例时明确说「样本不足」，"
+            "不得把 HR 口述或单条面经包装成统计事实。\n"
+            "8. 通道纪律：大厂目标不得只写一条通道；涉及实习转正必须写 conversion_risk 与至少一条 "
+            "fallback_paths；校招/实习阶段写 time_window（外部时间窗口，不是用户学习排期）。"
+            "产品不替用户安排学习时长，但实习时长与校招时间点属于客观约束。\n"
+            "9. 引用纪律：阶段 claims 只能引用已存在的 claim id；"
+            "新结论先用 record_claim 记录（从业者经验要写 source.name 与 scope），"
+            "再在阶段里引用。交付时带上来源，不出现无法追溯的断言。"
         ),
     })
 
@@ -168,10 +193,125 @@ def _advisory(code: str, message: str, checklist_id: str = "", severity: str = "
     }
 
 
+_EVIDENCE_ITEM_LIMIT = 6
+
+_REQUIRED_EVIDENCE: tuple[dict[str, str], ...] = (
+    {
+        "id": "channel",
+        "label": "目标公司/岗位的招聘通道（校招 / 暑期实习 / 实习转正 / 内推）",
+    },
+    {
+        "id": "conversion",
+        "label": "实习转正的机会与风险（是否提供转正、HC 是否稳定）",
+    },
+    {
+        "id": "threshold",
+        "label": "同背景进入目标的真实门槛（学历、实习段数/时长、项目证据）",
+    },
+    {
+        "id": "timeline",
+        "label": "校招时间窗口（提前批 / 秋招 / 春招）",
+    },
+)
+
+
+def _compact_case(item: dict) -> dict:
+    background = item.get("background") if isinstance(item.get("background"), dict) else {}
+    return {
+        "id": item.get("id", ""),
+        "title": item.get("title", ""),
+        "kind": item.get("kind", ""),
+        "source": item.get("source", ""),
+        "url": item.get("url", ""),
+        "date": item.get("date", ""),
+        "education_tag": item.get("education_tag") or background.get("education_tag", ""),
+        "year": item.get("year") or background.get("year", ""),
+        "company": item.get("company") or background.get("company", ""),
+        "position": item.get("position") or background.get("position", ""),
+        "highlights": (item.get("highlights") or [])[:2],
+    }
+
+
+def _compact_jd(item: dict) -> dict:
+    brief = str(item.get("requirements") or item.get("description") or item.get("summary") or "")
+    return {
+        "id": item.get("id", ""),
+        "company": item.get("company", ""),
+        "title": item.get("title", ""),
+        "location": item.get("location", ""),
+        "salary": item.get("salary", ""),
+        "source": item.get("source", ""),
+        "url": item.get("url", ""),
+        "brief": brief[:160],
+    }
+
+
+def _evidence_pack(profile) -> dict:
+    """把档案里的真实证据压成生成路线图可用的证据包。"""
+    research = profile.research if isinstance(profile.research, dict) else {}
+    cases = [item for item in (research.get("cases") or []) if isinstance(item, dict)]
+    jds = [item for item in (research.get("jd_samples") or []) if isinstance(item, dict)]
+    digest = research.get("digest") if isinstance(research.get("digest"), dict) else {}
+    status = [item for item in (research.get("source_status") or []) if isinstance(item, dict)]
+    failures = [item for item in status if item.get("status") == "failed"]
+    claims = [claim.model_dump() for claim in (profile.claims or [])]
+    return {
+        "claims": claims,
+        "cases": {
+            "count": len(cases),
+            "items": [_compact_case(item) for item in cases[:_EVIDENCE_ITEM_LIMIT]],
+        },
+        "jd_samples": {
+            "count": len(jds),
+            "items": [_compact_jd(item) for item in jds[:_EVIDENCE_ITEM_LIMIT]],
+        },
+        "digest": {
+            "salary": digest.get("salary") or {},
+            "education_mentions": digest.get("education_mentions") or {},
+            "cities": (digest.get("cities") or [])[:5],
+            "case_count_raw": digest.get("case_count_raw", 0),
+        },
+        "counts": research.get("counts") or {},
+        "source_failures": failures[:5],
+        "gaps": list(research.get("gaps") or []),
+        "report_md": research.get("report_md", ""),
+    }
+
+
 # 建议用 lint 词典（只提示，不阻塞保存）
 _UMBRELLA_WORDS = ("专题", "批量", "全部", "汇总", "一批", "若干项")
 _TIME_WORDS = ("每周", "每天", "每日", "一周内", "一天内", "半月内", "24小时", "24 小时", "月内", "日内")
 _COUNT_RE = re.compile(r"\d+")
+# 市场结论里的数字：段数/月数/比例/薪资/天数。命中但无引用时提示补来源。
+_NUMERIC_CLAIM_RE = re.compile(
+    r"(?:\d+(?:\.\d+)?|[一二两三四五六七八九十]+)\s*(?:段|个月|月|年|%|K|k|周|天|次)"
+)
+
+
+def _path_channel(item: Any) -> str:
+    if isinstance(item, str):
+        return item.strip()
+    if isinstance(item, dict):
+        return str(item.get("channel") or item.get("name") or "").strip()
+    return ""
+
+
+def _join_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return " ".join(
+            str(item).strip() for item in value.values() if str(item or "").strip()
+        )
+    return ""
+
+
+def _phase_claim_ids(phase: dict) -> list[str]:
+    return [
+        str(item).strip()
+        for item in (phase.get("claims") or [])
+        if str(item or "").strip()
+    ]
 
 
 def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
@@ -245,6 +385,109 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
                     "请说明跨级依据（作品集/内推/前序交付证据）；层级只是命中率参考，不禁止投递。",
                     "level_continuity",
                 ))
+
+        # 通道现实：大厂目标/实习阶段必须有并行通道、保底、时间窗与转正风险。
+        access_paths = [
+            item for item in (phase.get("access_paths") or []) if _path_channel(item)
+        ]
+        fallback_paths = [
+            item for item in (phase.get("fallback_paths") or []) if _path_channel(item)
+        ]
+        channels = [_path_channel(item) for item in access_paths]
+        needs_channel = target_rank >= _level_rank("大厂") or (
+            phase_type == "intern" and target_rank >= _level_rank("中厂")
+        )
+        if needs_channel and len(channels) < 2:
+            advisories.append(_advisory(
+                "single_channel",
+                f"阶段「{name}」面向大厂/实习但只有 {len(channels)} 条主通道——"
+                "单通道风险高，建议补并行通道（如暑期实习 + 秋招提前批）。",
+                "channel_reality",
+            ))
+        if needs_channel and not fallback_paths:
+            advisories.append(_advisory(
+                "no_fallback",
+                f"阶段「{name}」没有保底通道——请补中厂/日常实习/春招补录等兜底路径。",
+                "channel_reality",
+            ))
+        if any("转正" in channel for channel in channels) and not phase.get("conversion_risk"):
+            advisories.append(_advisory(
+                "conversion_unflagged",
+                f"阶段「{name}」依赖实习转正，但没有写转正风险——"
+                "转正受 HC 与部门影响，不能当作确定结果。",
+                "channel_reality",
+            ))
+        if needs_channel and not phase.get("time_window"):
+            advisories.append(_advisory(
+                "missing_time_window",
+                f"阶段「{name}」没有写校招/实习时间窗口——提前批、秋招、春招有客观截止点，"
+                "请补时间窗口（不要求排学习时长）。",
+                "channel_reality",
+            ))
+
+        claim_ids = _phase_claim_ids(phase)
+        known_claims = {
+            str(getattr(claim, "id", "") or ""): claim for claim in (profile.claims or [])
+        }
+        # 阶段 claims 与各通道/风险里的 evidence_ids 都算引用来源，统一校验。
+        citation_ids = list(claim_ids)
+        for item in [*access_paths, *fallback_paths, phase.get("conversion_risk")]:
+            if isinstance(item, dict):
+                citation_ids.extend(
+                    str(evidence_id).strip()
+                    for evidence_id in (item.get("evidence_ids") or [])
+                    if str(evidence_id or "").strip()
+                )
+        citation_ids = list(dict.fromkeys(citation_ids))
+
+        unknown_claims = [claim_id for claim_id in citation_ids if claim_id not in known_claims]
+        if unknown_claims:
+            advisories.append(_advisory(
+                "claim_unknown",
+                f"阶段「{name}」引用了不存在的结论：{', '.join(unknown_claims)}——"
+                "请先 record_claim 记录，再引用。",
+                "evidence_citation",
+            ))
+        today = datetime.now().date().isoformat()
+        for claim_id in citation_ids:
+            claim = known_claims.get(claim_id)
+            expires_at = str(getattr(claim, "expires_at", "") or "").strip() if claim else ""
+            if expires_at and expires_at < today:
+                advisories.append(_advisory(
+                    "claim_stale",
+                    f"阶段「{name}」引用的结论 {claim_id} 已于 {expires_at} 过期——"
+                    "招聘规则会变，请重新核实或补新来源。",
+                    "evidence_citation",
+                ))
+
+        if (phase.get("conversion_risk") or phase.get("time_window")) and not citation_ids:
+            advisories.append(_advisory(
+                "claim_missing",
+                f"阶段「{name}」写了转正风险/时间窗口，但没有引用任何结论——"
+                "请用 record_claim 记录来源并在 claims 中引用。",
+                "evidence_citation",
+            ))
+
+        evidence_texts = [
+            str(phase.get("rationale") or ""),
+            str(phase.get("condition") or ""),
+            _join_text(phase.get("conversion_risk")),
+            _join_text(phase.get("time_window")),
+            _join_text(phase.get("decision_gate")),
+        ]
+        evidence_texts.extend(_join_text(item) for item in access_paths)
+        evidence_texts.extend(_join_text(item) for item in fallback_paths)
+        numeric_hit = next(
+            (match.group(0) for text in evidence_texts for match in _NUMERIC_CLAIM_RE.finditer(text)),
+            "",
+        )
+        if numeric_hit and not citation_ids:
+            advisories.append(_advisory(
+                "numeric_claim_unsourced",
+                f"阶段「{name}」出现具体数字「{numeric_hit}」，但没有引用来源——"
+                "数字必须有 claim 或真实样本支撑，否则改成方向性描述。",
+                "evidence_citation",
+            ))
 
         # 届别：双向核对（不再只查「早于」）
         target_year = str(phase.get("graduation_year", "") or "").strip()
@@ -434,6 +677,22 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
                     "kpi": {"metric": "...", "target": "...", "evidence": "..."},
                     "resume_value": "",           // project/intern/research 必填
                     "target_level": "中厂",       // 本阶段目标层级（大厂/中厂/小厂/暂不可入），投递实习阶段必填
+                    "access_paths": [             // intern/校招阶段必填：至少两条主通道
+                        {"channel": "暑期实习", "rationale": "...", "evidence_ids": ["cl_001"]}
+                    ],
+                    "fallback_paths": [           // intern/校招阶段必填：至少一条保底
+                        {"channel": "中厂正式批", "rationale": "..."}
+                    ],
+                    "conversion_risk": {          // 涉及转正必填：转正不是承诺
+                        "level": "高", "reason": "HC 受部门影响", "evidence_ids": ["cl_002"]
+                    },
+                    "time_window": {              // intern/校招阶段必填：外部时间约束
+                        "window": "秋招提前批 7-8 月", "deadline": "2027-08-31", "note": ""
+                    },
+                    "decision_gate": {            // 触发条件与换道动作
+                        "condition": "暑期实习未拿到 offer", "action": "转提前批 + 中厂保底"
+                    },
+                    "claims": ["cl_001"],         // 只能引用已 record_claim 的结论 id
                     "start_level_after": "",      // 可选：复评升级后的起点档位（如 learn 阶段复评达标，后续阶段起点升为中厂）
                     "graduation_year": "",        // 可选：该阶段面向的毕业届（校招/实习阶段建议标注）
                     "condition": "",              // 可选：分支/备用路径说明（如「复评不达标则延长本阶段，改投中厂」）
@@ -462,7 +721,10 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
 
     注意：
     - 阶段数由差距与目标决定（通常 3-6 段），不要求固定 4 段。
-    - 产品不规划时间：建议任务名不带时间节奏词（每周/每天等）；带时长描述会进建议清单，不阻断保存。
+    - 产品不规划学习时长：任务名建议不带时间节奏词（每周/每天等）；
+      但 time_window 与实习时长是外部约束（校招时间点、岗位要求），应当填写。
+    - 证据纪律：带数字的结论必须有 claim 或真实样本支撑；从业者经验先 record_claim，
+      并在阶段 claims 中引用。单通道、无保底、转正未标风险、引用缺失都会进建议清单。
     - 知识光谱纪律：公司名是常识可自由写；JD 细节必须有真实数据，拿不到就 jd 置空 +
       jd_status=pending_user_import（占位），并说明后续自动抓取会由企业适配阶段按目标企业与你的届别补齐，
       也可先用 import_jd 补充；用户确认后 confirmed 置 true。
@@ -573,7 +835,7 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
         next_steps.append("detail_current_phase")
 
     # 格式化报告
-    report = format_roadmap(parsed)
+    report = format_roadmap(parsed, claims=profile.claims)
 
     # 定稿即交付：自动生成路线图活地图 HTML（随时可重新生成）
     map_path = ""

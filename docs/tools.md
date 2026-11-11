@@ -1,6 +1,6 @@
 # MCP 工具总览
 
-> 50 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
+> 52 个 MCP 工具的唯一事实源。参数细节以各工具 docstring 为准；
 > 工作流与前置条件见 [工作流详解](workflow.md)。
 
 ## 工具总览
@@ -42,6 +42,13 @@
 | `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；单源/总预算超时不会拖垮整批，已完成来源写入断点缓存、重跑续抓；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源只问一次并传 `boss_confirmed=true`；确认但未登录返回 `ACTION_REQUIRED` / `next_tool=boss_login`，直接调用 `boss_login(action="login")`（用户只扫码），不再追问第二次 |
 | `read_research_details` | 按花名册标识读取调研详情：不传 `ids` 返回花名册、聚合摘要与子 Agent 委派方案（`delegate`，对应 `research-analyst`）；传 `ids` 读取选定条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径），单次上限 10 条 |
 
+### 证据引用工具（2）
+
+| 工具 | 作用 |
+|------|------|
+| `record_claim` | 记录一条可引用结论：事实必须有来源（url/name），从业者经验必须写 source.name 与 scope；可带 limitation 与 expires_at。数字结论先记录再引用 |
+| `list_claims` | 列出已记录的结论，按内容/来源/范围过滤；生成路线图前用它确认可引用的证据 |
+
 ### 分析规划工具（7）
 
 | 工具 | 作用 |
@@ -49,8 +56,8 @@
 | `explore_goals` | 无目标时三轴定位（能力 × 兴趣 × 真实市场）并提出候选方向 |
 | `analyze_gaps` | 返回差距分析方法论上下文 |
 | `save_gap_analysis` | 保存分析结果；`skill_gaps` 非空时每项必须有 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；空列表允许保存并给建议；质量建议持久化到档案。市场调研被跳过时仍写 `GapReport`：`market_baseline_id=""`、`meta.validation.market_skipped=true`、`meta.inputs.target_spec_id` 指向当前 `TargetSpec`；缺 ProfileSnapshot/TargetSpec 不写半成品 |
-| `generate_roadmap` | 返回路线图方法论上下文（6 步工作流；审计为第二意见） |
-| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图）。市场跳过时写 `BaselinePlan.meta.validation.market_skipped=true`；`import_plan` 后无 `GapReport` 时写 `validation.imported=true`、`gap_report_id=""` |
+| `generate_roadmap` | 返回路线图方法论上下文（6 步工作流；审计为第二意见）；附带证据包（claims / 案例 / JD 样本 / 缺口）与四类必查证据（通道、转正风险、同背景门槛、校招时间窗） |
+| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图）。新增通道现实建议：单通道、无保底、转正未标风险、缺时间窗、无引用数字、引用不存在/过期。市场跳过时写 `BaselinePlan.meta.validation.market_skipped=true`；`import_plan` 后无 `GapReport` 时写 `validation.imported=true`、`gap_report_id=""` |
 | `save_roadmap_audit` | 审计结果落库（PASS / PASS_WITH_NOTES / FAIL + issues/notes；按 `roadmap_hash` 绑定版本，不阻断定稿） |
 | `import_plan` | 导入既有规划文档，对比取舍在对话中完成；设置 `guidance.plan_imported_at` 并提示用 `save_roadmap` 保存结构化路线图 |
 
@@ -133,7 +140,7 @@
 | 建档 | `src/tools/session_tools.py`（简历解析在 `resume_parser.py`） |
 | 档案管理 | `src/tools/profile_tools.py`（领域层 `profile.py`） |
 | 数据获取 | `src/tools/data_tools.py`、`src/tools/boss_tools.py`、`src/tools/knowledge_search.py`、`src/tools/research_tools.py`、`src/tools/case_tools.py`、`src/scrapers/` |
-| 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`、`src/tools/resource_catalog.py`（`import_plan` 在 `data_tools.py`） |
+| 分析规划 | `src/tools/analysis_tools.py`、`src/tools/roadmap_tools.py`、`src/tools/claim_tools.py`、`src/tools/resource_catalog.py`（`import_plan` 在 `data_tools.py`） |
 | 企业适配 | `src/tools/company_selection_tools.py`、`src/tools/evidence_tools.py`、`src/tools/requirement_tools.py`、`src/tools/execution_plan_tools.py`、`src/tools/plan_fit_tools.py`（领域层 `src/core/`） |
 | 任务与漏斗 | `src/tools/task_tools.py`、`src/tools/application_tools.py`、`src/tools/application_list_tools.py`（领域层 `task_manager.py`、`application_tracker.py`） |
 | 洞察与产出 | `src/tools/insight.py`、`src/tools/dashboard.py`、`src/tools/industry_tools.py`（周检视领域层 `review.py`） |

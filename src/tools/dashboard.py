@@ -334,6 +334,11 @@ def render_roadmap_map(profile) -> str:
     roadmap = profile.plan.get("roadmap", profile.plan)
     phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
     strategy = roadmap.get("strategy_summary", "")
+    claims_map: dict[str, dict] = {}
+    for claim in (getattr(profile, "claims", None) or []):
+        claim_data = claim.model_dump() if hasattr(claim, "model_dump") else claim
+        if isinstance(claim_data, dict) and claim_data.get("id"):
+            claims_map[str(claim_data["id"])] = claim_data
 
     # 组装结构化数据（前端渲染 + localStorage 打卡）
     data = {
@@ -428,6 +433,16 @@ def render_roadmap_map(profile) -> str:
             "tasks": tasks,
             "milestone_tasks": milestone_tasks,
             "milestone_names": ms_names,
+            "access_paths": phase.get("access_paths") or [],
+            "fallback_paths": phase.get("fallback_paths") or [],
+            "conversion_risk": phase.get("conversion_risk") or {},
+            "time_window": phase.get("time_window") or {},
+            "decision_gate": phase.get("decision_gate") or {},
+            "claims": [
+                claims_map[str(claim_id)]
+                for claim_id in (phase.get("claims") or [])
+                if str(claim_id) in claims_map
+            ],
         })
 
     data["all_complete"] = all_complete
@@ -679,11 +694,32 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       company: ph.company, rationale: ph.rationale, badge: ph.badge, badge_cls: ph.badge_cls,
       kpi_metric: ph.kpi_metric, kpi_target: ph.kpi_target, kpi_evidence: ph.kpi_evidence,
       resume_value: ph.resume_value, jd_text: ph.jd_text,
+      access_paths: ph.access_paths || [], fallback_paths: ph.fallback_paths || [],
+      conversion_risk: ph.conversion_risk || {{}}, time_window: ph.time_window || {{}},
+      decision_gate: ph.decision_gate || {{}}, claims: ph.claims || [],
       is_current: ph.is_current, tasks: tasks, milestone_tasks: ph.milestone_tasks,
       milestone_names: ph.milestone_names || {{}},
       done: 0, total: tasks.length
     }};
   }});
+
+  function pathText(p) {{
+    if (typeof p === 'string') return esc(p);
+    var channel = p && (p.channel || p.name) ? (p.channel || p.name) : '';
+    var rationale = p && p.rationale ? '（' + esc(p.rationale) + '）' : '';
+    return channel ? esc(channel) + rationale : '';
+  }}
+
+  function claimText(c) {{
+    var kind = {{ fact: '事实', practitioner_experience: '经验', inference: '推断' }}[c.claim_type] || '';
+    var source = c.source || {{}};
+    var src = [source.name, source.date].filter(Boolean).join('，');
+    var text = (c.id ? c.id + ' ' : '') + (kind ? '[' + kind + ']' : '') + (c.statement || '');
+    if (src) text += ' — 来源：' + src;
+    var link = source.url
+      ? ' <a href="' + esc(source.url) + '" target="_blank" rel="noopener">原文</a>' : '';
+    return esc(text) + link;
+  }}
 
   function render() {{
     document.getElementById('start-level').textContent = DATA.start_level || '未判定';
@@ -716,6 +752,25 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
           + (ph.kpi_evidence ? '（验证：' + esc(ph.kpi_evidence) + '）' : '') + '</div>' : '';
       var resume = ph.resume_value ? '<div class="resume">简历价值：' + esc(ph.resume_value) + '</div>' : '';
       var jd = ph.jd_text ? '<div class="jd">' + esc(ph.jd_text) + '</div>' : '';
+      var accessList = (ph.access_paths || []).map(pathText).filter(Boolean).join('；');
+      var fallbackList = (ph.fallback_paths || []).map(pathText).filter(Boolean).join('；');
+      var access = accessList ? '<div class="company">主通道：' + accessList + '</div>' : '';
+      var fallback = fallbackList ? '<div class="company">保底通道：' + fallbackList + '</div>' : '';
+      var riskObj = ph.conversion_risk || {{}};
+      var riskText = typeof riskObj === 'string' ? riskObj
+        : [riskObj.level, riskObj.reason].filter(Boolean).join('——');
+      var risk = riskText ? '<div class="jd">转正风险：' + esc(riskText) + '</div>' : '';
+      var windowObj = ph.time_window || {{}};
+      var windowText = typeof windowObj === 'string' ? windowObj
+        : [windowObj.window, windowObj.deadline, windowObj.note].filter(Boolean).join('；');
+      var windowLine = windowText ? '<div class="jd">时间窗口：' + esc(windowText) + '</div>' : '';
+      var gateObj = ph.decision_gate || {{}};
+      var gateText = typeof gateObj === 'string' ? gateObj
+        : [gateObj.condition ? ('若 ' + gateObj.condition) : '',
+           gateObj.action ? ('→ ' + gateObj.action) : ''].filter(Boolean).join(' ');
+      var gate = gateText ? '<div class="jd">决策门：' + esc(gateText) + '</div>' : '';
+      var claimList = (ph.claims || []).map(claimText).filter(Boolean).join('；');
+      var claimLine = claimList ? '<div class="jd">依据：' + claimList + '</div>' : '';
 
       var tasksHtml = '';
       if (ph.tasks.length) {{
@@ -817,6 +872,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
           + '<span class="done-txt">' + done + '/' + ph.total + ' · ' + pct + '%</span></div>'
         + '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>'
         + company
+        + access + fallback + risk + windowLine + gate + claimLine
         + (ph.goal ? '<div class="goal">' + esc(ph.goal) + '</div>' : '')
         + kpi + resume + jd
         + '<div class="tasks">' + tasksHtml + '</div>';

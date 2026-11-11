@@ -303,3 +303,118 @@ def test_generate_roadmap_response_is_compacted(temp_profile):
     assert "audit_checklist" not in methodology, "生成阶段不必重复下发审计清单"
     assert all("data_needs" not in phase for phase in methodology.get("phases", []))
     assert len(json.dumps(out, ensure_ascii=False)) < 16000
+    assert "evidence" in out and "required_evidence" in out
+    assert {item["id"] for item in out["required_evidence"]} == {
+        "channel", "conversion", "threshold", "timeline",
+    }
+
+
+# ============ 通道现实与引用 ============
+
+
+def _record_claim(**overrides):
+    from src.server import record_claim
+
+    payload = {
+        "statement": "双非进大厂常见多段大厂实习，每段约 6 个月",
+        "claim_type": "practitioner_experience",
+        "source": {"type": "practitioner", "name": "阿里 HR", "date": "2026-11-11"},
+        "scope": {"education": "双非本", "channel": "校招"},
+        "limitation": "单一口述，未做统计",
+    }
+    payload.update(overrides)
+    return json.loads(record_claim(json.dumps(payload, ensure_ascii=False)))
+
+
+def _channel_roadmap(**phase_overrides):
+    phase = {
+        "type": "intern",
+        "name": "大厂实习",
+        "target_level": "大厂",
+        "resume_value": "大厂实习经历",
+        "kpi": {"metric": "入职", "target": "1个"},
+        "access_paths": [{"channel": "暑期实习", "rationale": "主要通道"}],
+        "rationale": "双非需要三段大厂实习，每段 6 个月",
+    }
+    phase.update(phase_overrides)
+    return {"roadmap": {"start_level": "小厂", "phases": [phase]}}
+
+
+def _codes(out: dict) -> set[str]:
+    return {item["code"] for item in out["context"]["advisories"]}
+
+
+def test_single_channel_and_missing_window_are_advisories(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    out = json.loads(save_roadmap(json.dumps(_channel_roadmap(), ensure_ascii=False)))
+    codes = _codes(out)
+    assert "single_channel" in codes
+    assert "no_fallback" in codes
+    assert "missing_time_window" in codes
+    assert "numeric_claim_unsourced" in codes
+
+
+def test_conversion_risk_and_unknown_claim_are_advisories(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    out = json.loads(save_roadmap(json.dumps(_channel_roadmap(
+        access_paths=[
+            {"channel": "暑期实习", "rationale": "主通道"},
+            {"channel": "实习转正", "rationale": "留用"},
+        ],
+        claims=["cl_999"],
+    ), ensure_ascii=False)))
+    codes = _codes(out)
+    assert "conversion_unflagged" in codes
+    assert "claim_unknown" in codes
+
+
+def test_cited_channel_roadmap_is_clean(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    claim = _record_claim()
+    assert claim["claim"]["id"] == "cl_001"
+
+    out = json.loads(save_roadmap(json.dumps(_channel_roadmap(
+        access_paths=[
+            {"channel": "暑期实习", "rationale": "主通道", "evidence_ids": ["cl_001"]},
+            {"channel": "秋招提前批", "rationale": "并行通道"},
+        ],
+        fallback_paths=[{"channel": "中厂正式批", "rationale": "保底"}],
+        conversion_risk={"level": "中", "reason": "HC 受部门影响", "evidence_ids": ["cl_001"]},
+        time_window={"window": "秋招提前批 7-8 月", "deadline": "2027-08-31"},
+        decision_gate={"condition": "暑期实习未 offer", "action": "转提前批 + 中厂保底"},
+        claims=["cl_001"],
+    ), ensure_ascii=False)))
+    codes = _codes(out)
+    for code in (
+        "single_channel",
+        "no_fallback",
+        "conversion_unflagged",
+        "missing_time_window",
+        "claim_missing",
+        "numeric_claim_unsourced",
+        "claim_unknown",
+    ):
+        assert code not in codes, f"干净的通道路线图不应命中 {code}"
+
+
+def test_stale_claim_is_advisory(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    claim = _record_claim(expires_at="2000-01-01")
+    out = json.loads(save_roadmap(json.dumps(_channel_roadmap(
+        access_paths=[
+            {"channel": "暑期实习", "rationale": "主通道"},
+            {"channel": "秋招提前批", "rationale": "并行通道"},
+        ],
+        fallback_paths=[{"channel": "中厂正式批", "rationale": "保底"}],
+        time_window={"window": "秋招提前批"},
+        claims=[claim["claim"]["id"]],
+    ), ensure_ascii=False)))
+    assert "claim_stale" in _codes(out)
