@@ -43,7 +43,7 @@ _DETAIL_TITLE_RE = re.compile(
     r'<div class="new_job_name"[^>]*>\s*<span[^>]*>(.*?)</span>', re.S
 )
 _DETAIL_COMPANY_RE = re.compile(
-    r'<a href="javascript:;" class="com-name"[^>]*>(.*?)</a>', re.S
+    r'<a[^>]+class="[^"]*\bcom-name\b[^"]*"[^>]*>(.*?)</a>', re.S
 )
 _DETAIL_REFRESH_RE = re.compile(
     r'<div class="job_date"[^>]*>\s*<span[^>]*>(.*?)</span>', re.S
@@ -176,6 +176,8 @@ class Scraper(CompanyScraper):
 
         title = _clean_text(_first(_DETAIL_TITLE_RE, page_html))
         company = _clean_text(_first(_DETAIL_COMPANY_RE, page_html))
+        if not company:
+            company = str((_FALLBACK.get(url) or {}).get("company") or "")
         if not title and not company:
             return {"error": "详情页结构已变化，未解析到岗位信息", "url": url}
 

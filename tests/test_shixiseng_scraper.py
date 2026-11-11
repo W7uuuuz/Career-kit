@@ -78,7 +78,7 @@ DETAIL_HTML = """
         <span class="com_position">上海市/浦东新区</span>
       </div>
     </div>
-    <a href="javascript:;" class="com-name">测试资产</a>
+    <a href="javascript:;" class="com-name com-name--with-label">测试资产</a>
   </div>
 </div>
 """
