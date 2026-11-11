@@ -83,6 +83,8 @@ def generate_roadmap() -> str:
                           "逐项核对 required_evidence：每项标「有证据 / 样本不足 / 缺失」，"
                           "并写明依据（claim id、案例 id 或 JD id）。证据包为空或缺少某一项时，"
                           "先用 search_cases / fetch_company_jobs / fetch_jd_detail 补齐；"
+                          "实习门槛优先 fetch_company_jobs(company=\"shixiseng\")，"
+                          "BOSS 只作薪资补充，不作为实习主参考；"
                           "仍拿不到就保留「缺失」，不得用常识补成事实。"
                           "发现新事实或从业者经验时，先调用 record_claim 记录，再进入阶段设计；"
                           "没有证据的断言只能标为「经验规则（未验证）」，禁止写成事实。"

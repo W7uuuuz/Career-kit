@@ -61,6 +61,8 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 | 聚合案例搜寻 | 同背景成功经验 + 面试要求（学历五档四层打分） | `search_cases(role, education, company, kind)` |
 
 分析或规划前必须至少调用一次 `search_cases` 或 `fetch_company_jobs`。
+实习岗位优先 `shixiseng`（日薪/每周天数/实习月数/转正机会可核验）；BOSS 只作薪资与广度补充，
+不作为实习主参考；指定公司的岗位要求以官网 JD 为准。
 数据不可用时如实告知，并引导 `import_jd` / `import_jd_file` 导入用户手头 JD，不要编造。
 企业目录收录 90 家，其中 54 家可自动抓取；未接入源标为需手动投递。
 

@@ -99,7 +99,9 @@ def research_market() -> str:
             "step": 2,
             "name": "批量抓取",
             "action": "调用 gather_research_data(jd_specs, case_query, boss_confirmed) 一次完成："
-                      "jd_specs 目标公司 1 条 + 对照 2-4 条（优先同城、优先含薪来源），"
+                      "jd_specs 目标公司 1 条 + 对照 2-4 条（优先同城）；"
+                      "实习方向优先 shixiseng（大厂/中厂实习覆盖、日薪、每周天数、实习月数、转正机会），"
+                      "BOSS 只作薪资/广度补充，不作为实习主参考；"
                       "case_query 带 role/education（五档四层写法如「双非本」）/company/city。"
                       "含 BOSS 源时必须先问过用户并传 boss_confirmed=true——否则工具会"
                       "返回 CONFIRMATION_REQUIRED 让你去问；确认后按 "
@@ -158,6 +160,9 @@ def research_market() -> str:
         "boss_login(action=\"login\")，不要再问第二次是否登录，"
         "也不得自行判定调研失败。顺序：boss_login(status) → 未就绪 login → "
         "再 gather_research_data；不要先跑批再补登录。\n"
+        "实习源优先级：目标是实习（尤其是大厂/中厂实习）时，优先用 shixiseng"
+        "（keyword=方向或公司名，city 限制，日薪/每周天数/实习月数/转正机会都可核验）；"
+        "BOSS 用于补充薪资与广度，不作为实习主参考；指定公司的岗位要求在官网 JD 里核对。\n"
         "详情纪律：工具为每条岗位补抓正文；未取得详情的岗位将被剔除并计入数据缺口。"
         "BOSS 研究阶段默认 list-only：不补详情、不剔除，保留薪资行，"
         "数据缺口会写明「BOSS 仅列表数据，未抓 JD 详情」。"

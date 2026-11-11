@@ -43,7 +43,7 @@ Order is fixed; pace is yours. One decision per phase, and unsupported conclusio
 Data comes from 59 collected sources across internet / AI, manufacturing / energy, hardware / semiconductors, and finance:
 
 - **Company career sources (55)**: ByteDance / Tencent / Alibaba / Baidu / Meituan / NetEase / JD / Kuaishou / Pinduoduo / Xiaohongshu / Bilibili / Xiaomi / DiDi / Ctrip / Vipshop / DJI / Dewu / Soul / MiniMax and other internet, AI, and gaming companies, plus Huawei / BOE / Sany / CRRC / Inovance / Sungrow in manufacturing, energy, and hardware — gap analysis works beyond the internet industry too.
-- **Recruiting platforms**: BOSS Zhipin — public salary ranges for market-rate context; Shixiseng — recent internship postings, including finance.
+- **Recruiting platforms**: Shixiseng — preferred source for big/mid-company internships (daily pay, days per week, duration, conversion chance); BOSS Zhipin — public salary ranges and breadth supplement.
 - **Experience posts**: Nowcoder interview reports and GitHub experience threads, as evidence of how people with the same background got through.
 
 The company catalog lists 90 companies, 54 of which are auto-scrapable; the rest are marked for manual application.
