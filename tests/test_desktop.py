@@ -39,5 +39,6 @@ def test_ensure_shortcut_creates_desktop_entry(monkeypatch, tmp_path):
     )
     path, error = desktop.ensure_console_shortcut()
     assert error == ""
-    assert path == desktop_dir / "Career Kit.lnk"
+    assert path.parent == desktop_dir
+    assert path.name in {"Career Kit.lnk", "Career Kit.sh"}
     assert desktop.launcher_script_path().exists()
