@@ -80,7 +80,7 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             next_stage=STAGE_ID,
         )
 
-    spec, selection, spec_error = _resolve_spec(
+    spec, spec_error = _resolve_spec(
         store, ctx.profile_name, target_spec_id, inputs
     )
     if spec_error:
@@ -91,11 +91,19 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         )
     industry = str(inputs.get("industry") or DEFAULT_INDUSTRY).strip()
     companies, gaps = _build_entries(
-        selection,
+        spec,
         industry,
         parse_tokens(inputs.get("include")),
         parse_tokens(inputs.get("exclude")),
     )
+    tier_problems = _tier_consistency_problems(spec, companies)
+    if tier_problems:
+        return StageResult(
+            status="failed",
+            message="目标档位与企业池不一致，拒绝写入 CompanyPool："
+            + "；".join(tier_problems),
+            next_stage=STAGE_ID,
+        )
     selected = [entry for entry in companies if entry.status != "excluded"]
     confirmed = _requested_confirmation(ctx, inputs)
     effective_confirmed = confirmed and bool(selected)
@@ -224,42 +232,65 @@ def _resolve_spec(
     profile_name: str,
     target_spec_id: str,
     inputs: dict[str, Any],
-) -> tuple[TargetSpec, TargetSpec, str]:
-    """解析 CompanyPool body.target_spec 与用于筛选的档位。
+) -> tuple[TargetSpec, str]:
+    """解析唯一的有效 TargetSpec（显式入参 > 档案推断 > 默认值）。
 
-    - 有 target_spec_id 时，body 必须与 artifact 完全一致；调用方提供的
-      target_spec / role / city 等身份字段如与 artifact 冲突，拒绝生成；
-    - 只有档位（target_tiers / bridge_tiers）是可调整的筛选参数，不写回 body；
-    - 没有 target_spec_id 时沿用档案/输入构造。
+    - 有 target_spec_id 时，以 artifact 为基准，但显式身份字段与档案推断只能
+      填充 artifact 的空字段；双方均有值且冲突时拒绝生成；
+    - target_tiers / bridge_tiers 是显式筛选参数，始终优先于 artifact 与档案；
+    - 没有 target_spec_id 时直接由档案/输入构造。
+
+    返回的 TargetSpec 同时驱动回显、分档统计、企业池与 artifact 写入。
     """
+    inferred = _target_spec_from_inputs(inputs)
     artifact_spec = _load_target_spec(store, profile_name, target_spec_id)
     if target_spec_id and artifact_spec is None:
         return (
             TargetSpec(),
-            TargetSpec(),
             f"TargetSpec「{target_spec_id}」不存在、类型不符或不属于当前档案",
         )
     if artifact_spec is None:
-        spec = _target_spec_from_inputs(inputs)
-        return spec, spec.model_copy(deep=True), ""
+        return inferred, ""
 
     conflicts = _target_conflicts(inputs, artifact_spec)
     if conflicts:
         return (
             TargetSpec(),
-            TargetSpec(),
-            "CompanyPool 的 target_spec 与 target_spec_id 指向的 TargetSpec 不一致，拒绝落库："
-            + "；".join(conflicts),
+            "目标定位与 target_spec_id 指向的 TargetSpec 冲突，拒绝落库："
+            + "；".join(conflicts)
+            + "。请统一 role/city/direction 等身份字段，或改用匹配的 target_spec_id。",
         )
+    return _merge_target_spec(artifact_spec, inferred, inputs), ""
+
+
+def _merge_target_spec(
+    artifact_spec: TargetSpec,
+    inferred: TargetSpec,
+    inputs: dict[str, Any],
+) -> TargetSpec:
+    """把显式参数与档案推断合并进 artifact 基准，保持单一事实源。"""
     spec = artifact_spec.model_copy(deep=True)
-    selection = spec.model_copy(deep=True)
-    target_tiers = parse_tokens(inputs.get("target_tiers"))
-    bridge_tiers = parse_tokens(inputs.get("bridge_tiers"))
-    if target_tiers:
-        selection.target_tiers = target_tiers
-    if bridge_tiers:
-        selection.bridge_tiers = bridge_tiers
-    return spec, selection, ""
+    for field in ("direction", "role", "city", "graduation_year"):
+        if not getattr(spec, field):
+            setattr(spec, field, getattr(inferred, field))
+    if not spec.constraints:
+        spec.constraints = list(inferred.constraints)
+
+    explicit_target = parse_tokens(inputs.get("target_tiers"))
+    explicit_bridge = parse_tokens(inputs.get("bridge_tiers"))
+    spec.target_tiers = (
+        explicit_target
+        or spec.target_tiers
+        or inferred.target_tiers
+        or list(DEFAULT_TARGET_TIERS)
+    )
+    spec.bridge_tiers = (
+        explicit_bridge
+        or spec.bridge_tiers
+        or inferred.bridge_tiers
+        or list(DEFAULT_BRIDGE_TIERS)
+    )
+    return spec
 
 
 def _load_target_spec(
@@ -281,7 +312,12 @@ def _target_conflicts(
     inputs: dict[str, Any],
     artifact_spec: TargetSpec,
 ) -> list[str]:
-    """调用方显式给出的身份字段必须与 TargetSpec artifact 一致。"""
+    """调用方显式给出的身份字段与 artifact 的非空值不一致时报告冲突。
+
+    artifact 为空字段表示「尚未确定」，不构成冲突；显式参数与档案推断会
+    在合并阶段填充它。target_tiers / bridge_tiers 是可调整筛选参数，不参与
+    身份冲突判断。
+    """
     supplied: dict[str, Any] = {}
     raw = inputs.get("target_spec")
     if isinstance(raw, BaseModel):
@@ -293,17 +329,36 @@ def _target_conflicts(
         if value:
             supplied[field] = value
 
+    identity_fields = (
+        "direction",
+        "role",
+        "city",
+        "graduation_year",
+        "constraints",
+    )
     conflicts: list[str] = []
-    for field in TargetSpec.model_fields:
+    for field in identity_fields:
         if field not in supplied:
             continue
         value = _normalize_target_field(supplied.get(field))
         current = _normalize_target_field(getattr(artifact_spec, field))
-        if not value:
+        if not value or not current:
             continue
         if value != current:
-            conflicts.append(f"{field}={value!r} 与 artifact 的 {current!r} 不一致")
+            conflicts.append(
+                f"{_FIELD_LABELS.get(field, field)} 当前为 {current!r}，"
+                f"显式传入 {value!r}"
+            )
     return conflicts
+
+
+_FIELD_LABELS = {
+    "direction": "目标方向",
+    "role": "目标岗位 role",
+    "city": "目标城市 city",
+    "graduation_year": "毕业年份 graduation_year",
+    "constraints": "约束条件 constraints",
+}
 
 
 def _normalize_target_field(value: Any) -> Any:
@@ -429,6 +484,25 @@ def _dedupe(values: list[str]) -> list[str]:
         seen.add(text)
         result.append(text)
     return result
+
+
+def _tier_consistency_problems(
+    spec: TargetSpec, companies: list[CompanyEntry]
+) -> list[str]:
+    """确认企业池档位来自同一份 TargetSpec，避免 target 与 counts 口径不一致。"""
+    allowed = set(spec.target_tiers) | set(spec.bridge_tiers)
+    problems: list[str] = []
+    for entry in companies:
+        if entry.status == "excluded" or entry.tier in allowed:
+            continue
+        if "include" in entry.reason:
+            continue
+        expected = "、".join(spec.target_tiers + spec.bridge_tiers) or "不限"
+        problems.append(
+            f"企业「{entry.name}」的档位为 {entry.tier!r}，"
+            f"但目标/桥接档位为 {expected}；请调整 target_tiers/bridge_tiers 后重试"
+        )
+    return problems
 
 
 def _counts(companies: list[CompanyEntry]) -> dict[str, int]:
