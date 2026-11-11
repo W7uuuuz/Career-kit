@@ -30,6 +30,9 @@ start-career-kit.command
 # 内部开发文档（不随开源仓库发布，保留本地）
 docs/internal/
 
+# 本地工具 trace（如 CCG），不入库
+.ccg/
+
 # 本地职业档案 / 报告（隐私数据，绝不入库）
 CareerKit/
 career-kit.db

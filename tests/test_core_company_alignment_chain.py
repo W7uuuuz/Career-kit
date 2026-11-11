@@ -283,7 +283,7 @@ def test_company_alignment_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert evidence_payload["counts"]["kept_jobs"] == 4
     assert evidence_payload["counts"]["interviews"] == 2
     assert evidence_payload["confidence"] == {"jd": "low", "interview": "low"}
-    assert set(evidence_payload["report_paths"]) == {"md", "html", "json"}
+    assert set(evidence_payload["report_paths"]) == {"md", "json"}
     assert len(calls["search"]) == 2
     assert len(calls["detail"]) == 4
     assert calls["cases"] and calls["cases"][0]["education"] == "双非本"
@@ -508,7 +508,7 @@ def test_company_alignment_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "record_application" in action["optional_next_tools"]
     assert action["artifact_ids"]["execution_plan_id"] == applied_id
 
-    for kind in ("md", "html"):
+    for kind in ("md", "json"):
         report_path = Path(evidence_payload["report_paths"][kind])
         assert report_path.exists(), f"证据池 {kind} 报告不存在：{report_path}"
         assert report_path.suffix == f".{kind}"

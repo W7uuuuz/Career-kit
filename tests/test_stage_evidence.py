@@ -591,23 +591,17 @@ def test_artifact_core_state_and_report_files(
     assert profile.core_state["updated_at"]
 
     paths_by_kind = run.report_paths
-    assert set(paths_by_kind) == {"md", "html", "json"}
-    for key, suffix in (("md", ".md"), ("html", ".html"), ("json", ".json")):
+    assert set(paths_by_kind) == {"md", "json"}
+    for key, suffix in (("md", ".md"), ("json", ".json")):
         report_path = Path(paths_by_kind[key])
         assert report_path.suffix == suffix
         assert report_path.exists()
 
     assert Path(paths_by_kind["md"]).parent.name == "证据池"
     assert "Agent 工程师" in Path(paths_by_kind["md"]).read_text(encoding="utf-8-sig")
-    html_text = Path(paths_by_kind["html"]).read_text(encoding="utf-8")
-    assert "Agent 工程师" in html_text
-    assert 'name="career-kit-summary"' in html_text
     payload = json.loads(Path(paths_by_kind["json"]).read_text(encoding="utf-8"))
     assert payload["direction"] == "AI 应用"
     assert payload["counts"]["jd_samples"] == 1
-
-    assets_root = tmp_path / "CareerKit"
-    assert (assets_root / "index.html").exists()
 
 
 def test_insufficient_data_does_not_save_artifact(
@@ -710,7 +704,7 @@ async def test_mcp_tool_returns_summary(store: ArtifactStore, monkeypatch: pytes
     assert payload["artifact_id"].startswith("ev_")
     assert payload["counts"]["kept_jobs"] == 1
     assert payload["next_tool"] == "analyze_company_requirements"
-    assert set(payload["report_paths"]) == {"md", "html", "json"}
+    assert set(payload["report_paths"]) == {"md", "json"}
     assert "boss" not in payload
 
 

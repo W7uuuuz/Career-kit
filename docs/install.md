@@ -50,7 +50,12 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 脚本会创建 `.venv`、安装依赖，并输出注册命令（使用解释器绝对路径）。
 
-## 本地控制台（可选）
+## 本地控制台
+
+安装脚本会同时在桌面创建「Career Kit」快捷方式；路线图定稿时也会自动补建。
+双击快捷方式后，按提示选择打开、关闭或查看控制台状态即可。
+
+也可以直接运行：
 
 ```bash
 career-kit-serve --open

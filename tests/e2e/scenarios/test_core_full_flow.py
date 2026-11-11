@@ -10,7 +10,6 @@ from e2e.data import DETAIL, GAP, HAVE, INSIGHT, ROADMAP, WANT, WHO
 from e2e.drivers import flow
 from e2e.quality import (
     QualityReport,
-    evaluate_dashboard,
     evaluate_gap,
     evaluate_guidance,
     evaluate_profile,
@@ -25,7 +24,7 @@ JD_FILE = Path(__file__).resolve().parents[1] / "fixtures" / "jds" / "agent_jd.m
 
 async def test_new_user_full_flow_quality(sandbox, quality):
     async with flow(sandbox) as (mcp, driver):
-        assert {"start_session", "fetch_company_jobs", "export_dashboard"} <= mcp.tool_names()
+        assert {"start_session", "fetch_company_jobs", "save_roadmap"} <= mcp.tool_names()
         assert {"record_application", "get_weekly_review"} <= mcp.tool_names()
 
         await driver.begin()
@@ -83,20 +82,12 @@ async def test_new_user_full_flow_quality(sandbox, quality):
         progress = await driver.progress()
         status = await driver.status()
 
-        dashboard = await driver.export("progress")
-        roadmap_map = await driver.export("roadmap")
-
         profile = driver.profile
         assert profile["gap"]["skill_gaps"], profile["gap"]
         assert profile["plan"]["roadmap"]["phases"], profile["plan"]
         assert any(c["task_id"] == once_id for c in profile["checkins"])
         assert profile["have"].get("capability_evidence"), profile["have"]
         assert profile["adjustments"], profile["adjustments"]
-
-        dashboard_html = (sandbox.assets_dir / "默认档案" / "进度" / "进度仪表盘.html").read_text(encoding="utf-8")
-        roadmap_html = (sandbox.assets_dir / "默认档案" / "路线图" / "路线图.html").read_text(encoding="utf-8")
-        assert "Career Kit" in dashboard_html
-        assert "career-data" in roadmap_html
 
         report = QualityReport("全新用户全链路")
         report.extend(evaluate_profile(profile))
@@ -115,21 +106,9 @@ async def test_new_user_full_flow_quality(sandbox, quality):
                     apply_insight,
                     progress,
                     status,
-                    dashboard,
-                    roadmap_map,
                 ]
             )
         )
-        report.extend(
-            evaluate_dashboard(
-                dashboard_html,
-                profile,
-                require_snapshot=False,
-                require_interaction=False,
-                label="进度页",
-            )
-        )
-        report.extend(evaluate_dashboard(roadmap_html, profile, label="职业地图"))
         quality.write(report.to_dict())
 
         assert report.total >= 70, report.findings()

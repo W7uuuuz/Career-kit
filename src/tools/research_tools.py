@@ -66,7 +66,7 @@ def research_market() -> str:
     何时调用：finalize_profile 之后、analyze_gaps 之前（推荐顺序，
     差距分析会直接引用调研数据；无调研时分析只是软提示）。
 
-    产出：调研报告三件套（md 可读 / html 阅读版 / json 原始数据）落盘到
+    产出：调研报告（md 可读 / json 原始数据）落盘到
     用户资产目录（~/CareerKit/<档案>/调研报告/），报告内容 100% 来自真实
     抓取数据、每条带来源链接——这是 Career Kit 的核心卖点「来源真实」。
 
@@ -82,7 +82,6 @@ def research_market() -> str:
         prior = {
             "generated_at": existing.get("generated_at"),
             "report_md": existing.get("report_md"),
-            "index": existing.get("index"),
             "counts": existing.get("counts") or {},
             "note": "档案已有调研报告：差距分析会直接引用；重跑会生成新报告（各自留档）",
         }
@@ -122,7 +121,7 @@ def research_market() -> str:
                       "调用前按源数量播报耗时：每源约 10-20 秒，总预算约 50 秒，另加逐条详情补抓；"
                       "源较多时建议拆成两批（目标 1 家 + 对照 2-4 家）",
             "output": {
-                "report_paths": {"md": "", "html": "", "json": "", "index": ""},
+                "report_paths": {"md": "", "json": ""},
                 "source_status": [],
             },
             "checkpoint": False,
@@ -134,7 +133,7 @@ def research_market() -> str:
             "action": "抓取完成后报告立即落盘（代码渲染，不经 LLM）。工具返回"
                       "「花名册（标识与摘要）+ 聚合摘要」，岗位全文不进入上下文。"
                       "向用户汇报三要素：样本构成（岗位/案例/各来源成败）→ 报告路径"
-                      "（完整路径，双击 index.html 查看全部资产）→ 每条附来源链接可逐条核验",
+                      "（在控制台中查看，或双击桌面「Career Kit」快捷方式）→ 每条附来源链接可逐条核验",
             "output": {"summary_lines": 0, "path_shown": True, "gaps_reported": 0},
             "checkpoint": False,
             "checkpoint_note": "报告不阻塞查看；缺口如实陈述",
@@ -823,7 +822,7 @@ async def gather_research_data(
              CAREER_KIT_RESEARCH_SOURCE_TIMEOUT 配置）；单源失败会自动重试 1 次。
 
     Returns:
-        汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（index.html 资产总览入口） +
+        汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（控制台入口） +
         数据缺口 + 下一步衔接分析。报告内容 100% 代码渲染自抓取数据（不经 LLM）。
 
     纪律：
@@ -1418,10 +1417,8 @@ def _render_report_message(report: dict[str, Any], paths: dict[str, str]) -> str
         [
             "",
             "报告已入库（内容全部来自抓取数据，每条附来源链接，可逐条核验）：",
-            f"- 阅读版（推荐浏览器打开）：{paths['html']}",
             f"- 可读全文 md：{paths['md']}",
-            f"- 资产总览入口：双击 {paths['index']}"
-            "（调研报告 / 路线图 / 仪表盘统一入口）",
+            "- 查看入口：双击桌面上的「Career Kit」快捷方式，在控制台的「调研报告」卡片中打开",
         ]
     )
     if gaps:

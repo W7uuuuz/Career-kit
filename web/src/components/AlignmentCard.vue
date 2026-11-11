@@ -50,7 +50,6 @@ const evidenceLinks = computed(() => {
   const evidence = props.alignment.evidence
   if (!evidence) return []
   const links: { label: string; href: string }[] = []
-  if (evidence.report_html) links.push({ label: '阅读版', href: assetUrl(evidence.report_html) })
   if (evidence.report_md) links.push({ label: '全文', href: assetUrl(evidence.report_md) })
   if (evidence.index) links.push({ label: '原始数据', href: assetUrl(evidence.index) })
   return links

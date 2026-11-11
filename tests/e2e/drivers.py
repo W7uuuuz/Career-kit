@@ -248,9 +248,6 @@ class FlowDriver:
             )
         ).assert_ok()
 
-    async def export(self, mode: str = "progress") -> ToolResult:
-        return (await self.mcp.call("export_dashboard", {"mode": mode})).assert_ok()
-
     async def list_sources(self) -> ToolResult:
         return (await self.mcp.call("list_data_sources")).assert_ok()
 

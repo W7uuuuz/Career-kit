@@ -17,7 +17,6 @@ const filtered = computed(() => {
 
 function linksOf(report: ReportInfo): { label: string; href: string }[] {
   const links: { label: string; href: string }[] = []
-  if (report.html) links.push({ label: '阅读版', href: assetUrl(report.html) })
   if (report.md) links.push({ label: '全文', href: assetUrl(report.md) })
   if (report.json) links.push({ label: '原始数据', href: assetUrl(report.json) })
   return links

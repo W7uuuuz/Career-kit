@@ -21,7 +21,7 @@ TOOL_NAMES = {
     "save_gap_analysis", "generate_roadmap", "save_roadmap", "import_plan",
     "generate_tasks", "detail_current_phase", "save_current_detail",
     "get_next_tasks", "checkin_task", "trigger_insight", "apply_insight",
-    "get_progress", "get_workflow_status", "export_dashboard",
+    "get_progress", "get_workflow_status",
     "gather_research_data", "research_market", "read_research_details",
     "search_cases", "get_industry_snapshot", "record_application",
     "delete_application", "get_weekly_review", "save_roadmap_audit",
@@ -303,51 +303,6 @@ def evaluate_guidance(responses: Iterable[Any]) -> list[Metric]:
     return [
         Metric("下一步指引", _ratio(with_next, len(texts), 30), 5, f"{with_next}/{len(texts)} 个返回含下一步"),
         Metric("指引可执行", _ratio(actionable, len(texts), 30), 5, f"{actionable}/{len(texts)} 个返回提到具体工具"),
-    ]
-
-
-def evaluate_dashboard(
-    html: str,
-    profile: dict[str, Any],
-    *,
-    require_snapshot: bool = True,
-    require_interaction: bool = True,
-    label: str = "",
-) -> list[Metric]:
-    snapshot = 'id="career-data"' in html
-    snapshot_score = 100 if snapshot else (100 if not require_snapshot else 0)
-    interaction = all(
-        token in html for token in ("localStorage", "checkin_task", "export-btn", "reset-btn")
-    )
-    interaction_score = 100 if interaction else (100 if not require_interaction else 0)
-    roadmap = _as_dict(_as_dict(profile.get("plan")).get("roadmap"))
-    phase_names = [str(p.get("name") or "") for p in _as_list(roadmap.get("phases"))]
-    rendered = sum(1 for name in phase_names if name and name in html)
-    external = bool(
-        re.search(r'<script[^>]+src=["\']https?://', html, re.I)
-        or re.search(r'<link[^>]+href=["\']https?://', html, re.I)
-    )
-
-    prefix = f"{label}：" if label else ""
-    return [
-        Metric(
-            prefix + "数据快照",
-            snapshot_score,
-            5,
-            "内嵌 career-data JSON"
-            if snapshot
-            else ("进度视图使用服务端渲染" if not require_snapshot else "缺少数据快照"),
-        ),
-        Metric(
-            prefix + "交互能力",
-            interaction_score,
-            5,
-            "勾选/导出/重置/localStorage 齐全"
-            if interaction
-            else ("进度视图为静态快照" if not require_interaction else "交互元素不完整"),
-        ),
-        Metric(prefix + "阶段渲染", _ratio(rendered, len(phase_names), 50), 3, f"{rendered}/{len(phase_names)} 个阶段名进入 HTML"),
-        Metric(prefix + "自包含", 0 if external else 100, 2, "存在外部脚本/样式" if external else "无外部依赖"),
     ]
 
 

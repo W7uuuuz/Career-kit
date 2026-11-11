@@ -10,7 +10,7 @@
   决定后续全部内容：求证对话 / 档案 / 调研与 JD·面经分析 / 差距 / 四阶段路线面板均按所选组合实时生成；
   「逐项求证」为自动播放的 human-AI 对话流；结尾的**职业地图也在前端按同一份路线实时渲染**
   （阶段切换、任务勾选与本地进度持久化）。安装后 `career-kit-demo` 打开的也是这个页面。
-- `dashboard.html` — 进度仪表盘（`export_dashboard(mode="progress")`）
+- `dashboard.html` — 历史示例仪表盘（旧版静态导出，仅作演示留档）
 - `dashboard.png` — 截图，供文档使用
 - `demo_profile.json` — 生成的完整档案（含 `plan` / `tasks` / `checkins`）
 

@@ -189,8 +189,7 @@ def test_workflow_status_lists_research_when_gap_exists(temp_profile):
 # ============ P1-4 / P2-11 任务与路线图 HTML ============
 
 
-def test_generate_tasks_only_current_phase_and_refreshes_html(temp_profile):
-    from src.assets import ROADMAP_FILENAME, kind_assets_dir
+def test_generate_tasks_only_current_phase(temp_profile):
     from src.server import generate_tasks
 
     from conftest import promote_profile
@@ -206,10 +205,6 @@ def test_generate_tasks_only_current_phase_and_refreshes_html(temp_profile):
     after = profile_module.load_profile()
     assert [t.phase_id for t in after.tasks] == ["phase_1"]
     assert after.tasks[0].name == "任务 A"
-
-    roadmap_html = kind_assets_dir("roadmap", profile_module.get_active_profile_name()) / ROADMAP_FILENAME
-    assert roadmap_html.exists()
-    assert "任务 A" in roadmap_html.read_text(encoding="utf-8")
 
     after.tasks[0].status = "completed"
     profile_module.save_profile(after)

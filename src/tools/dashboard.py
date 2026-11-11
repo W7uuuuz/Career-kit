@@ -1,6 +1,6 @@
-"""自包含 HTML 渲染——进度仪表盘与交互式职业地图。
+"""控制台中的交互式职业地图渲染。
 
-从 server.py 拆出，供 export_dashboard 与 save_roadmap 共用。
+页面只由本地控制台按需生成（/roadmap），不再落盘为静态 HTML 文件。
 
 转义纪律：任务名/阶段名/JD 等均来自 LLM 生成或用户输入，插入 HTML 前
 必须转义（Python 端 html.escape / JS 端 esc()）；内嵌 JSON 须防御
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from html import escape
-from pathlib import Path
 
 from ..guidance import phase_type_label
 from .profile import get_active_profile_name
@@ -80,254 +79,11 @@ def _plan_mode_info(profile) -> tuple[str, str]:
     )
 
 
-def _research_card_html(profile) -> str:
-    """「市场调研」卡片：样本数、来源状态与报告入口（无调研时给引导）。"""
-    research = getattr(profile, "research", None) or {}
-    if not research.get("report_md"):
-        return (
-            "<p class='goal'>还没有调研报告。</p>"
-            "<p>在建档后调用 research_market → gather_research_data 生成：真实 JD + "
-            "同学历经历，全部带来源链接，落盘到你的 CareerKit 资产夹，随时可查证。</p>"
-        )
-    counts = research.get("counts") or {}
-    fails = [
-        s for s in (research.get("source_status") or []) if s.get("status") == "failed"
-    ]
-    fail_note = ""
-    if fails:
-        names = "、".join(str(s.get("source") or "?") for s in fails[:4])
-        fail_note = f" <span class='meta'>失败源（如实标注）：{escape(names)}</span>"
-    lines = (
-        f"<p><b>岗位样本 {counts.get('jd_samples', 0)} 条 · 案例 {counts.get('cases', 0)} 条</b>"
-        f"{fail_note}</p>"
-        f"<p class='goal'>生成于 {escape(str(research.get('generated_at') or ''))} · "
-        "每条带来源链接，可逐条验证；未获取的内容明确写了「未获取」。</p>"
-    )
-    links = []
-    for label, key in (("阅读版", "report_html"), ("可读全文", "report_md"), ("资产总览", "index")):
-        p = research.get(key)
-        if p:
-            encoded = Path(str(p)).as_uri()
-            links.append(f"<a href='{encoded}'>{label}</a>")
-    if links:
-        lines += f"<p>{' · '.join(links)}</p>"
-    return lines
-
-
-def write_html(html: str, filename: str | None = None, kind: str = "analysis") -> str:
-    """把 HTML 写入用户资产目录（自动分目录 + 刷新 index），返回文件路径。
-
-    filename 缺省取该类型的固定名；kind: research/analysis/roadmap/progress。
-    """
-    profile_name = get_active_profile_name()
-    if filename is None:
-        from ..assets import ASSETS_FILENAME_BY_KIND
-
-        filename = ASSETS_FILENAME_BY_KIND[kind]
-
-    from ..assets import kind_assets_dir, rebuild_index
-
-    target = kind_assets_dir(kind, profile_name) / filename
-    target.write_text(html, encoding="utf-8")
-    rebuild_index()
-    return str(target)
-
-
-def _weekly_card_html(profile) -> str:
-    """「近 7 天」卡片：打卡/活跃/完成任务 + 窗口内投递增量（事实快照）。"""
-    from .review import summarize_period
-
-    facts = summarize_period(profile, days=7)
-    if facts["checkin_count"]:
-        exec_line = (
-            f"打卡 {facts['checkin_count']} 次 · 活跃 {len(facts['active_days'])} 天"
-            f" · 完成 {len(facts['completed'])} 个任务"
-            + (f" · 跳过 {len(facts['skipped'])}" if facts["skipped"] else "")
-        )
-    else:
-        days_since = facts["days_since_checkin"]
-        exec_line = (
-            f"窗口内无打卡（最近一次打卡在 {days_since} 天前）"
-            if days_since is not None
-            else "窗口内无打卡（尚无打卡记录）"
-        )
-    d = facts["funnel_delta"]
-    funnel_line = (
-        f"新投递 {d['new_applications']} · 进初筛 {d['screened']}"
-        f" · 进面试 {d['interviewed']} · offer {d['offers']} · 拒信 {d['rejected']}"
-        if facts["funnel_now"]["total"]
-        else "投递：暂无记录"
-    )
-    return (
-        f"<p><b>{escape(exec_line)}</b></p>"
-        f"<p class='goal'>{escape(funnel_line)}</p>"
-        "<p class='meta'>近 7 天为事实快照，不是考核——完整复盘用 get_weekly_review。</p>"
-    )
-
-
-def _funnel_card_html(profile) -> str:
-    """「求职漏斗」卡片：事件口径的转化事实。"""
-    from .application_tracker import funnel_stats
-
-    stats = funnel_stats(profile)
-    if not stats["total"]:
-        return (
-            "<p class='goal'>暂无投递记录——用户口述「投了」后用 record_application 登记事实。</p>"
-        )
-    rates = stats["rates"]
-
-    def _pct(rate) -> str:
-        return f"{int(rate * 100)}%" if isinstance(rate, (int, float)) else "-"
-
-    line1 = (
-        f"<p><b>投递 {stats['total']} → 过筛 {stats['screened']}（{_pct(rates['screen'])}）"
-        f" → 面试 {stats['interviewed']}（{_pct(rates['interview'])}）"
-        f" → offer {stats['offers']}（{_pct(rates['offer'])}）</b>"
-        + ("" if stats["sample_sufficient"] else " <span class='meta'>（样本不足，仅供参考）</span>")
-        + "</p>"
-    )
-    line2 = f"<p class='goal'>当前活跃 {stats['active']} · 已拒绝 {stats['rejected']} · 转化按事件历史统计（面试后被拒仍计入面试数）</p>"
-    items = []
-    _STATUS_LABELS = {
-        "applied": "已投递", "screening": "进初筛", "interview": "进面试",
-        "offer": "offer", "rejected": "已拒绝", "withdrawn": "已撤回",
-    }
-    for a in reversed(profile.applications[-5:]):
-        label = _STATUS_LABELS.get(a.status, a.status)
-        role = f" · {escape(a.role)}" if a.role else ""
-        items.append(f"<li>{escape(a.company)}{role} <small>{label}</small></li>")
-    if items:
-        line2 += f"<ul class='apps-list'>{''.join(items)}</ul>"
-    return line1 + line2
-
-
-def render_progress_html(profile) -> str:
-    """渲染进度仪表盘 HTML（mode="progress"）。"""
-    total_tasks = len(profile.tasks)
-    completed = sum(1 for t in profile.tasks if t.status == "completed")
-    skipped = sum(1 for t in profile.tasks if t.status == "skipped")
-
-    # 阶段视图
-    roadmap = profile.plan.get("roadmap", profile.plan)
-    phases_html = ""
-    phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
-    for idx, phase in enumerate(phases):
-        phase_id = phase.get("id") or f"phase_{idx + 1}"
-        phase_tasks = [t for t in profile.tasks if t.phase_id == phase_id]
-        done = sum(1 for t in phase_tasks if t.status in _FINISHED_STATUS)
-        pct = int(done / len(phase_tasks) * 100) if phase_tasks else 0
-        audited = "已审计" if phase_id in profile.audited_phases else ""
-        phases_html += (
-            f'<div class="phase"><div class="phase-head"><span>{escape(str(phase.get("name", phase_id)))}</span>'
-            f'<span>{done}/{len(phase_tasks)}{audited}</span></div>'
-            f'<div class="bar"><div class="fill" style="width:{pct}%"></div></div>'
-            f'<p class="goal">{escape(str(phase.get("goal", "")))}</p></div>'
-        )
-
-    # 当前阶段任务
-    current_html = "<p>暂无任务。</p>"
-    open_tasks = [t for t in profile.tasks if t.status not in _FINISHED_STATUS]
-    if open_tasks:
-        items = "".join(
-            f"<li>{escape(t.name)}{f' <small>({escape(t.phase_id)})</small>' if t.phase_id else ''}</li>"
-            for t in open_tasks[:8]
-        )
-        current_html = f"<ul>{items}</ul>"
-
-    # 能力证据
-    evidence = profile.have.get("capability_evidence", [])
-    ev_parts = []
-    for e in evidence[-10:]:
-        if not isinstance(e, dict):
-            continue
-        task = escape(str(e.get("task", "")))
-        notes = f" — {escape(str(e['notes']))}" if e.get("notes") else ""
-        ev_parts.append(f"<li><b>{task}</b>{notes}</li>")
-    evidence_items = "".join(ev_parts) or "<li>暂无——完成任务打卡后自动沉淀</li>"
-    evidence_html = f"<ul>{evidence_items}</ul>"
-
-    # 调整历史
-    adj_items = "".join(
-        f"<li><b>{escape(a.timestamp[:10])}</b> {escape(a.reason or a.trigger)}</li>"
-        for a in reversed(profile.adjustments[-5:])
-    ) or "<li>暂无调整记录</li>"
-    adjustments_html = f"<ul>{adj_items}</ul>"
-
-    weekly_html = _weekly_card_html(profile)
-    funnel_html = _funnel_card_html(profile)
-    research_html = _research_card_html(profile)
-
-    overall_pct = int(completed / total_tasks * 100) if total_tasks else 0
-
-    current = resolve_current_phase(profile)
-    current_phase_name = current["phase_name"] if current else ""
-    summary = f"{len(phases)} 个阶段 · {completed}/{total_tasks} 个任务"
-    if current_phase_name:
-        summary += f" · 当前：{current_phase_name}"
-
-    html = f"""<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="career-kit-summary" content="{escape(summary)}">
-<title>Career Kit 进度仪表盘</title>
-<style>
-body {{ font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-       max-width: 760px; margin: 0 auto; padding: 24px; color: #222; background: #fafafa; }}
-h1 {{ font-size: 22px; }} h2 {{ font-size: 17px; border-bottom: 2px solid #4a90d9; padding-bottom: 4px; }}
-.home {{ color: #4a90d9; text-decoration: none; font-size: 13px; }}
-.home:hover {{ text-decoration: underline; }}
-.card {{ background: #fff; border: 1px solid #e3e3e3; border-radius: 10px; padding: 16px; margin-bottom: 16px; }}
-.bar {{ background: #eee; border-radius: 6px; height: 12px; overflow: hidden; }}
-.fill {{ background: linear-gradient(90deg,#4a90d9,#67b26f); height: 100%; }}
-.phase {{ margin-bottom: 14px; }}
-.phase-head {{ display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }}
-.goal {{ color: #666; font-size: 13px; margin: 4px 0 0; }}
-small, .meta {{ color: #999; font-size: 12px; }}
-ul {{ padding-left: 20px; }} li {{ margin: 4px 0; font-size: 14px; }}
-.overall {{ display: flex; align-items: center; gap: 12px; }}
-.overall .num {{ font-size: 30px; font-weight: 700; color: #4a90d9; }}
-</style>
-</head>
-<body>
-<p><a class="home" href="../../index.html">← 返回资产中心</a></p>
-<h1>Career Kit 进度仪表盘 <span class="meta">生成于 {datetime.now().strftime("%Y-%m-%d %H:%M")} · 快照 v{profile.version}</span></h1>
-
-<div class="card overall"><span class="num">{overall_pct}%</span>
-  <div style="flex:1"><div class="bar"><div class="fill" style="width:{overall_pct}%"></div></div>
-  <p class="goal">共 {total_tasks} 个任务 · 完成 {completed} · 跳过 {skipped} · 目标：{escape(str(profile.want.get('target_role', '未设定')))}</p></div>
-</div>
-
-<div class="card"><h2>阶段进度（顺序推进，节奏自定）</h2>
-{phases_html or '<p>尚未生成路线图。</p>'}</div>
-
-<div class="card"><h2>接下来做</h2>{current_html}</div>
-
-<div class="card"><h2>近 7 天</h2>{weekly_html}</div>
-
-<div class="card"><h2>市场调研（来源真实）</h2>{research_html}</div>
-
-<div class="card"><h2>求职漏斗</h2>{funnel_html}</div>
-
-<div class="card"><h2>能力证据（来自打卡沉淀）</h2>{evidence_html}</div>
-
-<div class="card"><h2>调整历史</h2>{adjustments_html}</div>
-
-<p class="meta">顺序归产品，时间归用户 —— Career Kit 不为任务设定时限。</p>
-</body></html>"""
-
-    return html
-
-
 def render_roadmap_map(profile) -> str:
-    """渲染「职业地图」HTML（mode="roadmap"）：完整路线图 + 可交互打卡。
+    """渲染控制台中的「职业地图」页面：完整路线图 + 可交互打卡。
 
-    自包含单文件：双击打开即用，无服务器依赖。
-    - 本地控制台提供时（/roadmap）走 API，打卡直接写档案，刷新不丢；
-    - file:// 离线打开时回退 localStorage，按档案名隔离，但移动目录/换浏览器会丢；
-    - 任务勾选打卡、阶段导航、进度条实时联动；
-    - 支持复制打卡指令与下载 JSON 备份，回传对话后由 checkin_task 同步档案。
+    页面只由本地控制台按需生成（/roadmap），打卡通过 API 直接写档案；
+    不再落盘为静态 HTML 文件。
     """
     import json as _json_lib
 
@@ -340,7 +96,7 @@ def render_roadmap_map(profile) -> str:
         if isinstance(claim_data, dict) and claim_data.get("id"):
             claims_map[str(claim_data["id"])] = claim_data
 
-    # 组装结构化数据（前端渲染 + localStorage 打卡）
+    # 组装结构化数据（前端渲染 + 控制台打卡）
     data = {
         "profile": get_active_profile_name(),
         "start_level": (profile.gap or {}).get("start_level", ""),
@@ -588,7 +344,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 <div class="wrap">
   <header>
     <div>
-      <a class="home" href="../../index.html">← 返回资产中心</a>
+      <a class="home" href="/">← 返回控制台</a>
       <h1>Career Kit 职业地图</h1>
     </div>
     <span class="meta">生成于 {datetime.now().strftime("%Y-%m-%d %H:%M")} · 路线图 v{profile.version}</span>
@@ -612,13 +368,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 
   <div id="cards"></div>
 
-  <div class="actions">
-    <button class="btn" id="export-btn">复制打卡指令</button>
-    <button class="btn" id="download-btn">下载打卡 JSON</button>
-    <button class="btn" id="reset-btn">重置本地打卡</button>
-  </div>
-
-  <p class="footer">顺序归产品，时间归用户。离线打开时打卡存在浏览器 localStorage：移动目录、换浏览器或清理浏览器数据会丢失，建议用 <code>career-kit-serve</code> 控制台打开（直接写档案）。可复制打卡指令回传对话，或下载 JSON 备份。</p>
+  <p class="footer">顺序归产品，时间归用户。在控制台中打卡会直接写入本机档案，刷新后仍然保留。</p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -627,10 +377,7 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 (function () {{
   'use strict';
   var DATA = JSON.parse(document.getElementById('career-data').textContent);
-  var KEY = 'career-kit-checkins-' + DATA.profile;
-  // 由本地控制台提供时走 API（薄客户端）；直接用 file:// 打开时回退 localStorage
-  var API = (window.__CK_API__ && String(window.__CK_API__).indexOf('__CK_') !== 0)
-    ? String(window.__CK_API__).replace(/[/]$/, '') : null;
+  var API = String(window.__CK_API__ || '').replace(/[/]$/, '');
   var TOKEN = window.__CK_TOKEN__ || '';
 
   // HTML 转义：任务名/阶段名/JD 等来自 LLM 与用户输入，拼接进 innerHTML 前必须转义
@@ -640,11 +387,6 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }}
 
-  function loadCheckins() {{
-    try {{ return JSON.parse(localStorage.getItem(KEY) || '{{}}'); }}
-    catch (e) {{ return {{}}; }}
-  }}
-  function saveCheckins(c) {{ localStorage.setItem(KEY, JSON.stringify(c)); }}
   function apiCheckin(id, status, amount) {{
     return fetch(API + '/api/checkin', {{
       method: 'POST',
@@ -656,22 +398,10 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     }});
   }}
 
-  var checkins = API ? {{}} : loadCheckins();
-
-  (function initMode() {{
-    var banner = document.getElementById('mode-banner');
-    if (API) {{
-      banner.className = 'mode-banner online';
-      banner.textContent = '已连接本地档案：打卡直接写入，刷新后仍保留。';
-      var exportBtn = document.getElementById('export-btn');
-      var resetBtn = document.getElementById('reset-btn');
-      if (exportBtn) exportBtn.style.display = 'none';
-      if (resetBtn) resetBtn.style.display = 'none';
-    }} else {{
-      banner.className = 'mode-banner offline';
-      banner.textContent = '离线模式：打卡保存在此浏览器，需导出同步到档案。';
-    }}
-  }})();
+  var checkins = {{}};
+  var banner = document.getElementById('mode-banner');
+  banner.className = 'mode-banner online';
+  banner.textContent = '已连接本地档案：打卡直接写入，刷新后仍保留。';
 
   // 阶段初始状态：服务端已有 completed/skipped 的任务视为已打卡
   var phases = DATA.phases.map(function (ph) {{
@@ -910,30 +640,9 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
 
   // 任务打卡：once checkbox / daily 按钮 / percent 滑块
   function applyCheckin(id, mode, done, amount, isUndo) {{
-    if (API) {{
-      apiCheckin(id, isUndo ? 'pending' : 'completed', isUndo ? 0 : amount)
-        .then(function () {{ location.reload(); }})
-        .catch(function (err) {{ toast(err.message); }});
-      return;
-    }}
-    var updated = false;
-    phases.forEach(function (ph) {{
-      ph.tasks.forEach(function (t) {{
-        if (t.id === id) {{
-          t.state = done ? 'done' : 'open';
-          if (mode === 'daily' && done) t.progress = t.goal || 1;
-          if (mode === 'percent') t.progress = amount;
-          updated = true;
-        }}
-      }});
-    }});
-    if (updated) {{
-      checkins[id] = done ? 'done' : 'open';
-      checkins[id + ':progress'] = (mode === 'daily' || mode === 'percent') ? (amount || 0) : null;
-      saveCheckins(checkins);
-      render();
-      toast(done ? '已打卡：' + id : '已更新进度：' + id);
-    }}
+    apiCheckin(id, isUndo ? 'pending' : 'completed', isUndo ? 0 : amount)
+      .then(function () {{ location.reload(); }})
+      .catch(function (err) {{ toast(err.message); }});
   }}
 
   // click：once 完成勾选（点击任务行切换） / daily 打卡按钮
@@ -991,64 +700,6 @@ h1 {{ font-size: 24px; letter-spacing: .3px; }}
     }}
   }});
 
-  // 导出打卡数据（回传 LLM 同步档案，按打卡方式输出含 amount）
-  document.getElementById('export-btn').addEventListener('click', function () {{
-    var rows = [];
-    phases.forEach(function (ph) {{
-      ph.tasks.forEach(function (t) {{
-        if (t.state === 'done' && !t.__server_done) {{
-          if (t.mode === 'daily') {{
-            rows.push('checkin_task(task_id="' + t.id + '", status="completed", amount=' + (t.goal || 1) + ')');
-          }} else if (t.mode === 'percent') {{
-            rows.push('checkin_task(task_id="' + t.id + '", status="completed", amount=' + (t.progress || 0) + ')');
-          }} else {{
-            rows.push('checkin_task(task_id="' + t.id + '", status="completed")');
-          }}
-        }} else if (t.state !== 'done' && (t.mode === 'daily' || t.mode === 'percent') && t.progress > 0) {{
-          // 部分进度：导出累计打卡
-          rows.push('checkin_task(task_id="' + t.id + '", status="completed", amount=' + (t.progress || 0) + ')');
-        }}
-      }});
-    }});
-    var text = rows.length ? rows.join('\\n') : '（暂无打卡记录）';
-    var pre = document.createElement('textarea');
-    pre.value = text; document.body.appendChild(pre); pre.select();
-    try {{ document.execCommand('copy'); toast('已复制 ' + rows.length + ' 条打卡指令'); }}
-    catch (err) {{ prompt('复制以下打卡指令回传对话：', text); }}
-    pre.remove();
-  }});
-
-  // 下载打卡 JSON 备份（不依赖 localStorage 存活）
-  document.getElementById('download-btn').addEventListener('click', function () {{
-    var payload = {{
-      profile: DATA.profile,
-      exported_at: new Date().toISOString(),
-      source: API ? 'career-kit-serve' : 'localStorage',
-      checkins: checkins
-    }};
-    var blob = new Blob([JSON.stringify(payload, null, 2)], {{ type: 'application/json' }});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'career-kit-checkins-' + (DATA.profile || 'default') + '.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(function () {{ URL.revokeObjectURL(a.href); }}, 1000);
-    toast('已下载打卡 JSON 备份');
-  }});
-
-  // 重置本地打卡
-  document.getElementById('reset-btn').addEventListener('click', function () {{
-    if (!confirm('确认清除本浏览器的打卡记录？（仅本地，不影响档案）')) return;
-    checkins = {{}};
-    phases.forEach(function (ph) {{
-      ph.tasks.forEach(function (t) {{
-        // 只重置用户本地勾选，服务端已完成的（初始 done）保持完成
-        if (t.state === 'done' && !t.__server_done) t.state = 'open';
-      }});
-    }});
-    saveCheckins(checkins); render(); toast('已重置本地打卡');
-  }});
 
   render();
 }})();

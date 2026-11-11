@@ -321,7 +321,6 @@ def test_build_state_alignment_reads_artifacts(temp_profile):
     assert alignment["company_pool"]["not_scrapable"] == ["某厂"]
     assert alignment["evidence"]["counts"]["kept_jobs"] == 3
     assert alignment["evidence"]["confidence"]["jd"] == "medium"
-    assert alignment["evidence"]["report_html"].startswith("/api/asset?path=")
     assert alignment["evidence"]["report_md"].startswith("/api/asset?path=")
     assert alignment["evidence"]["index"].startswith("/api/asset?path=")
     assert alignment["requirement"]["high_frequency_count"] == 1

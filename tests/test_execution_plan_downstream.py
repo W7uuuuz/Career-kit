@@ -563,30 +563,6 @@ def test_get_progress_reflects_alignment_adjustment(applied_workspace: SimpleNam
     assert DIFF_SUMMARY in output
 
 
-def test_export_dashboard_roadmap_contains_execution_phase(
-    applied_workspace: SimpleNamespace,
-) -> None:
-    task_tools.generate_tasks()
-
-    output = task_tools.export_dashboard(mode="roadmap")
-
-    assert "职业地图已生成" in output
-    path = Path(output.split("：", 1)[1].splitlines()[0].strip())
-    assert path.exists()
-
-    html = path.read_text(encoding="utf-8")
-    assert "RAG 项目" in html
-    assert "投递实习" in html
-    assert "实现 RAG 检索" in html
-    assert "旧项目任务" not in html
-
-    embedded = html.split('id="career-data">')[1].split("</script>")[0]
-    data = json.loads(embedded)
-    assert [phase["name"] for phase in data["phases"]] == ["RAG 项目", "投递实习"]
-    current = next(phase for phase in data["phases"] if phase["is_current"])
-    assert current["id"] == "phase_1"
-
-
 def test_workflow_status_enters_execution(applied_workspace: SimpleNamespace) -> None:
     task_tools.generate_tasks()
 

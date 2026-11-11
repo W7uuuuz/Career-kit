@@ -190,7 +190,7 @@ def test_enrich_with_detail_drops_rows_without_detail(monkeypatch):
 
 
 def test_report_keeps_full_text_and_renders_expandable(temp_profile):
-    from src.research_report import build_report, render_html, render_markdown
+    from src.research_report import build_report, render_markdown
 
     profile = profile_module.load_profile()
     description = _long_text(300)
@@ -220,10 +220,7 @@ def test_report_keeps_full_text_and_renders_expandable(temp_profile):
     assert "岗位详情（完整 JD" in md
     assert description[:80] in md
     assert "**任职要求**" in md
-
-    html = render_html(report)
-    assert "<details" in html and "岗位描述" in html
-    assert description in html
+    assert description in md
 
 
 def test_gather_surfaces_dropped_no_detail(temp_profile, monkeypatch):

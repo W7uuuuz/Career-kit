@@ -9,11 +9,6 @@ from .tools.boss_tools import boss_login
 from .tools.case_tools import search_cases
 from .tools.claim_tools import list_claims, record_claim
 from .tools.company_selection_tools import select_target_companies
-from .tools.dashboard import (
-    render_progress_html as _render_progress_html,
-    render_roadmap_map as _render_roadmap_map,
-    write_html as _write_html,
-)
 from .tools.data_tools import (
     fetch_company_jobs,
     fetch_jd_detail,
@@ -48,7 +43,6 @@ from .tools.task_tools import (
     apply_insight,
     checkin_task,
     detail_current_phase,
-    export_dashboard,
     generate_tasks,
     get_next_tasks,
     get_progress,

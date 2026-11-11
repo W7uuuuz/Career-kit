@@ -1,8 +1,4 @@
-"""用户资产目录（src/assets.py）契约测试。
-
-用户资产与程序数据彻底分离：环境变量优先、中文子目录、固定名 vs 日期留档、
-index.html 总入口幂等重建、说明.md 首建。
-"""
+"""用户资产目录（src/assets.py）的约束。"""
 
 from __future__ import annotations
 
@@ -16,7 +12,7 @@ import src.assets as assets
 
 
 def test_sanitize_name_rules():
-    """非法字符/保留名/空与 default 的归一。"""
+    """非法字符/超长/default 的归一。"""
     assert assets.sanitize_name(None) == assets.DEFAULT_SANITIZED
     assert assets.sanitize_name("") == assets.DEFAULT_SANITIZED
     assert assets.sanitize_name("default") == assets.DEFAULT_SANITIZED
@@ -25,7 +21,7 @@ def test_sanitize_name_rules():
     assert assets.sanitize_name(bad) == "a_b_c_d_e_f_g_h_i_j"
     assert assets.sanitize_name("CON") != "CON"  # Windows 保留名加后缀
     assert assets.sanitize_name("x" * 100) == "x" * 40  # 截断
-    assert assets.sanitize_name(".hidden. ") == "hidden"  # 去首尾点空白
+    assert assets.sanitize_name(".hidden. ") == "hidden"  # 去除首尾空格
 
 
 def test_get_assets_root_env_priority(monkeypatch, tmp_path):
@@ -36,137 +32,37 @@ def test_get_assets_root_env_priority(monkeypatch, tmp_path):
     assert assets.get_assets_root() == Path.home() / "CareerKit"
 
 
-def test_ensure_assets_root_creates_readme(tmp_path):
-    """首次使用生成 说明.md（用户打开文件夹能看到这是什么）。"""
+def test_ensure_assets_root_creates_readme():
+    """首次使用写说明.md，引导用户通过桌面快捷方式查看。"""
     root = assets.ensure_assets_root()
-    try:
-        assert root.exists()
-        readme = root / assets.README_FILENAME
-        assert readme.exists()
-        text = readme.read_text(encoding="utf-8")
-        assert "index.html" in text and "调研报告" in text
-        assert "规划链路" in text and "基线方案" in text and "执行版" in text
-        import os
-
-        monkeypatch_env = os.environ.get("CAREER_KIT_ASSETS_DIR")
-        assert monkeypatch_env, "说明.md 应写在测试沙箱资产根"
-    finally:
-        import shutil
-
-        shutil.rmtree(root, ignore_errors=True)
+    readme = root / assets.README_FILENAME
+    assert readme.exists()
+    text = readme.read_text(encoding="utf-8-sig")
+    assert "Career Kit" in text and "快捷方式" in text
+    assert "index.html" not in text
 
 
 def test_kind_assets_dir_layout(tmp_path, monkeypatch):
-    """四类产出落各自中文子目录；档案名 default → 默认档案。"""
+    """中文子目录：research / evidence / applications。"""
     monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
     d = assets.kind_assets_dir("research", "default")
     assert d == tmp_path / "CareerKit" / assets.DEFAULT_SANITIZED / "调研报告"
-    d = assets.kind_assets_dir("roadmap", "大厂冲刺")
-    assert d == tmp_path / "CareerKit" / "大厂冲刺" / "路线图"
+    d = assets.kind_assets_dir("evidence", "大厂冲刺")
+    assert d == tmp_path / "CareerKit" / "大厂冲刺" / "证据池"
+    try:
+        assets.kind_assets_dir("roadmap", "default")
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("已删除的静态路线图资产类型不应再存在")
 
 
-def test_fixed_vs_dated_filenames(tmp_path, monkeypatch):
-    """路线图/仪表盘固定名（保 localStorage），调研/差距带日期留档。"""
+def test_next_asset_stem_and_write(tmp_path, monkeypatch):
+    """文件名带日期与时分；写入资产目录。"""
     monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
-    assert assets.ASSETS_FILENAME_BY_KIND["roadmap"] == assets.ROADMAP_FILENAME
-    assert assets.ASSETS_FILENAME_BY_KIND["progress"] == assets.PROGRESS_FILENAME
     stem = assets.next_asset_stem("AI Agent")
     assert "AI_Agent" in stem.replace("-", "_") or "AI Agent" in stem
-    assert len(stem) >= len("2000-01-01_")  # 日期前缀存在
-
-
-def test_write_and_collect_index(tmp_path, monkeypatch):
-    """write_asset_text 后 index 刷新出卡片；空态有引导。"""
-    monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
-    root = assets.ensure_assets_root()
-
-    index = assets.rebuild_index()
-    assert index.exists()
-    text = index.read_text(encoding="utf-8")
-    assert "还没有产出" in text or "会出现在这里" in text
-
-    stem = "2026-10-26_AIAgent"
-    assets.write_asset_text("research", "默认档案", f"{stem}.html", "<p>报告</p>")
-    assets.write_asset_text("research", "默认档案", f"{stem}.md", "# 报告")
-    assets.write_asset_text(
-        "research",
-        "默认档案",
-        f"{stem}.json",
-        '{"direction": "AI Agent", "counts": {"jd_samples": 8, "cases": 5, "source_fail": 1}}',
-    )
-
-    html_path = assets.kind_assets_dir("research", "默认档案") / f"{stem}.html"
-    md_path = assets.kind_assets_dir("research", "默认档案") / f"{stem}.md"
-    assert html_path.exists() and md_path.exists()
-    text = assets.rebuild_index().read_text(encoding="utf-8")
-    assert "AI Agent" in text      # 伴生 json 的 direction 成为卡片标题
-    assert "8 条岗位" in text       # counts 数字进卡片
-    assert "1 个源失败" in text      # 失败源数量如实展示
-    assert stem in text             # 无 direction 时回退文件名主干
-    # 同一份产出（html+md+json）只出一张卡片，且卡片内不再嵌套 <a>
-    assert text.count('class="card-main"') == 1
-    assert '<a class="card kind-' not in text
-
-    # 按档案分组：新建另一个档案目录后仍能全部收录
-    assets.write_asset_text("roadmap", "大厂冲刺", assets.ROADMAP_FILENAME, "<p>别的档案</p>")
-    text = assets.rebuild_index().read_text(encoding="utf-8")
-    assert "大厂冲刺" in text and "路线图" in text
-
-    import shutil
-
-    shutil.rmtree(root, ignore_errors=True)
-
-
-def test_index_renders_plan_chain_and_next_steps(tmp_path, monkeypatch):
-    """index 按规划链路展示六步；缺失资产只给下一步，不造链接。"""
-    monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
-    root = assets.ensure_assets_root()
-
-    roadmap_html = (
-        '<html><head><meta name="career-kit-plan-mode" content="execution">'
-        "</head><body>路线图</body></html>"
-    )
-    assets.write_asset_text("roadmap", "默认档案", assets.ROADMAP_FILENAME, roadmap_html)
-    stem = "2026-11-08_AI_Agent"
-    assets.write_asset_text("evidence", "默认档案", f"{stem}.html", "<p>证据</p>")
-    assets.write_asset_text(
-        "evidence",
-        "默认档案",
-        f"{stem}.json",
-        '{"direction": "AI Agent", "counts": {"companies_requested": 6, '
-        '"jd_samples": 9, "cases": 4}}',
-    )
-
-    text = assets.rebuild_index().read_text(encoding="utf-8")
-
-    assert "规划链路" in text
-    for label in assets.PLAN_CHAIN_LABELS:
-        assert label in text
-    assert "执行版路线图：已按确认企业与 JD 需求校准" in text
-    assert "证据池覆盖目标企业 6 家" in text
-    assert "已采集 JD 9 条 · 面经 4 条" in text
-    assert "先做企业适配并生成投递清单" in text
-    # 投递清单缺失：只能提示下一步，不能凭空出现投递清单文件入口
-    assert "投递清单/" not in text
-
-
-    import shutil
-
-    shutil.rmtree(root, ignore_errors=True)
-
-
-def test_index_marks_baseline_until_alignment(tmp_path, monkeypatch):
-    """没有执行标记的路线图按基线方案展示，并提示下一步校准。"""
-    monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
-    root = assets.ensure_assets_root()
-    assets.write_asset_text("roadmap", "默认档案", assets.ROADMAP_FILENAME, "<html></html>")
-
-    text = assets.rebuild_index().read_text(encoding="utf-8")
-
-    assert "路线图已生成" in text
-    assert "当前是基线方案，下一步按企业需求校准执行版" in text
-    assert "执行版路线图：已按确认企业与 JD 需求校准" not in text
-
-    import shutil
-
-    shutil.rmtree(root, ignore_errors=True)
+    assert len(stem) >= len("2000-01-01_")
+    first = assets.write_asset_text("research", "默认档案", f"{stem}.md", "# 报告")
+    assert first.exists()
+    assert first.read_text(encoding="utf-8") == "# 报告"

@@ -4,15 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..assets import INDEX_FILENAME, get_assets_root, profile_display_name
+from ..assets import profile_display_name
 from ..core.state import State, StateSnapshot, resolve_state
 from ..guidance import MAINTENANCE_CLOSING, guide_for
 from ..mcp_app import mcp
-from .dashboard import (
-    render_progress_html as _render_progress_html,
-    render_roadmap_map as _render_roadmap_map,
-    write_html as _write_html,
-)
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import get_active_profile_name, load_profile, save_profile
@@ -233,23 +228,10 @@ def generate_tasks() -> str:
     except Exception as exc:  # noqa: BLE001 - sync 失败不阻断主工具
         sync_warning = _sync_failure_warning("sync_execution_state", exc)
 
-    # 任务生成后自动刷新路线图 HTML：避免用户打开旧快照看到「没有可打卡任务」（P1-4）
-    map_path = ""
-    map_error = ""
-    try:
-        map_html = _render_roadmap_map(profile)
-        map_path = _write_html(map_html, kind="roadmap")
-    except Exception as exc:  # noqa: BLE001 - 交付失败如实告知
-        map_error = str(exc)
-
     migrated_note = (
         f"已保留 {preserved} 个任务的打卡状态。\n" if preserved else ""
     )
-    map_note = (
-        f"路线图 HTML 已同步刷新，现在可以打卡：{map_path}\n"
-        if map_path
-        else f"路线图 HTML 刷新失败：{map_error}——可稍后用 export_dashboard(mode=\"roadmap\") 重试。\n"
-    )
+    map_note = "查看与打卡：双击桌面上的「Career Kit」快捷方式，在控制台打开当前路线图。\n"
     sync_note = f"{sync_warning}\n" if sync_warning else ""
     return _json({
         "message": (
@@ -881,7 +863,7 @@ def get_progress() -> str:
         lines.append(MAINTENANCE_CLOSING)
         lines.append("")
 
-    lines.append("下一步：继续执行用 get_next_tasks；需要分享进度用 export_dashboard。")
+    lines.append("下一步：继续执行用 get_next_tasks；查看进度请双击桌面上的「Career Kit」快捷方式。")
     return "\n".join(lines)
 
 
@@ -1177,9 +1159,7 @@ def get_workflow_status() -> str:
             f"- 生成于 {research.get('generated_at', '')} · "
             f"岗位样本 {counts.get('jd_samples', 0)} 条 · 案例 {counts.get('cases', 0)} 条"
         )
-        report_html = research.get("report_html") or research.get("report_md") or ""
-        lines.append(f"- 报告：{report_html}")
-        lines.append(f"- 资产总览：{research.get('index') or (get_assets_root() / INDEX_FILENAME)}")
+        lines.append(f"- 报告：{research.get('report_md') or ''}")
         lines.append("")
     if profile.plan.get("roadmap"):
         lines.append("### 企业适配（Core v2）")
@@ -1209,66 +1189,3 @@ def get_workflow_status() -> str:
     lines.append("节奏原则：顺序归产品，时间归用户——不为任务设定时限。")
 
     return "\n".join(lines)
-
-
-@mcp.tool()
-def export_dashboard(mode: str = "progress") -> str:
-    """生成自包含 HTML（双击即可在浏览器查看，无需服务器）。
-
-    Args:
-        mode: 视图模式
-            - "progress"（默认）：阶段进度仪表盘——总体/阶段进度、当前任务、能力证据、调整历史
-            - "roadmap"：职业地图——完整路线图（阶段/KPI/里程碑/任务/完成标准/简历价值/
-              目标公司/推荐理由/JD 依据与占位徽标）+ 每阶段执行进度 + 当前阶段高亮；
-              执行中随时重新生成，永远是「最新地图」
-
-    何时调用：
-    - 用户想直观查看整体进度时调用（progress）
-    - 用户想要可携带的路线图全貌时调用（roadmap）；save_roadmap 定稿时也会自动生成一份
-    """
-    profile = load_profile()
-
-    if mode == "roadmap":
-        roadmap = profile.plan.get("roadmap", profile.plan) if isinstance(profile.plan, dict) else {}
-        phases = roadmap.get("phases", []) if isinstance(roadmap, dict) else []
-        if not phases:
-            return error_response(
-                "MISSING_DATA",
-                "档案里还没有路线图——没有规划却导出「职业地图」只会生成 0 阶段 0 任务的空壳，已拒绝。",
-                {
-                    "hint": "先走 generate_roadmap → save_roadmap 生成路线图；"
-                            "查看进度可用 export_dashboard(mode=\"progress\")",
-                },
-            )
-        html = _render_roadmap_map(profile)
-        out_path = _write_html(html, kind="roadmap")
-        index_hint = f"{get_assets_root() / INDEX_FILENAME}"
-        return (
-            f"职业地图已生成：{out_path}\n\n"
-            "用浏览器打开即可查看。打卡有两种方式：\n"
-            "- 推荐：运行 career-kit-serve --open，从控制台打开「职业地图」——直接写档案，刷新不丢；\n"
-            "- 离线：直接双击 HTML，打卡存在浏览器 localStorage；移动目录、换浏览器或清缓存会丢，"
-            "可用「下载打卡 JSON」备份，或「复制打卡指令」回传对话。\n"
-            "- 顶部 tab 切换阶段；打卡后需回传时由 LLM 调用 checkin_task 同步到档案。\n"
-            f"资产总览：双击 {index_hint}（调研报告/路线图/仪表盘都在里面）。\n"
-            "下一步：用户回传打卡数据后调用 checkin_task 同步到档案。"
-        )
-
-    if mode != "progress":
-        return error_response(
-            "INVALID_PARAM",
-            f"mode 必须是 progress/roadmap，收到的是「{mode}」",
-            {"received": mode, "allowed": ["progress", "roadmap"]},
-        )
-
-    html = _render_progress_html(profile)
-    out_path = _write_html(html, kind="progress")
-    index_hint = f"{get_assets_root() / INDEX_FILENAME}"
-
-    return (
-        f"仪表盘已生成：{out_path}\n\n"
-        "用浏览器打开即可查看。数据为生成时刻的快照，进度更新后可重新导出。\n"
-        f"资产总览：双击 {index_hint}（调研报告/路线图/仪表盘都在里面）。\n"
-        "如需日程表，请直接在对话中为用户编写 markdown/HTML 日程文档（时间由用户自己填）。\n"
-        "下一步：继续执行用 get_next_tasks，更新进度后用 export_dashboard 重新导出。"
-    )

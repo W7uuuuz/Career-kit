@@ -36,10 +36,10 @@
 |------|------|------|
 | core | 全链路、简历/摸排、重启续跑、多档案、守卫与恢复 | 无 |
 | live | 真实招聘站点搜索/详情/知识库落盘 | 网络 |
-| browser | HTML 打开、勾选打卡、localStorage、重置 | Chromium |
+| browser | 控制台页面打开、勾选打卡、SSE 刷新 | Chromium |
 | llm | Agent 选工具、守规则、最终档案状态 | LLM API |
 
-核心套件覆盖主要 52 个工具路径；`fetch_company_jobs` / `fetch_jd_detail` 由 live 套件覆盖。
+核心套件覆盖主要 51 个工具路径；`fetch_company_jobs` / `fetch_jd_detail` 由 live 套件覆盖。
 
 ## 产物
 

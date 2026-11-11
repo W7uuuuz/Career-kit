@@ -1,8 +1,8 @@
-"""市场调研报告——把批量抓取的真实数据渲染成用户可读的三件套并落盘。
+"""市场调研报告——把批量抓取的真实数据渲染成用户可读的报告并落盘。
 
 纪律：报告正文 100% 代码渲染自抓取数据，不经 LLM 之手——「来源真实」的硬保证。
-落盘位置走 assets.py（用户资产目录）：调研报告/<日期_方向>.{md,html,json}，
-同时刷新档案的 research 字段与 index.html 资产中心。
+落盘位置走 assets.py（用户资产目录）：调研报告/<日期_方向>.{md,json}，
+同时刷新档案的 research 字段。
 """
 
 from __future__ import annotations
@@ -11,15 +11,10 @@ import json
 import re
 from collections import Counter
 from datetime import datetime
-from html import escape
 from pathlib import Path
 from typing import Any
 
-from .assets import (
-    next_asset_stem,
-    rebuild_index,
-    write_asset_text,
-)
+from .assets import next_asset_stem, write_asset_text
 from .research_digest import build_digest, parse_salary
 from .tools.profile import get_active_profile_name, load_profile, save_profile
 
@@ -1018,8 +1013,8 @@ def render_markdown(report: dict[str, Any]) -> str:  # noqa: C901
         counts_text += f"；另有 {counts['jd_from_cases']} 条本地 JD 归入企业要求，未计案例"
     lines.append(
         f"---\n样本统计：{counts_text}。原始数据在同名 .json；本报告及全部来源"
-        "可在资产中心（index.html）直达。本报告由抓取数据代码渲染生成，"
-        "未使用 AI 记忆编造。"
+        "可在桌面「Career Kit」快捷方式打开的控制台中查看。"
+        "本报告由抓取数据代码渲染生成，未使用 AI 记忆编造。"
     )
     return "\n".join(lines)
 
@@ -1032,199 +1027,6 @@ def _md_block(text: str) -> str:
     """多行正文 → markdown 硬换行块（保留完整内容，不裁剪）。"""
     lines = [line.rstrip() for line in str(text).strip().splitlines() if line.strip()]
     return "  \n".join(lines)
-
-
-def _html_text(text: Any) -> str:
-    """多行正文 → 转义 + <br>（完整内容，不裁剪）。"""
-    escaped = escape(str(text or "")).strip()
-    return escaped.replace("\r\n", "\n").replace("\n", "<br>")
-
-
-def render_html(report: dict[str, Any]) -> str:
-    """报告 HTML 阅读版（同 dashboard 视觉风格；底部返回资产中心）。"""
-    ctx = report.get("context") or {}
-    counts = report.get("counts") or {}
-    jds = report.get("jd_samples") or []
-    cases = report.get("cases") or []
-    parts: list[str] = []
-    parts.append(
-        f"<h1>{escape('市场调研报告 · ' + (report.get('direction') or ctx.get('goal') or '未命名方向'))}</h1>"
-        f'<p class="sub">生成于 {escape(str(report.get("generated_at","")))} ｜ '
-        "数据来自实时抓取与本地知识库，每条附来源；未获取到的内容明确标注，"
-        "不使用 AI 记忆编造。</p>"
-    )
-
-    ctx_bits = " ｜ ".join(
-        escape(str(v)) for v in (ctx.get("goal"), ctx.get("city"), ctx.get("education")) if v
-    )
-    if ctx_bits:
-        parts.append(f"<h2>调研上下文</h2><p>{ctx_bits}</p>")
-
-    parts.append(f"<h2>一、真实岗位样本（{len(jds)} 条）</h2>")
-    if jds:
-        rows = []
-        for j in jds:
-            source_inner = (
-                f'<a href="{escape(j["url"], quote=True)}">{escape(str(j.get("source") or "来源"))}</a>'
-                if j.get("url")
-                else escape(str(j.get("source") or ""))
-            )
-            preview = j.get("description") or j.get("requirements") or j.get("snippet") or ""
-            rows.append(
-                "<tr>"
-                f"<td>{escape(str(j.get('company','')))}</td>"
-                f"<td>{escape(str(j.get('title','')))}</td>"
-                f"<td>{escape(str(j.get('location')))}</td>"
-                f"<td>{escape(str(j.get('salary') or '未获取'))}</td>"
-                f"<td>{escape(_preview(preview, 120))}</td>"
-                f"<td>{source_inner}</td>"
-                f"<td>{escape(str(j.get('fetched_at')))}</td>"
-                "</tr>"
-            )
-        parts.append(
-            "<table><tr><th>公司</th><th>岗位</th><th>地点</th><th>薪资</th>"
-            f"<th>摘要（预览）</th><th>来源</th><th>抓取</th></tr>{''.join(rows)}</table>"
-        )
-        salary_line = _salary_render_line(report.get("salary") or {})
-        if salary_line:
-            parts.append(f'<p class="compact">{escape(salary_line)}</p>')
-        parts.append("<h2>岗位详情（完整 JD，点击展开）</h2>")
-        for idx, j in enumerate(jds, 1):
-            description = str(j.get("description") or "").strip()
-            requirements = str(j.get("requirements") or "").strip()
-            summary_bits = [
-                str(bits) for bits in (
-                    j.get("location"), j.get("salary") or "薪资未获取",
-                    j.get("source"), j.get("fetched_at"),
-                ) if str(bits or "").strip()
-            ]
-            link = (
-                f'<a href="{escape(str(j.get("url")), quote=True)}">查看原始岗位页</a>'
-                if j.get("url")
-                else ""
-            )
-            body_parts = []
-            if description:
-                body_parts.append(
-                    "<p><strong>岗位描述</strong>："
-                    f"{_html_text(description)}</p>"
-                )
-            if requirements:
-                body_parts.append(
-                    "<p><strong>任职要求</strong>："
-                    f"{_html_text(requirements)}</p>"
-                )
-            if not body_parts:
-                body_parts.append('<p class="note">详情未获取——见「数据缺口」。</p>')
-            parts.append(
-                "<details class=\"jd\">"
-                f"<summary><strong>{idx}. {escape(str(j.get('company','')))} · "
-                f"{escape(str(j.get('title','')))}</strong>"
-                f"<span class=\"compact\">　{'｜'.join(escape(bits) for bits in summary_bits)}</span>"
-                "</summary>"
-                + "".join(body_parts)
-                + (f'<p class="compact">{link}</p>' if link else "")
-                + "</details>"
-            )
-    else:
-        parts.append('<p class="note">未获取到岗位样本（见「数据缺口」）——不猜测。</p>')
-
-    parts.append(
-        f"<h2>二、同背景经历（{len(cases)} 条）</h2>"
-        + (""
-           if cases
-           else '<p class="note">未获取到同背景案例——不硬凑。</p>')
-    )
-    for c in cases:
-        tag_bits = [str(x) for x in (c.get("education_tag"), c.get("year")) if x]
-        tag = f"（{escape(' · '.join(tag_bits))}）" if tag_bits else ""
-        hl = "；".join(str(h) for h in (c.get("highlights") or []))
-        source_inner = (
-            f'<a href="{escape(str(c.get("url", "")), quote=True)}">{escape(str(c.get("source") or "来源"))}</a>'
-            if c.get("url")
-            else escape(str(c.get("source") or ""))
-        )
-        salary = f"｜{escape(str(c['salary']))}" if c.get("salary") else ""
-        hits = c.get("hit_terms") or []
-        hits_html = (
-            f'<span class="compact">｜命中：{escape("、".join(str(h) for h in hits))}</span>'
-            if hits
-            else ""
-        )
-        parts.append(
-            f"<p>- <strong>{escape(str(c.get('title','')))}</strong>{tag}"
-            f"｜{source_inner}{salary}{hits_html}"
-            + (f'<span class="compact">｜{escape(str(c["date"]))}</span>' if c.get("date") else "")
-            + (f'<br><span class="compact">要点：{escape(hl)}</span>' if hl else "")
-            + "</p>"
-        )
-
-    parts.append("<h2>三、来源状态面板（失败也如实展示）</h2>")
-    states = report.get("source_states") or _source_final_states(
-        report.get("source_status") or []
-    )
-    state_counts = Counter(str(s.get("status") or "empty") for s in states)
-    parts.append(
-        f'<p class="compact">来源维度（每源只计一个最终状态）：'
-        f"成功 {state_counts.get('ok', 0)} · 失败 {state_counts.get('failed', 0)} · "
-        f"无结果 {state_counts.get('empty', 0)}；"
-        f"条目维度：过滤 {escape(str(counts.get('filtered_irrelevant', 0)))} 条、"
-        f"剔除无详情 {escape(str(counts.get('dropped_no_detail', 0)))} 条。</p>"
-    )
-    srows = []
-    for s in report.get("source_status") or []:
-        status = s.get("status")
-        cls = "ok" if status == "ok" else ("fail" if status == "failed" else "")
-        status_text = {"ok": "成功", "failed": "失败", "empty": "无结果"}.get(
-            status, str(status or "")
-        )
-        note = escape(str(s.get("error") or "—"))
-        if s.get("attempts", 1) > 1:
-            note += f"（重试后成功/结束，共 {escape(str(s['attempts']))} 次）"
-        if s.get("dropped_no_detail"):
-            note += f"（剔除 {escape(str(s['dropped_no_detail']))} 条无详情岗位）"
-        if s.get("filtered_irrelevant"):
-            note += f"（过滤 {escape(str(s['filtered_irrelevant']))} 条方向不匹配）"
-        if s.get("list_only"):
-            note += f"（{escape(str(s['list_only']))} 条仅列表数据，未抓 JD 详情）"
-        srows.append(
-            "<tr>"
-            f"<td>{escape(str(s.get('source','')))}</td>"
-            f'<td><span class="pill {cls}">{escape(status_text)}</span></td>'
-            f"<td>{escape(str(s.get('count',0)))}</td>"
-            f"<td>{escape(str(s.get('elapsed',0)))}</td>"
-            f"<td>{note}</td>"
-            "</tr>"
-        )
-    parts.append(
-        "<table><tr><th>来源</th><th>状态</th><th>条数</th><th>耗时(秒)</th>"
-        f"<th>备注</th></tr>{''.join(srows)}</table>"
-    )
-
-    gaps = report.get("gaps") or []
-    parts.append("<h2>四、数据缺口与建议</h2>")
-    if gaps:
-        gap_items = "".join(
-            f"<li><strong>{escape(str(g.get('missing','')))}</strong>"
-            f"（{escape(str(g.get('reason','')))}）——{escape(str(g.get('suggestion','')))}</li>"
-            for g in gaps
-        )
-        parts.append(f"<ul>{gap_items}</ul>")
-    else:
-        parts.append("<p>本次调研没有明显缺口。</p>")
-
-    parts.append(
-        "<footer>本报告由抓取数据代码渲染生成，未使用 AI 记忆编造；"
-        '原始数据在同名 .json。｜ <a href="../../index.html">← 返回资产中心</a></footer>'
-    )
-    return (
-        '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        "<title>Career Kit 市场调研报告</title>"
-        f"<style>{_REPORT_CSS}</style></head><body><main>"
-        + "".join(parts)
-        + "</main></body></html>"
-    )
 
 
 def _sample_key(item: dict[str, Any]) -> tuple[str, ...]:
@@ -1425,10 +1227,10 @@ def save_report(
     *,
     profile_name: str | None = None,
 ) -> dict[str, str]:
-    """把报告三件套写入用户资产目录并刷新档案与 index，返回路径映射。
+    """把报告写入用户资产目录并刷新档案，返回路径映射。
 
     profile.research 契约（供分析步引用，勿轻易变更字段名）：
-    {generated_at, direction, report_md, report_html, report_json, index,
+    {generated_at, direction, report_md, report_json,
      jd_samples, cases, source_status, gaps, counts}
     """
     name = profile_name if profile_name is not None else get_active_profile_name()
@@ -1459,13 +1261,10 @@ def save_report(
         profile_name=name,
     )
     md_text = render_markdown(report)
-    html_text = render_html(report)
     json_text = json.dumps(report, ensure_ascii=False, indent=1)
 
     md_path = write_asset_text("research", name, f"{stem}.md", md_text, encoding="utf-8-sig")
-    html_path = write_asset_text("research", name, f"{stem}.html", html_text)
     json_path = write_asset_text("research", name, f"{stem}.json", json_text)
-    index_path = rebuild_index()
 
     payload = {
         "generated_at": report.get("generated_at"),
@@ -1473,9 +1272,7 @@ def save_report(
         "fingerprint": report.get("fingerprint") or "",
         "round_key": report.get("round_key") or "",
         "report_md": str(md_path),
-        "report_html": str(html_path),
         "report_json": str(json_path),
-        "index": str(index_path),
         "jd_samples": report.get("jd_samples") or [],
         "cases": report.get("cases") or [],
         "source_status": report.get("source_status") or [],
@@ -1497,7 +1294,5 @@ def save_report(
 
     return {
         "md": str(md_path),
-        "html": str(html_path),
         "json": str(json_path),
-        "index": str(index_path),
     }

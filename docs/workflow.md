@@ -104,7 +104,7 @@ evidence / requirement / execution_plan / execution / applications / review`；
 6. 按需读取全文：read_research_details(ids=..., kind="jd"/"case")，读取已落盘内容，零网络请求
 ```
 
-**产物**：`MarketBaseline`（`mb_`）+ `~/CareerKit/<档案>/调研报告/<日期_方向>.{md,html,json}`。
+**产物**：`MarketBaseline`（`mb_`）+ `~/CareerKit/<档案>/调研报告/<日期_方向>.{md,json}`。
 
 **关键规则**：
 - 报告 100% 代码渲染自抓取数据，每条带来源链接、平台、抓取时间。
@@ -229,7 +229,7 @@ collect_company_evidence(
 )
 ```
 
-**产物**：`EvidenceRun`（`ev_`）+ `~/CareerKit/<档案>/证据池/<日期_方向>.{md,html,json}`。
+**产物**：`EvidenceRun`（`ev_`）+ `~/CareerKit/<档案>/证据池/<日期_方向>.{md,json}`。
 
 **关键规则**：
 - 只抓已确认且可抓的企业；城市是硬筛选。
@@ -407,13 +407,9 @@ delete_application(application_id)   # 仅录错/重复时
 ## 产出与状态
 
 用户资产统一落 `~/CareerKit/`（`CAREER_KIT_ASSETS_DIR` 可覆盖）：
-`index.html` 是总入口，调研报告/证据池按 `<日期_方向>` 留档，路线图与仪表盘用固定文件名。
-
-资产中心按「规划链路」展示（每一步只引用真实存在的文件，缺失时给出下一步）：
-基线方案 → 目标企业 → 证据池 → 企业需求 → 执行版 → 投递清单。
-其中基线方案与执行版共用 `路线图/路线图.html`（执行版会覆盖并在地图顶部标注），
-目标企业与需求画像来自档案 artifact 与证据池报告，不单独生成空文件；
-投递清单落 `投递清单/`。
+调研报告、证据池、投递清单按 `<日期_方向>.md|.json` 留档，不再生成静态 HTML。
+查看统一入口是桌面上的「Career Kit」快捷方式：路线图定稿时自动创建，
+双击后可启动/关闭本地控制台，路线图、报告与打卡都在控制台内完成。
 
 | 工具 | 产出 |
 |------|------|
@@ -421,7 +417,5 @@ delete_application(application_id)   # 仅录错/重复时
 | `get_workflow_status` | 12 阶段当前位置 + 下一步 + 目标变更检测 + 周检视/计划失配提示 |
 | `get_weekly_review` | 周检视 Markdown（打卡/阶段/漏斗 + 规则化建议 + 计划失配） |
 | `check_plan_fit` | 计划失配信号 + 给用户的询问话术（只读） |
-| `export_dashboard("progress")` | 进度仪表盘 |
-| `export_dashboard("roadmap")` | 可交互职业地图 |
 
 日程表不存储：用户需要时，LLM 在对话中直接写 markdown/HTML，时间由用户自己填。

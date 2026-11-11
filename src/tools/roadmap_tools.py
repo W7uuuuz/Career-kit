@@ -8,9 +8,9 @@ from datetime import datetime
 from typing import Any
 
 from ..core.state import State, StateSnapshot, resolve_state
+from ..desktop import ensure_console_shortcut
 from ..guidance import guide_for, verdict_label
 from ..mcp_app import mcp
-from .dashboard import render_roadmap_map as _render_roadmap_map, write_html as _write_html
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import (
@@ -164,7 +164,7 @@ def generate_roadmap() -> str:
             "拿不到就 jd 占位（pending_user_import）——告诉用户这只是占位，"
             "后续自动抓取会由企业适配阶段按目标企业和届别补齐，也可先用 import_jd 补充；绝不编造\n"
             "6. 最终调用 save_roadmap(roadmap_json) 保存；保存后向用户复述质量建议与未解决项；"
-            "定稿产物除结构化数据外还有一份路线图 HTML 活地图，交付时要向用户说明它的用途与用法\n"
+            "定稿后只需引导用户双击桌面上的「Career Kit」快捷方式，在控制台查看路线图并打卡\n"
             "7. 证据纪律：数字（实习段数/月数/比例/薪资/时间窗口）必须有 claim 或真实样本支撑；"
             "没有来源就不写具体数字，只写方向性描述。没有同背景案例时明确说「样本不足」，"
             "不得把 HR 口述或单条面经包装成统计事实。\n"
@@ -839,14 +839,8 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     # 格式化报告
     report = format_roadmap(parsed, claims=profile.claims)
 
-    # 定稿即交付：自动生成路线图活地图 HTML（随时可重新生成）
-    map_path = ""
-    map_error = ""
-    try:
-        map_html = _render_roadmap_map(profile)
-        map_path = _write_html(map_html, kind="roadmap")
-    except Exception as exc:  # noqa: BLE001 - 交付失败要如实告知用户
-        map_error = str(exc)
+    # 定稿即交付：确保桌面上有控制台快捷方式（新版本唯一入口）
+    shortcut_path, shortcut_error = ensure_console_shortcut()
 
     advisory_text = ""
     if advisories:
@@ -873,19 +867,16 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
         "message": (
             f"路线图已保存。\n\n{report}{advisory_text}{audit_note}\n\n"
             + (
-                f"路线图 HTML 已生成：{map_path}——双击即看，无需服务器；"
-                + (
-                    "这是路线图的「活地图」（阶段/KPI/里程碑/任务全貌 + 勾选打卡），"
-                    "可随时用 export_dashboard(mode=\"roadmap\") 重新生成最新版。\n"
-                    if profile.tasks
-                    else "当前是任务生成前的全貌（只有里程碑预览，不能打卡）；"
-                    "调用 generate_tasks 后会自动刷新为可打卡版本。\n"
+                "桌面快捷方式已准备好：Career Kit。双击即可打开控制台，查看路线图并打卡。\n"
+                if shortcut_path
+                else (
+                    f"桌面快捷方式创建失败：{shortcut_error}——可稍后重新保存路线图重试。\n"
+                    if shortcut_error
+                    else "桌面快捷方式已就绪。\n"
                 )
-                if map_path
-                else f"路线图 HTML 生成失败：{map_error}——可用 export_dashboard(mode=\"roadmap\") 重试。\n"
             )
-            + "资产总览：双击 index.html（在 ~/CareerKit/ 下，报告/地图/仪表盘的统一入口）。\n"
-            "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），再给 HTML 路径。\n\n"
+            + "向用户交付时先说明整条路线为什么这样排（阶段跨度/过渡理由），"
+            "再只提示双击桌面上的「Career Kit」快捷方式；不要把内部文件路径或技术细节当作交付重点。\n\n"
             + _next_step_message(snapshot)
             + "\n\n"
             + f"{guide_for(profile)}"
