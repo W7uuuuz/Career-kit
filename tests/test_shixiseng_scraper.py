@@ -38,7 +38,7 @@ SEARCH_HTML = """
     <div class="f-l intern-detail__job">
       <p><a href="https://www.shixiseng.com/intern/inn_beta?pcm=pc_SearchList"
             class="title ellipsis font">行业研究实习生</a>
-      <span class="day font">&#xebff&#xefd0-/天</span></p>
+      <span class="day font">&#xf466&#xf2f6&#xf2f6/天</span></p>
       <p class="tip"><span class="city ellipsis">北京</span><span>|</span></p>
     </div>
     <div class="f-r intern-detail__company">
@@ -47,6 +47,15 @@ SEARCH_HTML = """
     </div>
   </div>
 </div>
+"""
+
+NUXT_HTML = """
+<html><body><script>
+window.__NUXT__=(function(a,b,c,d,e,f,g,h,i,j){return {layout:"default",data:[{interns:{data:[
+{ad_type:f,maxsal:j,minasal:j,name:"后&#xf0b6开发",cname:"测试公司",city:d,industry:e,minsalary:j,maxsalary:b,degree:i,uuid:"inn_nuxt1",i_tags:["Java","MySQL"]},
+{ad_type:f,maxsal:b,minasal:j,name:"量化实习",cname:"测试二号",city:d,industry:e,minsalary:200,maxsalary:300,degree:i,uuid:"inn_nuxt2",i_tags:[]}
+]}}]}})(false,300,"","北京","互联网/游戏/软件","f",true,false,"本科",200);
+</script></body></html>
 """
 
 DETAIL_HTML = """
@@ -97,7 +106,7 @@ def test_search_parses_cards(monkeypatch):
 
     assert len(rows) == 2
     first = rows[0]
-    assert first["title"] == "量化研究实习"
+    assert first["title"] == "量化研究实习生"
     assert first["company"] == "测试资产"
     assert first["location"] == "上海"
     assert first["salary"] == "200-300/天"
@@ -106,10 +115,32 @@ def test_search_parses_cards(monkeypatch):
     assert first["job_type"] == "实习"
     assert first["source"] == "shixiseng"
 
-    # 私有区字符污染的数字薪资不可还原，留空而不是输出残缺文本
-    assert rows[1]["salary"] == ""
+    # 私有区数字按公开字体映射还原
+    assert rows[1]["salary"] == "200/天"
     assert captured["params"]["publishTime"] == "mon"
     assert captured["params"]["city"] == "上海"
+
+
+def test_search_prefers_nuxt_structured_data(monkeypatch):
+    monkeypatch.setattr(shixiseng, "_fetch_html", lambda url, params: NUXT_HTML)
+    rows = shixiseng.Scraper().search(keyword="后端", city="北京", limit=5)
+
+    assert len(rows) == 2
+    first = rows[0]
+    # 标题中的私有区字符按字体映射还原；薪资与标签来自 Nuxt 明文数据
+    assert first["title"] == "后端开发"
+    assert first["company"] == "测试公司"
+    assert first["salary"] == "200-300/天"
+    assert first["degree"] == "本科"
+    assert first["tags"] == ["Java", "MySQL"]
+    assert "学历：本科" in first["summary"]
+    assert "标签：Java、MySQL" in first["summary"]
+    assert rows[1]["salary"] == "200-300/天"
+
+
+def test_unknown_private_use_char_is_stripped():
+    assert shixiseng._clean_text("后\ue000开发") == "后开发"
+    assert shixiseng._clean_text("后\uf0b6开发") == "后端开发"
 
 
 def test_search_requires_keyword():

@@ -11,12 +11,14 @@
 from __future__ import annotations
 
 import html as _html
+import json
 import re
 from typing import Any
 from urllib.parse import urlsplit
 
 from ..base import CompanyScraper
 from ..http_utils import ScraperHttpError, make_client
+from .font_map import PUA_MAP
 
 BASE_URL = "https://www.shixiseng.com"
 SEARCH_URL = f"{BASE_URL}/interns"
@@ -142,17 +144,15 @@ class Scraper(CompanyScraper):
         except ScraperHttpError as exc:
             return [{"error": f"实习僧搜索页抓取失败：{exc}"}]
 
-        results: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for chunk in page_html.split('data-intern-id="')[1:]:
-            item = _parse_card(chunk)
-            if not item or item["url"] in seen:
-                continue
-            seen.add(item["url"])
-            results.append(item)
+        results = _parse_nuxt_jobs(page_html)
+        if not results:
+            for chunk in page_html.split('data-intern-id="')[1:]:
+                item = _parse_card(chunk)
+                if item:
+                    results.append(item)
+        results = _dedupe(results)[:limit]
+        for item in results:
             _remember(item)
-            if len(results) >= limit:
-                break
 
         if not results:
             return [
@@ -253,6 +253,252 @@ def _parse_card(chunk: str) -> dict[str, Any] | None:
     }
 
 
+def _parse_nuxt_jobs(page_html: str) -> list[dict[str, Any]]:
+    """解析 SSR 内嵌的 __NUXT__ 数据。
+
+    列表卡片里的薪资、周天、月数被自定义字体转成私有区字符，但 Nuxt 数据里
+    保留了明文 minsalary / maxsalary 与技能标签 i_tags，可直接复用；标题仍可能
+    含私有区字符，按现有口径只剥离不解析。解析失败时返回空列表，回退 HTML 卡片。
+    """
+    nuxt = page_html.find("__NUXT__=")
+    if nuxt < 0:
+        return []
+    params_start = page_html.find("(function(", nuxt)
+    if params_start < 0:
+        return []
+    params_start += len("(function(")
+    params_end = page_html.find(")", params_start)
+    if params_end < 0:
+        return []
+    params = [p.strip() for p in page_html[params_start:params_end].split(",") if p.strip()]
+
+    body_start = page_html.find("{", params_end)
+    body_end = _matching(page_html, body_start, "{", "}")
+    if body_start < 0 or body_end < 0:
+        return []
+    script_end = page_html.find("</script>", body_end)
+    if script_end < 0:
+        script_end = len(page_html)
+    tail = page_html[body_end + 1 : script_end]
+    open_paren = tail.find("(")
+    close_paren = _matching(tail, open_paren, "(", ")")
+    if open_paren < 0 or close_paren <= open_paren:
+        return []
+    args = [_parse_js_scalar(item) for item in _split_js_args(tail[open_paren + 1 : close_paren])]
+    var_map = dict(zip(params, args, strict=False))
+
+    data_at = page_html.find("interns:{data:[", body_start, body_end)
+    if data_at < 0:
+        return []
+    array_open = page_html.find("[", data_at)
+    array_close = _matching(page_html, array_open, "[", "]")
+    if array_open < 0 or array_close < 0:
+        return []
+
+    jobs: list[dict[str, Any]] = []
+    for chunk in _split_objects(page_html[array_open + 1 : array_close]):
+        job = _nuxt_job(chunk, var_map)
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _nuxt_job(chunk: str, var_map: dict[str, Any]) -> dict[str, Any] | None:
+    title = _clean_text(str(_resolve(_raw_field(chunk, "name"), var_map) or ""))
+    company = _clean_text(str(_resolve(_raw_field(chunk, "cname"), var_map) or ""))
+    job_id = _clean_text(str(_resolve(_raw_field(chunk, "uuid"), var_map) or ""))
+    if not title or not company or not job_id.startswith("inn_"):
+        return None
+
+    city = _clean_text(str(_resolve(_raw_field(chunk, "city"), var_map) or ""))
+    industry = _clean_text(str(_resolve(_raw_field(chunk, "industry"), var_map) or ""))
+    degree = _clean_text(str(_resolve(_raw_field(chunk, "degree"), var_map) or ""))
+    salary = _format_salary(
+        _to_int(_resolve(_raw_field(chunk, "minsalary"), var_map)),
+        _to_int(_resolve(_raw_field(chunk, "maxsalary"), var_map)),
+    )
+    tags = _tag_values(chunk, "i_tags")
+
+    summary_parts = [industry]
+    if degree:
+        summary_parts.append(f"学历：{degree}")
+    if tags:
+        summary_parts.append("标签：" + "、".join(tags[:5]))
+
+    return {
+        "title": title,
+        "url": f"{BASE_URL}/intern/{job_id}",
+        "company": company,
+        "location": city,
+        "salary": salary,
+        "department": industry,
+        "degree": degree,
+        "tags": tags,
+        "summary": " · ".join(part for part in summary_parts if part),
+        "job_type": "实习",
+        "job_id": job_id,
+        "source": "shixiseng",
+    }
+
+
+def _raw_field(chunk: str, name: str) -> str:
+    match = re.search(rf"\b{re.escape(name)}:(\"(?:[^\"\\]|\\.)*\"|[^,}}]+)", chunk)
+    return match.group(1).strip() if match else ""
+
+
+def _resolve(raw: str, var_map: dict[str, Any]) -> Any:
+    if not raw:
+        return ""
+    if raw in var_map:
+        return var_map[raw]
+    if raw.startswith('"'):
+        try:
+            return json.loads(raw)
+        except (ValueError, TypeError):
+            return raw.strip('"')
+    scalar = _parse_js_scalar(raw)
+    return raw if scalar is None and raw not in {"null", "undefined", "void 0"} else scalar
+
+
+def _tag_values(chunk: str, name: str) -> list[str]:
+    match = re.search(rf"\b{re.escape(name)}:\[(.*?)\]", chunk, re.S)
+    if not match:
+        return []
+    values = []
+    for raw in re.findall(r'"(?:[^"\\]|\\.)*"', match.group(1)):
+        value = _clean_text(str(_resolve(raw, {}) or ""))
+        if value:
+            values.append(value)
+    return values
+
+
+def _format_salary(low: int | None, high: int | None) -> str:
+    if not low and not high:
+        return ""
+    low = low or high or 0
+    high = high or low
+    return f"{low}-{high}/天" if low != high else f"{low}/天"
+
+
+def _to_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _matching(text: str, start: int, open_char: str, close_char: str) -> int:
+    if start < 0 or start >= len(text) or text[start] != open_char:
+        return -1
+    depth = 0
+    quote = ""
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char == open_char:
+            depth += 1
+        elif char == close_char:
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
+
+
+def _split_js_args(text: str) -> list[str]:
+    items: list[str] = []
+    buffer: list[str] = []
+    depth = 0
+    quote = ""
+    escape = False
+    for char in text:
+        if quote:
+            buffer.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in ('"', "'"):
+            quote = char
+            buffer.append(char)
+        elif char in "([{":
+            depth += 1
+            buffer.append(char)
+        elif char in ")]}":
+            depth -= 1
+            buffer.append(char)
+        elif char == "," and depth == 0:
+            items.append("".join(buffer).strip())
+            buffer = []
+        else:
+            buffer.append(char)
+    if buffer:
+        items.append("".join(buffer).strip())
+    return [item for item in items if item]
+
+
+def _parse_js_scalar(token: str) -> Any:
+    token = token.strip()
+    if token in ("null", "undefined", "void 0"):
+        return None
+    if token == "true":
+        return True
+    if token == "false":
+        return False
+    if token.startswith('"'):
+        try:
+            return json.loads(token)
+        except (ValueError, TypeError):
+            return token.strip('"')
+    try:
+        return int(token)
+    except ValueError:
+        try:
+            return float(token)
+        except ValueError:
+            return token
+
+
+def _split_objects(text: str) -> list[str]:
+    objects: list[str] = []
+    index = 0
+    while True:
+        start = text.find("{", index)
+        if start < 0:
+            break
+        end = _matching(text, start, "{", "}")
+        if end < 0:
+            break
+        objects.append(text[start : end + 1])
+        index = end + 1
+    return objects
+
+
+def _dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result = []
+    for row in rows:
+        url = str(row.get("url") or "")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        result.append(row)
+    return result
+
+
 def _requirements_text(page_html: str) -> str:
     deadline = _DEADLINE_RE.search(page_html)
     parts: list[str] = []
@@ -293,7 +539,8 @@ def _first(pattern: re.Pattern[str], text: str) -> str:
 def _block_text(value: str) -> str:
     text = re.sub(r"<br\s*/?>", "\n", value or "", flags=re.I)
     text = _TAG_RE.sub("", text)
-    text = _PUA_RE.sub("", _html.unescape(text)).replace("\r", "")
+    text = _decode_pua(_html.unescape(text)).replace("\r", "")
+    text = _PUA_RE.sub("", text)
     lines = [_SPACE_RE.sub(" ", line).strip() for line in text.split("\n")]
     return "\n".join(line for line in lines if line).strip()
 
@@ -308,20 +555,27 @@ def _span_texts(value: str) -> str:
 
 def _clean_text(value: str) -> str:
     text = _TAG_RE.sub("", value or "")
-    text = _PUA_RE.sub("", _html.unescape(text))
+    text = _decode_pua(_html.unescape(text))
+    text = _PUA_RE.sub("", text)
     return _SPACE_RE.sub(" ", text).strip()
 
 
 def _clean_salary(value: str) -> str:
-    """薪资含私有区字符时数字不可还原；无数字的残缺文本也留空。"""
+    """还原被自定义字体替换的数字；仍取不到数字时留空，不输出残缺文本。"""
     text = _TAG_RE.sub("", value or "")
-    unescaped = _html.unescape(text)
-    if _PUA_RE.search(unescaped):
-        return ""
-    text = _SPACE_RE.sub(" ", unescaped).strip()
+    text = _decode_pua(_html.unescape(text))
+    text = _PUA_RE.sub("", text)
+    text = _SPACE_RE.sub(" ", text).strip()
     if not re.search(r"\d", text) and not any(word in text for word in ("面议", "元", "万")):
         return ""
     return text
+
+
+def _decode_pua(text: str) -> str:
+    """按公开字体映射还原私有区字符；未知字符留给调用方剥离。"""
+    if not text:
+        return ""
+    return "".join(PUA_MAP.get(char, char) for char in text)
 
 
 def _strip_query(url: str) -> str:
