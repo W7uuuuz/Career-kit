@@ -5,7 +5,7 @@
 - 城市是硬筛选；方向、技能、学历、档位、薪资是软打分；
 - 数字与排序全部由代码计算，LLM 只负责解释；不编造岗位；
 - 已投递（company + title 与 profile.applications 匹配）默认不重复推荐；
-- 候选写入 ApplicationState.candidates，报告落盘为 md/html/json 三件套。
+- 候选写入 ApplicationState.candidates，报告落盘为 md/json 两件套。
 """
 
 from __future__ import annotations

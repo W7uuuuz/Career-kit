@@ -60,7 +60,7 @@ def create_tasks_from_roadmap(
     ]
 
     # 稳定身份：同 phase + milestone + name 的任务在重建时复用旧 ID 与进度，
-    # 避免 checkin / localStorage / 能力证据串到新任务上。
+    # 避免 checkin 与能力证据串到新任务上。
     # 旧档案的 milestone_id 可能缺失或不规范：精确身份匹配不到时，
     # 退回 phase + name 兜底，避免同一任务因 milestone_id 变化被判为新任务。
     existing = {

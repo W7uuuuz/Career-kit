@@ -1,7 +1,7 @@
 """市场调研工具（research_market / gather_research_data）契约测试。
 
 锁定调研阶段的核心纪律：
-- 报告三件套（md/html/json）落盘到用户资产目录并刷新 index
+- 报告两件套（md/json）落盘到用户资产目录
 - profile.research 写入供差距分析引用
 - 失败源如实记录（绝不静默吞掉），全部失败时中止且不编造
 """
@@ -159,16 +159,13 @@ def test_gather_research_data_writes_report_trio(temp_profile):
     # 播报三要素齐备：数字样本 → 路径 → 下一步
     assert "2 条真实岗位样本" in message and "1 条同学历经历" in message
     assert "失败来源" not in message  # 两个源都成功
-    assert "index.html" in message
+    assert "Career Kit" in message
     assert "现状盘点" in message and "读取调研" in message
 
     root = assets.get_assets_root()
-    index_html = (root / "index.html").read_text(encoding="utf-8")
-    assert "AI Agent 开发" in index_html  # 卡片进入资产中心
-
     report_dir = root / "默认档案" / "调研报告"
     files = sorted(p.name for p in report_dir.iterdir()) if report_dir.is_dir() else []
-    assert any(n.endswith(".html") for n in files)
+    assert not any(n.endswith(".html") for n in files)
     assert any(n.endswith(".md") for n in files)
     assert any(n.endswith(".json") for n in files)
 
@@ -183,10 +180,9 @@ def test_gather_research_data_writes_report_trio(temp_profile):
     assert research["source_status"], "来源状态必须记录"
     assert Path(research["report_md"]).exists()
 
-    # HTML 阅读版包含来源与数据缺口节
-    html = Path(research["report_html"]).read_text(encoding="utf-8")
-    assert "来源状态" in html and "数据缺口" in html
-    assert "example.com/job/1" in html  # 每条带可验证链接
+    assert "report_html" not in research
+    md = Path(research["report_md"]).read_text(encoding="utf-8")
+    assert "example.com/job/1" in md  # 每条带可验证链接
 
 
 def test_gather_research_data_tolerates_failed_source(temp_profile):
@@ -297,8 +293,8 @@ def test_save_report_dated_files_and_research_contract(temp_profile):
                    "source_fail": 0, "source_empty": 0},
     }
     paths = save_report(profile, report)
-    assert Path(paths["md"]).exists() and Path(paths["html"]).exists()
-    assert Path(paths["json"]).exists() and Path(paths["index"]).exists()
+    assert Path(paths["md"]).exists() and Path(paths["json"]).exists()
+    assert "html" not in paths and "index" not in paths
     assert re.search(r"\d{4}-\d{2}-\d{2}_\d{4}_AI Agent 工程师", paths["md"]), "日期_时分_方向留档"
 
     profile2 = profile_module.load_profile()
@@ -610,7 +606,6 @@ def test_save_report_reuses_same_fingerprint_and_merges(temp_profile):
     paths2 = save_report(profile2, _report("https://example.com/job/2"))
 
     assert paths2["md"] == paths1["md"]
-    assert paths2["html"] == paths1["html"]
     assert paths2["json"] == paths1["json"]
 
     profile3 = profile_module.load_profile()
@@ -701,10 +696,12 @@ def test_batched_specs_with_same_round_key_merge_single_report(temp_profile):
         rt.collect_cases = original_cases
         rt.get_job_detail = original_detail
 
-    assert "index.html" in first and "index.html" in second
+    assert "Career Kit" in first and "Career Kit" in second
     report_dir = assets.get_assets_root() / "默认档案" / "调研报告"
+    md_files = [p for p in report_dir.iterdir() if p.suffix == ".md"]
     html_files = [p for p in report_dir.iterdir() if p.suffix == ".html"]
-    assert len(html_files) == 1, "同轮分批调用只能保留一份报告"
+    assert len(md_files) == 1, "同轮分批调用只能保留一份报告"
+    assert not html_files
 
     research = profile_module.load_profile().research
     assert research["round_key"]

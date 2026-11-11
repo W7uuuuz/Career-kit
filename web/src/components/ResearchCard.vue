@@ -10,7 +10,6 @@ const visible = computed(() => !!(props.research && props.research.counts))
 const links = computed(() => {
   const research = props.research
   const items: { label: string; href: string }[] = []
-  if (research.report_html) items.push({ label: '阅读版', href: assetUrl(research.report_html) })
   if (research.report_md) items.push({ label: '可读全文', href: assetUrl(research.report_md) })
   if (research.report_json) items.push({ label: '原始数据', href: assetUrl(research.report_json) })
   return items

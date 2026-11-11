@@ -564,7 +564,7 @@ def test_step8_mcp_tools_registered():
         "record_application", "delete_application", "get_weekly_review",
         # 洞察与产出
         "trigger_insight", "apply_insight", "get_progress",
-        "get_workflow_status", "export_dashboard",
+        "get_workflow_status",
         # 企业适配
         "select_target_companies", "collect_company_evidence",
         "analyze_company_requirements", "save_requirement_profile",

@@ -45,26 +45,9 @@ if (-not (Test-Path $VenvPy)) {
 
 Write-Host "[3/4] dependencies done." -ForegroundColor Green
 
-# Desktop shortcut: start the local console and open the browser (data stays local).
+# Desktop shortcut: run the friendly console launcher (start/stop/status).
 Write-Host "[4/4] creating desktop shortcut ..."
-$Desktop = [Environment]::GetFolderPath("Desktop")
-if ($Desktop -and (Test-Path $Desktop)) {
-    try {
-        $LinkPath = Join-Path $Desktop "Career Kit.lnk"
-        $Shell = New-Object -ComObject WScript.Shell
-        $Shortcut = $Shell.CreateShortcut($LinkPath)
-        $Shortcut.TargetPath = $VenvPy
-        $Shortcut.Arguments = "-m src.web --open"
-        $Shortcut.WorkingDirectory = $Root
-        $Shortcut.Description = "Career Kit local console"
-        $Shortcut.Save()
-        Write-Host "  desktop: $LinkPath" -ForegroundColor Green
-    } catch {
-        Write-Host "  shortcut skipped: $($_.Exception.Message)" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "  desktop folder not found; shortcut skipped" -ForegroundColor Yellow
-}
+& $VenvPy -m src.desktop
 Write-Host ""
 Write-Host "Local console (also available as the desktop shortcut):"
 Write-Host "  $VenvPy -m src.web --open" -ForegroundColor Yellow

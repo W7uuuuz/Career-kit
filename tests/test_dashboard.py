@@ -1,4 +1,4 @@
-"""export_dashboard 冒烟测试。"""
+"""控制台职业地图渲染测试（不再生成静态 HTML 文件）。"""
 
 import sys
 from pathlib import Path
@@ -6,54 +6,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def test_export_dashboard_smoke(tmp_path, monkeypatch):
-    """生成自包含 HTML，内嵌阶段进度与能力证据。"""
-    import json as jsonlib
-
-    import src.tools.profile as profile_module
-    from src.server import checkin_task, export_dashboard, generate_tasks, intake
-    from src.tools.roadmap import parse_roadmap
-
-    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
-
-    intake("who", '{"name":"冒烟"}')
-    profile = profile_module.load_profile()
-    profile.plan = parse_roadmap(jsonlib.dumps({
-        "roadmap": {"phases": [{"type": "learn", "name": "基础", "goal": "入门",
-                                "milestones": [{"name": "M1", "tasks": [{"name": "任务A"}, {"name": "任务B"}]}]}]}
-    }, ensure_ascii=False))
-    from conftest import promote_profile
-
-    profile.touch()
-    promote_profile(profile, execution=True, detail=True)
-
-    generate_tasks()
-    result = checkin_task(task_id="task_001", status="completed", notes="冒烟打卡")
-    assert "已打卡" in result or "已跳过" not in result
-
-    out = export_dashboard()
-    assert "进度仪表盘.html" in out
-    assert "CareerKit" in out.split("：")[1]  # 落在用户资产目录
-
-    html = Path(Path(out.split("：")[1].split("\n")[0].strip())).read_text(encoding="utf-8")
-    assert "基础" in html          # 阶段名
-    assert "冒烟打卡" in html      # 能力证据 notes 已内嵌
-    assert "task-deadline" not in html and "超期" not in html  # 无时间概念残留
-
-
 def test_roadmap_map_renders_start_strategy_milestones(tmp_path, monkeypatch):
-    """职业地图渲染回归：起点层级 / 策略 / 里程碑名称必须进入 HTML。
-
-    锁死三个曾出现的渲染 bug：
-    - #start-level 从未被赋值（永远显示 —）
-    - #strategy 从未被赋值
-    - 里程碑只显示 M1/M2（用 id 硬转，不显示真实名称）
-    """
+    """职业地图渲染回归：起点层级 / 策略 / 里程碑名称必须进入 HTML。"""
     import json as jsonlib
 
     import src.tools.profile as profile_module
     from src.models import CareerProfile
-    from src.server import _render_roadmap_map
+    from src.tools.dashboard import render_roadmap_map
     from src.tools.roadmap import parse_roadmap
 
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
@@ -70,63 +29,24 @@ def test_roadmap_map_renders_start_strategy_milestones(tmp_path, monkeypatch):
     }, ensure_ascii=False))
     profile.touch()
 
-    html = _render_roadmap_map(profile)
+    html = render_roadmap_map(profile)
 
-    assert '"start_level": "小厂"' in html            # 起点层级进入数据
-    assert "先补协作再冲大厂" in html                   # 策略进入数据
-    assert "里程碑甲" in html                          # 里程碑名称进入数据
-    assert '"type_label": "学习"' in html              # learn 对外显示为「学习」
-    assert "milestone_names" in html                   # 前端按名称渲染
-    assert "getElementById('start-level')" in html     # 前端真的写入起点层级
-    assert "getElementById('strategy')" in html        # 前端真的写入策略
-
-
-def test_progress_html_escapes_user_content(tmp_path, monkeypatch):
-    """进度仪表盘：任务名/阶段名/证据含 HTML 时必须转义，防破版与注入。"""
-    import json as jsonlib
-
-    import src.tools.profile as profile_module
-    from src.server import checkin_task, export_dashboard, generate_tasks, intake
-    from src.tools.roadmap import parse_roadmap
-
-    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
-
-    intake("who", '{"name":"转义"}')
-    profile = profile_module.load_profile()
-    profile.plan = parse_roadmap(jsonlib.dumps({
-        "roadmap": {"phases": [{"type": "learn", "name": "阶段<x>", "goal": "目标<y>",
-                                "milestones": [{"name": "M1", "tasks": [
-                                    {"name": "学习 vector<T> <img src=x onerror=alert(1)>"}]}]}]}
-    }, ensure_ascii=False))
-    profile.plan["current_detail"] = {
-        "phase_id": "phase_1",
-        "tasks": [{"name": "学习 vector<T> <img src=x onerror=alert(1)>"}],
-    }
-    from conftest import promote_profile
-
-    profile.touch()
-    promote_profile(profile, execution=True)
-
-    generated = jsonlib.loads(generate_tasks())
-    assert generated.get("isError") is not True, generated
-    checked = checkin_task(task_id="task_001", status="completed", notes="备注<b>加粗</b>")
-    assert "isError" not in checked, checked
-    out = export_dashboard()
-    html = Path(Path(out.split("：")[1].split("\n")[0].strip())).read_text(encoding="utf-8")
-
-    assert "<img src=x onerror=alert(1)>" not in html   # 原始 HTML 不得出现
-    assert "vector&lt;T&gt;" in html                     # 任务名已转义
-    assert "阶段&lt;x&gt;" in html                       # 阶段名已转义
-    assert "备注&lt;b&gt;加粗&lt;/b&gt;" in html          # 能力证据 notes 已转义
+    assert '"start_level": "小厂"' in html
+    assert "先补协作再冲大厂" in html
+    assert "里程碑甲" in html
+    assert '"type_label": "学习"' in html
+    assert "milestone_names" in html
+    assert "getElementById('start-level')" in html
+    assert "getElementById('strategy')" in html
 
 
 def test_roadmap_map_json_script_close_defense(tmp_path, monkeypatch):
-    """职业地图：内嵌 JSON 中 `</script>` 必须转义为 `<\\/script>`，防提前闭合。"""
+    """内嵌 JSON 中 `</script>` 必须转义为 `<\\/script>`，防提前闭合。"""
     import json as jsonlib
 
     import src.tools.profile as profile_module
     from src.models import CareerProfile
-    from src.server import _render_roadmap_map
+    from src.tools.dashboard import render_roadmap_map
     from src.tools.roadmap import parse_roadmap
 
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
@@ -139,78 +59,37 @@ def test_roadmap_map_json_script_close_defense(tmp_path, monkeypatch):
     }, ensure_ascii=False))
     profile.touch()
 
-    html = _render_roadmap_map(profile)
+    html = render_roadmap_map(profile)
 
-    assert "含闭合标签 <\\/script>" in html      # 数据中的闭合标签已被转义
-    # application/json 数据块内不允许出现字面 </script>（会提前闭合）
+    assert "含闭合标签 <\\/script>" in html
     json_block = html.split('id="career-data">')[1].split("</script>")[0]
     assert "alert(1)" not in json_block or "<\\/script>" in json_block
 
 
 def test_roadmap_map_js_escapes_interpolation(tmp_path, monkeypatch):
-    """职业地图：JS 端 innerHTML 拼接必须走 esc() 转义函数。"""
+    """JS 端 innerHTML 拼接必须走 esc() 转义函数。"""
     import src.tools.profile as profile_module
     from src.models import CareerProfile
-    from src.server import _render_roadmap_map
+    from src.tools.dashboard import render_roadmap_map
 
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
 
-    html = _render_roadmap_map(CareerProfile())
+    html = render_roadmap_map(CareerProfile())
 
-    assert "function esc(" in html       # 转义函数已定义
-    assert "esc(t.name)" in html         # 任务名拼接走转义
-    assert "esc(ph.name)" in html        # 阶段名拼接走转义
-    assert "esc(ph.jd_text" in html      # JD 文本拼接走转义
-    assert "esc(ph.type_label" in html   # 阶段类型显示中文标签
-
-
-def test_progress_html_renders_funnel_and_weekly_cards(tmp_path, monkeypatch):
-    """进度仪表盘：求职漏斗与近 7 天卡片渲染，公司名必须转义。"""
-    import src.tools.profile as profile_module
-    from src.server import export_dashboard, intake, record_application
-
-    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
-
-    intake("who", '{"name":"漏斗"}')
-    record_application(
-        company="字节<script>alert(1)</script>", role="Agent 实习"
-    )
-    record_application(
-        company="字节<script>alert(1)</script>", role="Agent 实习",
-        status="interview", application_id="app_001",
-    )
-
-    out = export_dashboard()
-    html = Path(Path(out.split("：")[1].split("\n")[0].strip())).read_text(encoding="utf-8")
-
-    assert "求职漏斗" in html
-    assert "近 7 天" in html
-    assert "<script>alert(1)</script>" not in html     # 公司名必须转义
-    assert "字节&lt;script&gt;" in html
-    assert "面试" in html
-
-
-def test_funnel_card_escapes_application_fields(tmp_path, monkeypatch):
-    """漏斗卡片中的投递列表逐字段走 html.escape。"""
-    from src.models import Application, CareerProfile
-    from src.tools.dashboard import _funnel_card_html
-
-    profile = CareerProfile()
-    profile.applications.append(Application(
-        id="app_001", company=" Evil<",
-        events=[{"status": "applied", "at": "2026-10-20T10:00:00"}],
-    ))
-    html = _funnel_card_html(profile)
-    assert "Evil&lt;" in html and " Evil<" not in html
+    assert "function esc(" in html
+    assert "esc(t.name)" in html
+    assert "esc(ph.name)" in html
+    assert "esc(ph.jd_text" in html
+    assert "esc(ph.type_label" in html
 
 
 def test_roadmap_jd_structured_and_current_phase_fallback(tmp_path, monkeypatch):
-    """职业地图：JD 列表按条目可读渲染（不出现 Python repr）；无任务时默认激活第一段。"""
+    """JD 列表按条目可读渲染；无任务时默认激活第一段。"""
     import json as jsonlib
 
     import src.tools.profile as profile_module
     from src.models import CareerProfile
-    from src.server import _render_roadmap_map
+    from src.tools.dashboard import render_roadmap_map
     from src.tools.roadmap import parse_roadmap
 
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
@@ -229,17 +108,16 @@ def test_roadmap_jd_structured_and_current_phase_fallback(tmp_path, monkeypatch)
     }, ensure_ascii=False))
     profile.touch()
 
-    html = _render_roadmap_map(profile)
+    html = render_roadmap_map(profile)
 
     assert "某公司 · Agent 实习（500 元/天）：Python；RAG" in html
-    assert "samples：[" not in html                 # 不再渲染 Python 列表 repr
-    assert 'name="career-kit-summary"' in html      # 资产中心可读摘要
-    assert "../../index.html" in html               # 子页面可返回资产中心
+    assert "samples：[" not in html
+    assert "返回控制台" in html
 
     block = html.split('id="career-data">')[1].split("</script>")[0]
     data = jsonlib.loads(block)
-    assert data["phases"][0]["is_current"] is True  # 无任务时兜底第一段
-    assert data["phases"][0]["type_label"] == "实习"  # intern 对外显示为「实习」
+    assert data["phases"][0]["is_current"] is True
+    assert data["phases"][0]["type_label"] == "实习"
 
 
 def test_roadmap_map_marks_baseline_and_execution(tmp_path, monkeypatch):
@@ -248,7 +126,7 @@ def test_roadmap_map_marks_baseline_and_execution(tmp_path, monkeypatch):
 
     import src.tools.profile as profile_module
     from src.models import CareerProfile
-    from src.server import _render_roadmap_map
+    from src.tools.dashboard import render_roadmap_map
     from src.tools.roadmap import parse_roadmap
 
     monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
@@ -260,7 +138,7 @@ def test_roadmap_map_marks_baseline_and_execution(tmp_path, monkeypatch):
     }, ensure_ascii=False))
     profile.touch()
 
-    baseline = _render_roadmap_map(profile)
+    baseline = render_roadmap_map(profile)
     assert 'name="career-kit-plan-mode" content="baseline"' in baseline
     assert "基线版：尚未按目标企业 JD 校准" in baseline
 
@@ -269,8 +147,7 @@ def test_roadmap_map_marks_baseline_and_execution(tmp_path, monkeypatch):
         "requirement_profile_id": "rp_test",
         "execution_plan_id": "ep_test",
     }
-    execution = _render_roadmap_map(profile)
+    execution = render_roadmap_map(profile)
     assert 'name="career-kit-plan-mode" content="execution"' in execution
     assert "执行版：已按确认企业与 JD 需求校准" in execution
     assert "rp_test" in execution and "ep_test" in execution
-

@@ -142,7 +142,6 @@ READ_ONLY_TOOLS = frozenset(
         "list_profiles",
         "get_weekly_review",
         "check_plan_fit",
-        "export_dashboard",
         "list_data_sources",
         "get_scraper_guide",
         "search_knowledge",
@@ -246,8 +245,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "save_current_detail",
             "generate_tasks",
             "get_next_tasks",
-            "export_dashboard",
-        }
+            }
     )
     | _ENTERPRISE_REPAIR_TOOLS,
     State.EXECUTING: frozenset(
@@ -263,8 +261,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "record_application",
             "check_plan_fit",
             "get_weekly_review",
-            "export_dashboard",
-        }
+            }
     )
     | _ENTERPRISE_REPAIR_TOOLS,
     # 维护期允许继续生成路线图后续阶段的任务（generate_tasks 会跳过已完成的
@@ -279,8 +276,7 @@ _ALLOWED_TOOLS: dict[State, frozenset[str]] = {
             "generate_tasks",
             "detail_current_phase",
             "save_current_detail",
-            "export_dashboard",
-        }
+            }
     )
     | _ENTERPRISE_REPAIR_TOOLS,
 }

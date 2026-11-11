@@ -1,4 +1,4 @@
-"""证据池报告：md / html / json 三件套，100% 由代码渲染。
+"""证据池报告：md / json 两件套，100% 由代码渲染。
 
 报告只展示已落库的 EvidenceRun 事实（样本统计、来源状态、JD/面经表、
 置信度、数据缺口），不调用 LLM、不补写任何未采集内容。
@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from html import escape
 from typing import Any
 
 from ... import assets
@@ -169,168 +168,16 @@ def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def render_html(report: dict[str, Any]) -> str:
-    """渲染自包含 HTML 阅读版。"""
-    counts = report.get("counts") or {}
-    confidence = report.get("confidence") or {}
-    target = report.get("target") or {}
-    direction = report.get("direction") or "证据池"
-    statuses = report.get("source_status") or []
-    jd_items = report.get("jd_samples") or []
-    cases = report.get("cases") or []
-    gaps = report.get("gaps") or []
-
-    summary = (
-        f"JD {counts.get('jd_samples', 0)} 条 / 面经 {counts.get('cases', 0)} 条，"
-        f"来源失败 {counts.get('source_fail', 0)} 个"
-    )
-    parts: list[str] = [
-        "<!DOCTYPE html>",
-        '<html lang="zh-CN"><head><meta charset="utf-8">',
-        '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        f'<meta name="career-kit-summary" content="{escape(summary, quote=True)}">',
-        f"<title>证据池 — {escape(direction)}</title>",
-        f"<style>{_CSS}</style></head><body><main>",
-        f"<h1>岗位与面经证据池 — {escape(direction)}</h1>",
-        f'<p class="sub">生成于 {escape(str(report.get("generated_at") or ""))}。'
-        "全部数据来自实时抓取与本地知识库，未获取的内容如实标注，不使用 AI 补写。</p>",
-    ]
-    target_bits = " · ".join(
-        escape(str(value))
-        for value in (target.get("direction"), target.get("role"), target.get("city"))
-        if str(value or "").strip()
-    )
-    if target_bits:
-        parts.append(f'<p class="target">{target_bits}</p>')
-
-    parts.append("<h2>样本统计</h2><div class=\"stats\">")
-    stat_items = [
-        ("JD", counts.get("jd_samples", 0)),
-        ("JD 置信度", _confidence_text(confidence.get("jd"))),
-        ("面经", counts.get("cases", 0)),
-        ("面经置信度", _confidence_text(confidence.get("interview"))),
-        ("请求企业", counts.get("companies_requested", 0)),
-        ("抓取成功", counts.get("companies_fetched", 0)),
-        ("原始 JD", counts.get("raw_jobs", 0)),
-        ("保留 JD", counts.get("kept_jobs", 0)),
-        ("城市剔除", counts.get("dropped_city", 0)),
-        ("无详情剔除", counts.get("dropped_no_detail", 0)),
-        ("城市未知", counts.get("unknown_city", 0)),
-        ("复用 JD", counts.get("reused_jd", 0)),
-        ("复用面经", counts.get("reused_interviews", 0)),
-        ("池外复用", counts.get("reused_outside_pool", 0)),
-        ("相关性剔除", counts.get("dropped_irrelevant", 0)),
-    ]
-    for label, value in stat_items:
-        parts.append(
-            f'<div class="stat"><span class="stat-label">{escape(str(label))}</span>'
-            f'<span class="stat-value">{escape(str(value))}</span></div>'
-        )
-    parts.append("</div>")
-
-    parts.append("<h2>来源状态</h2>")
-    if statuses:
-        rows = []
-        for item in statuses:
-            rows.append(
-                "<tr><td>{source}</td><td>{scope}</td><td>{status}</td><td>{count}</td>"
-                "<td>{elapsed}</td><td>{error}</td></tr>".format(
-                    source=escape(str(item.get("source") or "")),
-                    scope="面经" if item.get("scope") == "cases" else "JD",
-                    status=escape(
-                        _STATUS_LABELS.get(str(item.get("status")), str(item.get("status") or ""))
-                    ),
-                    count=_safe_int(item.get("count")),
-                    elapsed=escape(str(item.get("elapsed", 0))),
-                    error=escape(str(item.get("error") or "")),
-                )
-            )
-        parts.append(
-            "<table><thead><tr><th>来源</th><th>范围</th><th>状态</th><th>条数</th>"
-            "<th>耗时（秒）</th><th>错误</th></tr></thead><tbody>"
-            + "".join(rows)
-            + "</tbody></table>"
-        )
-    else:
-        parts.append('<p class="note">本次没有调用任何抓取源。</p>')
-
-    parts.append("<h2>岗位 JD</h2>")
-    if jd_items:
-        parts.append(
-            "<table><thead><tr><th>ID</th><th>公司</th><th>岗位</th><th>地点</th><th>薪资</th>"
-            "<th>来源</th><th>详情</th><th>摘要</th></tr></thead><tbody>"
-        )
-        for item in jd_items:
-            parts.append(
-                "<tr><td>{id}</td><td>{company}</td><td>{title}</td><td>{location}</td>"
-                "<td>{salary}</td><td>{source}</td><td>{detail}</td><td>{summary}</td></tr>".format(
-                    id=escape(str(item.get("id") or "")),
-                    company=escape(str(item.get("company") or "")),
-                    title=escape(str(item.get("title") or "")),
-                    location=escape(str(item.get("location") or "")),
-                    salary=escape(str(item.get("salary") or "")),
-                    source=_html_link(item.get("source") or "来源", item.get("url") or ""),
-                    detail=escape(
-                        _DETAIL_LABELS.get(
-                            str(item.get("detail_status")), str(item.get("detail_status") or "")
-                        )
-                    ),
-                    summary=escape(_clip(item.get("summary") or item.get("description") or "")),
-                )
-            )
-        parts.append("</tbody></table>")
-    else:
-        parts.append('<p class="note">未采集到岗位 JD。</p>')
-
-    parts.append("<h2>面经</h2>")
-    if cases:
-        parts.append(
-            "<table><thead><tr><th>ID</th><th>公司</th><th>标题</th><th>学历</th><th>届别</th>"
-            "<th>来源</th><th>要点</th></tr></thead><tbody>"
-        )
-        for item in cases:
-            parts.append(
-                "<tr><td>{id}</td><td>{company}</td><td>{title}</td><td>{education}</td>"
-                "<td>{year}</td><td>{source}</td><td>{highlights}</td></tr>".format(
-                    id=escape(str(item.get("id") or "")),
-                    company=escape(str(item.get("company") or "通用")),
-                    title=escape(str(item.get("title") or "")),
-                    education=escape(str(item.get("education_tag") or "")),
-                    year=escape(str(item.get("year") or "")),
-                    source=_html_link(item.get("source") or "来源", item.get("url") or ""),
-                    highlights=escape("；".join(str(h) for h in item.get("highlights") or [])),
-                )
-            )
-        parts.append("</tbody></table>")
-    else:
-        parts.append('<p class="note">未采集到面经。</p>')
-
-    parts.append("<h2>数据缺口</h2>")
-    if gaps:
-        parts.append("<ul>" + "".join(f"<li>{escape(str(gap))}</li>" for gap in gaps) + "</ul>")
-    else:
-        parts.append('<p class="note">本次采集没有产生缺口记录。</p>')
-
-    parts.append(
-        "</main><footer>本页由代码直接渲染自 EvidenceRun artifact；原始数据见同名 .json 文件。</footer>"
-        "</body></html>"
-    )
-    return "".join(parts)
-
-
 def save_report(
     evidence: EvidenceRun, profile_name: str, *, generated_at: str | None = None
 ) -> dict[str, str]:
-    """写入证据池资产目录并刷新资产 index；返回三种格式的路径。"""
+    """写入证据池资产目录；返回 md / json 路径。"""
     report = build_report(evidence, generated_at=generated_at)
     stem = assets.next_asset_stem(
         str(report.get("direction") or "证据池"), kind="evidence", profile_name=profile_name
     )
     md_path = assets.write_asset_text(
         "evidence", profile_name, f"{stem}.md", render_markdown(report), encoding="utf-8-sig"
-    )
-    html_path = assets.write_asset_text(
-        "evidence", profile_name, f"{stem}.html", render_html(report), encoding="utf-8"
     )
     json_path = assets.write_asset_text(
         "evidence",
@@ -339,8 +186,7 @@ def save_report(
         json.dumps(report, ensure_ascii=False, indent=1),
         encoding="utf-8",
     )
-    assets.rebuild_index()
-    return {"md": str(md_path), "html": str(html_path), "json": str(json_path)}
+    return {"md": str(md_path), "json": str(json_path)}
 
 
 def _confidence_text(value: Any) -> str:
@@ -371,39 +217,4 @@ def _md_link(label: Any, url: Any) -> str:
     return f"[{text}]({href.replace(')', '%29')})"
 
 
-def _html_link(label: Any, url: Any) -> str:
-    text = escape(str(label or ""))
-    href = str(url or "").strip()
-    if not href:
-        return text
-    return f'<a href="{escape(href, quote=True)}">{text}</a>'
-
-
-_CSS = """
-:root { --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb; --bg:#f6f7fb; --card:#fff; --accent:#b45309; }
-* { box-sizing:border-box; }
-body { margin:0; font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
-       color:var(--ink); background:var(--bg); }
-main { max-width:1080px; margin:0 auto; padding:28px 20px 12px; }
-h1 { margin:0 0 8px; font-size:24px; }
-h2 { margin:28px 0 10px; font-size:18px; }
-.sub, .target { color:var(--muted); font-size:13px; margin:0 0 6px; }
-.stats { display:grid; gap:10px; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); }
-.stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
-.stat-label { display:block; color:var(--muted); font-size:12px; }
-.stat-value { display:block; margin-top:4px; font-size:18px; font-weight:600; }
-table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line);
-        border-radius:10px; overflow:hidden; font-size:13px; }
-th, td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }
-th { background:#faf5ef; color:#7c3a0b; font-weight:600; }
-tr:last-child td { border-bottom:none; }
-a { color:var(--accent); text-decoration:none; }
-a:hover { text-decoration:underline; }
-.note { color:var(--muted); font-size:13px; }
-ul { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 18px 12px 32px; }
-footer { max-width:1080px; margin:0 auto 30px; padding:8px 20px; color:var(--muted); font-size:12px; }
-@media (max-width:640px) { main { padding:20px 14px 8px; } table { display:block; overflow-x:auto; } }
-"""
-
-
-__all__ = ["build_report", "render_html", "render_markdown", "save_report"]
+__all__ = ["build_report", "render_markdown", "save_report"]

@@ -722,7 +722,6 @@ def _artifact_id(artifact: dict[str, Any] | None) -> str:
 def _report_paths(research: dict[str, Any]) -> dict[str, str]:
     paths = {
         "md": str(research.get("report_md") or ""),
-        "html": str(research.get("report_html") or ""),
         "json": str(research.get("report_json") or ""),
     }
     return {key: value for key, value in paths.items() if value}

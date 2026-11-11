@@ -47,7 +47,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 - 首行给位置（`GUIDE.position`），末行给下一步（`GUIDE.next_action` + 选项）
 - 播报三件套：每个工具调用前说「做什么 + 会看到什么」，禁止一句话待机
 - 完成汇报三要素：做了什么（带数字）→ 意味着什么 → 下一步
-- 落盘产物给完整路径，提示「双击 index.html 能总览全部资产（~/CareerKit）」
+- 落盘产物给完整路径；查看统一提示「双击桌面上的 Career Kit 快捷方式打开控制台」
 - 没抓到就说「未获取到」，来源永远带链接——信息太少不信任，但绝不编
 
 ## 真实数据规则
@@ -123,10 +123,10 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 所有面向用户的产出统一落 `~/CareerKit/`（`CAREER_KIT_ASSETS_DIR` 可覆盖），
 与程序数据（`~/.career-kit`）分离：
 
-- `index.html`：总入口（按档案分组，双击直达）
-- `调研报告/<日期_方向>.md|.html|.json`：多次调研各自留档，逐条带来源链接
-- `证据池/<日期_方向>.md|.html|.json`：目标企业 JD + 面经证据（带来源、样本量与置信度）
-- `路线图/路线图.html` 与 `进度/进度仪表盘.html`：固定文件名（保浏览器打卡状态）
+- `调研报告/<日期_方向>.md|.json`：多次调研各自留档，逐条带来源链接
+- `证据池/<日期_方向>.md|.json`：目标企业 JD + 面经证据（带来源、样本量与置信度）
+- `投递清单/<日期_方向>.md|.json`：按城市硬筛、按方向与技能打分的投递候选
+- 路线图与进度不再生成静态 HTML，统一在桌面「Career Kit」快捷方式打开的控制台中查看
 - 首次使用会生成 `说明.md`
 
 ## 常见场景
@@ -142,7 +142,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 | 我换了目标公司 | `import_jd` / `intake(want)` → `get_workflow_status` 提示变更 → 重新分析规划 |
 | 想按具体公司校准路线 / 大厂中厂有哪些 | `select_target_companies` → `collect_company_evidence` → `analyze_company_requirements` → `save_requirement_profile` → `plan_execution_alignment` → `save_execution_alignment` |
 | 计划还合适吗 / 数据变了 | `check_plan_fit(trigger="manual")`；有 major_drift 先问用户，再决定 refresh 或重新校准 |
-| 想看看进度 / 路线 | `export_dashboard("progress")` / `export_dashboard("roadmap")` |
+| 想看看进度 / 路线 | 双击桌面上的「Career Kit」快捷方式打开控制台 |
 
 ## 反模式
 
@@ -158,7 +158,7 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
 ## 文档索引
 
 - [文档地图](README.md)：所有文档的唯一入口
-- [工具总览](tools.md)：52 个工具的唯一事实源
+- [工具总览](tools.md)：51 个工具的唯一事实源
 - [工作流详解](workflow.md)：前置条件、输入输出
 - [企业数据源](scrapers.md)：已收录数据源
 - [知识库](knowledge.md)：目录与文件格式

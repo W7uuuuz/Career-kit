@@ -34,5 +34,5 @@ start_session → intake(who/have/want) → finalize_profile
 → detail_current_phase → save_current_detail → generate_tasks
 → get_next_tasks → checkin_task
 → build_application_list → record_application
-→ export_dashboard / get_weekly_review
+→ get_weekly_review / 桌面 Career Kit 控制台
 ```

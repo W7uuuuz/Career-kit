@@ -54,7 +54,7 @@ WELCOME_PROMPT = """\
 - 复盘：`get_weekly_review` / `check_plan_fit`；计划失配时先问用户，不自动改计划。
 
 ## 产出
-- 用户资产：`~/CareerKit`（`index.html` 总入口）；路线图/仪表盘固定名，
+- 用户资产：`~/CareerKit`（报告数据）；查看统一走桌面上的「Career Kit」快捷方式，
   调研报告按日期留档。
 - 日程由对话直接写 markdown/HTML，系统不存储。
 

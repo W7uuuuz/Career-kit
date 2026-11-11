@@ -16,6 +16,13 @@ def _career_kit_assets_sandbox(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _career_kit_desktop_sandbox(monkeypatch):
+    """默认不创建真实桌面快捷方式；需要验证的测试自行删除该环境变量。"""
+    monkeypatch.setenv("CAREER_KIT_SKIP_SHORTCUT", "1")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _career_kit_data_sandbox(tmp_path, monkeypatch):
     """所有单测的档案与 artifact 数据库都落临时目录，避免真实数据互相污染。"""
     from src import paths

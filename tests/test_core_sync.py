@@ -256,7 +256,7 @@ def test_sync_artifacts_match_profile_data(data_dir: Path) -> None:
     assert baseline_artifact["counts"]["jd_samples"] == 1
     assert baseline_artifact["gaps"] == ["缺少面经样本"]
     assert baseline_artifact["report_paths"]["md"] == "C:/reports/research.md"
-    assert baseline_artifact["report_paths"]["html"] == "C:/reports/research.html"
+    assert "html" not in baseline_artifact["report_paths"]
 
     gap_artifact = _load_artifact(ids["gr"])
     assert gap_artifact["match_score"] == 62

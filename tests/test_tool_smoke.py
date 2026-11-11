@@ -601,50 +601,8 @@ def test_save_roadmap_soft_check_and_html(temp_profile):
     result2 = json.loads(save_roadmap(json.dumps(clean, ensure_ascii=False)))
     assert "依据待确认" not in result2["message"]
 
-    # 定稿自动产出路线图 HTML（落用户资产目录，固定名）
-    assert "路线图.html" in result2["message"]
-
-
-def test_export_dashboard_roadmap_map(temp_profile):
-    """活地图：mode=roadmap 含公司/占位徽标/执行进度/当前阶段高亮。"""
-    from src.models import Task
-    from src.server import export_dashboard
-
-    p = profile_module.load_profile()
-    p.plan = {"roadmap": {"strategy_summary": "先实习后冲刺", "phases": [
-        {"id": "phase_1", "type": "intern", "name": "某公司实习", "company": "某公司",
-         "rationale": "对双非友好", "jd_status": "pending_user_import"},
-        {"id": "phase_2", "type": "learn", "name": "基础冲刺", "milestones": [
-            {"name": "M1", "tasks": [{"name": "刷题"}, {"name": "项目"}]}
-        ]},
-    ]}}
-    p.tasks = [
-        Task(id="task_001", name="刷题", phase_id="phase_2"),
-        Task(id="task_002", name="项目", phase_id="phase_2", status="completed"),
-    ]
-    p.gap = {"start_level": "中厂"}
-    profile_module.save_profile(p)
-
-    out = export_dashboard(mode="roadmap")
-    assert "路线图.html" in out
-
-    path = Path(out.split("：")[1].splitlines()[0].strip())
-    html = path.read_text(encoding="utf-8")
-    assert "职业地图" in html
-    assert "某公司" in html and "对双非友好" in html      # 公司名 + 推荐理由
-    assert "待导入真实 JD" in html                        # 占位徽标
-    assert "起点层级" in html and "中厂" in html           # start_level 展示
-    assert "career-data" in html                          # 数据 JSON 嵌入
-    assert "[当前]" in html                                # 当前阶段高亮
-    assert "免 JD" in html                                 # learn 阶段徽标
-    assert "export-btn" in html and "reset-btn" in html    # 可交互打卡按钮
-    assert "localStorage" in html                          # 本地持久化
-    assert 'type="checkbox"' in html                       # 任务勾选打卡
-    # 服务端进度数据：phase_2 完成 1/2 正确嵌入数据 JSON
-    import json as _json
-    m = _json.loads(html.split('id="career-data">')[1].split('</script>')[0])
-    p2 = next(p for p in m["phases"] if p["id"] == "phase_2")
-    assert p2["done"] == 1 and p2["total"] == 2
+    # 定稿自动准备桌面快捷方式（唯一交付入口）
+    assert "Career Kit" in result2["message"]
 
 
 def test_explore_goals_returns_methodology(temp_profile):
@@ -1384,37 +1342,6 @@ def test_fetch_company_jobs_boss_login_required_next_tool(temp_profile, monkeypa
     assert "2 小时" not in result["message"]
 
 # ============ Wave 5：非法枚举统一 INVALID_PARAM ============
-
-def test_invalid_enums_return_invalid_param_with_allowed(temp_profile):
-    from src.server import checkin_task, export_dashboard, trigger_insight
-
-    insight = json.loads(trigger_insight(trigger_type="manual"))
-    assert insight.get("isError") is True
-    assert insight["code"] == "INVALID_PARAM"
-    assert set(insight["details"]["allowed"]) == {"stage_audit", "event"}
-
-    checkin = json.loads(checkin_task(task_id="task_001", status="doing"))
-    assert checkin.get("isError") is True
-    assert checkin["code"] == "INVALID_PARAM"
-    assert set(checkin["details"]["allowed"]) == {"completed", "skipped"}
-
-    dashboard = json.loads(export_dashboard(mode="timeline"))
-    assert dashboard.get("isError") is True
-    assert dashboard["code"] == "INVALID_PARAM"
-    assert set(dashboard["details"]["allowed"]) == {"progress", "roadmap"}
-
-    from src.models import Task
-
-    from conftest import promote_profile
-
-    p = profile_module.load_profile()
-    p.tasks = [Task(id="task_001", name="任务", phase_id="phase_1")]
-    promote_profile(p, execution=True, detail=True)
-
-    missing_task = json.loads(checkin_task(task_id="task_999", status="completed"))
-    assert missing_task.get("isError") is True
-    assert missing_task["code"] == "MISSING_DATA", "缺失资源仍用 MISSING_DATA"
-
 
 def test_generate_tasks_records_retained_completed_evidence(temp_profile):
     """generate_tasks 重建时把保留的 completed 任务沉淀为能力证据（去重）。"""

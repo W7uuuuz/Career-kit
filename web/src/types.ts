@@ -53,7 +53,6 @@ export interface EvidenceInfo {
   id: string
   counts: Record<string, number>
   confidence: Record<string, string>
-  report_html: string
   report_md: string
   index: string
 }
@@ -86,7 +85,6 @@ export interface Alignment {
 export interface ResearchInfo {
   generated_at?: string
   counts?: Record<string, number>
-  report_html?: string
   report_md?: string
   report_json?: string
   failed_sources?: string[]
@@ -97,7 +95,6 @@ export interface ReportInfo {
   generated_at: string
   counts: Record<string, number>
   failed_sources: string[]
-  html: string
   md: string
   json: string
 }
@@ -120,7 +117,6 @@ export interface AppState {
   total_tasks: number
   all_complete: boolean
   warnings: string[]
-  assets_index: string
   research: ResearchInfo
   reports: ReportInfo[]
   applications: ApplicationInfo[]

@@ -21,7 +21,6 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from ...models import Adjustment, CareerProfile, TaskStatus
-from ...tools.dashboard import render_roadmap_map, write_html
 from ...tools.errors import InvalidJsonError
 from ...tools.profile import get_active_profile_name, load_profile, profile_lock, save_profile
 from ...tools.roadmap import parse_roadmap
@@ -392,15 +391,6 @@ def _save(
         current.core_state = core_state
         save_profile(current, profile_name)
 
-    map_path = ""
-    map_error = ""
-    try:
-        map_path = write_html(render_roadmap_map(current), kind="roadmap")
-    except Exception as exc:  # noqa: BLE001 - 地图刷新失败不阻断方案应用
-        map_error = str(exc)
-
-    meta.validation["map_path"] = map_path
-    meta.validation["map_error"] = map_error
     store.save(artifact)
 
     preview.update({
@@ -411,13 +401,10 @@ def _save(
         "plan_history_versions": len(current.plan_history),
         "adjustment": adjustment.model_dump(),
         "core_state": dict(current.core_state),
-        "map_path": map_path,
-        "map_error": map_error,
         "message": (
             "执行方案已应用：profile.plan 已替换为执行版，plan_history 已保存快照；"
             f"保留 {len(preserved_tasks)} 个历史任务，移除 {len(removed_tasks)} 个旧任务。"
-            + ("职业地图已刷新。" if map_path else f"职业地图刷新失败（不阻断）：{map_error}")
-            + "接下来调用 generate_tasks 生成当前阶段任务。"
+            "接下来调用 generate_tasks 生成当前阶段任务。"
         ),
         "next_steps": list(_APPLIED_NEXT_STEPS),
     })
@@ -838,8 +825,6 @@ def _applied_alignment_payload(
         "core_state": (
             dict(profile.core_state) if isinstance(profile.core_state, dict) else {}
         ),
-        "map_path": str(validation.get("map_path") or ""),
-        "map_error": str(validation.get("map_error") or ""),
         "message": (
             "相同的执行方案（requirement_profile_id + roadmap + changes）已经应用过；"
             "本次不重复写入 plan_history / adjustments，也不重复删除任务。"

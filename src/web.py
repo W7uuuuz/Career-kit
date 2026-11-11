@@ -16,10 +16,12 @@ import argparse
 import asyncio
 import json
 import mimetypes
+import os
 import secrets
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -31,9 +33,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-from .assets import INDEX_FILENAME, get_assets_root, kind_assets_dir
+from .assets import get_assets_root, kind_assets_dir
 from .core.artifacts.store import ArtifactStore
 from .core.orchestrator import state_machine
+from .desktop import runtime_state_path
 from .guidance import phase_type_label, warnings
 from .models import TaskStatus
 from .tools.application_tracker import (
@@ -138,7 +141,6 @@ def _collect_reports(profile_name: str) -> list[dict[str, Any]]:
             "generated_at": data.get("generated_at", ""),
             "counts": counts,
             "failed_sources": failed,
-            "html": _asset_url(stem.with_suffix(".html")) if stem.with_suffix(".html").exists() else "",
             "md": _asset_url(stem.with_suffix(".md")) if stem.with_suffix(".md").exists() else "",
             "json": _asset_url(json_path),
         })
@@ -288,7 +290,6 @@ def _evidence_alignment(artifact: dict[str, Any]) -> dict[str, Any]:
         "id": str(meta.get("id") or ""),
         "counts": dict(counts),
         "confidence": dict(confidence),
-        "report_html": _asset_url(reports.get("html", "")),
         "report_md": _asset_url(reports.get("md", "")),
         "index": _asset_url(reports.get("json", "")),
     }
@@ -461,7 +462,6 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
         research_out = {
             "generated_at": research.get("generated_at", ""),
             "counts": research.get("counts") or {},
-            "report_html": _asset_url(research.get("report_html", "")),
             "report_md": _asset_url(research.get("report_md", "")),
             "report_json": _asset_url(research.get("report_json", "")),
             "failed_sources": [str(s.get("source") or "未知源") for s in failed],
@@ -496,7 +496,6 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
             t.status in ("completed", "skipped") for t in profile.tasks
         ),
         "warnings": warnings(profile),
-        "assets_index": _asset_url(get_assets_root() / INDEX_FILENAME),
         "research": research_out,
         "reports": reports,
         "applications": applications,
@@ -824,6 +823,18 @@ def main(argv: list[str] | None = None) -> int:
 
     host, port = server.server_address[:2]
     url = f"http://{host}:{port}/?token={token}"
+    state_file = runtime_state_path()
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(
+            json.dumps(
+                {"pid": os.getpid(), "url": url, "started_at": time.time()},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
     print(f"Career Kit 控制台：{url}")
     print("按 Ctrl+C 停止。数据直接写入 ~/.career-kit，与 MCP 共用。")
     if not args.no_open:
@@ -833,6 +844,8 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        with suppress(OSError):
+            state_file.unlink()
         server.server_close()
     return 0
 
