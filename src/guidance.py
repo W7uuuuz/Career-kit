@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from .core.progress import profile_probe_pending
 from .core.state import State, StateSnapshot, resolve_state
 
 # ---------------------------------------------------------------------------
@@ -496,6 +497,22 @@ def _profile_guide(profile: Any) -> Guide:
     )
 
 
+def _probing_guide(profile: Any) -> Guide:
+    """简历素材已解析、have 尚未确认：停在第 1 步做摸排，不跳到目标定位。"""
+    return _guide(
+        "profile",
+        "profile",
+        "简历素材先收着，还不算建档完成。请用自己的话讲讲 1-2 个最能代表你水平的项目："
+        "做了什么、你负责哪部分、最难的问题怎么解决，哪些地方要查资料或用 AI。",
+        options=["开始讲项目", "直接说我的情况"],
+        next_action="先请用户讲项目并完成技能自评，再调用 "
+                    "intake(section='have') 写入证据、authorship、control_level 与 "
+                    "have.self_assessment；have 未就绪前不要进入目标定位，"
+                    "也不要调用 finalize_profile 放行",
+        profile=profile,
+    )
+
+
 def _target_guide(profile: Any) -> Guide:
     return _guide(
         "target",
@@ -702,6 +719,8 @@ def _finalize_guide(
     """位置、状态与下一步只来自同一个 StateSnapshot。"""
     guide.index = snapshot.stage_index
     guide.status = _STATE_STATUS[snapshot.state]
+    if snapshot.state is State.PROFILE_COLLECTING and snapshot.next_tool == "intake(have)":
+        guide.status = "profile"
     # 只有存在可选决策时才加决策前缀；开场采集卡本身已是完整问句，
     # 再拼决策词会变成「给简历或说说自己的情况：先聊聊你自己…」的重复。
     if guide.options and guide.kind != "intake":
@@ -720,7 +739,11 @@ def _guide_from_state(profile: Any, snapshot: StateSnapshot) -> Guide:
     if state is State.EMPTY:
         guide = _empty_guide(profile, brief_needed=not brief_shown(profile))
     elif state is State.PROFILE_COLLECTING:
-        guide = _target_guide(profile)
+        guide = (
+            _probing_guide(profile)
+            if profile_probe_pending(profile)
+            else _target_guide(profile)
+        )
     elif state is State.PROFILE_READY:
         guide = _profile_guide(profile)
     elif state is State.MARKET_PENDING:

@@ -705,6 +705,49 @@ def _has_want(profile: Any) -> bool:
     return isinstance(want, dict) and bool(want)
 
 
+def have_ready_for_target(profile: Any) -> bool:
+    """have 是否已完成摸排，可作为进入目标定位的硬门禁。
+
+    - have 为空：素材尚未写入，不能进入目标定位；
+    - 有技能但无用户确认证据（user_verified / 整体 evidence）：不能进入；
+    - 有技能但缺 authorship / control_level / self_assessment 自评：不能进入。
+
+    这与 finalize_profile 的摸排门禁同源：解析简历只提供素材，不等于完成建档。
+    """
+    have = getattr(profile, "have", None)
+    if not isinstance(have, dict) or not have:
+        return False
+    from ..tools.probing import (
+        collect_skills,
+        find_self_assessment_issues,
+        is_verified_skill,
+    )
+
+    skills = collect_skills(have)
+    if not skills:
+        return True
+    has_evidence = bool(
+        have.get("evidence")
+        or have.get("capability_evidence")
+        or any(is_verified_skill(skill) for skill in skills)
+    )
+    if not has_evidence:
+        return False
+    return not find_self_assessment_issues(have)
+
+
+def profile_probe_pending(profile: Any) -> bool:
+    """简历已解析但 have 尚未完成摸排时，状态机必须停在第 1 步建档。
+
+    只对「简历已解析」的建档路径生效：parse_resume 只提供素材，
+    不等同于完成建档，必须在 have 写入证据与自评后才能进入目标定位。
+    """
+    guidance = getattr(profile, "guidance", None)
+    if not (isinstance(guidance, dict) and guidance.get("resume_parsed_at")):
+        return False
+    return not have_ready_for_target(profile)
+
+
 def _baseline_execution_result(
     profile: Any,
     resolved: dict[str, dict[str, Any] | None],
@@ -835,6 +878,8 @@ __all__ = [
     "TARGET_FINGERPRINT_FIELDS",
     "TARGET_FINGERPRINT_KEY",
     "downstream_exists",
+    "have_ready_for_target",
+    "profile_probe_pending",
     "profile_target_fingerprint",
     "resolve_artifact",
     "resolve_progress",

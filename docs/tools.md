@@ -10,7 +10,7 @@
 | 工具 | 作用 |
 |------|------|
 | `start_session` | 初始化会话，返回欢迎信息与当前档案 |
-| `parse_resume` | 解析 PDF / DOCX / MD / TXT 简历，输出待验证素材与自评三问 |
+| `parse_resume` | 解析 PDF / DOCX / MD / TXT 简历，输出待验证素材与自评三问；只登记素材，不跳过 `have` 摸排 |
 | `intake` | 逐步填充 `who` / `have` / `want`；技能带证据 + authorship + control_level 自评，整份自评写 `have.self_assessment`；`want` 需用户确认并带 `user_confirmed=true` |
 | `finalize_profile` | 确认档案并生成摘要；技能无确认证据或缺 authorship/control_level/self_assessment 自评时触发摸排门禁 |
 | `import_jd` | 导入目标 JD 文本 |
@@ -37,7 +37,7 @@
 | `fetch_jd_detail` | 获取 JD 全文或面经正文 |
 | `search_knowledge` | 检索本地知识库 `~/.career-kit/knowledge/` |
 | `get_industry_snapshot` | 轻量行业快照（扫盲子流程）：行业地图 + 岗位卡 + 当前招聘样本/薪资 + 相关专业 + 来源/缺口；默认互联网/软件，支持能源动力、电子/半导体/通信、机械/装备、电气/电力、金融 |
-| `search_cases` | 聚合搜寻同背景成功经验与面试要求（本地 + 牛客 + GitHub + 目标企业 JD，学历五档四层归一打分） |
+| `search_cases` | 聚合搜寻他人经验（牛客/GitHub/本地面经）与企业要求（目标企业 JD/BOSS）；两类卡片分开展示并标注「他人经验」/「企业要求」，本地 JD 来源标为 local |
 | `research_market` | 返回市场调研方法论与 4 步模板（范围宣告 → 批量抓取 → 报告落地 → 衔接分析） |
 | `gather_research_data` | 一次批量抓取：目标公司 1 家 + 对照 2-4 家 JD 与同学历经历案例；逐条补抓详情（无详情的岗位剔除并计入缺口）；单源/总预算超时不会拖垮整批，已完成来源写入断点缓存、重跑续抓；返回花名册与聚合摘要；报告 md/html/json 落盘 `~/CareerKit/`，`profile.research` 同步更新；含 BOSS 源只问一次并传 `boss_confirmed=true`；确认但未登录返回 `ACTION_REQUIRED` / `next_tool=boss_login`，直接调用 `boss_login(action="login")`（用户只扫码），不再追问第二次 |
 | `read_research_details` | 按花名册标识读取调研详情：不传 `ids` 返回花名册、聚合摘要与子 Agent 委派方案（`delegate`，对应 `research-analyst`）；传 `ids` 读取选定条目全文（`kind="jd"` 岗位 / `"case"` 面经与他人路径），单次上限 10 条 |
