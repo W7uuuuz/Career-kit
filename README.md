@@ -107,7 +107,7 @@ career-kit-doctor
 
 全部通过后，在新会话中对 Agent 说「调用 start_session」，收到「欢迎使用 Career Kit」即接入成功。
 
-> 源码安装 / 一键安装脚本 / 本地控制台（FastAPI + Vue）/ 常见问题，见[安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)。
+> 源码安装 / 一键安装脚本 / 实时职业地图（FastAPI + Vue）/ 常见问题，见[安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)。
 
 ## 支持哪些网站
 
@@ -143,7 +143,7 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 
 ## 隐私与数据边界
 
-- 程序数据存储在本地 `~/.career-kit/`（档案主存储为 `career-kit.db`，JSON 为兼容镜像），报告与路线图存储在 `~/CareerKit/`，不会发送到任何外部服务器。
+- 程序数据存储在本地 `~/.career-kit/`（档案主存储为 `career-kit.db`，JSON 为兼容镜像），调研报告存储在 `~/CareerKit/`，职业地图由本地控制台按档案实时渲染；所有数据都不会发送到任何外部服务器。
 - 知识库是用户自有资产，不随包升级丢失。
 - 抓取只读取公开岗位 / 面经页面，请遵守来源站点条款与频率限制；本项目不提供内推、保 offer 或任何就业承诺。详见 [DISCLAIMER.md](https://github.com/W7uuuuz/Career-kit/blob/main/DISCLAIMER.md)。
 
@@ -152,7 +152,7 @@ Career Kit：事件触发洞察 → 重估计划 → 调整阶段任务
 - [文档地图](https://github.com/W7uuuuz/Career-kit/blob/main/docs/README.md)：所有文档的唯一入口
 - [LLM 使用指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/llms.txt)：工作流、规则、常见场景
 - [工作流详解](https://github.com/W7uuuuz/Career-kit/blob/main/docs/workflow.md)：各阶段前置条件、输入输出
-- [安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)：源码安装、一键脚本、本地控制台、常见问题
+- [安装指南](https://github.com/W7uuuuz/Career-kit/blob/main/docs/install.md)：源码安装、一键脚本、实时职业地图、常见问题
 - [工具总览](https://github.com/W7uuuuz/Career-kit/blob/main/docs/tools.md)：51 个 MCP 工具的唯一事实源
 - [企业库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/scrapers.md)：已收录企业、数据源说明
 - [知识库](https://github.com/W7uuuuz/Career-kit/blob/main/docs/knowledge.md)：目录结构、文件格式

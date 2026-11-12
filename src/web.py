@@ -22,6 +22,8 @@ import socket
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import webbrowser
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -92,6 +94,69 @@ def _asset_url(path: str | Path) -> str:
 
 # SSE 订阅者挂在 app.state 上；这里只保留集合锁，兼容线程池里触发的广播
 _SUBSCRIBERS_LOCK = threading.Lock()
+
+# 浏览器会话租约：页面每 20 秒续期；异常关闭时 90 秒后回收。
+# 全部页面关闭后留 5 秒缓冲，避免刷新/前进后退误杀服务。
+SESSION_TTL_SECONDS = 90.0
+SESSION_EXIT_GRACE_SECONDS = 5.0
+SESSION_STARTUP_GRACE_SECONDS = 120.0
+
+
+class SessionRegistry:
+    """记录打开的页面会话，决定「最后一个页面关闭后退出」。"""
+
+    def __init__(self) -> None:
+        self._sessions: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._ever_opened = False
+        self._empty_since: float | None = None
+
+    def open(self, session_id: str, now: float | None = None) -> None:
+        if not session_id:
+            return
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            self._sessions[session_id] = current
+            self._ever_opened = True
+            self._empty_since = None
+
+    def close(self, session_id: str, now: float | None = None) -> None:
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            self._sessions.pop(session_id, None)
+            if not self._sessions:
+                self._empty_since = current
+
+    def prune(self, now: float | None = None) -> None:
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            stale = [
+                session_id
+                for session_id, seen in self._sessions.items()
+                if current - seen > SESSION_TTL_SECONDS
+            ]
+            for session_id in stale:
+                self._sessions.pop(session_id, None)
+            if not self._sessions and self._empty_since is None:
+                self._empty_since = current
+
+    def active(self) -> int:
+        with self._lock:
+            return len(self._sessions)
+
+    def ever_opened(self) -> bool:
+        with self._lock:
+            return self._ever_opened
+
+    def should_exit(self, started_at: float, now: float) -> bool:
+        """无活跃页面且超过缓冲时间时返回 True。"""
+        with self._lock:
+            if self._sessions:
+                return False
+            if self._ever_opened:
+                since = self._empty_since if self._empty_since is not None else now
+                return now - since >= SESSION_EXIT_GRACE_SECONDS
+            return now - started_at >= SESSION_STARTUP_GRACE_SECONDS
 
 
 def _broadcast_refresh(app: FastAPI) -> None:
@@ -444,6 +509,30 @@ def build_state(profile: Any | None = None) -> dict[str, Any]:
             "goal": phase.get("goal", ""),
             "company": phase.get("company", ""),
             "rationale": phase.get("rationale", ""),
+            "target_level": phase.get("target_level", ""),
+            "resume_value": phase.get("resume_value", ""),
+            "kpi": phase.get("kpi") if isinstance(phase.get("kpi"), dict) else {},
+            "access_paths": [
+                item for item in (phase.get("access_paths") or []) if isinstance(item, dict)
+            ],
+            "fallback_paths": [
+                item for item in (phase.get("fallback_paths") or []) if isinstance(item, dict)
+            ],
+            "conversion_risk": (
+                phase.get("conversion_risk")
+                if isinstance(phase.get("conversion_risk"), dict)
+                else {}
+            ),
+            "time_window": (
+                phase.get("time_window") if isinstance(phase.get("time_window"), dict) else {}
+            ),
+            "decision_gate": (
+                phase.get("decision_gate")
+                if isinstance(phase.get("decision_gate"), dict)
+                else {}
+            ),
+            "jd_status": phase.get("jd_status", ""),
+            "condition": phase.get("condition", ""),
             "is_current": phase_id == current_phase_id,
             "done": done,
             "total": len(phase_tasks),
@@ -580,16 +669,39 @@ def _static_file(relative: str) -> Response:
     return Response(content=target.read_bytes(), media_type=ctype)
 
 
-def create_app(token: str) -> FastAPI:
-    """构建 FastAPI 应用；token 与 SSE 订阅者挂在 app.state 上。"""
+async def _watch_sessions(app: FastAPI) -> None:
+    """回收过期会话；最后一个页面关闭后请求 uvicorn 优雅退出。"""
+    while True:
+        await asyncio.sleep(1.0)
+        registry: SessionRegistry = app.state.sessions
+        registry.prune()
+        if not app.state.exit_when_idle:
+            continue
+        if registry.should_exit(app.state.started_at, time.monotonic()):
+            app.state.shutting_down = True
+            server = getattr(app.state, "uvicorn_server", None)
+            if server is not None:
+                server.should_exit = True
+            return
+
+
+def create_app(token: str, exit_when_idle: bool = False) -> FastAPI:
+    """构建 FastAPI 应用；token、SSE 订阅者与会话注册表挂在 app.state 上。"""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.loop = asyncio.get_running_loop()
-        yield
+        app.state.started_at = time.monotonic()
+        watchdog = asyncio.create_task(_watch_sessions(app))
+        try:
+            yield
+        finally:
+            watchdog.cancel()
+            with suppress(asyncio.CancelledError):
+                await watchdog
 
     app = FastAPI(
-        title="Career Kit 控制台",
+        title="Career Kit 职业地图",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -598,6 +710,11 @@ def create_app(token: str) -> FastAPI:
     app.state.token = token
     app.state.subscribers = set()
     app.state.loop = None
+    app.state.started_at = time.monotonic()
+    app.state.exit_when_idle = exit_when_idle
+    app.state.shutting_down = False
+    app.state.sessions = SessionRegistry()
+    app.state.uvicorn_server = None
 
     @app.get("/api/health")
     def api_health() -> dict[str, bool]:
@@ -614,6 +731,60 @@ def create_app(token: str) -> FastAPI:
             return JSONResponse(
                 status_code=500, content={"error": f"状态构建失败：{exc}"}
             )
+
+    @app.post("/api/session/open")
+    async def api_session_open(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        session_id = str(body.get("id") or "").strip()
+        if not session_id:
+            return JSONResponse(status_code=400, content={"error": "session id required"})
+        request.app.state.sessions.open(session_id)
+        return {"ok": True}
+
+    @app.post("/api/session/ping")
+    async def api_session_ping(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        session_id = str(body.get("id") or "").strip()
+        if not session_id:
+            return JSONResponse(status_code=400, content={"error": "session id required"})
+        request.app.state.sessions.open(session_id)
+        return {"ok": True}
+
+    @app.post("/api/session/close")
+    async def api_session_close(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        session_id = str(request.query_params.get("id") or "").strip()
+        if not session_id:
+            body, error = await _json_body(request)
+            if error is not None:
+                return error
+            session_id = str(body.get("id") or "").strip()
+        request.app.state.sessions.close(session_id)
+        return {"ok": True}
+
+    @app.post("/api/shutdown")
+    def api_shutdown(request: Request) -> Any:
+        denied = _check_token(request)
+        if denied is not None:
+            return denied
+        server = getattr(request.app.state, "uvicorn_server", None)
+        if server is None:
+            return JSONResponse(status_code=503, content={"error": "shutdown unavailable"})
+        request.app.state.shutting_down = True
+        server.should_exit = True
+        return {"ok": True}
 
     @app.get("/api/events")
     async def api_events(request: Request) -> Any:
@@ -768,6 +939,7 @@ class UvicornServer:
                 access_log=False,
             )
         )
+        app.state.uvicorn_server = self._server
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
 
@@ -788,10 +960,12 @@ class UvicornServer:
             self._sock.close()
 
 
-def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[UvicornServer, str]:
+def create_server(
+    host: str = "127.0.0.1", port: int = 8765, exit_when_idle: bool = False
+) -> tuple[UvicornServer, str]:
     """创建服务器；端口占用时自动顺延。返回 (server, token)。"""
     token = secrets.token_urlsafe(18)
-    app = create_app(token)
+    app = create_app(token, exit_when_idle=exit_when_idle)
     last_error: OSError | None = None
     for candidate in range(port, port + 10):
         try:
@@ -802,21 +976,53 @@ def create_server(host: str = "127.0.0.1", port: int = 8765) -> tuple[UvicornSer
     raise OSError(f"无法绑定 {host}:{port}-{port + 9}：{last_error}")
 
 
+def _live_instance_url() -> str:
+    """返回已在运行的控制台地址；进程已退出或文件损坏时返回空串。"""
+    state_file = runtime_state_path()
+    try:
+        data = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    url = str(data.get("url") or "")
+    if not url:
+        return ""
+    base = url.split("?", 1)[0].rstrip("/")
+    try:
+        with urllib.request.urlopen(base + "/api/health", timeout=1.0) as response:
+            return url if response.status == 200 else ""
+    except (urllib.error.URLError, OSError, ValueError):
+        return ""
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Career Kit 本地控制台")
+    parser = argparse.ArgumentParser(description="Career Kit 本地职业地图")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认仅本机）")
     parser.add_argument("--port", type=int, default=8765, help="起始端口（占用时自动顺延）")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--open", action="store_true", help="自动打开浏览器（默认行为）")
     group.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    parser.add_argument(
+        "--exit-when-idle",
+        action="store_true",
+        help="最后一个页面关闭后自动退出（桌面快捷方式默认开启）",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    existing = _live_instance_url()
+    if existing:
+        print(f"Career Kit 已在运行：{existing}")
+        if not args.no_open:
+            webbrowser.open(existing)
+        return 0
+
     try:
-        server, token = create_server(args.host, args.port)
+        server, token = create_server(
+            args.host, args.port, exit_when_idle=args.exit_when_idle
+        )
     except OSError as exc:
         print(f"启动失败：{exc}", file=sys.stderr)
         return 1
@@ -835,8 +1041,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     except OSError:
         pass
-    print(f"Career Kit 控制台：{url}")
-    print("按 Ctrl+C 停止。数据直接写入 ~/.career-kit，与 MCP 共用。")
+    print(f"Career Kit 职业地图：{url}")
+    print("关闭页面后会自动停止；数据直接写入 ~/.career-kit，与 MCP 共用。")
     if not args.no_open:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

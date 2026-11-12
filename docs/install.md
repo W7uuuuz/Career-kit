@@ -53,21 +53,23 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ## 本地控制台
 
 安装脚本会同时在桌面创建「Career Kit」快捷方式；路线图定稿时也会自动补建。
-双击快捷方式后，按提示选择打开、关闭或查看控制台状态即可。
+双击快捷方式直接打开职业地图，不再经过交互菜单；重复双击会复用已运行的实例。
+关闭所有地图标签页后，服务自动停止（约 5 秒后）；也可以点页面右上角「关闭控制台」。
 
 也可以直接运行：
 
 ```bash
-career-kit-serve --open
+career-kit-serve --open --exit-when-idle
 # 或（源码安装）
-"<venv-python>" -m src.web --open
+"<venv-python>" -m src.web --open --exit-when-idle
 ```
 
 控制台后端为 FastAPI（uvicorn）应用，前端为 Vue 单页应用，构建产物放在
 `src/web_ui/dist`；缺失构建产物时访问 `/` 会返回 503 与构建提示。
-仅监听 `127.0.0.1`，用于查看路线图与任务详情（怎么做 / 资源 / 完成标准）
-并直接打卡；也支持编辑任务、登记投递、按方向筛选调研报告，并通过 SSE
+仅监听 `127.0.0.1`，首页是实时职业地图（阶段路径、当前阶段、下一步任务），
+计划详情折叠在下方；支持打卡、编辑任务、登记投递、按方向筛选调研报告，并通过 SSE
 自动刷新。打卡写入同一份 SQLite 档案，MCP 下次运行时即可读取。
+`--exit-when-idle` 由桌面快捷方式默认开启；开发调试用 `--no-open` 启动时不会自动退出。
 
 ## 常见问题
 

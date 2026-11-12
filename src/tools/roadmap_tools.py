@@ -867,7 +867,7 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
         "message": (
             f"路线图已保存。\n\n{report}{advisory_text}{audit_note}\n\n"
             + (
-                "桌面快捷方式已准备好：Career Kit。双击即可打开控制台，查看路线图并打卡。\n"
+                "桌面快捷方式已准备好：Career Kit。双击即可打开职业地图并打卡；关闭页面后自动停止。\n"
                 if shortcut_path
                 else (
                     f"桌面快捷方式创建失败：{shortcut_error}——可稍后重新保存路线图重试。\n"

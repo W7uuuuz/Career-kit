@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { loadState, roadmapUrl, showToast, store } from '../store'
+import { loadState, shutdown, showToast, store } from '../store'
 
 const profileLine = computed(() => {
   if (!store.state) return store.loading ? '正在读取档案…' : '尚未读取档案'
@@ -17,14 +17,18 @@ async function refresh(): Promise<void> {
 <template>
   <header class="app-header">
     <div class="brand">
-      <h1>Career Kit 控制台</h1>
+      <h1>Career Kit 职业地图</h1>
       <p class="sub">{{ profileLine }}</p>
     </div>
     <div class="actions">
-      <a class="btn ghost" :href="roadmapUrl()" target="_blank" rel="noopener">职业地图</a>
-      <button class="btn primary" :disabled="store.loading" @click="refresh">
+      <span class="live" :class="{ off: !!store.sseError }">
+        <span class="live-dot"></span>
+        {{ store.sseError ? '实时连接中断' : '实时同步' }}
+      </span>
+      <button class="btn ghost" :disabled="store.loading" @click="refresh">
         {{ store.loading ? '刷新中…' : '刷新' }}
       </button>
+      <button class="btn ghost" @click="shutdown">关闭控制台</button>
     </div>
   </header>
 </template>

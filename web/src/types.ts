@@ -26,6 +26,35 @@ export interface MilestoneTask {
   done_criteria: string
 }
 
+export interface Kpi {
+  metric?: string
+  target?: string
+  evidence?: string
+}
+
+export interface AccessPath {
+  channel?: string
+  rationale?: string
+  evidence_ids?: string[]
+}
+
+export interface ConversionRisk {
+  level?: string
+  reason?: string
+  evidence_ids?: string[]
+}
+
+export interface TimeWindow {
+  window?: string
+  deadline?: string
+  note?: string
+}
+
+export interface DecisionGate {
+  condition?: string
+  action?: string
+}
+
 export interface Phase {
   id: string
   name: string
@@ -34,6 +63,16 @@ export interface Phase {
   goal: string
   company: string
   rationale: string
+  target_level?: string
+  resume_value?: string
+  kpi?: Kpi
+  access_paths?: AccessPath[]
+  fallback_paths?: AccessPath[]
+  conversion_risk?: ConversionRisk
+  time_window?: TimeWindow
+  decision_gate?: DecisionGate
+  jd_status?: string
+  condition?: string
   is_current: boolean
   done: number
   total: number
