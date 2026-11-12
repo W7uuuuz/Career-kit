@@ -30,12 +30,21 @@ async def collect_company_evidence(
     refresh: bool = False,
     include_boss: bool = False,
     boss_confirmed: bool = False,
+    company_ids: str = "",
+    batch_size: int = 3,
+    resume: bool = True,
+    include_outside_pool: bool = False,
 ) -> str:
     """采集目标企业的岗位 JD 与面经，生成 EvidenceRun 与证据池报告（阶段 7）。
 
     何时调用：目标企业池已确认（select_target_companies）之后。
     本工具只采集事实：抓取、城市硬筛、详情补抓、去重、来源状态与置信度；
     LLM 不参与，不编造缺失内容。单源失败不影响整批，失败原因写入 source_status 与 gaps。
+
+    分批续跑（默认开启）：
+    - 单次调用只处理 batch_size 家企业，每完成一家写入检查点；
+    - 还有企业未完成时返回 status=partial，不会生成 EvidenceRun；
+    - 再次调用本工具会自动从检查点续跑，直到全部完成才生成证据池。
 
     BOSS 直聘纪律（include_boss=True 时）：
     - BOSS 是跨公司补充源，只补充薪资与广度，不能替代目标企业池；
@@ -51,13 +60,18 @@ async def collect_company_evidence(
         max_companies: 本次最多抓取的企业数（BOSS 不占该名额）
         max_jd: 最终保留的 JD 上限
         max_interviews: 最终保留的面经上限
-        refresh: true 时不复用 profile.research 中 7 天内的历史样本
+        refresh: true 时不复用 profile.research 中 7 天内的历史样本，也不复用检查点
         include_boss: 是否把 BOSS 直聘作为补充证据源（默认关闭）
         boss_confirmed: 用户已确认抓取 BOSS 时为 true；未确认会返回 CONFIRMATION_REQUIRED
+        company_ids: 只采集指定企业（逗号/顿号/空格分隔的 id 或名称）；空串表示全部
+        batch_size: 单次调用最多处理的企业数（默认 3，范围 1-10）
+        resume: 是否复用未完成检查点续跑（默认 true）
+        include_outside_pool: 是否保留企业池外的复用样本（默认 false，直接丢弃）
 
     Returns:
         JSON 字符串：artifact id、样本统计（含 BOSS 条数）、置信度、来源状态、
-        数据缺口、报告完整路径与下一步 analyze_company_requirements。
+        数据缺口、报告完整路径与下一步 analyze_company_requirements；
+        status=partial 时返回检查点 id、本批进度与续跑指引。
     """
     gate = require_state(load_profile(), "collect_company_evidence")
     if isinstance(gate, str):
@@ -119,8 +133,14 @@ async def collect_company_evidence(
             "refresh": refresh,
             "include_boss": include_boss,
             "boss_confirmed": boss_confirmed,
+            "company_ids": company_ids,
+            "batch_size": batch_size,
+            "resume": resume,
+            "include_outside_pool": include_outside_pool,
         },
     )
+    if result.status == "partial":
+        return _json(_partial_summary(store, result))
     if result.status in {"failed", "insufficient_data"}:
         code = "EVIDENCE_COLLECTION_FAILED" if result.status == "failed" else "INSUFFICIENT_DATA"
         return error_response(
@@ -137,6 +157,31 @@ async def collect_company_evidence(
             {"artifact_id": result.artifact_id},
         )
     return _json(_summarize(artifact, result, profile_name))
+
+
+def _partial_summary(store: ArtifactStore, result: StageResult) -> dict[str, Any]:
+    """分批未完成：返回检查点进度，提示继续调用本工具续跑。"""
+    checkpoint = store.load(result.artifact_id)
+    counts = (
+        checkpoint.get("counts")
+        if isinstance(checkpoint, dict) and isinstance(checkpoint.get("counts"), dict)
+        else {}
+    )
+    details = result.details if isinstance(result.details, dict) else {}
+    return {
+        "status": "partial",
+        "artifact_id": result.artifact_id,
+        "checkpoint_id": result.artifact_id,
+        "message": result.message,
+        "progress": {
+            "done": int(details.get("done") or 0),
+            "total": int(details.get("total") or 0),
+            "remaining": int(details.get("remaining") or 0),
+        },
+        "counts": dict(counts),
+        "next_tool": "collect_company_evidence",
+        "next_step": "继续调用本工具，默认自动续跑",
+    }
 
 
 def _summarize(
@@ -165,6 +210,12 @@ def _summarize(
     report_paths = (
         artifact.get("report_paths") if isinstance(artifact.get("report_paths"), dict) else {}
     )
+    gaps = list(artifact.get("gaps") or [])
+    batch = (
+        result.details.get("batch")
+        if isinstance(result.details.get("batch"), dict)
+        else {}
+    )
     summary = {
         "status": result.status,
         "artifact_id": str(meta.get("id") or result.artifact_id),
@@ -172,11 +223,20 @@ def _summarize(
         "message": result.message,
         "counts": dict(counts),
         "confidence": dict(confidence),
+        "summary": {
+            "counts": dict(counts),
+            "confidence": dict(confidence),
+            "top_gaps": gaps[:5],
+        },
+        "batch": {
+            "done": int(batch.get("done") or counts.get("companies_requested") or 0),
+            "total": int(batch.get("total") or counts.get("companies_requested") or 0),
+        },
         "source_status": source_status,
         "failed_sources": [
             {"source": item.get("source"), "error": item.get("error")} for item in failed
         ],
-        "gaps": list(artifact.get("gaps") or []),
+        "gaps": gaps,
         "report_paths": {key: str(value) for key, value in report_paths.items()},
         "next_tool": "analyze_company_requirements",
         "next_step": (

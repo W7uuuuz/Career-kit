@@ -506,3 +506,125 @@ def test_select_target_companies_tool_honors_explicit_tiers(data_dir: Path) -> N
     }
     assert {key.split(":", 1)[1] for key in tier_counts} == set(payload["by_tier"])
     assert tier_counts <= {"tier:中厂", "tier:小厂"}
+
+
+def test_selected_ids_allowlist_focuses_recommended_pool(data_dir: Path) -> None:
+    store = ArtifactStore()
+    result, artifact = _run(
+        store,
+        {
+            "target_tiers": "大厂、中厂",
+            "industry": "互联网",
+            "selected_ids": '["bytedance", "腾讯"]',
+        },
+    )
+
+    assert result.status == "needs_confirmation"
+    entries = {item["id"]: item for item in artifact["companies"]}
+    assert entries["bytedance"]["status"] == "recommended"
+    assert entries["tencent"]["status"] == "recommended"
+    others = [
+        item for key, item in entries.items() if key not in {"bytedance", "tencent"}
+    ]
+    assert others and all(item["status"] == "excluded" for item in others)
+    assert artifact["counts"]["total"] == 2
+    assert artifact["counts"]["recommended"] == 2
+    assert artifact["counts"]["excluded"] == len(others)
+    assert artifact["meta"]["inputs"]["selected_ids"] == "bytedance,腾讯"
+    assert set(artifact["meta"]["validation"]["selected_ids"]) == {
+        "bytedance",
+        "tencent",
+    }
+    assert artifact["meta"]["validation"]["selected"] == 2
+
+
+def test_selected_ids_confirmed_marks_only_selected_confirmed(data_dir: Path) -> None:
+    store = ArtifactStore()
+    _seed_upstream(store)
+    result, artifact = _run(
+        store,
+        {
+            "target_tiers": "大厂",
+            "bridge_tiers": "中厂",
+            "industry": "互联网",
+            "selected_ids": "字节, 阿里 美团",
+            "confirmed": True,
+        },
+    )
+
+    assert result.status == "ok"
+    assert result.next_stage == state_machine.STAGE_EVIDENCE
+    entries = {item["id"]: item for item in artifact["companies"]}
+    confirmed_ids = {
+        key for key, item in entries.items() if item["status"] == "confirmed"
+    }
+    assert confirmed_ids == {"bytedance", "alibaba", "meituan"}
+    assert all(
+        item["status"] in {"confirmed", "excluded"} for item in entries.values()
+    )
+    assert artifact["meta"]["validation"]["confirmed"] is True
+    assert artifact["meta"]["validation"]["selected"] == 3
+    assert target_companies.validate(CompanyPool.model_validate(artifact)) == []
+
+    profile = profile_module.load_profile("default")
+    assert profile.core_state["company_pool_id"] == result.artifact_id
+    assert profile.core_state["stage"] == state_machine.STAGE_COMPANY_POOL
+
+
+def test_selected_ids_unknown_tokens_reported_as_gap(data_dir: Path) -> None:
+    store = ArtifactStore()
+    result, artifact = _run(
+        store,
+        {
+            "target_tiers": "大厂",
+            "industry": "互联网",
+            "selected_ids": "bytedance,不存在的企业",
+        },
+    )
+
+    assert result.status == "needs_confirmation"
+    assert any(
+        "selected_ids 未收录" in gap and "不存在的企业" in gap
+        for gap in artifact["gaps"]
+    )
+    entries = {item["id"]: item for item in artifact["companies"]}
+    assert entries["bytedance"]["status"] == "recommended"
+    assert artifact["counts"]["total"] == 1
+
+
+def test_selected_ids_overrides_include_allowlist(data_dir: Path) -> None:
+    store = ArtifactStore()
+    _, artifact = _run(
+        store,
+        {
+            "target_tiers": "大厂",
+            "industry": "互联网",
+            "include": "dewu,华为",
+            "selected_ids": "bytedance,dewu",
+        },
+    )
+
+    entries = {item["id"]: item for item in artifact["companies"]}
+    assert entries["bytedance"]["status"] == "recommended"
+    assert entries["dewu"]["status"] == "recommended"
+    assert entries["huawei"]["status"] == "excluded"
+    assert "未在用户选择清单内" in entries["huawei"]["reason"]
+    assert artifact["counts"]["total"] == 2
+
+
+def test_select_target_companies_tool_reports_selected_focus(data_dir: Path) -> None:
+    _seed_upstream(ArtifactStore())
+    payload = json.loads(
+        select_target_companies(
+            target_tiers="大厂",
+            bridge_tiers="中厂",
+            industry="互联网",
+            selected_ids="bytedance,腾讯",
+            confirmed=True,
+        )
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["selected_count"] == 2
+    assert set(payload["selected_ids"]) == {"bytedance", "tencent"}
+    assert "阶段 7 只采集" in payload["next_step"]

@@ -333,6 +333,58 @@ def _gather_message(specs, query=None):
         rt.get_job_detail = original_detail
 
 
+def test_gather_research_data_max_sources_defers_extra(temp_profile):
+    """max_sources 截断：只跑前 N 个源，剩余进 deferred_specs，摘要照常返回。"""
+    import src.tools.research_tools as rt
+
+    specs = [
+        {"company": "字节", "limit": 3},
+        {"company": "腾讯", "limit": 3},
+        {"company": "百度", "limit": 3},
+    ]
+    loader = _FakeLoader({
+        slug: {"company": slug, "results": [_source_job(slug)], "count": 1}
+        for slug in ("bytedance", "tencent", "baidu")
+    })
+    original_loader = rt.search_company_jobs
+    original_cases = rt.collect_cases
+    original_detail = rt.get_job_detail
+    rt.search_company_jobs = loader
+    rt.collect_cases = lambda **kwargs: {"cases": [], "warnings": [], "sources": {}}
+    rt.get_job_detail = lambda url, company=None: {
+        "description": "负责 Agent 产品后端与 RAG 链路。",
+        "requirements": "熟悉 Python / LangGraph。",
+    }
+    try:
+        message = asyncio.run(rt.gather_research_data(
+            json.dumps(specs),
+            json.dumps({"role": "AI Agent 开发"}),
+            max_sources=2,
+        ))
+    finally:
+        rt.search_company_jobs = original_loader
+        rt.collect_cases = original_cases
+        rt.get_job_detail = original_detail
+
+    assert [slug for slug, _ in loader.calls] == ["bytedance", "tencent"]
+    assert '"processed": 2' in message
+    assert '"deferred": 1' in message
+    assert '"complete": false' in message
+    assert "百度" in message, "剩余 spec 必须原样放进 deferred_specs"
+    assert "deferred_specs" in message and "next_step" in message
+    assert "【关键结论摘要（summary）】" in message
+    assert "岗位样本 2 条" in message
+
+
+def test_gather_research_data_under_limit_keeps_original_behavior(temp_profile):
+    """源数量不超过 max_sources 时不出现 batch 截断提示。"""
+    message = _gather_message(
+        [{"company": "字节", "limit": 3}, {"company": "腾讯", "limit": 3}]
+    )
+    assert '"deferred_specs"' not in message
+    assert "【关键结论摘要（summary）】" in message
+
+
 def test_research_budget_constants():
     import src.tools.research_tools as rt
 

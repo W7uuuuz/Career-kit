@@ -6,7 +6,11 @@ save_requirement_profile 只接收 LLM 的 interpretation，数字由代码重�
 
 from __future__ import annotations
 
-from ..core.artifacts.models import EvidenceRun, RequirementProfile
+from ..core.artifacts.models import (
+    CompanyPool,
+    EvidenceRun,
+    RequirementProfile,
+)
 from ..core.artifacts.store import ArtifactStore
 from ..core.orchestrator import state_machine
 from ..core.stages import requirements
@@ -18,6 +22,77 @@ from .state_gate import require_state
 from .tool_helpers import _json, _parse_json_param
 
 _ALLOWED_TOP_KEYS = {"requirement_profile_id", "interpretation"}
+
+_FAILED_ALTERNATIVE = (
+    "可先按基线路线图执行（detail_current_phase → generate_tasks），"
+    "阶段 8 稍后补做"
+)
+
+
+def _supplement_targets(
+    store: ArtifactStore, artifact: RequirementProfile
+) -> tuple[list[dict[str, str]], str]:
+    """样本不足时列出具体补采对象：池内无 JD、JD 缺 requirements 的公司。"""
+    evidence_run_id = (artifact.evidence_run_id or "").strip()
+    if not evidence_run_id:
+        return [], ""
+    evidence_data = store.load(evidence_run_id)
+    if not isinstance(evidence_data, dict):
+        return [], ""
+    try:
+        evidence = EvidenceRun.model_validate(evidence_data)
+    except Exception:  # noqa: BLE001 —— 证据损坏时不阻断主流程
+        return [], ""
+    pool_id = (evidence.company_pool_id or "").strip()
+    if not pool_id:
+        return [], ""
+    pool_data = store.load(pool_id)
+    if not isinstance(pool_data, dict):
+        return [], ""
+    try:
+        pool = CompanyPool.model_validate(pool_data)
+    except Exception:  # noqa: BLE001 —— 企业池损坏时不阻断主流程
+        return [], ""
+
+    jd_by_company: dict[str, list] = {}
+    for jd in evidence.jd_items:
+        for key in {jd.company_id.strip(), jd.company.strip()}:
+            if key:
+                jd_by_company.setdefault(key, []).append(jd)
+
+    targets: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for company in pool.companies:
+        if company.status == "excluded":
+            continue
+        key = company.id.strip() or company.name.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        items = jd_by_company.get(key) or jd_by_company.get(company.name.strip()) or []
+        label = company.name or company.id
+        if not items:
+            targets.append(
+                {
+                    "company_id": company.id,
+                    "company": label,
+                    "reason": "池内没有采集到任何 JD",
+                }
+            )
+            continue
+        missing = [jd for jd in items if not (jd.requirements or "").strip()]
+        if missing:
+            targets.append(
+                {
+                    "company_id": company.id,
+                    "company": label,
+                    "reason": f"{len(missing)} 条 JD 缺少 requirements 正文",
+                }
+            )
+    if not targets:
+        return [], ""
+    names = "、".join(target["company"] for target in targets)
+    return targets, f"对 {names} 补采 JD 并补全 requirements 正文"
 
 
 @mcp.tool()
@@ -49,7 +124,12 @@ def analyze_company_requirements(evidence_run_id: str = "") -> str:
         {"evidence_run_id": evidence_run_id},
     )
     if result.status == "failed":
-        return error_response("EVIDENCE_RUN_NOT_FOUND", result.message)
+        details = dict(result.details)
+        details.setdefault("alternative", _FAILED_ALTERNATIVE)
+        details.setdefault("skip_option", True)
+        return error_response(
+            result.code or "EVIDENCE_RUN_NOT_FOUND", result.message, details
+        )
 
     data = store.load(result.artifact_id)
     if data is None:
@@ -67,6 +147,9 @@ def analyze_company_requirements(evidence_run_id: str = "") -> str:
         "（只写 summary/priorities/company_notes/risks/notes）"
     )
     if warnings:
+        targets, action = _supplement_targets(store, artifact)
+        payload["supplement_targets"] = targets
+        payload["supplement_actions"] = action
         payload["next_step"] = (
             "样本不足：先按 sample_warning 建议补采 JD/面经；"
             "仍要保存时调用 save_requirement_profile，并在 interpretation 中明确说明低置信度。"

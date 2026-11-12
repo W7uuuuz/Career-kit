@@ -178,6 +178,31 @@ def check_data_dir() -> Check:
     return Check("数据目录", OK, f"{DATA_ROOT}（{source}）")
 
 
+def check_workspace_cwd() -> Check:
+    """工作目录与代码目录不一致时，给出可直接照做的 MCP cwd 修复步骤。"""
+    code_home = Path(__file__).resolve().parents[1]
+    cwd = Path.cwd().resolve()
+    if cwd == code_home:
+        return Check("工作目录", OK, str(cwd))
+    sample = {
+        "mcpServers": {
+            "career-kit": {
+                "command": sys.executable,
+                "args": ["-m", "src.server"],
+                "cwd": str(code_home),
+            }
+        }
+    }
+    return Check(
+        "工作目录",
+        WARN,
+        f"cwd 与代码目录不一致：{cwd}",
+        "把 MCP 配置里的 cwd 指到代码目录，例如：\n"
+        + json.dumps(sample, ensure_ascii=False, indent=2)
+        + "\n数据目录仍是 ~/.career-kit，不会因为 cwd 不同丢档。",
+    )
+
+
 def check_browser() -> Check:
     try:
         from playwright.sync_api import sync_playwright
@@ -378,6 +403,7 @@ def run_checks(*, browser: bool = False, network: bool = False) -> list[Check]:
         check_package_version(),
         check_server(),
         check_data_dir(),
+        check_workspace_cwd(),
     ]
     if browser:
         checks.append(check_browser())

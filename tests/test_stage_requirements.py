@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src import paths
 from src.core.artifacts.models import (
     ArtifactMeta,
+    CompanyEntry,
+    CompanyPool,
     EvidenceRun,
     InterviewEvidence,
     JDEvidence,
@@ -465,6 +467,24 @@ def test_low_sample_confidence_and_gaps(store: ArtifactStore) -> None:
     assert any("缺少来源链接" in gap for gap in gaps)
 
 
+def test_validation_uses_keyword_sample_when_some_jd_lack_requirements(
+    store: ArtifactStore,
+) -> None:
+    items = _default_jd_items()
+    items.append(_jd("JD006", "kuaishou", "快手", "中厂", "无任职要求 JD", ""))
+    _save_run(store, jd_items=items)
+
+    ctx = StageContext(profile_name="alice", store=store)
+    result = requirements.run(ctx, {"evidence_run_id": ""})
+
+    assert result.status == "ok", result.message
+    draft = store.load(result.artifact_id)
+    assert draft is not None
+    assert draft["sample_size_jd"] == 6
+    assert draft["missing_requirements_jd"] == ["JD006"]
+    assert requirements.validate(RequirementProfile.model_validate(draft)) == []
+
+
 def test_stage_run_resolves_latest_and_validate_rejects_tampering(
     store: ArtifactStore,
 ) -> None:
@@ -701,3 +721,136 @@ def test_hard_gate_marks_missing_profile_fields_instead_of_guessing() -> None:
     assert stats["sample_size_jd"] == 1
     assert stats["excluded_jd"] == []
     assert any("缺少学历" in gap or "缺少经验" in gap for gap in stats["gaps"])
+
+
+def _corrupt_evidence(
+    store: ArtifactStore, evidence_id: str, profile_name: str = "alice"
+) -> None:
+    """把 EvidenceRun 的 data 改成 meta 合法但缺少业务字段的 JSON，模拟损坏。"""
+    import sqlite3
+
+    payload = json.dumps(
+        {
+            "meta": {
+                "id": evidence_id,
+                "stage": state_machine.STAGE_EVIDENCE,
+                "profile_name": profile_name,
+                "created_at": datetime.now().isoformat(),
+            }
+        },
+        ensure_ascii=False,
+    )
+    with sqlite3.connect(store.db_path) as conn:
+        conn.execute(
+            "UPDATE artifacts SET data = ? WHERE id = ?", (payload, evidence_id)
+        )
+        conn.commit()
+
+
+def test_stage_run_failure_carries_specific_codes(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = StageContext(profile_name="alice", store=store)
+
+    missing = requirements.run(ctx, {"evidence_run_id": "ev_missing"})
+    assert missing.status == "failed"
+    assert missing.code == "EVIDENCE_RUN_NOT_FOUND"
+
+    run = _save_run(store)
+    _corrupt_evidence(store, run.meta.id)
+    corrupt = requirements.run(ctx, {"evidence_run_id": run.meta.id})
+    assert corrupt.status == "failed"
+    assert corrupt.code == "EVIDENCE_RUN_CORRUPT"
+
+    _save_run(store)
+    monkeypatch.setattr(requirements, "validate", lambda artifact: ["强制校验失败"])
+    invalid = requirements.run(ctx, {"evidence_run_id": ""})
+    assert invalid.status == "failed"
+    assert invalid.code == "REQUIREMENT_VALIDATION_FAILED"
+    assert invalid.details["issues"] == ["强制校验失败"]
+
+
+def test_analyze_tool_maps_stage_failure_code_and_details(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _save_run(store)
+    monkeypatch.setattr(requirements, "validate", lambda artifact: ["强制校验失败"])
+
+    result = json.loads(requirement_tools.analyze_company_requirements())
+
+    assert result["isError"] is True
+    assert result["code"] == "REQUIREMENT_VALIDATION_FAILED"
+    assert result["details"]["issues"] == ["强制校验失败"]
+    assert result["details"]["skip_option"] is True
+    assert "detail_current_phase" in result["details"]["alternative"]
+
+
+def test_analyze_tool_lists_supplement_targets_when_sample_insufficient(
+    store: ArtifactStore,
+) -> None:
+    pool_data = store.load("cp_test")
+    assert isinstance(pool_data, dict)
+    pool = CompanyPool.model_validate(pool_data)
+    pool.companies = [
+        CompanyEntry(
+            id="bytedance",
+            name="字节跳动",
+            tier="大厂",
+            industry="互联网",
+            scrapable=True,
+            status="confirmed",
+        ),
+        CompanyEntry(
+            id="meituan",
+            name="美团",
+            tier="中厂",
+            industry="互联网",
+            scrapable=True,
+            status="confirmed",
+        ),
+        CompanyEntry(
+            id="kuaishou",
+            name="快手",
+            tier="中厂",
+            industry="互联网",
+            scrapable=True,
+            status="confirmed",
+        ),
+    ]
+    store.save(pool)
+    pool_id = pool.meta.id
+    run = EvidenceRun(
+        meta=ArtifactMeta(
+            id=store.new_id("ev"),
+            stage=state_machine.STAGE_EVIDENCE,
+            profile_name="alice",
+            created_at=datetime.now().isoformat(),
+        ),
+        target_spec=TargetSpec(role="AI Agent 开发", city="北京"),
+        company_pool_id=pool_id,
+        jd_items=[
+            _jd(
+                "JD001", "bytedance", "字节跳动", "大厂", "AI Agent 工程师",
+                "本科及以上；Python、RAG、Agent",
+            ),
+            _jd(
+                "JD002", "meituan", "美团", "中厂", "后端开发工程师",
+                "",
+            ),
+        ],
+        interview_items=[],
+    )
+    store.save(run)
+
+    result = _parse(requirement_tools.analyze_company_requirements(run.meta.id))
+
+    assert result["sample_warning"]
+    targets = result["supplement_targets"]
+    by_company = {target["company_id"]: target for target in targets}
+    assert "meituan" in by_company
+    assert "kuaishou" in by_company
+    assert "bytedance" not in by_company
+    assert "requirements" in by_company["meituan"]["reason"]
+    assert "JD" in by_company["kuaishou"]["reason"]
+    assert "美团" in result["supplement_actions"]
+    assert "快手" in result["supplement_actions"]

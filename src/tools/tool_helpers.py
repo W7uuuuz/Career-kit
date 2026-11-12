@@ -190,9 +190,21 @@ def server_fingerprint_line() -> str:
         cwd.replace("\\\\", "/"),
         cwd.replace("/", "\\\\"),
     }:
+        sample = {
+            "mcpServers": {
+                "career-kit": {
+                    "command": info.get("python") or "python",
+                    "args": ["-m", "src.server"],
+                    "cwd": info.get("code_home") or "",
+                }
+            }
+        }
         line += (
             f"\n[自检警告] 当前工作目录 {cwd} 与代码目录不一致——"
             "会话可能连到了另一个克隆，行为会与当前仓库不一致。"
-            "若出现工具缺失或改动不生效，先确认 MCP 配置指向同一目录；必要时重启 Agent 会话。"
+            "若出现工具缺失或改动不生效，先确认 MCP 配置指向同一目录；必要时重启 Agent 会话。\n"
+            "修复步骤：把 MCP 配置中的 cwd 指向代码目录，例如：\n"
+            f"{json.dumps(sample, ensure_ascii=False, indent=2)}\n"
+            "数据目录仍是 ~/.career-kit，不会因为 cwd 不同丢档。"
         )
     return f"[服务自检] {line}"

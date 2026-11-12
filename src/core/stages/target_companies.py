@@ -1,7 +1,10 @@
 """阶段 6：目标企业筛选。
 
-只承担一个决策：确定目标企业池。目录筛选、include/exclude 匹配、计数与
-确认门禁由代码完成；不抓取、不统计需求。产物 CompanyPool 是下游唯一输入。
+只承担一个决策：确定目标企业池。目录筛选、include/exclude/selected_ids 匹配、
+计数与确认门禁由代码完成；不抓取、不统计需求。产物 CompanyPool 是下游唯一输入。
+
+selected_ids 是用户显式圈定的企业清单，作为 allowlist 生效且优先于 include：
+清单内的企业保留，清单外的企业一律置为 excluded。
 """
 
 from __future__ import annotations
@@ -90,11 +93,13 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             next_stage=STAGE_ID,
         )
     industry = str(inputs.get("industry") or DEFAULT_INDUSTRY).strip()
+    selected_tokens = parse_tokens(inputs.get("selected_ids"))
     companies, gaps = _build_entries(
         spec,
         industry,
         parse_tokens(inputs.get("include")),
         parse_tokens(inputs.get("exclude")),
+        selected_tokens,
     )
     tier_problems = _tier_consistency_problems(spec, companies)
     if tier_problems:
@@ -105,6 +110,8 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             next_stage=STAGE_ID,
         )
     selected = [entry for entry in companies if entry.status != "excluded"]
+    # allowlist 生效时，落库的 selected_ids 是命中企业的目录 id；未传时为空。
+    selected_ids = [entry.id for entry in selected] if selected_tokens else []
     confirmed = _requested_confirmation(ctx, inputs)
     effective_confirmed = confirmed and bool(selected)
     if confirmed:
@@ -124,11 +131,13 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             confirmed,
             target_spec_id=target_spec_id,
             baseline_plan_id=baseline_plan_id,
+            selected_tokens=selected_tokens,
         ),
         validation={
             "confirmed": effective_confirmed,
             "requested_confirmed": confirmed,
             "selected": len(selected),
+            "selected_ids": selected_ids,
         },
     )
     pool = CompanyPool(
@@ -444,6 +453,7 @@ def _build_entries(
     industry: str,
     include_tokens: list[str],
     exclude_tokens: list[str],
+    selected_tokens: list[str] | None = None,
 ) -> tuple[list[CompanyEntry], list[str]]:
     tiers = _dedupe([*spec.target_tiers, *spec.bridge_tiers])
     items = catalog.list_companies(tier=tiers, industry=industry)
@@ -470,10 +480,28 @@ def _build_entries(
             entries[key].status = "excluded"
             entries[key].reason = "用户 exclude 排除"
 
+    # selected_ids 是 allowlist：优先于 include，清单外的企业一律排除。
+    selected_tokens = selected_tokens or []
+    selected_resolved, missing_selected = _resolve_tokens(selected_tokens)
+    selected_keys = {str(item["id"]).lower() for _token, item in selected_resolved}
+    for _token, item in selected_resolved:
+        key = str(item["id"]).lower()
+        if key not in entries:
+            entries[key] = _entry(item, "用户 selected_ids 指定")
+    if selected_keys:
+        allowlist_reason = "未在用户选择清单内（selected_ids）"
+        for key, entry in entries.items():
+            if key in selected_keys or entry.status == "excluded":
+                continue
+            entry.status = "excluded"
+            entry.reason = allowlist_reason
+
     if missing_include:
         gaps.append(f"include 未收录（目录中不存在）：{'、'.join(missing_include)}")
     if missing_exclude:
         gaps.append(f"exclude 未收录（目录中不存在）：{'、'.join(missing_exclude)}")
+    if missing_selected:
+        gaps.append(f"selected_ids 未收录：{'、'.join(missing_selected)}")
 
     companies = sorted(entries.values(), key=lambda entry: (-catalog.tier_rank(entry.tier), entry.name))
     selected = [entry for entry in companies if entry.status != "excluded"]
@@ -547,7 +575,8 @@ def _tier_consistency_problems(
     for entry in companies:
         if entry.status == "excluded" or entry.tier in allowed:
             continue
-        if "include" in entry.reason:
+        # 用户显式 include / selected_ids 指定的企业不受档位过滤限制。
+        if "include" in entry.reason or "selected" in entry.reason:
             continue
         expected = "、".join(spec.target_tiers + spec.bridge_tiers) or "不限"
         problems.append(
@@ -669,6 +698,7 @@ def _meta_inputs(
     *,
     target_spec_id: str = "",
     baseline_plan_id: str = "",
+    selected_tokens: list[str] | None = None,
 ) -> dict[str, str]:
     return {
         "target_spec_id": target_spec_id,
@@ -680,6 +710,7 @@ def _meta_inputs(
         "industry": industry,
         "include": _stringify(inputs.get("include")),
         "exclude": _stringify(inputs.get("exclude")),
+        "selected_ids": ",".join(selected_tokens or []),
         "confirmed": "true" if confirmed else "false",
     }
 

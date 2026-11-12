@@ -868,6 +868,95 @@ async def _run_research(
     }
 
 
+def _research_summary_lines(report: dict[str, Any]) -> list[str]:
+    """从报告与聚合摘要中提炼 3-6 条关键结论，避免用户只能翻大文件。"""
+    counts = report.get("counts") or {}
+    digest = report.get("digest") or {}
+    lines: list[str] = []
+
+    jd_n = int(counts.get("jd_samples") or 0)
+    case_n = int(counts.get("cases") or 0)
+    lines.append(f"岗位样本 {jd_n} 条、同学历经历/面经 {case_n} 条")
+
+    terms = digest.get("top_requirements") or []
+    if terms:
+        lines.append(
+            "高频技能/要求："
+            + "、".join(f"{item.get('term')} {item.get('count')}" for item in terms[:5])
+        )
+
+    cities = digest.get("cities") or []
+    if cities:
+        lines.append(
+            "城市分布："
+            + "、".join(f"{item.get('city')} {item.get('count')}" for item in cities[:4])
+        )
+
+    salary = digest.get("salary") or {}
+    salary_bits: list[str] = []
+    if salary.get("monthly_count"):
+        salary_bits.append(
+            f"月薪 {salary.get('min_k')}-{salary.get('max_k')}K/月"
+            f"（中位 {salary.get('median_k')}K）"
+        )
+    if salary.get("daily_count"):
+        salary_bits.append(
+            f"日薪 {salary.get('daily_min')}-{salary.get('daily_max')} 元/天"
+            f"（中位 {salary.get('daily_median')}）"
+        )
+    if salary.get("annual_count"):
+        salary_bits.append(
+            f"年薪 {salary.get('annual_min_wan')}-{salary.get('annual_max_wan')} 万/年"
+            f"（中位 {salary.get('annual_median_wan')}）"
+        )
+    if salary_bits:
+        lines.append("薪资：" + "；".join(salary_bits))
+    elif jd_n:
+        lines.append("薪资：本批岗位均未公开薪资（数据缺口，不推断）")
+
+    states = report.get("source_states") or _source_final_states(
+        report.get("source_status") or []
+    )
+    failed = [state for state in states if state.get("status") == "failed"]
+    if failed:
+        lines.append(
+            "失败源："
+            + "、".join(
+                f"{state.get('source')}（{state.get('error') or '未获取到结果'}）"
+                for state in failed[:3]
+            )
+        )
+    elif counts.get("source_fail"):
+        lines.append(f"失败源：{counts.get('source_fail')} 个（见报告来源状态面板）")
+
+    return lines[:6]
+
+
+def _render_batch_block(batch: dict[str, Any]) -> str:
+    """批次截断提示：只执行前 max_sources 个源，剩余延后到下一次调用。"""
+    return (
+        "\n\n【分批提示（batch）】\n"
+        f"batch: {json.dumps(batch, ensure_ascii=False)}\n"
+        "next_step: 本批只执行了前 "
+        f"{batch.get('processed')} 个源，剩余 {batch.get('deferred')} 个源未执行；"
+        "请把 deferred_specs 作为 jd_specs 再调用一次 gather_research_data，"
+        "完成剩余来源（本批报告已照常生成）。"
+    )
+
+
+def _batch_error_details(batch: dict[str, Any]) -> dict[str, Any]:
+    """错误分支里的批次信息：只在确实有延后源时补充，避免改变既有契约。"""
+    if batch.get("complete", True):
+        return {}
+    return {
+        "batch": batch,
+        "next_step": (
+            "请把 deferred_specs 作为 jd_specs 再调用一次 gather_research_data，"
+            "完成剩余来源。"
+        ),
+    }
+
+
 @mcp.tool()
 async def gather_research_data(
     jd_specs: str = "",
@@ -876,6 +965,7 @@ async def gather_research_data(
     city: str = "",
     boss_confirmed: bool = False,
     source_timeout: float = 0.0,
+    max_sources: int = 4,
 ) -> str:
     """批量抓取真实市场数据并生成调研报告（调研步核心动作，一次调用完成）。
 
@@ -895,6 +985,9 @@ async def gather_research_data(
              boss_login(action="login")（用户只需扫码），登录成功后浏览器保持常开。
         source_timeout: 单源超时秒数（默认 25，也可用环境变量
              CAREER_KIT_RESEARCH_SOURCE_TIMEOUT 配置）；单源失败会自动重试 1 次。
+        max_sources: 单次调用最多执行的源数量（默认 4）。展开后的源超过该值时，
+             只执行前 max_sources 个源，其余写入返回的 batch.deferred_specs，
+             由调用方再调一次完成剩余来源；<=0 表示不额外限制（仍受内部上限保护）。
 
     Returns:
         汇报文本：样本统计 + 来源成功/失败 + 报告完整路径（控制台入口） +
@@ -944,6 +1037,25 @@ async def gather_research_data(
                 }
             },
         )
+
+    # 分批保护：源太多时单次预算内必然完不成，按用户给定顺序只跑前 max_sources 个，
+    # 其余原样放进 deferred_specs，由调用方下一轮再跑（顺序与优先级不变）。
+    batch_info: dict[str, Any] = {
+        "processed": len(specs),
+        "deferred": 0,
+        "deferred_specs": [],
+        "complete": True,
+    }
+    limit = max_sources if isinstance(max_sources, int) and max_sources > 0 else _MAX_SPECS
+    if len(specs) > limit:
+        deferred_specs = specs[limit:]
+        specs = specs[:limit]
+        batch_info = {
+            "processed": len(specs),
+            "deferred": len(deferred_specs),
+            "deferred_specs": deferred_specs,
+            "complete": False,
+        }
 
     # BOSS 登录确认：抓取前先做一次轻量登录态探测，避免先跑完其他源才发现
     # BOSS 不可用（P2-9）。一次同意同时覆盖「抓 BOSS」与「扫码登录」。
@@ -1036,6 +1148,7 @@ async def gather_research_data(
                     "next_tool": "boss_login",
                     "after_login": "登录完成后带 boss_confirmed=true 重新调用 gather_research_data",
                     "source_status": report.get("source_status") or [],
+                    **_batch_error_details(batch_info),
                     "rule": "用户已同意抓取 BOSS，直接调用 boss_login(action=\"login\")，"
                             "不要再问「是否现在登录」",
                 },
@@ -1052,6 +1165,7 @@ async def gather_research_data(
                 ),
                 "partial_cache": str(_partial_cache_path()),
                 "resume_hint": "已完成的来源会写入断点缓存；重跑同一范围会自动续抓",
+                **_batch_error_details(batch_info),
             },
         )
 
@@ -1088,6 +1202,15 @@ async def gather_research_data(
             "需要补全时直接调用 boss_login(action=\"login\")（用户只需扫码），"
             "登录成功后浏览器保持常开，再带 boss_confirmed=true 重跑。"
         )
+    # 关键结论摘要：从报告/聚合摘要提取 3-6 条，用户不必先打开大文件。
+    summary_lines = _research_summary_lines(report)
+    if summary_lines:
+        message += (
+            "\n\n【关键结论摘要（summary）】\n"
+            + "\n".join(f"- {line}" for line in summary_lines)
+        )
+    if not batch_info.get("complete", True):
+        message += _render_batch_block(batch_info)
     return message
 
 

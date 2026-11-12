@@ -19,3 +19,5 @@ DATA_ROOT = Path(
 PROFILE_DIR = DATA_ROOT
 KNOWLEDGE_DIR = DATA_ROOT / "knowledge"
 CACHE_DIR = DATA_ROOT / "cache"
+# 运行日志目录（pythonw 分离启动时没有控制台，错误只能落到文件）
+LOGS_DIR = DATA_ROOT / "logs"

@@ -139,6 +139,23 @@ class EvidenceRun(BaseModel):
     report_paths: dict[str, str] = Field(default_factory=dict)
 
 
+class EvidenceCheckpoint(BaseModel):
+    """阶段 7 采集检查点：分批抓取的中途进度，用于跨 MCP 调用续跑。"""
+
+    meta: ArtifactMeta
+    company_pool_id: str = ""
+    target_spec: TargetSpec = Field(default_factory=TargetSpec)
+    selected_company_ids: list[str] = Field(default_factory=list)
+    done_company_ids: list[str] = Field(default_factory=list)
+    jd_items: list[JDEvidence] = Field(default_factory=list)
+    source_status: list[dict[str, Any]] = Field(default_factory=list)
+    counts: dict[str, int] = Field(default_factory=dict)
+    interviews_done: bool = False
+    interview_items: list[InterviewEvidence] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    complete: bool = False
+
+
 class RequirementItem(BaseModel):
     """需求条目——所有数字由代码统计，LLM 不得改写。"""
 
@@ -322,6 +339,7 @@ __all__ = [
     "BaselinePlan",
     "CompanyEntry",
     "CompanyPool",
+    "EvidenceCheckpoint",
     "EvidenceRun",
     "ExecutionPlan",
     "ExecutionState",

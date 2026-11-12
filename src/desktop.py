@@ -88,6 +88,7 @@ def _create_windows_shortcut(desktop: Path) -> Path:
         f"$shortcut.Arguments = {_ps_quote(' '.join(LAUNCH_ARGS))}; "
         f"$shortcut.WorkingDirectory = {_ps_quote(project_root())}; "
         "$shortcut.WindowStyle = 7; "
+        f"$shortcut.IconLocation = {_ps_quote(_python_executable())}; "
         "$shortcut.Description = 'Career Kit 职业地图'; "
         "$shortcut.Save(); "
         f"Write-Output {_ps_quote(link)}"

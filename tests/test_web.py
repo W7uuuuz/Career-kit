@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import threading
 import urllib.error
@@ -16,8 +17,17 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 import src.paths as paths_module  # noqa: E402
 import src.tools.profile as profile_module  # noqa: E402
+import src.web as web  # noqa: E402
 from src.models import Application, CareerProfile, Task  # noqa: E402
 from src.web import build_parser, build_state, create_server  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_web_logs(tmp_path, monkeypatch):
+    """把 web 日志隔离到临时目录，避免测试写到用户主目录。"""
+    monkeypatch.setattr(web, "LOGS_DIR", tmp_path / "logs")
+    yield
+    web._reset_logging()
 
 
 @pytest.fixture()
@@ -673,3 +683,52 @@ def test_state_route_returns_readable_json_on_error(temp_profile, monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_create_server_survives_detached_stdio(tmp_path, monkeypatch):
+    """pythonw 下 stdout/stderr 为 None 时创建服务器不应抛异常。"""
+    monkeypatch.setattr(web, "LOGS_DIR", tmp_path / "logs")
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    server, _token = create_server(host="127.0.0.1", port=0, exit_when_idle=False)
+    try:
+        assert server.server_address[0] == "127.0.0.1"
+        assert (tmp_path / "logs" / "web.log").is_file()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_setup_logging_without_stdio_does_not_raise(tmp_path, monkeypatch):
+    """stdout/stderr 为 None 时 _setup_logging 要能重定向并写日志。"""
+    monkeypatch.setattr(web, "LOGS_DIR", tmp_path / "logs")
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    log_file = web._setup_logging()
+    logging.getLogger("career_kit.web").warning("detached stdio check")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    assert sys.stdout is not None
+    assert sys.stderr is not None
+    assert log_file.is_file()
+    assert "detached stdio check" in log_file.read_text(encoding="utf-8")
+
+
+def test_main_returns_nonzero_when_create_server_fails(tmp_path, monkeypatch):
+    """create_server 抛 ValueError 时 main 返回非 0，且测试环境不弹窗。"""
+    monkeypatch.setattr(web, "LOGS_DIR", tmp_path / "logs")
+    monkeypatch.setattr(web, "_live_instance_url", lambda: "")
+    monkeypatch.setenv("CAREER_KIT_NO_DIALOG", "1")
+
+    def _boom(*args, **kwargs):
+        raise ValueError("Unable to configure formatter 'default'")
+
+    monkeypatch.setattr(web, "create_server", _boom)
+
+    assert web.main(["--no-open"]) == 1
+    content = (tmp_path / "logs" / "web.log").read_text(encoding="utf-8")
+    assert "启动失败" in content
+    assert "ValueError" in content

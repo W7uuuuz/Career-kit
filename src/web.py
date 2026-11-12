@@ -15,6 +15,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
+import logging.handlers
 import mimetypes
 import os
 import secrets
@@ -41,6 +43,7 @@ from .core.orchestrator import state_machine
 from .desktop import runtime_state_path
 from .guidance import phase_type_label, warnings
 from .models import TaskStatus
+from .paths import LOGS_DIR
 from .tools.application_tracker import (
     add_application,
     find_active_duplicate,
@@ -61,6 +64,109 @@ from .tools.task_manager import (
 WEB_DIR = Path(__file__).parent / "web_ui"
 # Vue 构建产物目录（运行时从静态目录提供前端：/ 与 /assets/*）
 DIST_DIR = WEB_DIR / "dist"
+
+# 日志：pythonw 分离启动时 sys.stdout/sys.stderr 为 None，uvicorn 默认
+# formatter 会调用 sys.stdout.isatty() 抛 ValueError，因此必须先把日志
+# 落到文件，并禁用 uvicorn 自带的 log_config。
+LOG_FILE_NAME = "web.log"
+LOG_MAX_BYTES = 1_000_000
+LOG_BACKUP_COUNT = 3
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+_LOG_LOCK = threading.Lock()
+_LOG_HANDLER: logging.Handler | None = None
+_LOG_FILE: Path | None = None
+_REDIRECT_STREAMS: list[Any] = []
+
+
+def _open_redirect_stream(path: str | Path, mode: str) -> Any:
+    """打开重定向流并登记，避免被垃圾回收后关闭。"""
+    stream = open(path, mode, encoding="utf-8", buffering=1)  # noqa: SIM115 - 常驻重定向流
+    _REDIRECT_STREAMS.append(stream)
+    return stream
+
+
+def _redirect_std_streams(log_file: Path) -> None:
+    """sys.stdout/sys.stderr 为 None 时重定向，避免任何写入直接崩。"""
+    if sys.stdout is None:
+        with suppress(Exception):
+            sys.stdout = _open_redirect_stream(os.devnull, "w")
+    if sys.stderr is None:
+        with suppress(Exception):
+            sys.stderr = _open_redirect_stream(log_file, "a")
+
+
+def _setup_logging() -> Path:
+    """幂等建立文件日志；返回日志文件路径。
+
+    可在 main 与 create_server 中重复调用：同一路径只挂一个
+    RotatingFileHandler，并确保 stdout/stderr 不再是 None。
+    """
+    global _LOG_HANDLER, _LOG_FILE
+    log_file = Path(LOGS_DIR) / LOG_FILE_NAME
+    with _LOG_LOCK:
+        if log_file != _LOG_FILE or _LOG_HANDLER is None:
+            try:
+                log_file.parent.mkdir(parents=True, exist_ok=True)
+                handler = logging.handlers.RotatingFileHandler(
+                    log_file,
+                    maxBytes=LOG_MAX_BYTES,
+                    backupCount=LOG_BACKUP_COUNT,
+                    encoding="utf-8",
+                )
+                handler.setFormatter(logging.Formatter(LOG_FORMAT))
+                root = logging.getLogger()
+                if _LOG_HANDLER is not None:
+                    root.removeHandler(_LOG_HANDLER)
+                    with suppress(Exception):
+                        _LOG_HANDLER.close()
+                root.addHandler(handler)
+                if root.level == logging.NOTSET or root.level > logging.INFO:
+                    root.setLevel(logging.INFO)
+                _LOG_HANDLER = handler
+                _LOG_FILE = log_file
+            except Exception:  # noqa: BLE001 - 日志不可写时不能让启动直接失败
+                pass
+    _redirect_std_streams(log_file)
+    return log_file
+
+
+def _reset_logging() -> None:
+    """关闭并移除文件日志与重定向流（测试隔离用）。"""
+    global _LOG_HANDLER, _LOG_FILE
+    with _LOG_LOCK:
+        handler = _LOG_HANDLER
+        _LOG_HANDLER = None
+        _LOG_FILE = None
+        if handler is not None:
+            logging.getLogger().removeHandler(handler)
+            with suppress(Exception):
+                handler.close()
+    while _REDIRECT_STREAMS:
+        stream = _REDIRECT_STREAMS.pop()
+        with suppress(Exception):
+            stream.close()
+
+
+def _report_startup_error(exc: Exception, detached: bool) -> None:
+    """启动失败时落日志；分离启动的 Windows 进程再弹窗提示日志路径。"""
+    log_file = Path(LOGS_DIR) / LOG_FILE_NAME
+    message = f"Career Kit 启动失败：{exc}\n\n日志：{log_file}"
+    if not detached:
+        with suppress(Exception):
+            print(message, file=sys.stderr)
+        return
+    if sys.platform != "win32":
+        return
+    if os.environ.get("CAREER_KIT_NO_DIALOG") == "1":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, message, "Career Kit 启动失败", 0x10)
+    except Exception:  # noqa: BLE001 - 弹窗失败不影响退出码
+        pass
+
 
 
 # ---------------------------------------------------------------------------
@@ -935,6 +1041,9 @@ class UvicornServer:
                 app,
                 host=str(self.server_address[0]),
                 port=int(self.server_address[1]),
+                # 禁用 uvicorn 自带 log_config：pythonw 下 sys.stdout 为 None，
+                # 默认 formatter 调用 isatty() 会抛 ValueError。日志统一走文件。
+                log_config=None,
                 log_level="warning",
                 access_log=False,
             )
@@ -964,6 +1073,9 @@ def create_server(
     host: str = "127.0.0.1", port: int = 8765, exit_when_idle: bool = False
 ) -> tuple[UvicornServer, str]:
     """创建服务器；端口占用时自动顺延。返回 (server, token)。"""
+    # 直接调用 create_server（不经过 main）时也要先建立日志，
+    # 否则 detached 进程里 uvicorn 任何 stderr 写入都可能失败。
+    _setup_logging()
     token = secrets.token_urlsafe(18)
     app = create_app(token, exit_when_idle=exit_when_idle)
     last_error: OSError | None = None
@@ -1010,10 +1122,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 先记录是否分离启动（重定向后 stdout/stderr 就不再是 None 了）
+    detached = sys.stdout is None or sys.stderr is None
+    log_file = _setup_logging()
+    log = logging.getLogger("career_kit.web")
     args = build_parser().parse_args(argv)
 
     existing = _live_instance_url()
     if existing:
+        log.info("复用已运行实例：%s", existing.split("?", 1)[0])
         print(f"Career Kit 已在运行：{existing}")
         if not args.no_open:
             webbrowser.open(existing)
@@ -1023,12 +1140,20 @@ def main(argv: list[str] | None = None) -> int:
         server, token = create_server(
             args.host, args.port, exit_when_idle=args.exit_when_idle
         )
-    except OSError as exc:
-        print(f"启动失败：{exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - 启动失败要落日志、给退出码、可弹窗
+        logging.getLogger("career_kit.web").exception("启动失败")
+        _report_startup_error(exc, detached)
         return 1
 
     host, port = server.server_address[:2]
     url = f"http://{host}:{port}/?token={token}"
+    log.info(
+        "启动成功：http://%s:%s/（日志 %s，数据 %s）",
+        host,
+        port,
+        log_file,
+        os.environ.get("CAREER_KIT_DATA_DIR") or "~/.career-kit",
+    )
     state_file = runtime_state_path()
     try:
         state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1050,6 +1175,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        log.info("控制台已停止")
         with suppress(OSError):
             state_file.unlink()
         server.server_close()

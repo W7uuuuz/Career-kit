@@ -131,6 +131,52 @@ def test_audit_survives_save_and_marks_stale_on_change(temp_profile):
     assert changed["context"]["audit"]["stale"] is True
 
 
+def test_audit_required_after_roadmap_change_until_reaudited(temp_profile):
+    from src.server import save_roadmap, save_roadmap_audit
+
+    _mk_profile()
+    save_roadmap(json.dumps(_roadmap(), ensure_ascii=False))
+    first_audit = json.loads(save_roadmap_audit(json.dumps({"verdict": "PASS"})))
+    assert first_audit["audit_required"] is False
+
+    # 内容未变化：已有审计不得被判过期
+    unchanged = json.loads(save_roadmap(json.dumps(_roadmap(), ensure_ascii=False)))
+    assert unchanged["audit_required"] is False
+    assert unchanged["context"]["audit"]["required"] is False
+
+    changed = json.loads(save_roadmap(json.dumps(_roadmap("另一段实习"), ensure_ascii=False)))
+    assert changed["audit_required"] is True
+    assert changed["context"]["audit"]["required"] is True
+    expected_hash = changed["context"]["audit"]["expected_roadmap_hash"]
+    assert expected_hash
+    assert "必须重新审计" in changed["message"]
+    assert "career-roadmap-auditor" in changed["message"]
+    assert "save_roadmap_audit" in changed["message"]
+
+    second_audit = json.loads(save_roadmap_audit(json.dumps({"verdict": "PASS"})))
+    assert second_audit["audit_required"] is False
+    profile = profile_module.load_profile()
+    assert profile.audit["stale"] is False
+    assert profile.audit["required"] is False
+    assert profile.audit["roadmap_hash"] == expected_hash
+
+
+def test_kpi_task_count_advisory_suggests_checkin_goal(temp_profile):
+    from src.server import save_roadmap
+
+    _mk_profile()
+    roadmap = {"roadmap": {"start_level": "小厂", "phases": [
+        {"type": "intern", "name": "投递阶段", "target_level": "小厂",
+         "resume_value": "投递记录", "kpi": {"metric": "投递", "target": "投递 20 家"},
+         "milestones": [{"name": "投递", "tasks": [{"name": "海投"}]}]},
+    ]}}
+    out = json.loads(save_roadmap(json.dumps(roadmap, ensure_ascii=False)))
+    items = {a["code"]: a for a in out["context"]["advisories"]}
+    assert "kpi_task_count" in items
+    message = items["kpi_task_count"]["message"]
+    assert "checkin_mode" in message and "checkin_goal" in message
+
+
 # ============ 层级建议 ============
 
 

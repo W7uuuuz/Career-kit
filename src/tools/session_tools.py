@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from ..assets import profile_display_name
@@ -27,7 +28,7 @@ from .probing import (
     is_verified_skill,
 )
 from .profile import get_active_profile_name, load_profile, save_profile
-from .resume_parser import extract_text
+from .resume_parser import detect_contact_fields, extract_text
 from .session import get_welcome_message
 from .state_gate import require_state
 from .tool_helpers import _parse_json_param, server_fingerprint_line
@@ -144,9 +145,22 @@ def parse_resume(file_path: str) -> str:
     profile.guidance = guidance
     save_profile(profile)
 
+    contact = detect_contact_fields(text)
+    missing_fields = [
+        field for field in ("name", "phone", "email")
+        if not contact.get(field)
+    ]
+    profile_hints = {
+        "name": contact.get("name") or "",
+        "phone": contact.get("phone", False),
+        "email": contact.get("email", False),
+    }
+    contact_note = _contact_hint_note(missing_fields, profile_hints)
+
     return (
         f"--- RESUME CONTENT ---\n{text}\n--- END ---\n\n"
         "以上是候选素材，不是已确认的事实。\n\n"
+        f"{contact_note}"
         "**简历有美化成分——写入档案前，先请用户自己讲一遍：**\n"
         "不要逐条审问简历。先请用户用自己的话介绍 1-2 个项目（挑最能代表水平的）："
         "做了什么、负责哪部分、最难的问题怎么解决；再请用户自评独立完成程度、"
@@ -481,6 +495,28 @@ def finalize_profile(skip_probing: bool = False) -> str:
     return (
         f"档案已确认。\n\n摘要：{profile.summary}{skip_note}{goal_reminder}\n\n"
         f"{next_step}"
+    )
+
+
+def _contact_hint_note(missing_fields: list[str], profile_hints: dict) -> str:
+    """联系方式自检提示：只给解析结果与追问建议，不写入档案。"""
+    missing_json = json.dumps(missing_fields, ensure_ascii=False)
+    hints_json = json.dumps(profile_hints, ensure_ascii=False)
+    if not missing_fields:
+        return (
+            "【联系方式自检】简历中已识别姓名/手机号/邮箱。\n"
+            f"missing_fields: {missing_json}\n"
+            f"profile_hints: {hints_json}\n"
+            "以上只是解析提示，尚未写入档案；请先与用户确认。\n\n"
+        )
+    labels = {"name": "姓名", "phone": "手机号", "email": "邮箱"}
+    missing_text = "、".join(labels.get(field, field) for field in missing_fields)
+    return (
+        f"【联系方式自检】简历中未识别到：{missing_text}。\n"
+        f"missing_fields: {missing_json}\n"
+        f"profile_hints: {hints_json}\n"
+        'next_step: 是否补充姓名/联系方式？请先询问用户，确认后再用 '
+        'intake(section="who") 写入；不要编造，也不要静默写入档案。\n\n'
     )
 
 

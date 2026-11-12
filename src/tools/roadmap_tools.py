@@ -776,7 +776,8 @@ def _collect_roadmap_advisories(parsed: dict, profile) -> list[dict]:
             advisories.append(_advisory(
                 "kpi_task_count",
                 f"阶段「{phase_name}」KPI 目标「{target}」带数字，但任务名都没有计数——"
-                "验收时无法在任务层面累积。",
+                "验收时无法在任务层面累积。"
+                '建议给任务设置 checkin_mode="daily"、checkin_goal=<数字>。',
                 "quantifiable",
             ))
 
@@ -929,6 +930,8 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     audit = dict(profile.audit or {})
     if audit and audit.get("roadmap_hash") and audit.get("roadmap_hash") != new_hash:
         audit["stale"] = True
+    # 审计过期只提示、不阻断保存；定稿前需要重新审计并绑定新 hash。
+    audit_required = bool(audit.get("stale"))
 
     old_plan = profile.plan if isinstance(profile.plan, dict) else {}
     old_hash = _roadmap_hash(old_plan) if old_plan else ""
@@ -1010,8 +1013,8 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             audit_note = (
                 f"\n\n审计记录：第 {len(audit.get('rounds') or [])} 轮结论是"
                 f"「{verdict_label(verdict)}」，但绑定的是修改前的旧版本（已过期）。"
-                "定稿前建议重新交给 career-roadmap-auditor 审计一次，"
-                "再用 save_roadmap_audit 落库；是否重审由用户决定。"
+                "定稿前必须重新审计：重新交给 career-roadmap-auditor 审计当前路线图，"
+                "再用 save_roadmap_audit 落库。"
             )
         else:
             audit_note = (
@@ -1037,6 +1040,7 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             + f"{guide_for(profile)}"
         ),
         "next_steps": next_steps,
+        "audit_required": audit_required,
         "context": {
             "phase": "roadmap_saved",
             "version": profile.version,
@@ -1044,6 +1048,8 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
             "audit": {
                 "latest_verdict": audit.get("latest_verdict", ""),
                 "stale": bool(audit.get("stale")),
+                "required": audit_required,
+                "expected_roadmap_hash": new_hash,
                 "fail_rounds": audit.get("fail_rounds", 0),
             },
             "accepted_risks": [],
@@ -1142,6 +1148,7 @@ def save_roadmap_audit(audit_json: str) -> str:
         "fail_rounds": fail_rounds,
         "updated_at": now,
         "stale": False,
+        "required": False,
     }
     profile.touch()
     save_profile(profile)
@@ -1171,11 +1178,13 @@ def save_roadmap_audit(audit_json: str) -> str:
     return _json({
         "message": "\n".join(lines),
         "next_steps": ["save_roadmap"],
+        "audit_required": False,
         "context": {
             "round": entry["round"],
             "verdict": verdict,
             "verdict_label": verdict_label(verdict),
             "fail_rounds": fail_rounds,
             "roadmap_hash": roadmap_hash,
+            "required": False,
         },
     })

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -26,6 +27,33 @@ def next_task_id(profile: CareerProfile) -> str:
             except ValueError:
                 continue
     return f"task_{max_num + 1:03d}"
+
+
+_NUMBER_RE = re.compile(r"\d+")
+
+
+def _infer_checkin(
+    name: str,
+    kpi_target: str,
+    checkin_mode: str,
+    checkin_goal: float,
+) -> tuple[str, float]:
+    """任务未显式配置打卡时，按阶段 KPI 与任务名里的第一个数字推断累计打卡。
+
+    仅在任务本身没有 checkin_mode/checkin_goal、阶段 KPI 目标含数字、
+    且任务名也含数字时生效；数字为 0/1 或提取失败时保持原行为。
+    """
+    if str(checkin_mode or "").strip() or float(checkin_goal or 0) > 0:
+        return checkin_mode, checkin_goal
+    if not _NUMBER_RE.search(str(kpi_target or "")):
+        return checkin_mode, checkin_goal
+    match = _NUMBER_RE.search(str(name or ""))
+    if not match:
+        return checkin_mode, checkin_goal
+    goal = int(match.group(0))
+    if goal <= 1:
+        return checkin_mode, checkin_goal
+    return "daily", float(goal)
 
 
 def create_tasks_from_roadmap(
@@ -141,6 +169,8 @@ def create_tasks_from_roadmap(
         if only_phase_ids is not None and phase_id not in only_phase_ids:
             continue
         phase_name = phase.get("name", f"阶段 {phase_idx + 1}")
+        kpi = phase.get("kpi") if isinstance(phase.get("kpi"), dict) else {}
+        kpi_target = str(kpi.get("target", "") or "")
 
         if detail_phase_id and phase_id == detail_phase_id and detail_tasks:
             for d in detail_tasks:
@@ -170,14 +200,21 @@ def create_tasks_from_roadmap(
 
             # 从里程碑的 tasks 字段生成任务
             for task_def in valid_task_defs:
+                task_name = str(task_def.get("name", ""))
+                checkin_mode, checkin_goal = _infer_checkin(
+                    task_name,
+                    kpi_target,
+                    str(task_def.get("checkin_mode", "") or ""),
+                    float(task_def.get("checkin_goal", 0) or 0),
+                )
                 tasks.append(_build(
-                    name=str(task_def.get("name", "")),
+                    name=task_name,
                     description=str(task_def.get("description", "")),
                     phase_id=phase_id,
                     milestone_id=ms_id,
                     priority=str(task_def.get("priority", "medium")),
-                    checkin_mode=str(task_def.get("checkin_mode", "")),
-                    checkin_goal=float(task_def.get("checkin_goal", 0) or 0),
+                    checkin_mode=checkin_mode,
+                    checkin_goal=checkin_goal,
                     how_to=list(task_def.get("how_to") or []),
                     resources=list(task_def.get("resources") or []),
                     done_criteria=str(task_def.get("done_criteria") or ""),

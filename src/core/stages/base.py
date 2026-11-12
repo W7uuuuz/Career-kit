@@ -18,12 +18,16 @@ class StageContext(BaseModel):
 class StageResult(BaseModel):
     """阶段执行结果；工具层据此决定是否请求用户确认或补充输入。"""
 
-    status: Literal["ok", "needs_confirmation", "insufficient_data", "failed"]
+    status: Literal[
+        "ok", "needs_confirmation", "insufficient_data", "failed", "partial"
+    ]
+    code: str = ""
     artifact_id: str = ""
     message: str = ""
     next_stage: str = ""
     questions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class Stage(Protocol):

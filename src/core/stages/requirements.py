@@ -612,13 +612,19 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         ctx.store, ctx.profile_name, evidence_run_id
     )
     if data is None:
-        return StageResult(status="failed", message=error, next_stage=STAGE_ID)
+        return StageResult(
+            status="failed",
+            code="EVIDENCE_RUN_NOT_FOUND",
+            message=error,
+            next_stage=STAGE_ID,
+        )
 
     try:
         evidence = EvidenceRun.model_validate(data)
     except Exception as exc:  # noqa: BLE001 —— 损坏数据要变成可读错误
         return StageResult(
             status="failed",
+            code="EVIDENCE_RUN_CORRUPT",
             message=f"EvidenceRun 数据损坏，无法分析：{exc}",
             next_stage=STAGE_ID,
         )
@@ -628,8 +634,10 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     if issues:
         return StageResult(
             status="failed",
+            code="REQUIREMENT_VALIDATION_FAILED",
             message="需求画像校验失败：" + "；".join(issues),
             next_stage=STAGE_ID,
+            details={"issues": issues},
         )
 
     ctx.store.save(artifact)
@@ -767,6 +775,11 @@ def validate(artifact: BaseModel) -> list[str]:
         )
     issues.extend(_interpretation_problems(artifact))
 
+    # 关键词分析排除了缺 requirements 文本的 JD，校验必须用同一个分母。
+    keyword_sample = artifact.sample_size_jd - len(artifact.missing_requirements_jd)
+    if keyword_sample <= 0:
+        keyword_sample = artifact.sample_size_jd
+
     for list_name, items in (
         ("high_frequency", artifact.high_frequency),
         ("nice_to_have", artifact.nice_to_have),
@@ -774,7 +787,7 @@ def validate(artifact: BaseModel) -> list[str]:
     ):
         for item in items:
             issues.extend(_validate_item(item, list_name))
-            issues.extend(_validate_frequency(item, list_name, artifact.sample_size_jd))
+            issues.extend(_validate_frequency(item, list_name, keyword_sample))
 
     for item in artifact.interview_topics:
         issues.extend(_validate_item(item, "interview_topics"))

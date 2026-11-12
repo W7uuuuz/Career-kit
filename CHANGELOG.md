@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **BUG.md 批次修复（2026-11-12）**：
+  - 企业池新增 `selected_ids`：用户从推荐池挑出的子集落库，阶段 7 只采该子集。
+  - 采集新增检查点分批与自动续跑（`batch_size` / `company_ids` / `resume`）：
+    未完成返回 `partial`，已完成企业不重复抓取，避免 MCP 超时整批丢失。
+  - 池外复用样本默认丢弃，显式 `include_outside_pool=true` 才保留；采集超时统一读取
+    `CAREER_KIT_EVIDENCE_TIMEOUT`/`CAREER_KIT_RESEARCH_SOURCE_TIMEOUT`。
+  - 阶段 8 失败返回结构化 `code`，样本不足给出具体补采企业；失败时提示可按基线继续执行。
+  - 路线图修改后返回 `audit_required=true`，定稿前必须重新审计；KPI 计数任务自动补打卡目标。
+  - 修复 pythonw 双击无反应：uvicorn 日志不再依赖 `sys.stdout`，启动日志写入
+    `~/.career-kit/logs/web.log`，失败时弹窗提示日志路径。
+  - 调研支持 `max_sources` 分批与关键结论摘要；简历解析缺姓名/联系方式时提示补充；
+    自检警告补充 MCP `cwd` 配置样例。
+
 - **职业地图回归首页（2026-11-12）**：
   - 前端首页改为实时职业地图：阶段路径、当前阶段、下一步任务与进度，SSE 自动刷新；
     控制台卡片收进「计划详情与管理」折叠区。

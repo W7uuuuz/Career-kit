@@ -88,6 +88,9 @@ Career Kit 是**有真实数据源的 AI 职业陪练**：
   analyze_company_requirements → save_requirement_profile → plan_execution_alignment →
   save_execution_alignment；数字由代码计算，LLM 只写 interpretation，每条变更必须带 evidence_ids。
   用户选择先按基线执行时，记录 `guidance.enterprise_alignment_skipped_at` 跳过事实，后续可补。
+- 企业池子集：用户从推荐池挑若干家时传 `selected_ids`，落库后阶段 7 只采该子集；
+  采集按 `batch_size` 分批并自动续跑，未完成返回 `status="partial"`，再次调用继续，
+  池外复用样本默认丢弃（`include_outside_pool=true` 才保留）。
 - BOSS 补充：collect_company_evidence 可带 include_boss=true；只问一次并传 boss_confirmed=true；
   未登录返回 LOGIN_REQUIRED / next_tool=boss_login，直接调用 boss_login(action="login")，
   不再追问第二次；登录成功后浏览器窗口保持常开，不得把登录失败当抓取失败。

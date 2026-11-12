@@ -24,6 +24,7 @@ def select_target_companies(
     industry: str = "互联网",
     include: str = "",
     exclude: str = "",
+    selected_ids: str = "",
     confirmed: bool = False,
 ) -> str:
     """筛选并确认目标企业池（阶段 6）。
@@ -39,6 +40,9 @@ def select_target_companies(
         industry: 目标行业；空则默认 互联网
         include: 额外纳入的企业（id/名称/别名），支持 JSON 数组或分隔符
         exclude: 排除的企业，支持 JSON 数组或分隔符；同一企业同时出现时 include 优先
+        selected_ids: 用户从推荐池中显式圈定的企业（id/名称/别名），支持 JSON
+            数组或逗号/顿号/分号/空格分隔。作为 allowlist 生效且优先于 include：
+            未命中的企业一律 excluded，阶段 7 只采集命中的企业。
         confirmed: 用户已确认名单时传 true；未确认只生成推荐池，不允许下游
 
     Returns:
@@ -61,6 +65,7 @@ def select_target_companies(
         "industry": industry,
         "include": include,
         "exclude": exclude,
+        "selected_ids": selected_ids,
         "confirmed": confirmed,
     }
     store = ArtifactStore()
@@ -111,18 +116,32 @@ def _summarize(artifact: dict[str, Any], result: StageResult, profile_name: str)
     not_scrapable = [str(item.get("name") or "") for item in selected if not item.get("scrapable")]
 
     confirmed = validation.get("confirmed") is True
+    selected_ids = [str(item) for item in validation.get("selected_ids") or []]
     total = int(counts.get("total") or len(selected))
+    selected_count = int(validation.get("selected") or len(selected))
     if result.status == "ok":
         summary = f"已确认目标企业池：{total} 家（可抓 {len(scrapable)} / 未接入 {len(not_scrapable)}）。"
         next_tool = "collect_company_evidence"
-        next_step = "调用 collect_company_evidence 批量抓取 JD 与面经（阶段 7）。"
+        if selected_ids:
+            next_step = (
+                f"阶段 7 只采集 selected_ids 指定的 {selected_count} 家企业："
+                "调用 collect_company_evidence 批量抓取 JD 与面经。"
+            )
+        else:
+            next_step = "调用 collect_company_evidence 批量抓取 JD 与面经（阶段 7）。"
     elif result.status == "needs_confirmation":
         summary = (
             f"已生成推荐企业池：{total} 家（可抓 {len(scrapable)} / 未接入 {len(not_scrapable)}），"
             "尚未确认。"
         )
         next_tool = "select_target_companies"
-        next_step = "向用户展示名单并确认；用户确认后以 confirmed=true 重新调用本工具。"
+        if selected_ids:
+            next_step = (
+                f"已按 selected_ids 聚焦 {selected_count} 家企业；"
+                "用户确认后以 confirmed=true 重新调用本工具。"
+            )
+        else:
+            next_step = "向用户展示名单并确认；用户确认后以 confirmed=true 重新调用本工具。"
     else:
         summary = result.message
         next_tool = "select_target_companies"
@@ -150,6 +169,8 @@ def _summarize(artifact: dict[str, Any], result: StageResult, profile_name: str)
             "industry": str(meta_inputs.get("industry") or ""),
         },
         "counts": dict(counts),
+        "selected_ids": selected_ids,
+        "selected_count": selected_count,
         "by_tier": by_tier,
         "scrapable": scrapable,
         "not_scrapable": not_scrapable,

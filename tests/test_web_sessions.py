@@ -9,9 +9,19 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import src.web as web  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_web_logs(tmp_path, monkeypatch):
+    """把 web 日志隔离到临时目录，避免测试写到用户主目录。"""
+    monkeypatch.setattr(web, "LOGS_DIR", tmp_path / "logs")
+    yield
+    web._reset_logging()
 
 
 def _post(base: str, path: str, token: str, payload: dict | None = None) -> dict:

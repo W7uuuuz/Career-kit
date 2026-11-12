@@ -181,6 +181,8 @@ evidence / requirement / execution_plan / execution / applications / review`；
   无 `GapReport` 时写入 `validation.imported=true` 的 `BaselinePlan`，状态进入企业适配。
 - 层级是命中率参考，不是准入许可；跨级不禁止，建议说明证据。
 - 审计是第二意见：FAIL 只用于硬矛盾，最多 3 条 must_fix。
+- 路线图内容变化后旧审计自动过期：返回 `audit_required=true`，定稿前必须重新交给
+  `career-roadmap-auditor` 并为新版本调用 `save_roadmap_audit`；只提示、不静默跳过。
 - JD 细节必须有真实数据；没有就留空并标 `jd_status=pending_user_import`。
 
 ---
@@ -194,7 +196,7 @@ evidence / requirement / execution_plan / execution / applications / review`；
 ```text
 1. select_target_companies(target_tiers, bridge_tiers, city, role, industry, confirmed=false)
 2. 向用户展示推荐名单（可抓 / 需手动投递）
-3. 用户增删后 confirmed=true 重新调用
+3. 用户挑选子集时传 selected_ids，再 confirmed=true 重新调用
 ```
 
 **产物**：`CompanyPool`（`cp_`）+ `core_state.company_pool_id`。
@@ -203,6 +205,8 @@ evidence / requirement / execution_plan / execution / applications / review`；
 - 未接入抓取的企业保留在名单中并标「需手动投递」，不编造岗位。
 - 企业池未确认时不得进入采集。
 - 支持 include/exclude；同一企业同时出现时 include 优先。
+- `selected_ids` 是从推荐池挑出用户真正关注企业的 allowlist，优先级高于 include；
+  命中企业保留、未命中企业标记 excluded，并落库到 CompanyPool，阶段 7 只采集该子集。
 - 有 TargetSpec 时，`CompanyPool.target_spec` 由一次解析得到的唯一 TargetSpec 驱动；
   显式身份参数只能填充 artifact 的空字段，双方均有值且冲突时拒绝落库。
 - 档位参数（target_tiers / bridge_tiers）优先级为「显式入参 > TargetSpec > 档案默认」，
@@ -225,7 +229,10 @@ collect_company_evidence(
   max_interviews=30,
   refresh=false,
   include_boss=false,       # 可选：补充 BOSS 薪资与广度
-  boss_confirmed=false      # 含 BOSS 时先问用户，同意后传 true
+  boss_confirmed=false,     # 含 BOSS 时先问用户，同意后传 true
+  company_ids="",           # 可选：只采指定企业
+  batch_size=3,             # 可选：单次最多处理企业数
+  resume=true               # 可选：自动续跑未完成检查点
 )
 ```
 
@@ -245,8 +252,11 @@ collect_company_evidence(
   与 list-only 缺口；保留的 list-only 行只保留薪资/公司/地点/技能等列表字段，
   需要全文时由用户显式调用 `fetch_jd_detail`。
 - 单源失败不拖垮整批，失败原因进 `source_status` 与 `gaps`。
+- 大批量采集按检查点分批：每完成一家落检查点，未完成时返回 `status="partial"`；
+  再次调用默认续跑，已完成企业不重复抓取，避免 MCP 超时后整批丢结果。
 - 复用 `profile.research` 中 7 天内的样本，按 URL/公司+标题去重；
-  复用样本标注来源轮次与所属企业池，池外复用单独计数并写入缺口。
+  池外复用默认丢弃，避免污染目标企业池统计；只有显式 `include_outside_pool=true`
+  才保留并单独计数。
 - 面经源在 `target.role` 为空时回退到方向关键词 + 城市搜索，不直接失败。
 - 置信度只按样本量计算（与 RequirementProfile 同口径）：
   JD <15 low / 15-29 medium / >=30 high；
@@ -335,6 +345,8 @@ collect_company_evidence(
   `detail_current_phase` / `generate_tasks` 会记录 `guidance.enterprise_alignment_skipped_at`
   并继续按基线生成/细化，后续可随时补企业适配。
 - `checkin_mode`：`once` / `daily`（amount 累加天数）/ `percent`（amount 累加比例）。
+- 阶段 KPI 与任务名都带计数、且任务未显式配置打卡时，`generate_tasks` 自动补
+  `daily` + 数值目标，让「投递 20 家」这类 KPI 能在任务层累计。
 - `ExecutionState` 只在存在 applied `ExecutionPlan` 且 `execution_plan_id` 非空时写入；
   只保留 apply 时旧 completed/skipped 历史任务（尚未为新方案生成任务）时不落库。
 - 只有匹配当前 applied plan 的 `ExecutionState` 才进入 `get_next_tasks`；

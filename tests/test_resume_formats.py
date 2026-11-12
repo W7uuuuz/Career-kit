@@ -64,6 +64,27 @@ def test_pdf():
     assert len(text) > 0
 
 
+def test_parse_resume_reports_missing_name(tmp_path, monkeypatch):
+    """解析成功但缺姓名时，返回 missing_fields 并提示询问用户补充。"""
+    import src.tools.profile as profile_module
+
+    monkeypatch.setattr(profile_module, "PROFILE_DIR", tmp_path)
+    monkeypatch.setenv("CAREER_KIT_ASSETS_DIR", str(tmp_path / "CareerKit"))
+    from src.server import parse_resume
+
+    resume = tmp_path / "resume.md"
+    resume.write_text(
+        "手机号：13800138000\n邮箱：test@example.com\n熟悉 Python 与项目开发。",
+        encoding="utf-8",
+    )
+    out = parse_resume(str(resume))
+
+    assert "missing_fields" in out
+    assert '["name"]' in out
+    assert "profile_hints" in out
+    assert "是否补充姓名/联系方式" in out
+
+
 def compare_results(md_text, docx_text, pdf_text):
     """比较三种格式的解析结果。"""
     print("=" * 60)

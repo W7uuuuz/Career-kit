@@ -23,6 +23,7 @@ from ..artifacts.models import (
     ArtifactMeta,
     CompanyEntry,
     CompanyPool,
+    EvidenceCheckpoint,
     EvidenceRun,
     InterviewEvidence,
     JDEvidence,
@@ -36,10 +37,19 @@ STAGE_ID = state_machine.STAGE_EVIDENCE
 REQUIRES = ("company_pool",)
 PRODUCES = "evidence_run"
 
-CONCURRENCY = 4
-SOURCE_TIMEOUT = float(os.environ.get("CAREER_KIT_EVIDENCE_TIMEOUT", "20") or 20)
+CONCURRENCY = 3
+# 默认单源超时；运行期由 `_source_timeout()` 动态解析环境变量。
+SOURCE_TIMEOUT = 20.0
 SOURCE_RETRY = 1
-TOTAL_BUDGET = 120.0
+# 单次 MCP 调用的按批预算（秒），可用 CAREER_KIT_EVIDENCE_BATCH_BUDGET 覆盖。
+DEFAULT_BATCH_BUDGET = 45.0
+BATCH_BUDGET_ENV = "CAREER_KIT_EVIDENCE_BATCH_BUDGET"
+EVIDENCE_TIMEOUT_ENV = "CAREER_KIT_EVIDENCE_TIMEOUT"
+RESEARCH_TIMEOUT_ENV = "CAREER_KIT_RESEARCH_SOURCE_TIMEOUT"
+DEFAULT_BATCH_SIZE = 3
+MAX_BATCH_SIZE = 10
+CHECKPOINT_STAGE = "evidence_checkpoint"
+CHECKPOINT_ID_PREFIX = "ec_"
 RESEARCH_TTL_DAYS = 7
 MAX_DETAIL_FETCH = 20
 DEFAULT_PER_COMPANY_LIMIT = 5
@@ -50,6 +60,28 @@ BOSS_SOURCE = "boss"
 
 _REMOTE_HINTS = ("远程", "全国", "不限", "remote", "anywhere")
 _CONFIDENCE_LEVELS = ("low", "medium", "high")
+_COMPANY_ID_SPLIT_RE = re.compile(r"[\s,，、;；]+")
+_COUNT_KEYS = (
+    "companies_requested",
+    "companies_fetched",
+    "raw_jobs",
+    "kept_jobs",
+    "fresh_jobs",
+    "dropped_city",
+    "dropped_no_detail",
+    "interviews",
+    "reused_jd",
+    "reused_interviews",
+    "reused_jd_outside_pool",
+    "reused_interviews_outside_pool",
+    "reused_outside_pool",
+    "dropped_irrelevant",
+    "unknown_city",
+    "boss_jobs",
+    "list_only",
+    "list_only_kept",
+    "list_only_dropped_city",
+)
 
 # 采集层岗位相关性：目标岗位关键词，以及岗位族扩展词。
 # 只做字面命中，不做语义推断；宁可少收，也不让跑偏岗位污染统计。
@@ -81,7 +113,12 @@ def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
 
 
 async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
-    """执行阶段 7：抓取目标企业的 JD 与面经并保存 EvidenceRun。"""
+    """执行阶段 7：分批抓取目标企业的 JD 与面经并保存 EvidenceRun。
+
+    单次调用只处理不超过 batch_size 家企业；每完成一家就落一次检查点，
+    未完成时返回 status=partial，下一次调用默认自动续跑。这样即使 MCP
+    调用超时，已采集企业也不会丢，单次耗时也稳定低于 MCP 超时。
+    """
     store = ctx.store
     requested_pool_id = str(inputs.get("company_pool_id") or "").strip()
     pool_data, pool_id, error = _resolve_pool(store, ctx.profile_name, requested_pool_id)
@@ -108,14 +145,21 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     max_companies = _as_int(inputs.get("max_companies"), DEFAULT_MAX_COMPANIES, 1)
     max_jd = _as_int(inputs.get("max_jd"), DEFAULT_MAX_JD, 0)
     max_interviews = _as_int(inputs.get("max_interviews"), DEFAULT_MAX_INTERVIEWS, 0)
-    reuse_research = not _as_bool(inputs.get("refresh"))
+    refresh = _as_bool(inputs.get("refresh"))
+    reuse_research = not refresh
     include_boss = _as_bool(inputs.get("include_boss"))
     boss_confirmed = _as_bool(inputs.get("boss_confirmed"))
+    include_outside_pool = _as_bool(inputs.get("include_outside_pool"))
+    resume = _as_default_bool(inputs.get("resume"), True)
+    batch_size = min(
+        _as_int(inputs.get("batch_size"), DEFAULT_BATCH_SIZE, 1), MAX_BATCH_SIZE
+    )
 
     profile = load_profile(ctx.profile_name)
     education = _education_of(profile)
-    selected = [entry for entry in pool.companies if entry.scrapable and entry.status != "excluded"]
-    selected = selected[:max_companies]
+    selected = _select_companies(
+        pool, _parse_company_ids(inputs.get("company_ids")), max_companies
+    )
     if not selected:
         return StageResult(
             status="insufficient_data",
@@ -124,87 +168,153 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             warnings=["请调整企业池：至少确认一家已接入 scraper 的企业。"],
         )
 
+    selected_ids = [entry.id for entry in selected]
+    checkpoint = _load_checkpoint(
+        store,
+        ctx.profile_name,
+        pool_id,
+        selected_ids,
+        target,
+        resume=resume,
+        refresh=refresh,
+    )
+    if checkpoint is None:
+        counts = _initial_counts(len(selected))
+        checkpoint = EvidenceCheckpoint(
+            meta=ArtifactMeta(
+                id=store.new_id(CHECKPOINT_ID_PREFIX),
+                stage=CHECKPOINT_STAGE,
+                profile_name=ctx.profile_name,
+                created_at=datetime.now().isoformat(),
+                inputs={
+                    "company_pool_id": pool_id,
+                    "role": target.role,
+                    "city": target.city,
+                    "batch_size": str(batch_size),
+                    "max_companies": str(max_companies),
+                    "company_ids": ",".join(
+                        _parse_company_ids(inputs.get("company_ids"))
+                    ),
+                },
+                validation={"complete": False},
+            ),
+            company_pool_id=pool_id,
+            target_spec=target,
+            selected_company_ids=selected_ids,
+            counts=counts,
+        )
+    else:
+        _ensure_counts(checkpoint.counts, len(selected))
+        checkpoint.target_spec = target
+        checkpoint.meta.inputs["batch_size"] = str(batch_size)
+
+    done_ids = set(checkpoint.done_company_ids)
+    pending = [entry for entry in selected if entry.id not in done_ids]
+    batch = pending[:batch_size]
+
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + TOTAL_BUDGET
+    deadline = loop.time() + _batch_budget()
     semaphore = asyncio.Semaphore(CONCURRENCY)
 
-    jd_tasks = [
-        _search_company_jobs(
-            entry, slug, target_keyword, target.city, per_company_limit, deadline, semaphore
+    if batch:
+        finished = await _collect_company_batch(
+            batch, target_keyword, target.city, per_company_limit, deadline, semaphore
         )
-        for entry in selected
-        for slug in _entry_scrapers(entry)
-    ]
-    if include_boss and max_jd != 0:
-        jd_tasks.append(
-            _search_boss_jobs(
-                target, target_keyword, _boss_limit(max_jd, per_company_limit),
-                deadline, semaphore,
+        for entry, results, attempted in finished:
+            if not attempted:
+                # 预算耗尽导致完全没开抓：不标记完成，留到下一次续跑。
+                continue
+            fresh, _counts = await _enrich_jobs(
+                results, target.city, deadline, semaphore, checkpoint.counts
             )
-        )
-    jd_results = await asyncio.gather(*jd_tasks)
-    source_status: list[dict[str, Any]] = [
-        {
-            "source": result["source"],
-            "scope": "jd",
-            "status": result["status"],
-            "count": result["count"],
-            "error": result["error"],
-            "elapsed": round(result["elapsed"], 3),
-        }
-        for result in jd_results
+            checkpoint.jd_items.extend(fresh)
+            _record_results(checkpoint, results, fetched_entry=entry)
+            if entry.id not in checkpoint.done_company_ids:
+                checkpoint.done_company_ids.append(entry.id)
+            # 每完成一家就落一次检查点，MCP 超时也不丢已完成企业。
+            store.save(checkpoint)
+
+    still_pending = [
+        entry for entry in selected
+        if entry.id not in set(checkpoint.done_company_ids)
     ]
-    interview_status, raw_cases = await _collect_interviews(
-        target, target_keyword, education, max_interviews, deadline, semaphore
-    )
-    source_status.extend(interview_status)
+    if still_pending:
+        checkpoint.meta.validation = {
+            **dict(checkpoint.meta.validation or {}),
+            "complete": False,
+        }
+        store.save(checkpoint)
+        total = len(selected)
+        done = total - len(still_pending)
+        return StageResult(
+            status="partial",
+            code="EVIDENCE_PARTIAL",
+            artifact_id=checkpoint.meta.id,
+            message=(
+                f"本批已完成 {done}/{total} 家企业，剩余 {len(still_pending)} 家。"
+                "进度已写入检查点，继续调用本工具会自动续跑。"
+            ),
+            next_stage=STAGE_ID,
+            details={
+                "done": done,
+                "total": total,
+                "remaining": len(still_pending),
+                "next_tool": "collect_company_evidence",
+            },
+        )
 
-    fetched_company_ids = {
-        result["entry"].id
-        for result in jd_results
-        if result.get("entry") is not None and result["status"] != "failed"
-    }
-    counts: dict[str, int] = {
-        "companies_requested": len(selected),
-        "companies_fetched": len(fetched_company_ids),
-        "raw_jobs": sum(int(result["count"]) for result in jd_results),
-        "kept_jobs": 0,
-        "fresh_jobs": 0,
-        "dropped_city": 0,
-        "dropped_no_detail": 0,
-        "interviews": 0,
-        "reused_jd": 0,
-        "reused_interviews": 0,
-        "reused_jd_outside_pool": 0,
-        "reused_interviews_outside_pool": 0,
-        "reused_outside_pool": 0,
-        "dropped_irrelevant": 0,
-        "unknown_city": 0,
-        "boss_jobs": 0,
-        "list_only": 0,
-        "list_only_kept": 0,
-        "list_only_dropped_city": 0,
-    }
+    # BOSS 是跨公司补充源，只在最终一批补抓一次，避免重复抓取。
+    if (
+        include_boss
+        and max_jd != 0
+        and not _has_boss_status(checkpoint.source_status)
+    ):
+        boss_result = await _search_boss_jobs(
+            target, target_keyword, _boss_limit(max_jd, per_company_limit),
+            deadline, semaphore,
+        )
+        boss_items, _counts = await _enrich_jobs(
+            [boss_result], target.city, deadline, semaphore, checkpoint.counts
+        )
+        checkpoint.jd_items.extend(boss_items)
+        _record_results(checkpoint, [boss_result])
 
-    fresh_jd, counts = await _enrich_jobs(jd_results, target.city, deadline, semaphore, counts)
+    if checkpoint.interviews_done:
+        fresh_interviews = _dedupe_interviews(list(checkpoint.interview_items))
+    else:
+        interview_status, raw_cases = await _collect_interviews(
+            target, target_keyword, education, max_interviews, deadline, semaphore
+        )
+        checkpoint.source_status.extend(interview_status)
+        fresh_interviews = _dedupe_interviews(_to_interviews(raw_cases))
+        checkpoint.interview_items = fresh_interviews
+        checkpoint.interviews_done = True
+        checkpoint.counts["interviews"] = len(fresh_interviews)
+        store.save(checkpoint)
+
+    counts = checkpoint.counts
+    counts["companies_requested"] = len(selected)
+
+    fresh_jd = _dedupe_jobs(list(checkpoint.jd_items))
     fresh_jd, irrelevant_samples = _filter_relevant_jobs(fresh_jd, target_keyword, counts)
-    fresh_jd = _dedupe_jobs(fresh_jd)
     fresh_jd = _truncate_per_company(fresh_jd, per_company_limit)
 
     reused_jd: list[JDEvidence] = []
     if reuse_research:
-        reused_jd, counts = _reuse_jobs(profile, pool, target.city, counts)
+        reused_jd, counts = _reuse_jobs(
+            profile, pool, target.city, counts, include_outside_pool
+        )
 
     final_jd = _merge_jobs(fresh_jd, reused_jd, max_jd)
     # list-only 计数必须在去重 / 按企业截断 / 总量截断之后按终态重算，
     # 否则截断前计数会与 jd_items 不一致，导致整批证据池校验失败。
     _recompute_list_only_counts(counts, final_jd)
 
-    fresh_interviews = _to_interviews(raw_cases)
-    fresh_interviews = _dedupe_interviews(fresh_interviews)
     reused_interviews: list[InterviewEvidence] = []
     if reuse_research:
-        reused_interviews = _reuse_interviews(profile, pool)
+        reused_interviews = _reuse_interviews(
+            profile, pool, include_outside_pool
+        )
     final_interviews = _merge_interviews(fresh_interviews, reused_interviews, max_interviews)
 
     _assign_ids(final_jd, "JD")
@@ -231,7 +341,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     }
     gaps = _build_gaps(
         pool,
-        source_status,
+        checkpoint.source_status,
         counts,
         confidence,
         target.city,
@@ -253,11 +363,13 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
             "per_company_limit": str(per_company_limit),
             "max_jd": str(max_jd),
             "max_interviews": str(max_interviews),
-            "refresh": "true" if not reuse_research else "false",
+            "refresh": "true" if refresh else "false",
             "include_boss": "true" if include_boss else "false",
             "boss_confirmed": "true" if boss_confirmed else "false",
+            "include_outside_pool": "true" if include_outside_pool else "false",
+            "batch_size": str(batch_size),
         },
-        source_status=source_status,
+        source_status=list(checkpoint.source_status),
         validation={
             "confirmed": True,
             "companies": len(selected),
@@ -297,6 +409,14 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     store.save(evidence)
     _update_core_state(ctx.profile_name, evidence.meta.id)
 
+    checkpoint.complete = True
+    checkpoint.gaps = list(gaps)
+    checkpoint.meta.validation = {
+        **dict(checkpoint.meta.validation or {}),
+        "complete": True,
+    }
+    store.save(checkpoint)
+
     message = (
         f"已采集 JD：新抓 {counts['fresh_jobs']} 条 + 复用 {counts['reused_jd']} 条 "
         f"= 保留 {counts['kept_jobs']} 条（置信度 {confidence['jd']}）；"
@@ -309,6 +429,9 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
         message=message,
         next_stage=state_machine.STAGE_REQUIREMENT,
         warnings=gaps,
+        details={
+            "batch": {"done": len(selected), "total": len(selected), "remaining": 0}
+        },
     )
 
 
@@ -452,6 +575,206 @@ def _as_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "是"}
     return bool(value)
+
+
+def _as_default_bool(value: Any, default: bool) -> bool:
+    """缺省 / 空串时取默认值，其余按布尔语义解析。"""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    return _as_bool(value)
+
+
+def _source_timeout() -> float:
+    """抓取超时的唯一解析入口：evidence > research > 默认 20 秒。"""
+    for name in (EVIDENCE_TIMEOUT_ENV, RESEARCH_TIMEOUT_ENV):
+        raw = os.environ.get(name, "")
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return SOURCE_TIMEOUT
+
+
+def _batch_budget() -> float:
+    """单次调用按批预算；非法或非正值回退默认 45 秒。"""
+    raw = os.environ.get(BATCH_BUDGET_ENV, "")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_BATCH_BUDGET
+    return value if value > 0 else DEFAULT_BATCH_BUDGET
+
+
+def _parse_company_ids(value: Any) -> list[str]:
+    """把字符串或列表归一为企业 id/名称列表。"""
+    if isinstance(value, (list, tuple, set)):
+        raw = [str(item) for item in value]
+    else:
+        raw = _COMPANY_ID_SPLIT_RE.split(str(value or ""))
+    return [item.strip() for item in raw if item.strip()]
+
+
+def _allowlist_ids(pool: CompanyPool) -> list[str]:
+    """读取 BUG-003 落库的显式圈定清单；为空表示不启用 allowlist。"""
+    raw = pool.meta.validation.get("selected_ids")
+    if not isinstance(raw, (list, tuple, set)):
+        return []
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def _select_companies(
+    pool: CompanyPool, company_ids: list[str], max_companies: int
+) -> list[CompanyEntry]:
+    """按企业池 allowlist / 本次过滤条件 / 上限筛选可采集企业。"""
+    selected = [
+        entry for entry in pool.companies if entry.scrapable and entry.status != "excluded"
+    ]
+    allowlist = {item.lower() for item in _allowlist_ids(pool)}
+    if allowlist:
+        selected = [
+            entry
+            for entry in selected
+            if entry.id.lower() in allowlist or entry.name.lower() in allowlist
+        ]
+    wanted = {item.lower() for item in company_ids}
+    if wanted:
+        selected = [
+            entry
+            for entry in selected
+            if entry.id.lower() in wanted or entry.name.lower() in wanted
+        ]
+    return selected[:max_companies]
+
+
+def _initial_counts(companies_requested: int) -> dict[str, int]:
+    counts = dict.fromkeys(_COUNT_KEYS, 0)
+    counts["companies_requested"] = companies_requested
+    return counts
+
+
+def _ensure_counts(counts: dict[str, int], companies_requested: int) -> dict[str, int]:
+    for key in _COUNT_KEYS:
+        counts.setdefault(key, 0)
+    counts["companies_requested"] = companies_requested
+    return counts
+
+
+def _load_checkpoint(
+    store: Any,
+    profile_name: str,
+    pool_id: str,
+    selected_ids: list[str],
+    target: TargetSpec,
+    *,
+    resume: bool,
+    refresh: bool,
+) -> EvidenceCheckpoint | None:
+    """找出可续跑的未完成检查点；条件不一致时返回 None。"""
+    if not resume or refresh:
+        return None
+    data = store.latest(profile_name, CHECKPOINT_STAGE)
+    if not isinstance(data, dict):
+        return None
+    try:
+        checkpoint = EvidenceCheckpoint.model_validate(data)
+    except Exception:  # noqa: BLE001 - 损坏检查点直接放弃，重新开始
+        return None
+    if checkpoint.complete:
+        return None
+    if checkpoint.company_pool_id != pool_id:
+        return None
+    if set(checkpoint.selected_company_ids) != set(selected_ids):
+        return None
+    if checkpoint.target_spec.role != target.role:
+        return None
+    if checkpoint.target_spec.city != target.city:
+        return None
+    return checkpoint
+
+
+def _record_results(
+    checkpoint: EvidenceCheckpoint,
+    results: list[dict[str, Any]],
+    *,
+    fetched_entry: CompanyEntry | None = None,
+) -> None:
+    """把单次抓取的来源状态与原始计数累积进检查点。"""
+    for result in results:
+        checkpoint.source_status.append(
+            {
+                "source": result["source"],
+                "scope": "jd",
+                "status": result["status"],
+                "count": result["count"],
+                "error": result["error"],
+                "elapsed": round(result["elapsed"], 3),
+            }
+        )
+        checkpoint.counts["raw_jobs"] = checkpoint.counts.get("raw_jobs", 0) + int(
+            result["count"]
+        )
+    if fetched_entry is not None and any(
+        result["status"] != "failed" for result in results
+    ):
+        checkpoint.counts["companies_fetched"] = (
+            checkpoint.counts.get("companies_fetched", 0) + 1
+        )
+
+
+def _has_boss_status(source_status: list[dict[str, Any]]) -> bool:
+    return any(
+        item.get("source") == BOSS_SOURCE and item.get("scope") == "jd"
+        for item in source_status
+    )
+
+
+async def _collect_company_batch(
+    batch: list[CompanyEntry],
+    keyword: str,
+    city: str,
+    limit: int,
+    deadline: float,
+    semaphore: asyncio.Semaphore,
+) -> list[tuple[CompanyEntry, list[dict[str, Any]], bool]]:
+    """并发抓取本批企业；返回 (企业, 来源结果, 是否实际开抓)。"""
+    tasks = [
+        asyncio.ensure_future(
+            _collect_company(entry, keyword, city, limit, deadline, semaphore)
+        )
+        for entry in batch
+    ]
+    finished: list[tuple[CompanyEntry, list[dict[str, Any]], bool]] = []
+    try:
+        for future in asyncio.as_completed(tasks):
+            entry, results = await future
+            attempted = any(result.get("attempted", True) for result in results)
+            finished.append((entry, results, attempted))
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+    return finished
+
+
+async def _collect_company(
+    entry: CompanyEntry,
+    keyword: str,
+    city: str,
+    limit: int,
+    deadline: float,
+    semaphore: asyncio.Semaphore,
+) -> tuple[CompanyEntry, list[dict[str, Any]]]:
+    results = await asyncio.gather(
+        *(
+            _search_company_jobs(
+                entry, slug, keyword, city, limit, deadline, semaphore
+            )
+            for slug in _entry_scrapers(entry)
+        )
+    )
+    return entry, list(results)
 
 
 def _entry_scrapers(entry: CompanyEntry) -> list[str]:
@@ -603,8 +926,9 @@ async def _search_boss_jobs(
                 0,
                 "总预算耗尽，未执行 BOSS 抓取",
                 loop.time() - request_started,
+                attempted=False,
             )
-        timeout = min(SOURCE_TIMEOUT, remaining)
+        timeout = min(_source_timeout(), remaining)
         try:
             response = await asyncio.wait_for(
                 asyncio.to_thread(search_company_jobs, BOSS_SOURCE, **params), timeout=timeout
@@ -664,9 +988,9 @@ async def _search_company_jobs(
             if remaining <= 0:
                 return _source_result(
                     entry, slug, "failed", 0, "总预算耗尽，未执行抓取",
-                    loop.time() - request_started,
+                    loop.time() - request_started, attempted=False,
                 )
-            timeout = min(SOURCE_TIMEOUT, remaining)
+            timeout = min(_source_timeout(), remaining)
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(search_company_jobs, slug, **params), timeout=timeout
@@ -715,6 +1039,7 @@ def _source_result(
     elapsed: float,
     *,
     rows: list[dict[str, Any]] | None = None,
+    attempted: bool = True,
 ) -> dict[str, Any]:
     return {
         "entry": entry,
@@ -724,6 +1049,7 @@ def _source_result(
         "error": error,
         "elapsed": elapsed,
         "rows": rows or [],
+        "attempted": attempted,
     }
 
 
@@ -886,7 +1212,7 @@ async def _fetch_detail(
             remaining = deadline - loop.time()
             if remaining <= 0:
                 return None
-            timeout = min(SOURCE_TIMEOUT, remaining)
+            timeout = min(_source_timeout(), remaining)
             try:
                 detail = await asyncio.wait_for(
                     asyncio.to_thread(get_job_detail, item["url"], company=item["slug"]),
@@ -975,6 +1301,7 @@ def _reuse_jobs(
     pool: CompanyPool,
     city: str,
     counts: dict[str, int],
+    include_outside_pool: bool = False,
 ) -> tuple[list[JDEvidence], dict[str, int]]:
     samples, _cases, fresh = _research_samples(profile)
     if not fresh:
@@ -985,6 +1312,10 @@ def _reuse_jobs(
         company_raw = str(sample.get("company") or "").strip()
         title = str(sample.get("title") or "").strip()
         if not title:
+            continue
+        in_pool = _pool_has_company(company_raw, pool)
+        # 默认丢弃池外样本：它们会污染目标企业统计，不应计入证据池。
+        if not in_pool and not include_outside_pool:
             continue
         description = str(sample.get("description") or "").strip()
         requirements = str(sample.get("requirements") or "").strip()
@@ -998,7 +1329,6 @@ def _reuse_jobs(
             counts["dropped_city"] += 1
             continue
         company_id, company, tier = _match_company(company_raw, pool)
-        in_pool = _pool_has_company(company_raw, pool)
         reused.append(
             JDEvidence(
                 id="",
@@ -1095,7 +1425,7 @@ async def _collect_interviews(
                 ],
                 [],
             )
-        timeout = min(SOURCE_TIMEOUT, remaining)
+        timeout = min(_source_timeout(), remaining)
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -1261,7 +1591,9 @@ def _interview_key(item: InterviewEvidence) -> tuple[str, ...]:
     return ("title", _norm_text(item.source), _norm_text(item.title))
 
 
-def _reuse_interviews(profile: Any, pool: CompanyPool) -> list[InterviewEvidence]:
+def _reuse_interviews(
+    profile: Any, pool: CompanyPool, include_outside_pool: bool = False
+) -> list[InterviewEvidence]:
     _samples, cases, fresh = _research_samples(profile)
     if not fresh:
         return []
@@ -1273,8 +1605,11 @@ def _reuse_interviews(profile: Any, pool: CompanyPool) -> list[InterviewEvidence
         if not title:
             continue
         company_raw = str(case.get("company") or "").strip()
-        company_id, company = _map_interview_company(company_raw)
         in_pool = _pool_has_company(company_raw, pool)
+        # 与 JD 一致：默认丢弃池外面经样本，显式开启才保留并标记。
+        if not in_pool and not include_outside_pool:
+            continue
+        company_id, company = _map_interview_company(company_raw)
         highlights = [str(item).strip() for item in case.get("highlights") or [] if str(item).strip()]
         result.append(
             InterviewEvidence(
@@ -1482,18 +1817,21 @@ def _update_core_state(profile_name: str, artifact_id: str) -> None:
 
 
 __all__ = [
+    "CHECKPOINT_STAGE",
     "CONCURRENCY",
+    "DEFAULT_BATCH_BUDGET",
+    "DEFAULT_BATCH_SIZE",
     "DEFAULT_MAX_COMPANIES",
     "DEFAULT_MAX_INTERVIEWS",
     "DEFAULT_MAX_JD",
     "DEFAULT_PER_COMPANY_LIMIT",
+    "MAX_BATCH_SIZE",
     "MAX_DETAIL_FETCH",
     "PRODUCES",
     "REQUIRES",
     "RESEARCH_TTL_DAYS",
     "SOURCE_TIMEOUT",
     "STAGE_ID",
-    "TOTAL_BUDGET",
     "run",
     "run_async",
     "validate",

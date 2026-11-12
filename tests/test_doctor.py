@@ -94,6 +94,28 @@ def test_check_package_version_not_installed(monkeypatch):
     assert "未以包形式安装" in check.detail
 
 
+def test_check_workspace_cwd_reports_fix_sample(tmp_path, monkeypatch):
+    from src import doctor
+
+    monkeypatch.chdir(tmp_path)
+    check = doctor.check_workspace_cwd()
+    assert check.name == "工作目录"
+    assert check.status == doctor.WARN
+    assert "cwd" in check.hint
+    assert '"mcpServers"' in check.hint
+    assert "~/.career-kit" in check.hint
+
+
+def test_server_fingerprint_warning_contains_cwd_sample(tmp_path, monkeypatch):
+    from src.tools import tool_helpers
+
+    monkeypatch.chdir(tmp_path)
+    line = tool_helpers.server_fingerprint_line()
+    assert "[自检警告]" in line
+    assert '"cwd"' in line
+    assert "~/.career-kit" in line
+
+
 def test_expected_package_version_matches_metadata_files():
     """doctor 的预期版本必须与 pyproject.toml / server.json 一致。"""
     import json

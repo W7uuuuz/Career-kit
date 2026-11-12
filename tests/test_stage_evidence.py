@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1067,11 +1069,9 @@ def test_search_params_only_pass_keyword_when_source_supports_it(
     assert unsupported == {"limit": 5}
 
 
-def test_reused_samples_outside_pool_are_labelled_and_counted(
-    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _outside_pool_research() -> dict[str, Any]:
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-    research = {
+    return {
         "generated_at": generated_at,
         "direction": "AI 应用",
         "city": "北京",
@@ -1094,20 +1094,139 @@ def test_reused_samples_outside_pool_are_labelled_and_counted(
             }
         ],
     }
-    _seed(store, _pool(store), research=research)
-    _patch_sources(monkeypatch, {"bytedance": {"results": []}})
+
+
+def test_reused_samples_outside_pool_are_dropped_by_default(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(store, _pool(store), research=_outside_pool_research())
+    _patch_sources(
+        monkeypatch,
+        {
+            "bytedance": {
+                "results": [
+                    {
+                        "title": "新抓 AI Agent JD",
+                        "location": "北京",
+                        "url": "https://jobs/fresh",
+                        "description": "AI Agent 正文",
+                    }
+                ]
+            }
+        },
+    )
 
     result = _run(store)
 
     assert result.status == "ok"
     run = _load(store, result.artifact_id)
+    assert [item.title for item in run.jd_items] == ["新抓 AI Agent JD"]
+    assert all(not item.reused for item in run.jd_items)
+    assert run.counts["reused_jd"] == 0
+    assert run.counts["reused_jd_outside_pool"] == 0
+    assert run.counts["reused_interviews_outside_pool"] == 0
+    assert not any("池外复用" in gap for gap in run.gaps)
+
+
+def test_reused_samples_outside_pool_are_kept_when_enabled(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    _seed(store, _pool(store), research=_outside_pool_research())
+    _patch_sources(monkeypatch, {"bytedance": {"results": []}})
+
+    result = _run(store, {"include_outside_pool": True})
+
+    assert result.status == "ok"
+    run = _load(store, result.artifact_id)
     reused_jd = next(item for item in run.jd_items if item.reused)
-    assert reused_jd.reused_from
+    assert reused_jd.title == "池外复用 JD"
     assert generated_at in reused_jd.reused_from
     assert reused_jd.reused_in_pool is False
     assert run.counts["reused_jd_outside_pool"] == 1
     reused_case = next(item for item in run.interview_items if item.reused)
-    assert reused_case.reused_from
+    assert reused_case.title == "池外复用面经"
     assert run.counts["reused_interviews_outside_pool"] == 1
     assert any("池外复用" in gap and "池外复用 JD" in gap for gap in run.gaps)
+
+
+def test_batch_checkpoint_partial_then_complete(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    companies = [_company(f"c{index}", f"公司{index}") for index in range(1, 6)]
+    _seed(store, _pool(store, companies=companies))
+    jobs = {
+        f"c{index}": {
+            "results": [
+                {
+                    "title": f"AI Agent 工程师 {index}",
+                    "location": "北京",
+                    "url": f"https://jobs/{index}",
+                    "description": "Agent 正文",
+                }
+            ]
+        }
+        for index in range(1, 6)
+    }
+    captured = _patch_sources(monkeypatch, jobs)
+
+    first = _run(store, {"batch_size": 2})
+    assert first.status == "partial"
+    assert first.code == "EVIDENCE_PARTIAL"
+    assert first.details["done"] == 2
+    assert first.details["total"] == 5
+    assert first.details["remaining"] == 3
+    assert first.details["next_tool"] == "collect_company_evidence"
+    assert store.latest(PROFILE, state_machine.STAGE_EVIDENCE) is None
+    checkpoint = store.latest(PROFILE, evidence.CHECKPOINT_STAGE)
+    assert checkpoint is not None
+    assert len(checkpoint["done_company_ids"]) == 2
+
+    second = _run(store, {"batch_size": 2})
+    assert second.status == "partial"
+    checkpoint = store.latest(PROFILE, evidence.CHECKPOINT_STAGE)
+    assert len(checkpoint["done_company_ids"]) == 4
+    assert store.latest(PROFILE, state_machine.STAGE_EVIDENCE) is None
+
+    third = _run(store, {"batch_size": 2})
+    assert third.status == "ok"
+    run = _load(store, third.artifact_id)
+    assert {item.company_id for item in run.jd_items} == {f"c{index}" for index in range(1, 6)}
+    assert run.counts["companies_requested"] == 5
+    assert run.counts["companies_fetched"] == 5
+    assert len(captured["search"]) == 5
+    assert third.details["batch"] == {"done": 5, "total": 5, "remaining": 0}
+
+
+def test_research_source_timeout_env_applies_to_evidence(
+    store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(evidence.EVIDENCE_TIMEOUT_ENV, raising=False)
+    monkeypatch.setenv(evidence.RESEARCH_TIMEOUT_ENV, "7")
+    assert evidence._source_timeout() == 7.0
+
+    monkeypatch.setenv(evidence.EVIDENCE_TIMEOUT_ENV, "9")
+    assert evidence._source_timeout() == 9.0
+
+    monkeypatch.delenv(evidence.EVIDENCE_TIMEOUT_ENV, raising=False)
+    monkeypatch.setenv(evidence.RESEARCH_TIMEOUT_ENV, "0.05")
+
+    def slow_search(slug: str, **params: Any) -> dict[str, Any]:
+        time.sleep(0.2)
+        return {"results": []}
+
+    monkeypatch.setattr(evidence, "search_company_jobs", slow_search)
+    loop = asyncio.new_event_loop()
+    try:
+        result = loop.run_until_complete(
+            evidence._search_company_jobs(
+                None, "slow", "Agent", "上海", 5,
+                loop.time() + 5, asyncio.Semaphore(1),
+            )
+        )
+    finally:
+        loop.close()
+
+    assert result["status"] == "failed"
+    assert "超时" in result["error"]
 

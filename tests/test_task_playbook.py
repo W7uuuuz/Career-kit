@@ -124,6 +124,51 @@ def test_save_detail_and_generate_tasks_keep_playbook(temp_profile):
     assert task.checkin_mode == "daily" and task.checkin_goal == 5
 
 
+def _profile_with_numeric_kpi(task_def: dict) -> CareerProfile:
+    profile = CareerProfile()
+    profile.plan = {"roadmap": {"phases": [{
+        "id": "phase_1",
+        "name": "投递阶段",
+        "type": "intern",
+        "goal": "拿到面试",
+        "kpi": {"metric": "投递", "target": "投递 20 家"},
+        "milestones": [{"id": "phase_1_ms_1", "name": "投递", "tasks": [task_def]}],
+    }]}}
+    return profile
+
+
+def test_roadmap_tasks_infer_checkin_from_kpi_and_name():
+    from src.tools.task_manager import create_tasks_from_roadmap
+
+    task = create_tasks_from_roadmap(
+        _profile_with_numeric_kpi({"name": "投递 20 家"})
+    )[0]
+    assert task.checkin_mode == "daily"
+    assert task.checkin_goal == 20
+
+
+def test_roadmap_tasks_keep_explicit_checkin():
+    from src.tools.task_manager import create_tasks_from_roadmap
+
+    task = create_tasks_from_roadmap(_profile_with_numeric_kpi({
+        "name": "投递 20 家",
+        "checkin_mode": "percent",
+        "checkin_goal": 60,
+    }))[0]
+    assert task.checkin_mode == "percent"
+    assert task.checkin_goal == 60
+
+
+def test_roadmap_tasks_skip_inference_for_zero_or_one():
+    from src.tools.task_manager import create_tasks_from_roadmap
+
+    task = create_tasks_from_roadmap(
+        _profile_with_numeric_kpi({"name": "投递 1 家"})
+    )[0]
+    assert task.checkin_mode == ""
+    assert task.checkin_goal == 0
+
+
 def test_resolve_current_phase_rules():
     from src.models import Task
     from src.tools.task_manager import resolve_current_phase
