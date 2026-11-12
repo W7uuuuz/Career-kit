@@ -25,15 +25,37 @@ from .tool_helpers import _json, _parse_json_param
 
 
 @mcp.tool()
-def generate_roadmap() -> str:
+def generate_roadmap(section: str = "overview") -> str:
     """基于差距分析生成分阶段职业路线图。
 
     返回方法论上下文。LLM 按照方法论指引，结合差距分析结果，
     设计分阶段路线图，然后调用 save_roadmap(roadmap_json) 保存。
 
+    Args:
+        section: 返回内容。overview（默认）给工作流摘要、证据与档案摘要；
+            template 取完整 6 步动作；rubric 取起点评分表；schema 取输出结构；
+            phases 取阶段类型规范；principles 取方法论原则。按需读取，避免单次返回过大。
+
     前置条件：差距分析已完成（save_gap_analysis 已调用）。
     后续步骤：LLM 生成路线图后调用 save_roadmap，然后调用 generate_tasks。
     """
+    section_key = (section or "overview").strip().lower()
+    allowed_sections = {
+        "overview", "template", "rubric", "schema", "phases", "principles",
+    }
+    # section 名与 methodology 字段名不完全一致（rubric→start_level_rubric 等）。
+    section_methodology_keys = {
+        "rubric": "start_level_rubric",
+        "schema": "output_schema",
+        "phases": "phases",
+        "principles": "principles",
+    }
+    if section_key not in allowed_sections:
+        return error_response(
+            "INVALID_PARAM",
+            f"section 必须是 {sorted(allowed_sections)}，收到「{section}」",
+            {"received": section},
+        )
     profile = load_profile()
     gate = require_state(profile, "generate_roadmap")
     if isinstance(gate, str):
@@ -56,10 +78,11 @@ def generate_roadmap() -> str:
         else [core_next]
     )
 
-    return _json({
+    payload = {
         "next_steps": next_steps,
         "methodology": ctx["methodology"],
-        "profile": ctx["profile"],
+        "profile": _compact_profile(profile),
+        "profile_note": "档案摘要仅保留规划所需字段；完整档案可在控制台查看，不要依赖这里做逐字对比。",
         "evidence": _evidence_pack(profile),
         "required_evidence": [dict(item) for item in _REQUIRED_EVIDENCE],
         "step_template": [
@@ -146,36 +169,48 @@ def generate_roadmap() -> str:
             },
         ],
         "instructions": (
-            "步骤预告（提高心理预期）：第一轮回复先向用户报完整菜单——"
-            "「路线图分 6 步：① 起点判定 ② 证据校准 ③ 阶段序列 ④ 逐阶段细化 "
-            "⑤ 审计（第二意见） ⑥ 定稿交付」——报完再动手，禁止无预告直接执行。\n"
-            "播报纪律：每个工具调用前用一句话告诉用户这步在干什么——全程禁止静默连调工具。\n"
-            "请严格按照 step_template 的 6 步分步执行，禁止一步到位。\n"
-            "1. 每步必须产出该步的 output 结构后再进入下一步；"
-            "表格/清单必须带「为什么」（拆分的依据：真实 JD 要求/差距结果/证据缺口），只给结论不给理由不完整\n"
-            "2. checkpoint=true 的步骤必须先把中间产物展示给用户确认，确认后再继续\n"
-            "3. 起点判定前必须先用 pre_brief 说明口径（维度、权重、档位含义），再给分数；"
-            "start_level_rubric 只作参考，不要当准入许可；等价证据（生产交付/开源/内推）同样有效；"
-            "规则细节见 career-kit://docs/rules\n"
-            "4. 审计是第二意见：先 save_roadmap 保存雏形（结构校验通过即可），"
-            "再调用 career-roadmap-auditor 并用 save_roadmap_audit 落库；审计不阻断定稿，"
-            "FAIL 只用于硬矛盾，优先处理最多 3 条 must_fix，其余作为建议\n"
-            "5. 过程中需要真实岗位数据时用 search_cases / fetch_company_jobs / fetch_jd_detail 获取，"
-            "拿不到就 jd 占位（pending_user_import）——告诉用户这只是占位，"
-            "后续自动抓取会由企业适配阶段按目标企业和届别补齐，也可先用 import_jd 补充；绝不编造\n"
-            "6. 最终调用 save_roadmap(roadmap_json) 保存；保存后向用户复述质量建议与未解决项；"
-            "定稿后只需引导用户双击桌面上的「Career Kit」快捷方式，在控制台查看路线图并打卡\n"
-            "7. 证据纪律：数字（实习段数/月数/比例/薪资/时间窗口）必须有 claim 或真实样本支撑；"
-            "没有来源就不写具体数字，只写方向性描述。没有同背景案例时明确说「样本不足」，"
-            "不得把 HR 口述或单条面经包装成统计事实。\n"
-            "8. 通道纪律：大厂目标不得只写一条通道；涉及实习转正必须写 conversion_risk 与至少一条 "
-            "fallback_paths；校招/实习阶段写 time_window（外部时间窗口，不是用户学习排期）。"
-            "产品不替用户安排学习时长，但实习时长与校招时间点属于客观约束。\n"
-            "9. 引用纪律：阶段 claims 只能引用已存在的 claim id；"
-            "新结论先用 record_claim 记录（从业者经验要写 source.name 与 scope），"
-            "再在阶段里引用。交付时带上来源，不出现无法追溯的断言。"
+            "先向用户报完整菜单：路线图分 6 步——① 起点判定 ② 证据校准 ③ 阶段序列 "
+            "④ 逐阶段细化 ⑤ 审计（第二意见） ⑥ 定稿交付。每个工具调用前用一句话说明在做什么。\n"
+            "1. 严格按 step_template 分步执行，禁止一步到位；需要完整动作原文时先读 "
+            "generate_roadmap(section='template')。checkpoint=true 的步骤先展示中间产物并等用户确认。\n"
+            "2. 起点判定前先说明评分口径；开始前调用 generate_roadmap(section='rubric') 读取评分表。\n"
+            "3. 写 roadmap_json 前调用 generate_roadmap(section='schema') 读取输出结构；需要阶段类型规范时读 section='phases'。\n"
+            "4. 数字（实习段数/月数/比例/薪资/时间窗口）必须有 claim 或真实样本支撑，否则不写具体数字；"
+            "真实岗位用 search_cases / fetch_company_jobs / fetch_jd_detail，拿不到就 jd 占位 pending_user_import，绝不编造。\n"
+            "5. 大厂目标不得只写一条通道；涉及转正写 conversion_risk 与 fallback_paths；校招/实习阶段写 time_window。\n"
+            "6. 阶段 claims 只能引用已存在的 claim id；新结论先 record_claim。\n"
+            "7. 先 save_roadmap 存雏形，再交 career-roadmap-auditor 审计并 save_roadmap_audit 落库；"
+            "FAIL 只用于硬矛盾，最多 3 条 must_fix。定稿后引导用户双击「Career Kit」快捷方式查看与打卡。"
         ),
-    })
+    }
+
+    if section_key != "overview":
+        if section_key == "template":
+            return _json({
+                "section": "template",
+                "next_steps": next_steps,
+                "step_template": payload["step_template"],
+                "instructions": payload["instructions"],
+            })
+        methodology = payload["methodology"]
+        return _json({
+            "section": section_key,
+            "methodology": {
+                section_key: methodology.get(section_methodology_keys.get(section_key, section_key))
+            },
+            "next_steps": next_steps,
+        })
+
+    payload["methodology"] = _methodology_summary(payload["methodology"])
+    payload["methodology_sections"] = {
+        "template": "完整 6 步动作原文",
+        "rubric": "起点 5 维评分表（step 1 前调用）",
+        "schema": "roadmap 输出 schema（写 roadmap_json 前调用）",
+        "phases": "阶段类型规范",
+        "principles": "方法论原则",
+    }
+    payload["step_template"] = _brief_step_template(payload["step_template"])
+    return _json(payload)
 
 
 _LEVEL_ORDER = {"暂不可入": 0, "小厂": 1, "中厂": 2, "大厂": 3}
@@ -248,6 +283,125 @@ def _compact_jd(item: dict) -> dict:
     }
 
 
+def _brief_step_template(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """overview 只给每步一句目标；完整动作用 section='template' 按需读取。"""
+    brief: list[dict[str, Any]] = []
+    for step in steps:
+        item: dict[str, Any] = {
+            "step": step.get("step"),
+            "name": step.get("name", ""),
+            "goal": _clip_text(step.get("action"), 180),
+            "checkpoint": bool(step.get("checkpoint")),
+        }
+        if step.get("checkpoint_note"):
+            item["checkpoint_note"] = step["checkpoint_note"]
+        brief.append(item)
+    return brief
+
+
+def _methodology_summary(methodology: dict[str, Any]) -> dict[str, Any]:
+    """只保留方法论索引；rubric/schema/phases 用 section 按需读取。"""
+    return {
+        "name": methodology.get("name", ""),
+        "version": methodology.get("version", ""),
+        "description": _clip_text(methodology.get("description"), 200),
+        "note": (
+            "完整评分表/输出结构/阶段规范/原则不在 overview 重复下发；"
+            "调用 generate_roadmap(section='rubric'|'schema'|'phases'|'principles') 按需读取。"
+        ),
+    }
+
+
+def _clip_text(value: Any, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _compact_skills(raw: Any, limit: int = 6) -> list[dict[str, Any]]:
+    items = raw if isinstance(raw, list) else []
+    compact: list[dict[str, Any]] = []
+    for item in items[:limit]:
+        if isinstance(item, str):
+            compact.append({"name": _clip_text(item, 40)})
+            continue
+        if not isinstance(item, dict):
+            continue
+        entry: dict[str, Any] = {}
+        for key in ("name", "level", "authorship", "control_level"):
+            value = item.get(key)
+            if value not in (None, "", []):
+                entry[key] = _clip_text(value, 40) if isinstance(value, str) else value
+        if entry:
+            compact.append(entry)
+    return compact
+
+
+def _compact_profile(profile) -> dict[str, Any]:
+    """规划需要的最小档案摘要；避免把完整简历/差距分析重复塞进返回体。"""
+    who = profile.who if isinstance(profile.who, dict) else {}
+    have = profile.have if isinstance(profile.have, dict) else {}
+    want = profile.want if isinstance(profile.want, dict) else {}
+    gap = profile.gap if isinstance(profile.gap, dict) else {}
+
+    who_fields = ("name", "education", "school", "major", "graduation_year", "status")
+    want_fields = (
+        "target_role", "direction", "city", "target_company", "industry",
+        "expected_outcome", "salary", "graduation_year",
+    )
+    gap_fields = ("match_score", "match_level", "start_level", "market_context")
+
+    skill_gaps = []
+    for item in (gap.get("skill_gaps") or [])[:4]:
+        if not isinstance(item, dict):
+            continue
+        skill_gaps.append({
+            key: _clip_text(item.get(key), 40) if isinstance(item.get(key), str) else item.get(key)
+            for key in ("skill", "priority", "current_level", "required_level")
+            if item.get(key) not in (None, "", [])
+        })
+
+    return {
+        "who": {
+            key: _clip_text(who.get(key), 50)
+            for key in who_fields
+            if who.get(key) not in (None, "", [])
+        },
+        "have": {
+            "skills": _compact_skills(have.get("skills")),
+            "skill_count": len(have.get("skills") or []),
+            "experience": _clip_text(have.get("experience"), 100),
+            "self_assessment": _clip_text(have.get("self_assessment"), 120),
+        },
+        "want": {
+            key: _clip_text(want.get(key), 60)
+            for key in want_fields
+            if want.get(key) not in (None, "", [])
+        },
+        "gap": {
+            **{
+                key: (_clip_text(gap.get(key), 150) if isinstance(gap.get(key), str) else gap.get(key))
+                for key in gap_fields
+                if gap.get(key) not in (None, "", [])
+            },
+            "skill_gaps": skill_gaps,
+            "skill_gap_count": len(gap.get("skill_gaps") or []),
+        },
+        "target_jd_present": bool(profile.target_jd),
+    }
+
+
+def _compact_claim(claim: Any) -> dict[str, Any]:
+    data = claim.model_dump() if hasattr(claim, "model_dump") else dict(claim or {})
+    source = data.get("source") if isinstance(data.get("source"), dict) else {}
+    return {
+        "id": data.get("id", ""),
+        "statement": _clip_text(data.get("statement"), 160),
+        "type": data.get("claim_type", ""),
+        "source": _clip_text(source.get("name") or source.get("url"), 60),
+        "scope": data.get("scope") or {},
+    }
+
+
 def _evidence_pack(profile) -> dict:
     """把档案里的真实证据压成生成路线图可用的证据包。"""
     research = profile.research if isinstance(profile.research, dict) else {}
@@ -256,9 +410,10 @@ def _evidence_pack(profile) -> dict:
     digest = research.get("digest") if isinstance(research.get("digest"), dict) else {}
     status = [item for item in (research.get("source_status") or []) if isinstance(item, dict)]
     failures = [item for item in status if item.get("status") == "failed"]
-    claims = [claim.model_dump() for claim in (profile.claims or [])]
+    claims = [_compact_claim(claim) for claim in (profile.claims or [])[:6]]
     return {
         "claims": claims,
+        "claims_count": len(profile.claims or []),
         "cases": {
             "count": len(cases),
             "items": [_compact_case(item) for item in cases[:_EVIDENCE_ITEM_LIMIT]],
@@ -275,7 +430,7 @@ def _evidence_pack(profile) -> dict:
         },
         "counts": research.get("counts") or {},
         "source_failures": failures[:5],
-        "gaps": list(research.get("gaps") or []),
+        "gaps": [_clip_text(gap, 160) for gap in (research.get("gaps") or [])[:5]],
         "report_md": research.get("report_md", ""),
     }
 

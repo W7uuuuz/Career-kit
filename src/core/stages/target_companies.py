@@ -344,12 +344,64 @@ def _target_conflicts(
         current = _normalize_target_field(getattr(artifact_spec, field))
         if not value or not current:
             continue
-        if value != current:
+        if not _target_field_compatible(field, value, current):
             conflicts.append(
                 f"{_FIELD_LABELS.get(field, field)} 当前为 {current!r}，"
                 f"显式传入 {value!r}"
             )
     return conflicts
+
+
+# 岗位/方向常见后缀：只用于判断“同一方向的不同写法”，不改变落库原值。
+_ROLE_SUFFIXES = (
+    "开发工程师",
+    "研发工程师",
+    "算法工程师",
+    "工程师",
+    "实习生",
+    "实习",
+    "岗位",
+    "职位",
+    "专员",
+    "方向",
+)
+_ROLE_SEPARATOR_RE = re.compile(r"[\s\-_/·,，、()（）]+")
+_YEAR_RE = re.compile(r"(19|20)\d{2}")
+
+
+def _normalize_text_key(value: str) -> str:
+    text = _ROLE_SEPARATOR_RE.sub("", value.strip().lower())
+    text = text.replace("市", "") if text.endswith("市") else text
+    for suffix in _ROLE_SUFFIXES:
+        if text.endswith(suffix) and len(text) > len(suffix):
+            text = text[: -len(suffix)]
+            break
+    return text
+
+
+def _target_field_compatible(field: str, value: Any, current: Any) -> bool:
+    """身份字段是否可视为同一目标（兼容后缀、空格与包含关系）。"""
+    if field == "constraints":
+        return value == current
+    if field == "graduation_year":
+        value_year = _YEAR_RE.search(str(value))
+        current_year = _YEAR_RE.search(str(current))
+        if value_year and current_year:
+            return value_year.group() == current_year.group()
+        return str(value).strip() == str(current).strip()
+    if not isinstance(value, str) or not isinstance(current, str):
+        return value == current
+
+    left = _normalize_text_key(value)
+    right = _normalize_text_key(current)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    # 「Agent 开发」与「AI Agent 开发」这类包含关系视为同方向；
+    # 过短的关键词（如「开发」）不足以判定为同一目标，仍按冲突处理。
+    shorter, longer = sorted((left, right), key=len)
+    return len(shorter) >= 3 and shorter in longer
 
 
 _FIELD_LABELS = {

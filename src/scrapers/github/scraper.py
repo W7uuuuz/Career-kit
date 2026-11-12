@@ -123,6 +123,8 @@ class Scraper(CompanyScraper):
                 }]
 
         items = raw.get("items") or []
+        attempted: list[str] = [q]
+        relaxed_q = ""
         if not items:
             with contextlib.suppress(ScraperHttpError):
                 raw = self._search_api(
@@ -131,23 +133,92 @@ class Scraper(CompanyScraper):
                     page=page,
                 )
             items = raw.get("items") or []
+            attempted.append(f"{' OR '.join(query_parts)} type:issue")
         if not items:
-            return [{"error": "未找到相关经验帖", "query": q}]
+            # 意图块 AND 可能把召回压到 0；放宽为岗位词 + 宽意图 OR 再试一次。
+            relaxed_q = f"{keyword} (面经 OR 面试 OR 求职 OR offer OR 实习) type:issue"
+            with contextlib.suppress(ScraperHttpError):
+                raw = self._search_api(
+                    q=relaxed_q,
+                    order=order if order != "best" else "",
+                    page=page,
+                )
+            items = raw.get("items") or []
+            attempted.append(relaxed_q)
+        if not items:
+            return [{
+                "error": "未找到相关经验帖",
+                "query": q,
+                "attempted_queries": attempted,
+            }]
 
+        formatted = self._format_items(
+            items, keyword, education, company, limit, relaxed=bool(relaxed_q)
+        )
+        if not formatted and not relaxed_q:
+            # 标题质量门过滤后为空：再放宽一次，允许正文命中求职意图。
+            relaxed_q = f"{keyword} (面经 OR 面试 OR 求职 OR offer OR 实习) type:issue"
+            with contextlib.suppress(ScraperHttpError):
+                raw = self._search_api(
+                    q=relaxed_q,
+                    order=order if order != "best" else "",
+                    page=page,
+                )
+            attempted.append(relaxed_q)
+            items = raw.get("items") or []
+            formatted = self._format_items(
+                items, keyword, education, company, limit, relaxed=True
+            )
+
+        if not formatted:
+            return [{
+                "error": "检索结果与求职意图毫无交集，已全部过滤",
+                "query": q,
+                "attempted_queries": attempted,
+            }]
+        formatted.sort(
+            key=lambda r: (
+                sum(1 for t in (
+                    keyword.lower(), education.lower(), company.lower(),
+                    *_TITLE_INTENT_WORDS,
+                ) if t and t in r["title"].lower()),
+                r["reactions"],
+            ),
+            reverse=True,
+        )
+
+        results = formatted[:limit]
+        search_cache.set(key, results)
+        return results
+
+    def _format_items(
+        self,
+        items: list[dict[str, Any]],
+        keyword: str,
+        education: str,
+        company: str,
+        limit: int,
+        *,
+        relaxed: bool = False,
+    ) -> list[dict[str, Any]]:
         keyword_lower = keyword.lower()
         # 质量门：标题必须带求职意图词（或用户限定的 education/company 条件），
         # 只命中岗位关键词的纯技术讨论/CI issue 一律丢弃——这是复测 BUG #2 的根因
         gate_terms = [education.lower(), company.lower(), *_TITLE_INTENT_WORDS]
-        rank_terms = [keyword_lower, education.lower(), company.lower(), *_TITLE_INTENT_WORDS]
-        formatted = []
+        formatted: list[dict[str, Any]] = []
         for it in items[: limit * 3]:
             title = (it.get("title") or "").strip()
             if not title:
                 continue
             title_lower = title.lower()
-            if not any(t and t in title_lower for t in gate_terms):
-                continue  # 标题全不沾求职意图（日文 issue、CI 修复、随机讨论）→ 直接丢弃
             body = (it.get("body") or "").strip()
+            title_ok = any(t and t in title_lower for t in gate_terms)
+            if not title_ok and relaxed:
+                # 放宽模式：标题带岗位词，正文带求职意图，也算经验帖。
+                body_ok = any(t and t in body[:1200].lower() for t in _TITLE_INTENT_WORDS)
+                title_ok = bool(body_ok and keyword_lower and keyword_lower in title_lower)
+            if not title_ok:
+                continue
             edu = normalize_education_tag(f"{title} {body[:800]}")
             formatted.append({
                 "title": title[:200],
@@ -162,21 +233,7 @@ class Scraper(CompanyScraper):
                 "repository": (it.get("repository_url") or "").rsplit("/", 1)[-1],
                 "source": "github",
             })
-
-        if not formatted:
-            return [{"error": "检索结果与求职意图毫无交集，已全部过滤", "query": q}]
-        formatted.sort(
-            key=lambda r: (
-                sum(1 for t in rank_terms if t and t in r["title"].lower()),
-                r["reactions"],
-            ),
-            reverse=True,
-        )
-
-        results = formatted or [{"error": "GitHub 返回的数据为空", "query": q}]
-        if not results[0].get("error"):
-            search_cache.set(key, results)
-        return results[:limit]
+        return formatted
 
     def get_detail(self, url: str) -> dict[str, Any]:
         """获取 issue 详情全文。"""

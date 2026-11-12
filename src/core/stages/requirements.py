@@ -138,8 +138,11 @@ def _make_item(
 def _jd_keyword_analysis(
     jd_items: list[JDEvidence],
 ) -> tuple[list[RequirementItem], list[RequirementItem], list[RequirementItem]]:
-    sample_size = len(jd_items)
-    total_companies = len({_company_key(i.company_id, i.company) for i in jd_items})
+    # 缺 requirements 的 JD 单独标记，不进入关键词分母；若全缺则退回全量并保留 gap 提示。
+    keyword_ready = [item for item in jd_items if (item.requirements or "").strip()]
+    items_for_keywords = keyword_ready or jd_items
+    sample_size = len(items_for_keywords)
+    total_companies = len({_company_key(i.company_id, i.company) for i in items_for_keywords})
     high_frequency: list[RequirementItem] = []
     nice_to_have: list[RequirementItem] = []
     company_specific: list[RequirementItem] = []
@@ -149,7 +152,7 @@ def _jd_keyword_analysis(
             needle = word.lower()
             hits: list[_Hit] = []
             by_company: dict[str, list[_Hit]] = {}
-            for item in jd_items:
+            for item in items_for_keywords:
                 if needle not in _jd_text(item).lower():
                     continue
                 hit = (
@@ -443,11 +446,18 @@ def _build_gaps(
         1 for item in jd_items if not (item.requirements or "").strip()
     )
     if missing_requirements:
+        missing_ids = [
+            item.id for item in jd_items if not (item.requirements or "").strip()
+        ]
+        id_text = "、".join(missing_ids[:10]) + (" 等" if len(missing_ids) > 10 else "")
         if missing_requirements == jd_sample:
-            gaps.append("所有 JD 都缺少 requirements 文本，关键词统计只覆盖标题/描述")
+            gaps.append(
+                "所有 JD 都缺少 requirements 文本，关键词统计只覆盖标题/描述"
+            )
         else:
             gaps.append(
                 f"{missing_requirements} 条 JD 缺少 requirements 文本，关键词统计可能偏低"
+                f"（已排除出关键词分母：{id_text}）"
             )
 
     if interview_sample == 0:
@@ -511,6 +521,9 @@ def compute_statistics(
     )
     jd_sample = len(jd_items)
     interview_sample = len(run.interview_items)
+    missing_requirements_jd = [
+        item.id for item in jd_items if not (item.requirements or "").strip()
+    ]
     return {
         "sample_size_jd": jd_sample,
         "sample_size_interview": interview_sample,
@@ -522,6 +535,7 @@ def compute_statistics(
         "hard_requirements": _extract_hard_requirements(jd_items),
         "nice_to_have": nice_to_have,
         "excluded_jd": excluded_jd,
+        "missing_requirements_jd": missing_requirements_jd,
         "gaps": _build_gaps(run, jd_items, hard_gate_gaps),
     }
 
@@ -818,6 +832,7 @@ def summary_dict(artifact: RequirementProfile) -> dict[str, Any]:
             item.model_dump() for item in artifact.hard_requirements
         ],
         "excluded_jd": list(artifact.excluded_jd),
+        "missing_requirements_jd": list(artifact.missing_requirements_jd),
         "gaps": list(artifact.gaps),
         "interpretation": artifact.interpretation,
     }
@@ -831,7 +846,32 @@ def _prompt_items(items: list[RequirementItem], limit: int = 8) -> str:
             f"{item.term}（{item.jd_count} 条 / {item.company_count} 家"
             f"{'，evidence: ' + evidence if evidence else ''}）"
         )
-    return "；".join(bits)
+    text = "；".join(bits)
+    if len(items) > limit:
+        text += f"；…共 {len(items)} 项，此处展示前 {limit} 项"
+    return text
+
+
+def sample_warnings(artifact: RequirementProfile) -> list[str]:
+    """样本不足的强提示（返回体顶部展示，不改变统计结果）。"""
+    notes: list[str] = []
+    if artifact.sample_size_jd < 15:
+        notes.append(
+            f"JD 有效样本仅 {artifact.sample_size_jd} 条（<15），置信度 {artifact.confidence_jd}；"
+            "建议先补采目标企业 JD 再据此定稿。"
+        )
+    if artifact.missing_requirements_jd:
+        notes.append(
+            f"{len(artifact.missing_requirements_jd)} 条 JD 缺 requirements 文本"
+            f"（{', '.join(artifact.missing_requirements_jd[:10])}），已排除出关键词分母，"
+            "关键词统计可能偏低。"
+        )
+    if artifact.sample_size_interview < 10:
+        notes.append(
+            f"面经有效样本仅 {artifact.sample_size_interview} 条（<10），"
+            f"置信度 {artifact.confidence_interview}；面试考点只作方向参考。"
+        )
+    return notes
 
 
 def build_analysis_prompt(artifact: RequirementProfile) -> str:
@@ -859,13 +899,22 @@ def build_analysis_prompt(artifact: RequirementProfile) -> str:
             "- 面经高频考点：" + _prompt_items(artifact.interview_topics)
         )
     if artifact.hard_requirements:
+        total_hard = len(artifact.hard_requirements)
+        shown = artifact.hard_requirements[:8]
         hard_bits = []
-        for hard in artifact.hard_requirements[:8]:
+        for hard in shown:
             detail = "、".join(
                 value for value in (hard.education, hard.experience) if value
             )
             hard_bits.append(f"{hard.evidence_id}: {detail or '未识别'}")
-        lines.append("- 单 JD 硬门槛（逐条，不聚合）：" + "；".join(hard_bits))
+        suffix = (
+            f"（共 {total_hard} 条，以下展示前 {len(shown)} 条，完整清单见 hard_requirements 字段）"
+            if total_hard > len(shown)
+            else f"（共 {total_hard} 条）"
+        )
+        lines.append(
+            f"- 单 JD 硬门槛（逐条，不聚合）{suffix}：" + "；".join(hard_bits)
+        )
     if artifact.gaps:
         lines.append("- 数据缺口：" + "；".join(artifact.gaps))
 
@@ -908,6 +957,7 @@ __all__ = [
     "compute_statistics",
     "known_evidence_ids",
     "run",
+    "sample_warnings",
     "summary_dict",
     "update_core_state",
     "validate",
