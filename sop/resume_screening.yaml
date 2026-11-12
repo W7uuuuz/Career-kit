@@ -89,4 +89,4 @@ methodology:
     resume_tips: "具体的简历修改建议（结构、措辞、排版）"
     missing_experiences: "建议补充的经历类型及创造方式"
     start_level: "当前可进入的企业层级档位（大厂/中厂/小厂/暂不可入）——按 roadmap.yaml 的 start_level_rubric 打分表逐维度评分后映射，不是直觉判定"
-    resume_red_flags: "负面信号审计结果（signal 信号 + risk 风险 + narrative_fix 叙事弱化 + evidence_fix 补证据动作）"
+    resume_red_flags: "负面信号审计结果（signal 信号 + risk 风险 + evidence_fix 补证据动作；narrative_fix 为兼容旧输入的别名，统一写 evidence_fix）"

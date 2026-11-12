@@ -8,6 +8,7 @@ LLM 不参与；单源失败只进 source_status 与 gaps，不拖垮整批。
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from datetime import datetime, timedelta
 from typing import Any
@@ -36,7 +37,8 @@ REQUIRES = ("company_pool",)
 PRODUCES = "evidence_run"
 
 CONCURRENCY = 4
-SOURCE_TIMEOUT = 20.0
+SOURCE_TIMEOUT = float(os.environ.get("CAREER_KIT_EVIDENCE_TIMEOUT", "20") or 20)
+SOURCE_RETRY = 1
 TOTAL_BUDGET = 120.0
 RESEARCH_TTL_DAYS = 7
 MAX_DETAIL_FETCH = 20
@@ -656,24 +658,33 @@ async def _search_company_jobs(
     request_started = loop.time()
     async with semaphore:
         started = loop.time()
-        remaining = deadline - started
-        if remaining <= 0:
-            return _source_result(
-                entry, slug, "failed", 0, "总预算耗尽，未执行抓取", loop.time() - request_started
-            )
-        timeout = min(SOURCE_TIMEOUT, remaining)
-        try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(search_company_jobs, slug, **params), timeout=timeout
-            )
-        except TimeoutError:
-            return _source_result(
-                entry, slug, "failed", 0, f"抓取超时（{timeout:.0f} 秒）", timeout
-            )
-        except Exception as exc:  # noqa: BLE001 - 单源异常不拖垮整批
-            return _source_result(
-                entry, slug, "failed", 0, f"{type(exc).__name__}: {exc}", loop.time() - started
-            )
+        response: Any = None
+        for attempt in range(SOURCE_RETRY + 1):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return _source_result(
+                    entry, slug, "failed", 0, "总预算耗尽，未执行抓取",
+                    loop.time() - request_started,
+                )
+            timeout = min(SOURCE_TIMEOUT, remaining)
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(search_company_jobs, slug, **params), timeout=timeout
+                )
+                break
+            except TimeoutError:
+                if attempt >= SOURCE_RETRY or deadline - loop.time() <= 1:
+                    suffix = "，已重试 1 次" if attempt else ""
+                    return _source_result(
+                        entry, slug, "failed", 0,
+                        f"抓取超时（{timeout:.0f} 秒）{suffix}",
+                        loop.time() - started,
+                    )
+            except Exception as exc:  # noqa: BLE001 - 单源异常不拖垮整批
+                return _source_result(
+                    entry, slug, "failed", 0, f"{type(exc).__name__}: {exc}",
+                    loop.time() - started,
+                )
     elapsed = loop.time() - started
     if not isinstance(response, dict):
         return _source_result(entry, slug, "failed", 0, "抓取返回格式异常", elapsed)
@@ -870,17 +881,23 @@ async def _fetch_detail(
 ) -> dict[str, str] | None:
     loop = asyncio.get_running_loop()
     async with semaphore:
-        remaining = deadline - loop.time()
-        if remaining <= 0:
-            return None
-        timeout = min(SOURCE_TIMEOUT, remaining)
-        try:
-            detail = await asyncio.wait_for(
-                asyncio.to_thread(get_job_detail, item["url"], company=item["slug"]),
-                timeout=timeout,
-            )
-        except Exception:  # noqa: BLE001 - 详情失败按无详情剔除
-            return None
+        detail: Any = None
+        for attempt in range(SOURCE_RETRY + 1):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return None
+            timeout = min(SOURCE_TIMEOUT, remaining)
+            try:
+                detail = await asyncio.wait_for(
+                    asyncio.to_thread(get_job_detail, item["url"], company=item["slug"]),
+                    timeout=timeout,
+                )
+                break
+            except TimeoutError:
+                if attempt >= SOURCE_RETRY or deadline - loop.time() <= 1:
+                    return None
+            except Exception:  # noqa: BLE001 - 详情失败按无详情剔除
+                return None
     if not isinstance(detail, dict) or detail.get("error"):
         return None
     description = str(detail.get("description") or detail.get("content") or "").strip()

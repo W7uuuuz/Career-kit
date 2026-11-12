@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -379,29 +380,79 @@ def _family_cache_key(slug: str, raw_spec: dict[str, Any]) -> str:
     return "jd:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+_KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
+    "agent": ("agent", "智能体"),
+    "智能体": ("智能体", "agent"),
+    "ai": ("ai", "人工智能"),
+    "人工智能": ("人工智能", "ai"),
+    "llm": ("llm", "大模型", "大语言模型"),
+    "大模型": ("大模型", "大语言模型", "llm"),
+    "大语言模型": ("大语言模型", "大模型", "llm"),
+    "rag": ("rag", "检索增强"),
+    "检索增强": ("检索增强", "rag"),
+    "开发": ("开发", "研发", "工程师"),
+    "研发": ("研发", "开发", "工程师"),
+}
+
+_KEYWORD_TOKEN_RE = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]+", re.I)
+
+
+def _keyword_groups(phrase: str) -> list[tuple[str, ...]]:
+    """把查询词切成英文/中文 token，并展开常见同义词。"""
+    tokens = [
+        token
+        for token in _KEYWORD_TOKEN_RE.findall(phrase)
+        if len(token) >= 2 or token.isdigit()
+    ]
+    groups: list[tuple[str, ...]] = []
+    for token in tokens:
+        lowered = token.lower()
+        aliases = _KEYWORD_ALIASES.get(lowered, (lowered,))
+        if lowered not in aliases:
+            aliases = (lowered, *aliases)
+        groups.append(tuple(dict.fromkeys(aliases)))
+    return groups
+
+
 def _filter_relevant_rows_traced(
     rows: list[dict[str, Any]], keyword: str
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """按关键词过滤跑偏岗位，同时保留被过滤样本供复核（不静默丢弃）。"""
     phrase = str(keyword or "").strip().lower()
-    if not phrase or not rows:
+    if not rows:
         return rows, []
-    tokens = [t for t in re.split(r"[\s,，/、|]+", phrase) if t]
-    threshold = min(2, len(tokens)) if tokens else 1
+    groups = _keyword_groups(phrase)
+    threshold = max(1, math.ceil(len(groups) * 0.6)) if groups else 1
     kept: list[dict[str, Any]] = []
     dropped: list[dict[str, str]] = []
     for row in rows:
+        if row.get("title_quality") == "low":
+            dropped.append(
+                {
+                    "title": str(row.get("title") or row.get("url") or "未命名岗位"),
+                    "reason": "标题解析质量低（自定义字体未完全还原）",
+                    "url": str(row.get("url") or ""),
+                }
+            )
+            continue
         text = " ".join(
             str(row.get(key) or "")
             for key in ("title", "summary", "description", "requirements")
         ).lower()
-        if phrase in text or sum(1 for token in tokens if token in text) >= threshold:
+        if not phrase:
+            kept.append(row)
+            continue
+        hit_terms = [alts[0] for alts in groups if any(alias in text for alias in alts)]
+        if phrase in text or len(hit_terms) >= threshold:
             kept.append(row)
         else:
             dropped.append(
                 {
                     "title": str(row.get("title") or row.get("url") or "未命名岗位"),
-                    "reason": f"未命中查询关键词「{keyword}」",
+                    "reason": (
+                        f"未命中查询关键词「{keyword}」"
+                        + (f"（分词命中 {len(hit_terms)}/{len(groups)}）" if groups else "")
+                    ),
                     "url": str(row.get("url") or ""),
                 }
             )
@@ -550,6 +601,29 @@ def _case_needs_remote_content(case: dict[str, Any]) -> bool:
     )
 
 
+def _summarize_case_contents(result: dict[str, Any]) -> dict[str, Any]:
+    cases = [case for case in (result.get("cases") or []) if isinstance(case, dict)]
+    ok = sum(1 for case in cases if case.get("content_status") == "ok")
+    unavailable = [
+        case for case in cases if case.get("content_status") == "unavailable"
+    ]
+    result["case_content_status"] = {
+        "ok": ok,
+        "unavailable": len(unavailable),
+        "total": len(cases),
+    }
+    if unavailable:
+        titles = "、".join(
+            str(case.get("title") or "未命名")[:40] for case in unavailable[:5]
+        )
+        warnings = result.setdefault("warnings", [])
+        warnings.append(
+            f"cases: {len(unavailable)} 条面经未抓到全文（{titles}），"
+            "可点原文链接或用 fetch_jd_detail 补全文"
+        )
+    return result
+
+
 def _attach_case_contents(result: dict[str, Any]) -> dict[str, Any]:
     """调研时把面经/案例全文落盘到结果里，读取时零网络请求。"""
     cases = result.get("cases") or []
@@ -592,7 +666,7 @@ def _attach_case_contents(result: dict[str, Any]) -> dict[str, Any]:
             case["content_error"] = _one_line(
                 detail.get("error") or "详情接口未返回全文"
             )
-    return result
+    return _summarize_case_contents(result)
 
 
 async def _run_research(
@@ -756,6 +830,7 @@ async def _run_research(
                     if isinstance(case, dict) and not str(case.get("content") or "").strip():
                         case["content_status"] = "unavailable"
                         case["content_error"] = "案例全文抓取超时，未落盘"
+                result = _summarize_case_contents(result)
             _write_partial_cache(fingerprint, cases_key, result)
         return result
 

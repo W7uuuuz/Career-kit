@@ -35,6 +35,12 @@ def _profile() -> CareerProfile:
     profile.gap = {"start_level": "小厂"}
     profile.plan = {"roadmap": {"strategy_summary": "先补基础", "phases": [{
         "id": "phase_1", "name": "基础补齐", "type": "learn", "goal": "能手写",
+        "target_level": "中厂", "kpi": {"metric": "项目数", "target": "2"},
+        "access_paths": [{"channel": "暑期实习"}],
+        "fallback_paths": [{"channel": "中厂正式批"}],
+        "conversion_risk": {"level": "中", "reason": "HC 受部门影响"},
+        "time_window": {"window": "暑期实习"},
+        "jd_status": "pending_user_import",
         "milestones": [{"id": "phase_1_ms_1", "name": "算法"}],
     }]}}
     profile.tasks = [Task(
@@ -116,6 +122,13 @@ def test_build_state_exposes_roadmap_and_playbook(temp_profile):
     assert state["start_level"] == "小厂"
     assert state["phases"][0]["type"] == "learn"
     assert state["phases"][0]["type_label"] == "学习"
+    assert state["phases"][0]["target_level"] == "中厂"
+    assert state["phases"][0]["kpi"]["target"] == "2"
+    assert state["phases"][0]["access_paths"][0]["channel"] == "暑期实习"
+    assert state["phases"][0]["fallback_paths"][0]["channel"] == "中厂正式批"
+    assert state["phases"][0]["conversion_risk"]["level"] == "中"
+    assert state["phases"][0]["time_window"]["window"] == "暑期实习"
+    assert state["phases"][0]["jd_status"] == "pending_user_import"
     assert state["phases"][0]["tasks"][0]["how_to"] == ["先想 10 分钟"]
     assert state["phases"][0]["tasks"][0]["done_criteria"] == "独立写出 5 题"
     assert state["total_tasks"] == 1

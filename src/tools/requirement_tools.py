@@ -58,11 +58,19 @@ def analyze_company_requirements(evidence_run_id: str = "") -> str:
 
     payload = requirements.summary_dict(artifact)
     payload["status"] = "ok"
+    warnings = requirements.sample_warnings(artifact)
+    payload["sample_warning"] = warnings
+    payload["insufficient_samples"] = bool(warnings)
     payload["analysis_prompt"] = requirements.build_analysis_prompt(artifact)
     payload["next_step"] = (
         "调用 save_requirement_profile，传 requirement_profile_id 与 interpretation"
         "（只写 summary/priorities/company_notes/risks/notes）"
     )
+    if warnings:
+        payload["next_step"] = (
+            "样本不足：先按 sample_warning 建议补采 JD/面经；"
+            "仍要保存时调用 save_requirement_profile，并在 interpretation 中明确说明低置信度。"
+        )
     return _json(payload)
 
 

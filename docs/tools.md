@@ -57,7 +57,7 @@
 | `analyze_gaps` | 返回差距分析方法论上下文 |
 | `save_gap_analysis` | 保存分析结果；`skill_gaps` 非空时每项必须有 `skill` 与 `source`，缺失返回 `INVALID_PARAM` 且不写档案；空列表允许保存并给建议；质量建议持久化到档案。市场调研被跳过时仍写 `GapReport`：`market_baseline_id=""`、`meta.validation.market_skipped=true`、`meta.inputs.target_spec_id` 指向当前 `TargetSpec`；缺 ProfileSnapshot/TargetSpec 不写半成品 |
 | `generate_roadmap` | 返回路线图方法论上下文（6 步工作流；审计为第二意见）；附带证据包（claims / 案例 / JD 样本 / 缺口）与四类必查证据（通道、转正风险、同背景门槛、校招时间窗） |
-| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成职业地图）。新增通道现实建议：单通道、无保底、转正未标风险、缺时间窗、无引用数字、引用不存在/过期。市场跳过时写 `BaselinePlan.meta.validation.market_skipped=true`；`import_plan` 后无 `GapReport` 时写 `validation.imported=true`、`gap_report_id=""` |
+| `save_roadmap` | 保存路线图（只校验结构；质量项以 `advisories` 返回并持久化，不阻断保存；`force` 已废弃；自动生成实时职业地图）。新增通道现实建议：单通道、无保底、转正未标风险、缺时间窗、无引用数字、引用不存在/过期。市场跳过时写 `BaselinePlan.meta.validation.market_skipped=true`；`import_plan` 后无 `GapReport` 时写 `validation.imported=true`、`gap_report_id=""` |
 | `save_roadmap_audit` | 审计结果落库（PASS / PASS_WITH_NOTES / FAIL + issues/notes；按 `roadmap_hash` 绑定版本，不阻断定稿） |
 | `import_plan` | 导入既有规划文档，对比取舍在对话中完成；设置 `guidance.plan_imported_at` 并提示用 `save_roadmap` 保存结构化路线图 |
 
@@ -77,7 +77,7 @@
 
 | 工具 | 作用 |
 |------|------|
-| `generate_tasks` | 只从路线图生成当前阶段任务（后续阶段保留里程碑），并自动刷新职业地图 HTML；重建时历史进度沉淀为能力证据 |
+| `generate_tasks` | 只从路线图生成当前阶段任务（后续阶段保留里程碑），并自动刷新实时职业地图；重建时历史进度沉淀为能力证据 |
 | `detail_current_phase` | 只细化当前阶段：返回方法论 + 资源目录；任务需带 how_to / resources / done_criteria 与打卡点 |
 | `save_current_detail` | 保存当前阶段详细路线（once/daily/percent 打卡点；phase_id 必须存在于当前路线图） |
 | `get_next_tasks` | 返回当前阶段下一步任务（关卡式） |

@@ -32,6 +32,7 @@ interface Store {
   error: string
   sseError: string
   toast: string
+  closed: boolean
 }
 
 export const store = reactive<Store>({
@@ -41,6 +42,7 @@ export const store = reactive<Store>({
   error: '',
   sseError: '',
   toast: '',
+  closed: false,
 })
 
 let toastTimer: number | undefined
@@ -133,6 +135,18 @@ export function assetUrl(path: string | undefined): string {
   return withToken(path || '')
 }
 
-export function roadmapUrl(): string {
-  return withToken('/roadmap')
+export async function shutdown(): Promise<void> {
+  try {
+    await postJSON('/api/shutdown', {})
+  } catch {
+    // 服务可能已经退出，按关闭处理
+  }
+  store.closed = true
+  window.setTimeout(() => {
+    try {
+      window.close()
+    } catch {
+      // 浏览器不允许脚本关闭非脚本打开的页面时，保留提示页
+    }
+  }, 80)
 }

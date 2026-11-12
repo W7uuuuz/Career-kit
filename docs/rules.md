@@ -91,7 +91,7 @@
 ## 8. 产出位置
 
 - 程序数据：`~/.career-kit`
-- 用户资产：`~/CareerKit`（报告数据；查看走桌面「Career Kit」快捷方式）
+- 用户资产：`~/CareerKit`（报告数据；查看走桌面「Career Kit」快捷方式打开的实时职业地图）
 - 调研报告：`~/CareerKit/<档案>/调研报告/<日期_方向>.md|.json`
 - 证据池：`~/CareerKit/<档案>/证据池/<日期_方向>.md|.json`
 - 投递清单：`~/CareerKit/<档案>/投递清单/<日期_方向>.md|.json`

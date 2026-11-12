@@ -303,11 +303,34 @@ def test_generate_roadmap_response_is_compacted(temp_profile):
     methodology = out["methodology"]
     assert "audit_checklist" not in methodology, "生成阶段不必重复下发审计清单"
     assert all("data_needs" not in phase for phase in methodology.get("phases", []))
-    assert len(json.dumps(out, ensure_ascii=False)) < 16000
+    assert len(json.dumps(out, ensure_ascii=False)) < 10000
     assert "evidence" in out and "required_evidence" in out
     assert {item["id"] for item in out["required_evidence"]} == {
         "channel", "conversion", "threshold", "timeline",
     }
+
+
+def test_generate_roadmap_sections_are_small_and_mapped(temp_profile):
+    from src.server import generate_roadmap, save_gap_analysis
+
+    _mk_profile()
+    save_gap_analysis(json.dumps({
+        "match_score": 60,
+        "skill_gaps": [{"skill": "RAG", "source": "JD"}],
+    }, ensure_ascii=False))
+
+    overview = json.loads(generate_roadmap())
+    assert overview["step_template"][0]["goal"]
+    assert "action" not in overview["step_template"][0]
+
+    rubric = json.loads(generate_roadmap(section="rubric"))
+    assert rubric["methodology"]["rubric"]["dimensions"]
+    schema = json.loads(generate_roadmap(section="schema"))
+    assert "phases" in schema["methodology"]["schema"]
+    template = json.loads(generate_roadmap(section="template"))
+    assert len(template["step_template"]) == 6
+    assert template["step_template"][0]["action"]
+    assert len(template["instructions"]) > 200
 
 
 # ============ 通道现实与引用 ============

@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from ..base import CompanyScraper
 from ..http_utils import ScraperHttpError, make_client
+from .font_loader import extract_font_url, font_cache_key, parse_font_map
 from .font_map import PUA_MAP
 
 BASE_URL = "https://www.shixiseng.com"
@@ -69,6 +70,9 @@ _DETAIL_BENEFITS_RE = re.compile(
 _DEADLINE_RE = re.compile(r"截止日期[：:]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
 
 _FALLBACK: dict[str, dict[str, Any]] = {}
+_FONT_MAP: dict[str, str] = dict(PUA_MAP)
+_FONT_CACHE: dict[str, dict[str, str]] = {}
+_FONT_FAILED: set[str] = set()
 
 
 class Scraper(CompanyScraper):
@@ -144,6 +148,7 @@ class Scraper(CompanyScraper):
         except ScraperHttpError as exc:
             return [{"error": f"实习僧搜索页抓取失败：{exc}"}]
 
+        _ensure_font_map(page_html)
         results = _parse_nuxt_jobs(page_html)
         if not results:
             for chunk in page_html.split('data-intern-id="')[1:]:
@@ -174,12 +179,13 @@ class Scraper(CompanyScraper):
         except ScraperHttpError as exc:
             return {"error": f"实习僧详情页抓取失败：{exc}", "url": url}
 
+        _ensure_font_map(page_html)
         nuxt_detail = _parse_nuxt_detail(page_html)
         if nuxt_detail:
             nuxt_detail["url"] = url
             return nuxt_detail
 
-        title = _clean_text(_first(_DETAIL_TITLE_RE, page_html))
+        title, title_quality = _clean_title(_first(_DETAIL_TITLE_RE, page_html))
         company = _clean_text(_first(_DETAIL_COMPANY_RE, page_html))
         if not company:
             company = str((_FALLBACK.get(url) or {}).get("company") or "")
@@ -203,6 +209,7 @@ class Scraper(CompanyScraper):
 
         detail = {
             "title": title,
+            "title_quality": title_quality,
             "company": company,
             "location": city,
             "address": address,
@@ -228,12 +235,58 @@ def _fetch_html(url: str, params: dict[str, str] | None) -> str:
     return response.text
 
 
+def _fetch_bytes(url: str) -> bytes:
+    with make_client(timeout=20.0) as client:
+        response = client.get(url, headers={"Referer": REFERER})
+    if response.status_code >= 400:
+        raise ScraperHttpError(f"HTTP {response.status_code}: {url}")
+    return response.content
+
+
+def _ensure_font_map(page_html: str) -> None:
+    """用页面下发的 myFont 动态还原私有区字符；失败时保留静态映射。"""
+    font_url = extract_font_url(page_html, BASE_URL)
+    if not font_url:
+        return
+    key = font_cache_key(font_url)
+    if key in _FONT_CACHE:
+        _refresh_font_map(_FONT_CACHE[key])
+        return
+    if key in _FONT_FAILED:
+        return
+    try:
+        mapping = parse_font_map(_fetch_bytes(font_url))
+    except (ScraperHttpError, OSError, ValueError):
+        mapping = {}
+    if not mapping:
+        _FONT_FAILED.add(key)
+        return
+    _FONT_CACHE[key] = mapping
+    _refresh_font_map(mapping)
+
+
+def _refresh_font_map(mapping: dict[str, str]) -> None:
+    _FONT_MAP.clear()
+    _FONT_MAP.update(PUA_MAP)
+    _FONT_MAP.update(mapping)
+
+
+def _clean_title(raw: str) -> tuple[str, str]:
+    """清理标题并标记解析质量；未知私有区字符或过短标题标为 low。"""
+    decoded = _decode_pua(_html.unescape(raw or ""))
+    title = _clean_text(raw)
+    unknown_pua = bool(_PUA_RE.search(decoded))
+    bare_length = len(_SPACE_RE.sub("", title))
+    quality = "low" if unknown_pua or bare_length < 4 else "ok"
+    return title, quality
+
+
 def _parse_card(chunk: str) -> dict[str, Any] | None:
     job_id = chunk.split('"', 1)[0].strip()
     if not job_id.startswith("inn_"):
         return None
 
-    title = _clean_text(_first(_TITLE_RE, chunk))
+    title, title_quality = _clean_title(_first(_TITLE_RE, chunk))
     company = _clean_text(_first(_COMPANY_RE, chunk))
     if not title or not company:
         return None
@@ -246,6 +299,7 @@ def _parse_card(chunk: str) -> dict[str, Any] | None:
     summary_parts = [part for part in (industry, salary) if part]
     return {
         "title": title,
+        "title_quality": title_quality,
         "url": url,
         "company": company,
         "location": city,
@@ -295,7 +349,8 @@ def _parse_nuxt_detail(page_html: str) -> dict[str, Any] | None:
     if not chunk:
         return None
 
-    title = _clean_text(str(_resolve(_raw_field(chunk, "iname"), var_map) or ""))
+    raw_title = str(_resolve(_raw_field(chunk, "iname"), var_map) or "")
+    title, title_quality = _clean_title(raw_title)
     company = _clean_text(str(_resolve(_raw_field(chunk, "cname"), var_map) or ""))
     description = _block_text(str(_resolve(_raw_field(chunk, "info"), var_map) or ""))
     if not title or not description:
@@ -309,6 +364,7 @@ def _parse_nuxt_detail(page_html: str) -> dict[str, Any] | None:
 
     detail = {
         "title": title,
+        "title_quality": title_quality,
         "company": company,
         "location": _clean_text(str(_resolve(_raw_field(chunk, "city"), var_map) or "")),
         "address": _clean_text(str(_resolve(_raw_field(chunk, "address"), var_map) or "")),
@@ -422,7 +478,8 @@ def _nuxt_context(page_html: str) -> tuple[dict[str, Any], str, str] | None:
 
 
 def _nuxt_job(chunk: str, var_map: dict[str, Any]) -> dict[str, Any] | None:
-    title = _clean_text(str(_resolve(_raw_field(chunk, "name"), var_map) or ""))
+    raw_title = str(_resolve(_raw_field(chunk, "name"), var_map) or "")
+    title, title_quality = _clean_title(raw_title)
     company = _clean_text(str(_resolve(_raw_field(chunk, "cname"), var_map) or ""))
     job_id = _clean_text(str(_resolve(_raw_field(chunk, "uuid"), var_map) or ""))
     if not title or not company or not job_id.startswith("inn_"):
@@ -445,6 +502,7 @@ def _nuxt_job(chunk: str, var_map: dict[str, Any]) -> dict[str, Any] | None:
 
     return {
         "title": title,
+        "title_quality": title_quality,
         "url": f"{BASE_URL}/intern/{job_id}",
         "company": company,
         "location": city,
@@ -647,6 +705,7 @@ def _remember(item: dict[str, Any]) -> None:
         _FALLBACK.clear()
     _FALLBACK[item["url"]] = {
         "title": item.get("title", ""),
+        "title_quality": item.get("title_quality", ""),
         "company": item.get("company", ""),
         "location": item.get("location", ""),
         "salary": item.get("salary", ""),
@@ -698,10 +757,10 @@ def _clean_salary(value: str) -> str:
 
 
 def _decode_pua(text: str) -> str:
-    """按公开字体映射还原私有区字符；未知字符留给调用方剥离。"""
+    """按当前字体映射还原私有区字符；未知字符留给调用方剥离。"""
     if not text:
         return ""
-    return "".join(PUA_MAP.get(char, char) for char in text)
+    return "".join(_FONT_MAP.get(char, char) for char in text)
 
 
 def _strip_query(url: str) -> str:

@@ -182,6 +182,7 @@ class RequirementProfile(BaseModel):
     nice_to_have: list[RequirementItem] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
     excluded_jd: list[dict[str, Any]] = Field(default_factory=list)
+    missing_requirements_jd: list[str] = Field(default_factory=list)
     interpretation: dict[str, Any] = Field(default_factory=dict)
 
 
