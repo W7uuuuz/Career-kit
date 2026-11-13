@@ -157,7 +157,7 @@ def test_gather_research_data_writes_report_trio(temp_profile):
         rt.boss_has_valid_cookies = original_boss_auth
 
     # 播报三要素齐备：数字样本 → 路径 → 下一步
-    assert "2 条真实岗位样本" in message and "1 条同学历经历" in message
+    assert "2 条可投岗位样本" in message and "1 条同学历经历" in message
     assert "失败来源" not in message  # 两个源都成功
     assert "Career Kit" in message
     assert "现状盘点" in message and "读取调研" in message
@@ -213,7 +213,7 @@ def test_gather_research_data_tolerates_failed_source(temp_profile):
         rt.collect_cases = original_cases
         rt.get_job_detail = original_detail
 
-    assert "1 个源失败" in message
+    assert "失败 1" in message
     assert "登录已过期" in message  # 失败原因原样展示
     assert "未获取到" not in message or "失败" in message  # 语义来自真实状态不吃掉
 
@@ -305,6 +305,76 @@ def test_save_report_dated_files_and_research_contract(temp_profile):
     report["generated_at"] = "2026-10-26 20:05"
     paths2 = save_report(profile2, report)
     assert paths2["md"] != paths["md"]
+
+
+def test_gather_drops_ineligible_graduation(temp_profile):
+    """2028 届投日常实习：只保留不绑届别的岗位，2027-only 直接剔除。"""
+    import src.tools.research_tools as rt
+
+    profile = profile_module.load_profile()
+    profile.who = {"education": "本科", "graduation_year": "2028"}
+    profile.want = {
+        "target_role": "AI Agent 日常实习",
+        "job_kind": "intern",
+        "city": "上海",
+    }
+    profile_module.save_profile(profile)
+
+    rows = [
+        {
+            "company": "字节跳动",
+            "title": "AI Agent 开发实习生（2027届）",
+            "location": "上海",
+            "summary": "面向 2027 届毕业生",
+            "url": "https://example.com/job/2027",
+        },
+        {
+            "company": "字节跳动",
+            "title": "AI Agent 开发实习生",
+            "location": "上海",
+            "summary": "日常实习，本科及以上",
+            "url": "https://example.com/job/open",
+        },
+    ]
+    original_loader = rt.search_company_jobs
+    original_cases = rt.collect_cases
+    original_detail = rt.get_job_detail
+    rt.search_company_jobs = lambda slug, **kwargs: {
+        "company": slug, "results": rows, "count": len(rows),
+    }
+    rt.collect_cases = lambda **kwargs: {"cases": [], "warnings": [], "sources": {}}
+    rt.get_job_detail = lambda url, company=None: {
+        "description": "负责 Agent 产品开发",
+        "requirements": "熟悉 Python",
+    }
+    try:
+        message = asyncio.run(
+            rt.gather_research_data(
+                json.dumps([{"company": "字节"}]),
+                json.dumps({"role": "AI Agent 日常实习"}),
+            )
+        )
+    finally:
+        rt.search_company_jobs = original_loader
+        rt.collect_cases = original_cases
+        rt.get_job_detail = original_detail
+
+    research = profile_module.load_profile().research
+    assert research["counts"]["jd_samples"] == 1
+    assert research["counts"]["screened_out"].get("graduation_mismatch") == 1
+    assert "毕业届不符 1 条" in message
+    titles = [item["title"] for item in research["jd_samples"]]
+    assert titles == ["AI Agent 开发实习生"]
+
+
+def test_channel_router_marks_social_only_source_skipped():
+    """社招专用源不服务实习目标：返回 skip，而不是让调用方当成失败。"""
+    from src.scrapers.capability import route_params
+
+    status, params = route_params("alibaba_social", "intern")
+    assert status == "skip"
+    assert params == {}
+    assert route_params("alibaba_social", "social")[0] == "ok"
 
 
 def _gather_message(specs, query=None):
@@ -417,7 +487,8 @@ def test_three_sources_or_two_sources_with_case_suggest_batching(temp_profile):
         [{"company": "字节", "limit": 3}, {"company": "腾讯", "limit": 3}],
         {"role": "AI Agent 开发"},
     )
-    assert "拆批" in mixed and "3 个" in mixed
+    assert "拆批" not in mixed
+    assert "岗位源较多" not in mixed
 
 
 def test_four_sources_report_count_and_batching(temp_profile):
@@ -669,7 +740,7 @@ def test_save_report_reuses_same_fingerprint_and_merges(temp_profile):
 def test_cases_parallel_with_jd_sources(temp_profile, monkeypatch):
     import src.tools.research_tools as rt
 
-    def fake_fetch(slug, label, raw_spec, cache_key, fingerprint):
+    def fake_fetch(slug, label, raw_spec, cache_key, fingerprint, policy=None):
         time.sleep(0.05)
         return {
             "slug": slug,
@@ -966,3 +1037,5 @@ def test_gather_boss_consent_is_single_round(temp_profile):
     assert details["next_tool"] == "boss_login"
     assert details["resume"]["boss_confirmed"] is True
     assert "question" not in details, "确认后不得再问第二个是否登录问题"
+
+

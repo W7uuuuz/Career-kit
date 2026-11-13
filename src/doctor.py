@@ -24,7 +24,7 @@ WARN = "WARN"
 FAIL = "FAIL"
 
 # 预期工具数：与 docs/tools.md、README 保持一致
-EXPECTED_TOOL_COUNT = 51
+EXPECTED_TOOL_COUNT = 55
 
 # 预期包版本：与 pyproject.toml 保持一致，用于发现 editable 元数据陈旧
 EXPECTED_PACKAGE_VERSION = "0.3.0"

@@ -279,11 +279,13 @@ def _merge_target_spec(
 ) -> TargetSpec:
     """把显式参数与档案推断合并进 artifact 基准，保持单一事实源。"""
     spec = artifact_spec.model_copy(deep=True)
-    for field in ("direction", "role", "city", "graduation_year"):
+    for field in ("direction", "role", "city", "graduation_year", "job_kind"):
         if not getattr(spec, field):
             setattr(spec, field, getattr(inferred, field))
     if not spec.constraints:
         spec.constraints = list(inferred.constraints)
+    if not spec.exclude_directions:
+        spec.exclude_directions = list(inferred.exclude_directions)
 
     explicit_target = parse_tokens(inputs.get("target_tiers"))
     explicit_bridge = parse_tokens(inputs.get("bridge_tiers"))
@@ -343,6 +345,7 @@ def _target_conflicts(
         "role",
         "city",
         "graduation_year",
+        "job_kind",
         "constraints",
     )
     conflicts: list[str] = []
@@ -418,6 +421,7 @@ _FIELD_LABELS = {
     "role": "目标岗位 role",
     "city": "目标城市 city",
     "graduation_year": "毕业年份 graduation_year",
+    "job_kind": "招聘类型 job_kind",
     "constraints": "约束条件 constraints",
 }
 

@@ -125,6 +125,36 @@ def test_save_gap_analysis_accepts_fenced_json(temp_profile):
     assert profile_module.load_profile().gap["match_score"] == 60
 
 
+def test_save_gap_analysis_accepts_draft(temp_profile):
+    """长内容走草稿分片，避免单参数被截断。"""
+    from src.server import save_gap_analysis
+    from src.tools import draft_store
+
+    from conftest import promote_profile
+
+    promote_profile(profile_module.load_profile())
+    did = draft_store.create("gap")["draft_id"]
+    payload = json.dumps(
+        {
+            "match_score": 70,
+            "skill_gaps": [
+                {"skill": "RAG", "current_level": "无",
+                 "required_level": "熟练", "source": "BOSS JD"}
+            ],
+        },
+        ensure_ascii=False,
+    )
+    half = len(payload) // 2
+    draft_store.append(did, payload[:half])
+    draft_store.append(did, payload[half:])
+
+    result = json.loads(save_gap_analysis(gap_json="", gap_draft_id=did))
+    assert not result.get("isError"), result
+    assert profile_module.load_profile().gap["match_score"] == 70
+    with pytest.raises(draft_store.DraftError):
+        draft_store.status(did)
+
+
 def test_import_jd_accepts_fenced_json(temp_profile):
     from src.server import import_jd
 

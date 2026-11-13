@@ -31,6 +31,12 @@ class InvalidJsonError(CareerKitError):
     code = "INVALID_JSON"
 
 
+class ParamTruncatedError(InvalidJsonError):
+    """参数在传输层被截断，而不是 JSON 语法写错。"""
+
+    code = "PARAM_TRUNCATED"
+
+
 def error_response(code: str, message: str, details: dict[str, Any] | None = None) -> str:
     """返回标准错误格式（JSON 字符串）。"""
     return json.dumps(

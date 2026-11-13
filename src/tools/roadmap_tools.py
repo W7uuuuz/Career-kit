@@ -11,6 +11,8 @@ from ..core.state import State, StateSnapshot, resolve_state
 from ..desktop import ensure_console_shortcut
 from ..guidance import guide_for, verdict_label
 from ..mcp_app import mcp
+from . import draft_store
+from .draft_store import DraftError
 from .errors import InvalidJsonError, error_response
 from .methodology import build_methodology_context
 from .profile import (
@@ -813,7 +815,9 @@ def _next_step_message(snapshot: StateSnapshot) -> str:
 
 
 @mcp.tool()
-def save_roadmap(roadmap_json: str, force: bool = False) -> str:
+def save_roadmap(
+    roadmap_json: str = "", force: bool = False, roadmap_draft_id: str = ""
+) -> str:
     """保存路线图到档案（只校验结构；质量项以建议形式返回，不阻断保存）。
 
     质量判断交给 LLM、审计员与用户：层级跨度、KPI、届别、可执行性等
@@ -821,6 +825,8 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
 
     Args:
         roadmap_json: 路线图的 JSON 字符串
+        roadmap_draft_id: 可选。先用 draft_create + draft_append 分片写入，
+            再传 draft_id；长内容优先走这条路径，避免参数被传输层截断。
         force: 已废弃，保留兼容（不再影响保存）
 
     Schema（与 sop/roadmap.yaml 一致）:
@@ -895,10 +901,19 @@ def save_roadmap(roadmap_json: str, force: bool = False) -> str:
     if isinstance(gate, str):
         return gate
 
+    roadmap_data = None
+    source_text = roadmap_json
+    if roadmap_draft_id:
+        try:
+            source_text = draft_store.read_text(roadmap_draft_id)
+        except DraftError as exc:
+            return error_response(exc.code, exc.message)
     try:
-        roadmap_data = _parse_json_param(roadmap_json, "路线图")
+        roadmap_data = _parse_json_param(source_text, "路线图")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
+    if roadmap_draft_id:
+        draft_store.clear(roadmap_draft_id)
 
     if not isinstance(roadmap_data, dict):
         return error_response(

@@ -38,6 +38,8 @@ class TargetSpec(BaseModel):
     target_tiers: list[str] = Field(default_factory=list)
     bridge_tiers: list[str] = Field(default_factory=list)
     graduation_year: str = ""
+    job_kind: str = ""
+    exclude_directions: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
 
 

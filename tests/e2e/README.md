@@ -1,4 +1,4 @@
-# Career Kit E2E
+﻿# Career Kit E2E
 
 不是只看「有没有报错」，而是量化「功能效果好不好」：
 
@@ -39,7 +39,7 @@
 | browser | 控制台页面打开、勾选打卡、SSE 刷新 | Chromium |
 | llm | Agent 选工具、守规则、最终档案状态 | LLM API |
 
-核心套件覆盖主要 51 个工具路径；`fetch_company_jobs` / `fetch_jd_detail` 由 live 套件覆盖。
+核心套件覆盖主要 55 个工具路径；`fetch_company_jobs` / `fetch_jd_detail` 由 live 套件覆盖。
 
 ## 产物
 
@@ -89,3 +89,4 @@ artifacts/e2e/<run-id>/<test>/
 2. 所有业务调用走真实 MCP stdio，不直接调用工具函数。
 3. 核心套件不依赖外网；live/LLM/browser 独立 opt-in。
 4. 失败保留 transcript 与数据快照，便于复现和优化。
+

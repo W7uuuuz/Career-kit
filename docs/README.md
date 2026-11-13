@@ -1,4 +1,4 @@
-# 文档地图
+﻿# 文档地图
 
 > 唯一入口。公开文档在 `docs/` 根目录（MCP Resources 直接读取），内部开发文档在
 > `docs/internal/`（被 `.gitignore` 排除，不随开源仓库发布）。
@@ -10,7 +10,7 @@
 | [llms.txt](llms.txt) | LLM 运行时操作手册：规则、工作流、反模式 | 接入的 AI Agent |
 | [workflow.md](workflow.md) | 各阶段前置条件、流程、输入输出 | 使用者 / LLM |
 | [install.md](install.md) | 源码安装、一键脚本、实时职业地图与安装常见问题 | 使用者 |
-| [tools.md](tools.md) | 51 个 MCP 工具的唯一事实源 | 使用者 / 贡献者 |
+| [tools.md](tools.md) | 55 个 MCP 工具的唯一事实源 | 使用者 / 贡献者 |
 | [scrapers.md](scrapers.md) | 已收录企业数据源与贡献流程 | 使用者 / 贡献者 |
 | [knowledge.md](knowledge.md) | 本地知识库目录与文件格式 | 使用者 |
 | [rules.md](rules.md) | 档位含义、评分口径、打卡方式、数据边界 | 使用者 / LLM |
@@ -43,3 +43,4 @@ MCP Resource 同源）。
 2. 工作流只改 `docs/workflow.md`；`docs/llms.txt` 引用它，不重复定义。
 3. 内部状态（Phase / 待办 / 已完成）只改 `docs/internal/roadmap.md`。
 4. 新增公开文档前先判断能否并入现有文档，避免再次产生重复源。
+

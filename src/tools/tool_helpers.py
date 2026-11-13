@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from .errors import InvalidJsonError
+from .errors import InvalidJsonError, ParamTruncatedError
 
 # markdown code fence：```json {...}``` 或 ``` {...}```（DOTALL 支持多行）
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -122,11 +122,34 @@ def _parse_json_param(raw: Any, field_name: str = "参数") -> dict:
             f"{field_name} 必须是 JSON 对象（dict），收到的是 {non_object.__name__}",
             {"raw": raw[:200]},
         )
+    if _looks_truncated(raw):
+        raise ParamTruncatedError(
+            f"{field_name} 参数疑似在传输中被截断（括号/引号未闭合），"
+            f"长度 {len(raw)} 字符。请改用 draft_create + draft_append 分片提交，"
+            "或压缩内容后重试；这不是 JSON 语法写错。",
+            {"raw_length": len(raw), "raw_tail": raw[-120:]},
+        )
     raise InvalidJsonError(
         f"{field_name} JSON 解析失败（已尝试原文/代码块/对象提取）：\n"
         "请只返回一个 JSON 对象，不要夹解释文字，键用双引号，无尾逗号。",
         {"raw": raw[:200], "attempts": len(parse_errors)},
     )
+
+
+def _looks_truncated(raw: str) -> bool:
+    """判断失败是否更像「被传输截断」而非语法错误。
+
+    只有内容足够长（>=1KB）才启用该判断：短文本的括号/引号不闭合
+    通常只是写法错误，不应误报成截断。
+    """
+    text = str(raw or "").rstrip()
+    if len(text) < 1024:
+        return False
+    if text.count("{") > text.count("}") or text.count("[") > text.count("]"):
+        return True
+    if text.endswith((",", ":", "{", "[", "\\")):
+        return True
+    return text.count('"') % 2 == 1
 
 
 def _json(obj: Any) -> str:
@@ -208,3 +231,4 @@ def server_fingerprint_line() -> str:
             "数据目录仍是 ~/.career-kit，不会因为 cwd 不同丢档。"
         )
     return f"[服务自检] {line}"
+

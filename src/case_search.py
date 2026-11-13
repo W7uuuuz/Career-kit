@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -428,6 +429,7 @@ def _rank(
     """去重 → 学历命中/新鲜度打分 → kind 分组内排序输出。"""
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
+    seen_content: set[str] = set()
     unique: list[tuple[dict, float]] = []
 
     kind_wanted = kind or "both"
@@ -446,8 +448,13 @@ def _rank(
         title_key = "".join(card["title"].lower().split())[:60]
         if url_key in seen_urls or title_key in seen_titles:
             continue
+        content_key = _content_key(card)
+        if content_key and content_key in seen_content:
+            continue
         seen_urls.add(url_key)
         seen_titles.add(title_key)
+        if content_key:
+            seen_content.add(content_key)
 
         score = 0.0
         if edu_condition:
@@ -471,6 +478,18 @@ def _rank(
         if card["match_score"] is None:
             card.pop("match_score", None)
     return ranked
+
+
+def _content_key(card: dict) -> str:
+    """正文指纹：标题不同但正文相同的案例视为同一篇。"""
+    text = " ".join(
+        str(card.get(key) or "")
+        for key in ("content", "highlights")
+    ).strip().lower()
+    text = " ".join(text.split())
+    if len(text) < 80:
+        return ""
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
 def _freshness(date_str: str, now: datetime) -> float:

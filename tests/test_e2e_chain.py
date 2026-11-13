@@ -572,6 +572,8 @@ def test_step8_mcp_tools_registered():
         "check_plan_fit", "build_application_list",
         # 计划导入
         "import_plan",
+        # 草稿
+        "draft_create", "draft_append", "draft_status", "draft_clear",
     ]
 
     missing = [t for t in expected if t not in tools]
@@ -634,3 +636,4 @@ def main():
 if __name__ == "__main__":
     success = main()
     sys.exit(0 if success else 1)
+

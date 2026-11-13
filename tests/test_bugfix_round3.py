@@ -211,8 +211,8 @@ def test_report_message_splits_jd_and_case_sources():
         report, {"md": "m", "html": "h", "json": "j", "index": "i"}
     )
     assert "市场调研完成（AI Agent 开发）" in msg, "标题取 direction，不被档案目标覆盖"
-    assert "JD 源 1 个可用" in msg and "案例源 1 个可用" in msg
-    assert "2 条真实岗位样本" in msg and "1 条同学历经历" in msg
+    assert "岗位源 成功 1" in msg and "案例源 成功 1" in msg
+    assert "2 条可投岗位样本" in msg and "1 条同学历经历" in msg
 
 
 # ============ #7 direction 优先 ============
@@ -303,3 +303,4 @@ def test_knowledge_nonsense_query_returns_nothing(tmp_path, monkeypatch):
     assert good["results"], "有意义查询仍要命中有价值资料"
     assert good["results"][0]["source"] == "字节跳动 面经.md"
     assert good["results"][0]["relevance"] >= ks.MIN_RELEVANCE
+

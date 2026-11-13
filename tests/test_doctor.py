@@ -29,7 +29,7 @@ def test_doctor_reports_healthy_server(tmp_path):
     result = _run(tmp_path, tmp_path / "data")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "[OK] MCP 服务" in result.stdout
-    assert "51 个工具" in result.stdout
+    assert "55 个工具" in result.stdout
     assert "核心" in result.stdout
     assert "[OK] 数据目录" in result.stdout
     # 包版本检查必须出现在输出中；健康环境允许 WARN（不要求 0 FAIL）
@@ -130,3 +130,4 @@ def test_expected_package_version_matches_metadata_files():
     assert pyproject["project"]["version"] == doctor.EXPECTED_PACKAGE_VERSION
     assert server["version"] == doctor.EXPECTED_PACKAGE_VERSION
     assert server["packages"][0]["version"] == doctor.EXPECTED_PACKAGE_VERSION
+

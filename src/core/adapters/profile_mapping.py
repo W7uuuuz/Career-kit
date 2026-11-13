@@ -40,6 +40,8 @@ def target_spec(profile: CareerProfile) -> TargetSpec:
         target_tiers=_list_of_str(want.get("target_tiers")) or ["大厂"],
         bridge_tiers=_list_of_str(want.get("bridge_tiers")) or ["中厂"],
         graduation_year=str(who.get("graduation_year") or want.get("graduation_year") or ""),
+        job_kind=str(want.get("job_kind") or want.get("recruit_type") or ""),
+        exclude_directions=_list_of_str(want.get("exclude_directions")),
         constraints=_list_of_str(want.get("constraints")),
     )
 

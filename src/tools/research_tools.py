@@ -18,14 +18,22 @@ import re
 import sys
 import threading
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from ..case_search import collect_cases
+from ..core.domain.eligibility import (
+    EligibilityPolicy,
+    evaluate,
+    extract_signals,
+)
+from ..core.domain.labels import channel_label, reason_label
 from ..guidance import login_action
 from ..mcp_app import mcp
 from ..research_digest import render_digest_lines
 from ..research_report import _source_final_states, build_report, save_report
+from ..scrapers import capability
 from ..scrapers.boss.auth import has_valid_cookies as boss_has_valid_cookies
 from ..scrapers.loader import (
     get_job_detail,
@@ -471,6 +479,27 @@ def _filter_relevant_rows(
     return kept
 
 
+def _screen_research_rows(
+    rows: list[dict[str, Any]], policy: EligibilityPolicy
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """详情补抓后的资格判定：届别/学历/城市/排除方向，不合格直接丢弃。"""
+    kept: list[dict[str, Any]] = []
+    screened: dict[str, int] = {}
+    for row in rows:
+        text = " ".join(
+            str(row.get(key) or "")
+            for key in ("title", "summary", "description", "requirements")
+        )
+        signals = extract_signals(row.get("title"), text, row.get("location"))
+        verdict = evaluate(policy, signals)
+        if not verdict.eligible:
+            reason = verdict.reasons[0] if verdict.reasons else "direction_mismatch"
+            screened[reason] = screened.get(reason, 0) + 1
+            continue
+        kept.append(row)
+    return kept, screened
+
+
 def _resolve_source_timeout(override: float = 0.0) -> float:
     """单源超时可配置：显式入参 > 环境变量 > 默认 25 秒。"""
     if override and override > 0:
@@ -488,13 +517,14 @@ def _fetch_family_sync(
     raw_spec: dict[str, Any],
     cache_key: str,
     fingerprint: str,
+    policy: EligibilityPolicy | None = None,
 ) -> dict[str, Any]:
     """抓取单个 JD 源并补详情；成功/空结果立即写断点缓存。"""
     t0 = time.perf_counter()
     try:
         resp = search_company_jobs(slug, **raw_spec)
     except Exception as exc:  # noqa: BLE001 - 单源失败不拖垮整批
-        resp = {"error": f"{type(exc).__name__}: {exc}", "results": []}
+        resp = {"error": _friendly_error(exc), "results": []}
     elapsed = time.perf_counter() - t0
     rows = resp.get("results") or []
     raw_count = len(rows)
@@ -516,6 +546,10 @@ def _fetch_family_sync(
     dropped: list[str] = []
     if rows:
         rows, dropped = _enrich_with_detail(slug, rows)
+    if policy is not None:
+        rows, screened_out = _screen_research_rows(rows, policy)
+    else:
+        screened_out = {}
     list_only = sum(
         1 for row in rows if str(row.get("detail_status") or "") == "list_only"
     )
@@ -530,6 +564,7 @@ def _fetch_family_sync(
             item.get("title", "") for item in filtered_samples[:10]
         ],
         "filtered_samples": filtered_samples[:10],
+        "screened_out": screened_out,
         "list_only": list_only,
         "attempts": 1,
         "retried": False,
@@ -541,6 +576,14 @@ def _fetch_family_sync(
 
 def _one_line(text: Any) -> str:
     return " ".join(str(text or "").split())
+
+
+def _friendly_error(exc: Exception) -> str:
+    """接口异常转用户可读原因，保留技术细节便于排查。"""
+    name = type(exc).__name__
+    if isinstance(exc, (TypeError, AttributeError, KeyError, ValueError)):
+        return f"接口返回格式异常（{name}），可能已变更；技术细节：{exc}"
+    return f"抓取异常（{name}）：{exc}"
 
 
 def _cases_cache_key(query: dict[str, Any], role: str) -> str:
@@ -687,6 +730,9 @@ async def _run_research(
     deadline = time.perf_counter() + _TOTAL_BUDGET
     semaphore = asyncio.Semaphore(_MAX_SOURCE_CONCURRENCY)
     per_source_timeout = _resolve_source_timeout(source_timeout)
+    policy = EligibilityPolicy.from_profile(profile).with_context(
+        role=role, direction=direction, city=city
+    )
 
     async def run_spec(index: int, spec: dict[str, Any]) -> None:
         nonlocal resumed, incomplete
@@ -705,6 +751,27 @@ async def _run_research(
             incomplete = True
             return
         slug = resolve_company(raw_name)
+        explicit_channel = any(
+            key in raw_spec for key in ("scope", "portal", "job_type")
+        )
+        route_status, route_params = (
+            ("unknown", {})
+            if explicit_channel
+            else capability.route_params(slug, policy.job_kind)
+        )
+        if route_status == "skip":
+            families[index] = {
+                "slug": slug,
+                "label": label or slug,
+                "rows": [],
+                "status": "skipped",
+                "error": f"该源不服务「{policy.job_kind}」通道，已跳过（不计失败）",
+                "elapsed": 0.0,
+                "screened_out": {},
+            }
+            return
+        for key, value in route_params.items():
+            raw_spec.setdefault(key, value)
         cache_key = _family_cache_key(slug, raw_spec)
         cached = cache_entries.get(cache_key)
         if isinstance(cached, dict) and cached.get("status") in ("ok", "empty"):
@@ -742,7 +809,13 @@ async def _run_research(
                 try:
                     family = await asyncio.wait_for(
                         asyncio.to_thread(
-                            _fetch_family_sync, slug, label, raw_spec, cache_key, fingerprint
+                            _fetch_family_sync,
+                            slug,
+                            label,
+                            raw_spec,
+                            cache_key,
+                            fingerprint,
+                            policy,
                         ),
                         timeout=timeout,
                     )
@@ -757,9 +830,10 @@ async def _run_research(
                 except Exception as exc:  # noqa: BLE001 - 单源异常不拖垮整批
                     family = {
                         "slug": slug, "label": label or slug, "rows": [], "status": "failed",
-                        "error": f"{type(exc).__name__}: {exc}", "elapsed": 0.0,
+                        "error": _friendly_error(exc), "elapsed": 0.0,
                         "dropped_no_detail": 0, "dropped_titles": [],
                         "filtered_irrelevant": 0, "filtered_samples": [],
+                        "screened_out": {},
                     }
                 if family.get("status") != "failed":
                     break
@@ -791,6 +865,7 @@ async def _run_research(
             return {
                 "cases": [], "sources": {},
                 "warnings": ["cases: 本次总时长预算已用完，案例未抓取；可重跑续抓"],
+                "skipped_reason": "budget",
             }
         try:
             result = await asyncio.wait_for(
@@ -810,12 +885,14 @@ async def _run_research(
             return {
                 "cases": [], "sources": {},
                 "warnings": [f"cases: 案例抓取超时（超过 {_CASE_TIMEOUT:.0f} 秒），已跳过"],
+                "skipped_reason": "timeout",
             }
         except Exception as exc:  # noqa: BLE001 - 案例异常不拖垮整批
             incomplete = True
             return {
                 "cases": [], "sources": {},
                 "warnings": [f"cases: {type(exc).__name__}: {exc}"],
+                "skipped_reason": f"{type(exc).__name__}: {exc}",
             }
         _write_partial_cache(fingerprint, cases_key, result)
         remaining = deadline - time.perf_counter()
@@ -857,6 +934,7 @@ async def _run_research(
         "direction": direction_value or "市场调研",
         "city": city_value,
         "education_tag": education_value,
+        "job_kind": policy.job_kind,
         "jd_families": [f for f in families if f is not None],
         "cases_result": cases_result,
         "partial": {
@@ -1181,20 +1259,28 @@ async def gather_research_data(
     partial_info = gathered.get("partial") or {}
     if partial_info.get("incomplete"):
         message += (
-            "\n\n本次有来源未完成（单源超时/失败或总时长预算用完）："
-            f"已完成的来源已落盘到断点缓存（{partial_info.get('cache_path')}）；"
-            "重跑同一范围会自动续抓，不必从头再来。"
+            "\n\n本次有来源未完成（预算/超时，非抓取失败）："
+            f"已完成部分已落盘到断点缓存（{partial_info.get('cache_path')}）；"
+            "重跑同一范围会自动续抓。"
         )
     else:
         _clear_partial_cache(fingerprint)
     actual_families = [
         item for item in (gathered.get("jd_families") or []) if item.get("slug")
     ]
-    actual_source_count = len(actual_families) + (1 if role else 0)
-    if actual_source_count > 2:
+    jd_source_count = len(actual_families)
+    case_source_count = 1 if role else 0
+    if jd_source_count > 2:
         message += (
-            f"\n\n本轮源较多（{actual_source_count} 个），已在 {_TOTAL_BUDGET:.0f} 秒预算内返回；"
+            f"\n\n岗位源较多（{jd_source_count} 个），已在 {_TOTAL_BUDGET:.0f} 秒预算内返回；"
             "未完成来源已写断点缓存，重跑会续抓；下次建议拆批。"
+        )
+    if case_source_count and jd_source_count > 2:
+        message += f"案例源另计 {case_source_count} 个，不参与岗位源拆分。"
+    if not report.get("context", {}).get("job_kind"):
+        message += (
+            "\n\n提示：档案未声明招聘类型（want.job_kind=intern/campus/social），"
+            "本次未做通道路由。补齐后重跑可只查对应通道，避免搜到不相关岗位。"
         )
     if boss_auth_lost:
         message += (
@@ -1497,63 +1583,90 @@ def _render_report_message(report: dict[str, Any], paths: dict[str, str]) -> str
     case_n = counts.get("cases") or 0
     dropped_n = counts.get("dropped_no_detail") or 0
     list_only_n = counts.get("list_only") or 0
-    fail_n = counts.get("source_fail") or 0
-    empty_n = counts.get("source_empty") or 0
     gaps = report.get("gaps") or []
 
     statuses = report.get("source_status") or []
-    # 源维度：同一来源只保留一个最终状态（ok > empty > failed），不按 scope 重复计数。
-    states = report.get("source_states") or _source_final_states(statuses)
-    # JD 源与案例源分开统计（口径写清），但同一 scope 内按来源去重。
-    jd_ok_n = len({
-        str(s.get("slug") or s.get("source") or "")
-        for s in statuses
-        if s.get("status") == "ok" and s.get("scope", "jd") == "jd"
-    } - {""})
-    case_ok_n = len({
-        str(s.get("slug") or s.get("source") or "")
-        for s in statuses
-        if s.get("status") == "ok" and s.get("scope") == "cases"
-    } - {""})
-    scope_bits = []
-    if jd_ok_n:
-        scope_bits.append(f"JD 源 {jd_ok_n} 个可用")
-    if case_ok_n:
-        scope_bits.append(f"案例源 {case_ok_n} 个可用")
-    ok_text = "、".join(scope_bits) or "0 个来源可用"
+    jd_states = _source_final_states(
+        [s for s in statuses if str(s.get("scope") or "jd") == "jd"]
+    )
+    case_states = _source_final_states(
+        [s for s in statuses if str(s.get("scope") or "") == "cases"]
+    )
+
+    def _status_text(states: list[dict[str, Any]], empty_text: str) -> str:
+        labels = (
+            ("ok", "成功"),
+            ("empty", "无结果"),
+            ("skipped", "不适用"),
+            ("failed", "失败"),
+        )
+        bits = []
+        for status, label in labels:
+            count = sum(1 for s in states if s.get("status") == status)
+            if count:
+                bits.append(f"{label} {count}")
+        return " / ".join(bits) or empty_text
+
+    state_line = (
+        f"状态：岗位源 {_status_text(jd_states, '0 个已请求')}；"
+        f"案例源 {_status_text(case_states, '本轮未请求')}"
+    )
 
     source_bits = [
         f"{s.get('source')}（{s.get('count', 0)} 条）"
-        for s in states
+        for s in jd_states
         if s.get("status") == "ok"
     ]
     fail_bits = [
         f"{s.get('source')}: {s.get('error') or '未获取到结果'}"
-        for s in states
+        for s in jd_states
         if s.get("status") == "failed"
+    ]
+    skipped_bits = [
+        f"{s.get('source')}: {s.get('error') or '不服务目标招聘类型'}"
+        for s in jd_states
+        if s.get("status") == "skipped"
     ]
 
     filtered_n = counts.get("filtered_irrelevant") or 0
+    screened = {
+        str(reason): int(count)
+        for reason, count in (counts.get("screened_out") or {}).items()
+        if int(count or 0)
+    }
+    user_year = str(ctx.get("graduation_year") or "").strip()
     lines = [
         f"市场调研完成（{report.get('direction') or ctx.get('goal') or '市场调研'}）"
         + (f" · 城市 {ctx.get('city')}" if ctx.get("city") else "")
-        + (f" · 学历档 {ctx.get('education')}" if ctx.get("education") else ""),
+        + (f" · 学历档 {ctx.get('education')}" if ctx.get("education") else "")
+        + (f" · 届别 {user_year}" if user_year else "")
+        + (
+            f" · 招聘类型 {channel_label(ctx.get('job_kind'))}"
+            if ctx.get("job_kind")
+            else ""
+        ),
         "",
-        f"拿到：{jd_n} 条真实岗位样本、{case_n} 条同学历经历"
+        f"拿到：{jd_n} 条可投岗位样本、{case_n} 条同学历经历"
         + (f"（另有 {dropped_n} 条岗位因未获取到详情被剔除）" if dropped_n else "")
-        + (f"（其中 {list_only_n} 条 BOSS 仅列表数据，未抓 JD 详情）" if list_only_n else "")
-        + "；"
-        f"{ok_text}，"
-        + (f"{fail_n} 个源失败（原因已在报告的来源状态面板如实标注）" if fail_n else "无失败源")
-        + (f"，{empty_n} 个源无结果" if empty_n else ""),
+        + (f"（其中 {list_only_n} 条 BOSS 仅列表数据，未抓 JD 详情）" if list_only_n else ""),
+        state_line,
     ]
     if source_bits:
         lines.append(f"可用来源：{'、'.join(source_bits)}")
     if fail_bits:
         lines.append(f"失败来源：{'；'.join(fail_bits)}")
+    if skipped_bits:
+        lines.append(f"不适用来源（未查询，不计失败）：{'；'.join(skipped_bits)}")
+    screened_bits = [
+        f"{reason_label(reason)} {count} 条"
+        for reason, count in sorted(screened.items(), key=lambda item: -item[1])
+        if reason not in {"direction_mismatch", "direction_excluded"}
+    ]
     item_bits = []
     if filtered_n:
         item_bits.append(f"方向不匹配过滤 {filtered_n} 条")
+    if screened_bits:
+        item_bits.append("资格不符剔除 " + "、".join(screened_bits))
     if dropped_n:
         item_bits.append(f"无详情剔除 {dropped_n} 条")
     if item_bits:
@@ -1578,9 +1691,27 @@ def _render_report_message(report: dict[str, Any], paths: dict[str, str]) -> str
                     f"来源:{item.get('source') or '未知'}",
                 ) if str(bits or "").strip()
             ]
+            years = item.get("graduation_years") or []
+            if years:
+                year_text = "届别:" + "/".join(str(year) for year in years)
+                if user_year and str(user_year) not in {str(year) for year in years}:
+                    year_text += "（与你的届别不符）"
+                bits.append(year_text)
             lines.append(f"#{item.get('id')} " + " | ".join(bits) + (f" | 摘要：{brief}" if brief else ""))
         if len(roster_jd) > _ROSTER_MAX:
             lines.append(f"……其余 {len(roster_jd) - _ROSTER_MAX} 条见报告。")
+        company_counts = Counter(
+            str(item.get("company") or "").strip()
+            for item in roster_jd
+            if str(item.get("company") or "").strip()
+        )
+        multi = [
+            f"{company}（{count} 岗）"
+            for company, count in company_counts.items()
+            if count > 1
+        ]
+        if multi:
+            lines.append("同公司多岗：" + "、".join(multi))
         lines.append(
             f"花名册共 {len(roster_jd)} 条；完整 JD 已写入报告与档案，未在本消息中展开。"
         )
@@ -1642,3 +1773,4 @@ def _render_report_message(report: dict[str, Any], paths: dict[str, str]) -> str
         ]
     )
     return "\n".join(lines)
+

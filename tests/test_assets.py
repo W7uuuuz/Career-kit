@@ -66,3 +66,19 @@ def test_next_asset_stem_and_write(tmp_path, monkeypatch):
     first = assets.write_asset_text("research", "默认档案", f"{stem}.md", "# 报告")
     assert first.exists()
     assert first.read_text(encoding="utf-8") == "# 报告"
+
+
+def test_asset_filename_keeps_extension_under_truncation():
+    """长方向名只截断主干，扩展名必须完整。"""
+    long_name = "2026-11-13_1720_Agent 开发 _ AI 应用开发（日常实习）" * 3
+    md = assets.asset_filename(f"{long_name}.md")
+    js = assets.asset_filename(f"{long_name}.json")
+    assert md.endswith(".md") and not md.endswith(".m")
+    assert js.endswith(".json")
+    assert len(md) <= assets.ASSET_STEM_LIMIT
+    assert len(js) <= assets.ASSET_STEM_LIMIT
+
+
+def test_asset_filename_rejects_illegal_chars_and_reserved_names():
+    assert assets.asset_filename("a/b:c?.md") == "a_b_c_.md"
+    assert assets.asset_filename("CON.md").startswith("CON_")

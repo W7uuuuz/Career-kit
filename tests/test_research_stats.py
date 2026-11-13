@@ -74,7 +74,7 @@ def test_source_final_state_not_counted_twice(temp_profile):
     message = _render_report_message(
         report, {"md": "m", "html": "h", "json": "j", "index": "i"}
     )
-    assert "1 个源失败" in message
+    assert "失败 1" in message
     assert "个源无结果" not in message, "同一来源不能同时被计为失败与无结果"
 
 
@@ -117,7 +117,7 @@ def test_single_source_failure_retries_once(temp_profile, monkeypatch):
 
     calls = []
 
-    def fake_fetch(slug, label, raw_spec, cache_key, fingerprint):
+    def fake_fetch(slug, label, raw_spec, cache_key, fingerprint, policy=None):
         calls.append(slug)
         if len(calls) == 1:
             return {**_family(slug, label, [], "failed", "模拟失败"), "attempts": 1}
@@ -292,3 +292,5 @@ def test_salary_digest_supports_daily_and_does_not_claim_missing():
     text = "\n".join(render_digest_lines(digest))
     assert "日薪" in text and "年薪" in text
     assert "均未公开薪资" not in text
+
+

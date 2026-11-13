@@ -7,6 +7,8 @@ from datetime import datetime
 from ..guidance import goal_confirmed, guide_for
 from ..mcp_app import mcp
 from ..models import JourneyEntry
+from . import draft_store
+from .draft_store import DraftError
 from .errors import InvalidJsonError, error_response
 from .gap_analyzer import format_gap_report
 from .methodology import build_methodology_context
@@ -481,13 +483,15 @@ def _ai_authorship_flag_issues(gap_data: dict, ai_names: list[str]) -> list[str]
 
 
 @mcp.tool()
-def save_gap_analysis(gap_json: str) -> str:
+def save_gap_analysis(gap_json: str = "", gap_draft_id: str = "") -> str:
     """保存差距分析结果。
 
     何时调用：在 analyze_gaps 返回分析任务，LLM 完成分析后调用此工具保存结果。
 
     Args:
         gap_json: 差距分析的 JSON 字符串
+        gap_draft_id: 可选。先用 draft_create + draft_append 分片写入，
+            再传 draft_id；长内容优先走这条路径，避免参数被传输层截断。
 
     Schema（与 sop/resume_screening.yaml 的 output_schema 一致——以该 YAML 为唯一权威）:
         {
@@ -562,10 +566,18 @@ def save_gap_analysis(gap_json: str) -> str:
     if isinstance(gate, str):
         return gate
 
+    source_text = gap_json
+    if gap_draft_id:
+        try:
+            source_text = draft_store.read_text(gap_draft_id)
+        except DraftError as exc:
+            return error_response(exc.code, exc.message)
     try:
-        gap_data = _parse_json_param(gap_json, "差距分析")
+        gap_data = _parse_json_param(source_text, "差距分析")
     except InvalidJsonError as exc:
         return error_response(exc.code, exc.message, exc.details)
+    if gap_draft_id:
+        draft_store.clear(gap_draft_id)
 
     # 结构校验：只挡会破坏渲染/状态的硬错误（match_score 类型与范围）
     structural_issues = _validate_gap_content(gap_data, profile.have or {})

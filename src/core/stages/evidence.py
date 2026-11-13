@@ -16,7 +16,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from ...case_search import collect_cases
-from ...scrapers import catalog, loader
+from ...scrapers import capability, catalog, loader
 from ...scrapers.loader import get_job_detail, search_company_jobs
 from ...tools.profile import load_profile, save_profile
 from ..artifacts.models import (
@@ -29,6 +29,12 @@ from ..artifacts.models import (
     JDEvidence,
     TargetSpec,
 )
+from ..domain.eligibility import (
+    EligibilityPolicy,
+    evaluate,
+    extract_signals,
+)
+from ..domain.labels import reason_label
 from ..orchestrator import state_machine
 from ..reporting import evidence_report
 from .base import StageContext, StageResult
@@ -83,28 +89,6 @@ _COUNT_KEYS = (
     "list_only_dropped_city",
 )
 
-# 采集层岗位相关性：目标岗位关键词，以及岗位族扩展词。
-# 只做字面命中，不做语义推断；宁可少收，也不让跑偏岗位污染统计。
-_GENERIC_ROLE_TERMS = frozenset(
-    {"开发", "工程师", "研发", "经理", "专员", "主管", "总监", "助理", "实习", "岗位"}
-)
-_AI_SIGNALS = (
-    "ai", "agent", "llm", "大模型", "模型", "算法", "机器学习", "深度学习",
-    "nlp", "rag", "langchain", "langgraph", "智能",
-)
-_AI_FAMILY_TERMS = (
-    "ai", "agent", "llm", "大模型", "模型", "算法", "机器学习", "深度学习",
-    "nlp", "rag", "langchain", "langgraph", "prompt", "智能",
-)
-_ENGINEERING_SIGNALS = ("开发", "工程师", "研发", "后端", "服务端", "backend", "engineer", "developer")
-_ENGINEERING_TERMS = (
-    "开发", "工程师", "研发", "后端", "服务端", "python", "java", "go", "golang",
-    "微服务", "分布式", "高并发",
-)
-_ROLE_TOKEN_SPLIT_RE = re.compile(r"[\s,，、;；/|()（）\-]+")
-_ASCII_TOKEN_RE = re.compile(r"[a-z][a-z0-9+#.\-]*")
-_CJK_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}")
-
 
 
 def run(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
@@ -156,6 +140,7 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
     )
 
     profile = load_profile(ctx.profile_name)
+    policy = EligibilityPolicy.from_target(target, profile)
     education = _education_of(profile)
     selected = _select_companies(
         pool, _parse_company_ids(inputs.get("company_ids")), max_companies
@@ -218,7 +203,13 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
 
     if batch:
         finished = await _collect_company_batch(
-            batch, target_keyword, target.city, per_company_limit, deadline, semaphore
+            batch,
+            target_keyword,
+            target.city,
+            per_company_limit,
+            deadline,
+            semaphore,
+            policy.job_kind,
         )
         for entry, results, attempted in finished:
             if not attempted:
@@ -294,9 +285,10 @@ async def run_async(ctx: StageContext, inputs: dict[str, Any]) -> StageResult:
 
     counts = checkpoint.counts
     counts["companies_requested"] = len(selected)
+    counts["job_kind_missing"] = 0 if policy.job_kind else 1
 
     fresh_jd = _dedupe_jobs(list(checkpoint.jd_items))
-    fresh_jd, irrelevant_samples = _filter_relevant_jobs(fresh_jd, target_keyword, counts)
+    fresh_jd, irrelevant_samples = _screen_jobs(fresh_jd, policy, counts)
     fresh_jd = _truncate_per_company(fresh_jd, per_company_limit)
 
     reused_jd: list[JDEvidence] = []
@@ -716,7 +708,7 @@ def _record_results(
             result["count"]
         )
     if fetched_entry is not None and any(
-        result["status"] != "failed" for result in results
+        result["status"] in {"ok", "empty"} for result in results
     ):
         checkpoint.counts["companies_fetched"] = (
             checkpoint.counts.get("companies_fetched", 0) + 1
@@ -737,11 +729,14 @@ async def _collect_company_batch(
     limit: int,
     deadline: float,
     semaphore: asyncio.Semaphore,
+    job_kind: str = "",
 ) -> list[tuple[CompanyEntry, list[dict[str, Any]], bool]]:
     """并发抓取本批企业；返回 (企业, 来源结果, 是否实际开抓)。"""
     tasks = [
         asyncio.ensure_future(
-            _collect_company(entry, keyword, city, limit, deadline, semaphore)
+            _collect_company(
+                entry, keyword, city, limit, deadline, semaphore, job_kind
+            )
         )
         for entry in batch
     ]
@@ -765,11 +760,12 @@ async def _collect_company(
     limit: int,
     deadline: float,
     semaphore: asyncio.Semaphore,
+    job_kind: str = "",
 ) -> tuple[CompanyEntry, list[dict[str, Any]]]:
     results = await asyncio.gather(
         *(
             _search_company_jobs(
-                entry, slug, keyword, city, limit, deadline, semaphore
+                entry, slug, keyword, city, limit, deadline, semaphore, job_kind
             )
             for slug in _entry_scrapers(entry)
         )
@@ -789,16 +785,25 @@ def _scraper_params(slug: str) -> dict[str, Any]:
         return {}
 
 
-def _search_params(slug: str, role: str, city: str, limit: int) -> dict[str, Any]:
+def _search_params(
+    slug: str, role: str, city: str, limit: int, job_kind: str = ""
+) -> dict[str, Any] | None:
+    """构造来源参数：拆词 + 通道路由；返回 None 表示该源不服务目标通道。"""
     supported = _scraper_params(slug)
     params: dict[str, Any] = {"limit": limit}
-    if not supported:
-        # 未声明参数能力的源不硬塞 keyword/city，避免 loader 判定未知参数。
-        return params
-    if role and "keyword" in supported:
-        params["keyword"] = role
-    if city and "city" in supported:
-        params["city"] = city
+    keyword = capability.primary_keyword(role)
+    if supported:
+        if keyword and "keyword" in supported:
+            params["keyword"] = keyword
+        if city and "city" in supported:
+            params["city"] = city
+
+    status, route = capability.route_params(slug, job_kind)
+    if status == "skip":
+        return None
+    for key, value in route.items():
+        if key in supported:
+            params[key] = value
     return params
 
 
@@ -807,88 +812,42 @@ def _target_search_keyword(target: TargetSpec) -> str:
     return (target.role or "").strip() or (target.direction or "").strip()
 
 
-def _keyword_terms(keyword: str) -> tuple[list[str], list[str]]:
-    """把目标关键词拆成核心词与岗位族扩展词（只做字面匹配）。"""
-    text = str(keyword or "").strip().lower()
-    if not text:
-        return [], []
-    core: list[str] = [part for part in _ROLE_TOKEN_SPLIT_RE.split(text) if part]
-    if not core:
-        core = [text]
-    core.extend(match.group(0) for match in _ASCII_TOKEN_RE.finditer(text))
-    core.extend(match.group(0) for match in _CJK_TOKEN_RE.finditer(text))
-    core = _dedupe_terms(core)
-
-    family: list[str] = []
-    if any(signal in text for signal in _AI_SIGNALS):
-        family.extend(_AI_FAMILY_TERMS)
-    if any(signal in text for signal in _ENGINEERING_SIGNALS):
-        family.extend(_ENGINEERING_TERMS)
-    return core, _dedupe_terms(family)
+def _friendly_error(exc: Exception) -> str:
+    """把接口异常转成用户可读原因，同时保留技术细节便于排查。"""
+    name = type(exc).__name__
+    if isinstance(exc, (TypeError, AttributeError, KeyError, ValueError)):
+        return f"接口返回格式异常（{name}），可能已变更；技术细节：{exc}"
+    return f"抓取异常（{name}）：{exc}"
 
 
-def _dedupe_terms(terms: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for term in terms:
-        value = str(term or "").strip().lower()
-        if len(value) < 2 or value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
-
-
-def _term_in(term: str, text: str) -> bool:
-    if term.isascii():
-        pattern = rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])"
-        return re.search(pattern, text) is not None
-    return term in text
-
-
-def _job_is_relevant(title: str, text: str, keyword: str) -> bool:
-    """按标题/正文与目标岗位关键词打分：宁少不脏。"""
-    phrase = " ".join(str(keyword or "").lower().split())
-    if not phrase:
-        return True
-    haystack_title = str(title or "").lower()
-    haystack_text = str(text or "").lower()
-    if phrase in haystack_title or phrase.replace(" ", "") in haystack_title.replace(" ", ""):
-        return True
-
-    core, family = _keyword_terms(phrase)
-    terms = _dedupe_terms(core + family)
-    matched_core = {term for term in core if _term_in(term, haystack_title) or _term_in(term, haystack_text)}
-    matched_all = {
-        term
-        for term in terms
-        if _term_in(term, haystack_title) or _term_in(term, haystack_text)
-    }
-    if len(matched_all) >= 2:
-        return True
-    # 中文核心词（如「市场」）单独命中即可；通用词（如「开发」）不算。
-    return any(
-        not term.isascii()
-        and term not in _GENERIC_ROLE_TERMS
-        and _term_in(term, haystack_title)
-        for term in matched_core
-    )
-
-
-def _filter_relevant_jobs(
-    items: list[JDEvidence], keyword: str, counts: dict[str, int]
+def _screen_jobs(
+    items: list[JDEvidence],
+    policy: EligibilityPolicy,
+    counts: dict[str, int],
 ) -> tuple[list[JDEvidence], list[str]]:
-    if not keyword:
-        return items, []
+    """唯一资格筛选：方向 + 招聘类型 + 届别 + 学历 + 城市。
+
+    不合格岗位直接丢弃，并按主因计入 counts，供报告聚合展示；
+    缺信号的岗位保留（unknown），不做惩罚。
+    """
     kept: list[JDEvidence] = []
     dropped: list[str] = []
     for item in items:
-        text = " ".join((item.summary, item.description, item.requirements))
-        if _job_is_relevant(item.title, text, keyword):
-            kept.append(item)
-        else:
-            counts["dropped_irrelevant"] += 1
-            dropped.append(item.title)
+        signals = extract_signals(
+            item.title,
+            " ".join((item.summary, item.description, item.requirements)),
+            item.location,
+        )
+        verdict = evaluate(policy, signals)
+        if not verdict.eligible:
+            reason = verdict.reasons[0] if verdict.reasons else "direction_mismatch"
+            key = f"screened_{reason}"
+            counts[key] = counts.get(key, 0) + 1
+            if reason in {"direction_mismatch", "direction_excluded"}:
+                counts["dropped_irrelevant"] = counts.get("dropped_irrelevant", 0) + 1
+                dropped.append(item.title)
+            continue
+        kept.append(item)
     return kept, dropped
 
 
@@ -961,8 +920,6 @@ async def _search_boss_jobs(
     ]
     warnings = [str(item) for item in response.get("warnings") or [] if str(item).strip()]
     status = "ok" if rows else "empty"
-    if not rows and warnings:
-        status = "failed"
     return _source_result(
         None, BOSS_SOURCE, status, len(rows), "；".join(warnings), elapsed, rows=rows
     )
@@ -976,8 +933,19 @@ async def _search_company_jobs(
     limit: int,
     deadline: float,
     semaphore: asyncio.Semaphore,
+    job_kind: str = "",
 ) -> dict[str, Any]:
-    params = _search_params(slug, role, city, limit)
+    params = _search_params(slug, role, city, limit, job_kind)
+    if params is None:
+        return _source_result(
+            entry,
+            slug,
+            "skipped",
+            0,
+            f"该源不服务「{job_kind or '目标'}」通道",
+            0.0,
+            attempted=True,
+        )
     loop = asyncio.get_running_loop()
     request_started = loop.time()
     async with semaphore:
@@ -1006,7 +974,7 @@ async def _search_company_jobs(
                     )
             except Exception as exc:  # noqa: BLE001 - 单源异常不拖垮整批
                 return _source_result(
-                    entry, slug, "failed", 0, f"{type(exc).__name__}: {exc}",
+                    entry, slug, "failed", 0, _friendly_error(exc),
                     loop.time() - started,
                 )
     elapsed = loop.time() - started
@@ -1024,8 +992,6 @@ async def _search_company_jobs(
     ]
     warnings = [str(item) for item in response.get("warnings") or [] if str(item).strip()]
     status = "ok" if rows else "empty"
-    if not rows and warnings:
-        status = "failed"
     error_text = "；".join(warnings)
     return _source_result(entry, slug, status, len(rows), error_text, elapsed, rows=rows)
 
@@ -1704,6 +1670,11 @@ def _build_gaps(
     ]
     if unscrapable:
         gaps.append("未接入自动抓取（已跳过）：" + "、".join(unscrapable))
+    if counts.get("job_kind_missing"):
+        gaps.append(
+            "未声明招聘类型（TargetSpec.job_kind），本次未做通道路由；"
+            "补齐后可只查实习/校招/社招通道，避免搜到不适用岗位"
+        )
     for status in source_status:
         scope = "面经" if status.get("scope") == "cases" else "JD"
         if status.get("status") == "failed":
@@ -1711,9 +1682,28 @@ def _build_gaps(
             gaps.append(f"{scope}来源 {status.get('source')} 失败：{detail}")
         elif status.get("status") == "empty":
             gaps.append(f"{scope}来源 {status.get('source')} 无结果")
+        elif status.get("status") == "skipped":
+            gaps.append(
+                f"{scope}来源 {status.get('source')} 不服务目标招聘类型，"
+                "已跳过（不计失败）"
+            )
         note = str(status.get("note") or "").strip()
         if note:
             gaps.append(note)
+    screened = {
+        key[len("screened_"):]: int(value)
+        for key, value in counts.items()
+        if key.startswith("screened_")
+        and int(value or 0)
+        and key[len("screened_"):] not in {"direction_mismatch", "direction_excluded"}
+    }
+    if screened:
+        total = sum(screened.values())
+        parts = "、".join(
+            f"{reason_label(reason)} {count} 条"
+            for reason, count in sorted(screened.items(), key=lambda item: -item[1])
+        )
+        gaps.append(f"资格筛选剔除 {total} 条（{parts}）")
     if counts.get("dropped_irrelevant"):
         samples = [title for title in irrelevant_samples or [] if title]
         sample_text = "、".join(samples[:10])
@@ -1836,3 +1826,5 @@ __all__ = [
     "run_async",
     "validate",
 ]
+
+

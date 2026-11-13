@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .assets import next_asset_stem, write_asset_text
+from .core.domain.labels import reason_label
 from .research_digest import build_digest, parse_salary
 from .tools.profile import get_active_profile_name, load_profile, save_profile
 
@@ -75,7 +76,7 @@ def _clip(text: Any, limit: int) -> str:
 # 源维度：一个来源只能有一个最终状态（ok > failed > empty）。
 # 任一路径失败都按失败计，避免「失败」被「无结果」掩盖；source_status 仍保留
 # 逐 scope 明细供复核，汇总/播报统一走最终状态，避免同一源被重复计数。
-_SOURCE_RANK = {"ok": 3, "failed": 2, "empty": 1}
+_SOURCE_RANK = {"ok": 3, "failed": 2, "empty": 1, "skipped": 0}
 
 
 def _source_final_states(
@@ -353,6 +354,10 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         "city": city or _clip(want.get("city") or who.get("city") or "", 40),
         "education": education_tag
         or _clip(who.get("education") or who.get("education_tag") or "", 40),
+        "graduation_year": str(
+            who.get("graduation_year") or want.get("graduation_year") or ""
+        ),
+        "job_kind": str(gathered.get("job_kind") or want.get("job_kind") or ""),
         "resume_trust": _clip(
             (have.get("self_assessment") or {}).get("resume_trust", ""), 20
         ),
@@ -363,11 +368,12 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
     dropped_no_detail = 0
     filtered_irrelevant = 0
     list_only_total = 0
+    screened_out_total: dict[str, int] = {}
     dropped_gaps: list[dict[str, str]] = []
     for family in gathered.get("jd_families") or []:
         rows = family.get("rows") or []
         status = family.get("status") or ("ok" if rows else "empty")
-        if family.get("error"):
+        if family.get("error") and status != "skipped":
             status = "failed"
         dropped = int(family.get("dropped_no_detail") or 0)
         dropped_no_detail += dropped
@@ -375,6 +381,13 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         filtered_irrelevant += filtered
         list_only = int(family.get("list_only") or 0)
         list_only_total += list_only
+        screened_out = {
+            str(reason): int(count)
+            for reason, count in (family.get("screened_out") or {}).items()
+            if int(count or 0)
+        }
+        for reason, count in screened_out.items():
+            screened_out_total[reason] = screened_out_total.get(reason, 0) + count
         label = family.get("label") or family.get("slug") or "未知来源"
         filtered_samples = [
             item for item in (family.get("filtered_samples") or [])
@@ -391,6 +404,7 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
                 "error": _one_line(family.get("error") or ""),
                 "dropped_no_detail": dropped,
                 "filtered_irrelevant": filtered,
+                "screened_out": screened_out,
                 "filtered_titles": [
                     str(item.get("title") or "") for item in filtered_samples
                 ][:10],
@@ -551,6 +565,22 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    if cases_result.get("skipped_reason") and not any(
+        str(s.get("scope") or "") == "cases" for s in source_status
+    ):
+        source_status.append(
+            {
+                "source": "案例",
+                "slug": "cases",
+                "scope": "cases",
+                "status": "skipped",
+                "count": 0,
+                "raw_count": 0,
+                "elapsed": 0.0,
+                "error": _one_line(str(cases_result.get("skipped_reason") or "")),
+            }
+        )
+
     source_states = _source_final_states(source_status)
     digest = build_digest(
         jd_samples, cases, dropped_no_detail, raw_case_count=len(raw_case_items)
@@ -567,10 +597,13 @@ def build_report(profile: Any, gathered: dict[str, Any]) -> dict[str, Any]:
         "jd_from_cases": jd_from_cases,
         "dropped_no_detail": dropped_no_detail,
         "filtered_irrelevant": filtered_irrelevant,
+        "screened_out": dict(screened_out_total),
+        "screened_total": sum(screened_out_total.values()),
         "list_only": list_only_total,
         "source_ok": sum(1 for s in source_states if s["status"] == "ok"),
         "source_fail": sum(1 for s in source_states if s["status"] == "failed"),
         "source_empty": sum(1 for s in source_states if s["status"] == "empty"),
+        "source_skip": sum(1 for s in source_states if s["status"] == "skipped"),
     }
 
     salary = _build_salary_summary(jd_samples, source_status)
@@ -749,10 +782,11 @@ def _derive_gaps(
     gaps: list[dict[str, str]] = []
     # 源维度：一个源只报一次最终状态，避免同一源同时出现在「失败」与「无结果」。
     for s in _source_final_states(source_status):
+        scope_label = "案例来源" if "cases" in (s.get("scopes") or []) else "来源"
         if s["status"] == "failed":
             gaps.append(
                 {
-                    "missing": f"来源「{s['source']}」本次未获取到数据",
+                    "missing": f"{scope_label}「{s['source']}」本次未获取到数据",
                     "reason": _one_line(s.get("error")) or "抓取失败",
                     "suggestion": "见来源状态面板；必要时提供手头 JD 用 import_jd 补充",
                 }
@@ -760,62 +794,100 @@ def _derive_gaps(
         elif s["status"] == "empty":
             gaps.append(
                 {
-                    "missing": f"来源「{s['source']}」未搜到匹配岗位",
-                    "reason": "查询词与该源无匹配，或岗位详情均不可用",
+                    "missing": f"{scope_label}「{s['source']}」未搜到匹配内容",
+                    "reason": "查询词与该源无匹配，或详情均不可用",
                     "suggestion": "换关键词重跑，或补充手头 JD",
                 }
             )
-    # 条目维度：过滤/剔除单独统计，并可复核被过滤样本。
-    for s in source_status:
-        filtered = int(s.get("filtered_irrelevant") or 0)
-        if filtered:
-            samples = [
-                item for item in (s.get("filtered_samples") or [])
-                if isinstance(item, dict)
-            ]
-            titles = [
-                str(item.get("title") or "").strip()
-                for item in samples if str(item.get("title") or "").strip()
-            ]
-            reason = "搜索结果混入与本轮方向无关的岗位（如 AI-HR 培训生）"
-            if samples:
-                reason = "；".join(
-                    f"{item.get('title') or '未命名'}：{item.get('reason') or '方向不匹配'}"
-                    for item in samples[:3]
-                )
-            gaps.append(
-                {
-                    "missing": f"来源「{s['source']}」有 {filtered} 条岗位因方向不匹配被过滤",
-                    "reason": reason,
-                    "suggestion": (
-                        "被过滤示例：" + "、".join(titles[:5]) + "；"
-                        if titles
-                        else ""
-                    ) + "换更精确的关键词重跑，或放宽条件后人工复核",
-                }
-            )
-        list_only = int(s.get("list_only") or 0)
-        if list_only:
+        elif s["status"] == "skipped":
             gaps.append(
                 {
                     "missing": (
-                        f"来源「{s['source']}」BOSS 仅列表数据，未抓 JD 详情"
-                        f"（{list_only} 条）"
+                        f"{scope_label}「{s['source']}」本轮未采集（超时/预算/异常）"
+                        if "cases" in (s.get("scopes") or [])
+                        else f"{scope_label}「{s['source']}」不服务目标招聘类型，已跳过"
                     ),
-                    "reason": "研究阶段 BOSS 默认 list-only，保留薪资与公司/地点/技能标签",
-                    "suggestion": "需要 JD 全文时用 fetch_jd_detail(url) 交互式补抓单条",
+                    "reason": _one_line(s.get("error")) or "该源没有对应通道",
+                    "suggestion": "这不是抓取失败；换用支持该通道的来源即可",
                 }
             )
+    # 条目维度：同一原因跨来源合并成一条，避免缺口列表被重复项占满。
+    filtered = sum(int(s.get("filtered_irrelevant") or 0) for s in source_status)
+    if filtered:
+        samples = [
+            item
+            for s in source_status
+            for item in (s.get("filtered_samples") or [])
+            if isinstance(item, dict)
+        ]
+        titles = [
+            str(item.get("title") or "").strip()
+            for item in samples
+            if str(item.get("title") or "").strip()
+        ]
+        gaps.append(
+            {
+                "missing": f"有 {filtered} 条岗位因方向不匹配被过滤",
+                "reason": "搜索结果混入与本轮方向无关的岗位（如 AI-HR 培训生）",
+                "suggestion": (
+                    "被过滤示例：" + "、".join(titles[:5]) + "；"
+                    if titles
+                    else ""
+                ) + "换更精确的关键词重跑，或放宽条件后人工复核",
+            }
+        )
+
+    screened: dict[str, int] = {}
+    for s in source_status:
+        for reason, count in (s.get("screened_out") or {}).items():
+            if str(reason) in {"direction_mismatch", "direction_excluded"}:
+                continue
+            screened[str(reason)] = screened.get(str(reason), 0) + int(count or 0)
+    if screened:
+        total = sum(screened.values())
+        parts = "、".join(
+            f"{reason_label(reason)} {count} 条"
+            for reason, count in sorted(screened.items(), key=lambda item: -item[1])
+        )
+        gaps.append(
+            {
+                "missing": f"有 {total} 条岗位因资格不符被剔除（{parts}）",
+                "reason": "岗位明确不接受你的届别/学历/招聘类型，或命中你设置的排除方向",
+                "suggestion": "若目标届别尚未开放，先投当前开放的日常实习；也可放宽排除条件复核",
+            }
+        )
+
+    list_only = sum(int(s.get("list_only") or 0) for s in source_status)
+    if list_only:
+        gaps.append(
+            {
+                "missing": f"BOSS 仅列表数据，未抓 JD 详情（{list_only} 条）",
+                "reason": "研究阶段 BOSS 默认 list-only，保留薪资与公司/地点/技能标签",
+                "suggestion": "需要 JD 全文时用 fetch_jd_detail(url) 交互式补抓单条",
+            }
+        )
     gaps.extend(_salary_gap(jd_samples, source_status))
     gaps.extend(_concentration_gap(jd_samples, source_status))
     if not cases:
-        gaps.append(
-            {
-                "missing": "未搜到同背景成功经历案例",
-                "reason": "各案例源本次无匹配（或查询过于具体）",
-                "suggestion": "放宽学历/方向词重试；或先走 import_jd 导入手头材料",
-            }
-        )
+        case_entries = [
+            s for s in source_status if str(s.get("scope") or "") == "cases"
+        ]
+        if not case_entries:
+            gaps.append(
+                {
+                    "missing": "本轮未请求案例",
+                    "reason": "case_query 为空，未查询案例源",
+                    "suggestion": "需要同背景经历时，带 case_query.role 再跑一次",
+                }
+            )
+        elif all(s.get("status") == "empty" for s in case_entries):
+            gaps.append(
+                {
+                    "missing": "未搜到同背景成功经历案例",
+                    "reason": "案例源已查询，但本次无匹配（或查询过于具体）",
+                    "suggestion": "放宽学历/方向词重试；或先走 import_jd 导入手头材料",
+                }
+            )
     return gaps
 
 
@@ -1101,6 +1173,15 @@ def _merge_source_status(
         combined["filtered_samples"] = _merge_filtered_traces(
             old.get("filtered_samples"), status.get("filtered_samples")
         )
+        old_screened = old.get("screened_out") or {}
+        new_screened = status.get("screened_out") or {}
+        combined["screened_out"] = {
+            reason: max(
+                int(old_screened.get(reason) or 0),
+                int(new_screened.get(reason) or 0),
+            )
+            for reason in {*old_screened, *new_screened}
+        }
         combined["filtered_titles"] = [
             str(item.get("title") or "")
             for item in combined["filtered_samples"]
@@ -1144,6 +1225,12 @@ def merge_reports(
         int(s.get("filtered_irrelevant") or 0) for s in source_status
     )
     list_only = sum(int(s.get("list_only") or 0) for s in source_status)
+    screened_out: dict[str, int] = {}
+    for s in source_status:
+        for reason, count in (s.get("screened_out") or {}).items():
+            screened_out[str(reason)] = screened_out.get(str(reason), 0) + int(
+                count or 0
+            )
     raw_cases = sum(
         int(s.get("raw_count") or 0)
         for s in source_status
@@ -1162,10 +1249,13 @@ def merge_reports(
         ),
         "dropped_no_detail": dropped,
         "filtered_irrelevant": filtered_irrelevant,
+        "screened_out": screened_out,
+        "screened_total": sum(screened_out.values()),
         "list_only": list_only,
         "source_ok": sum(1 for s in source_states if s.get("status") == "ok"),
         "source_fail": sum(1 for s in source_states if s.get("status") == "failed"),
         "source_empty": sum(1 for s in source_states if s.get("status") == "empty"),
+        "source_skip": sum(1 for s in source_states if s.get("status") == "skipped"),
     }
     warnings = list(
         dict.fromkeys(
@@ -1265,6 +1355,9 @@ def save_report(
 
     md_path = write_asset_text("research", name, f"{stem}.md", md_text, encoding="utf-8-sig")
     json_path = write_asset_text("research", name, f"{stem}.json", json_text)
+    for written in (md_path, json_path):
+        if not written.exists():
+            raise OSError(f"报告写入失败，文件不存在：{written}")
 
     payload = {
         "generated_at": report.get("generated_at"),
@@ -1296,3 +1389,4 @@ def save_report(
         "md": str(md_path),
         "json": str(json_path),
     }
+

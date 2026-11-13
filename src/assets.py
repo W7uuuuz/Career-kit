@@ -22,6 +22,9 @@ README_FILENAME = "说明.md"
 
 DEFAULT_SANITIZED = "默认档案"
 
+# 文件名主干的长度上限；扩展名永远单独保留，不参与截断。
+ASSET_STEM_LIMIT = 80
+
 # Windows 保留设备名（档案/方向名撞上时加后缀防御）
 _WINDOWS_RESERVED = {
     "CON", "PRN", "AUX", "NUL",
@@ -38,24 +41,54 @@ def get_assets_root() -> Path:
     return Path.home() / "CareerKit"
 
 
-def sanitize_name(raw: str | None) -> str:
-    """把档案名/方向名转成跨平台安全的目录与文件名片段。"""
-    if not raw or not raw.strip() or raw.strip().lower() == "default":
-        return DEFAULT_SANITIZED
+def _sanitize_chars(raw: str) -> str:
+    """替换跨平台非法字符，去掉首尾空格与点。"""
     cleaned = []
-    for ch in raw.strip():
+    for ch in raw:
         if ch in '<>:"/\\|?*' or ord(ch) < 0x20:
             cleaned.append("_")
         else:
             cleaned.append(ch)
-    name = "".join(cleaned).strip(" .")
-    name = name[:40].strip(" .")
+    return "".join(cleaned).strip(" .")
+
+
+def sanitize_name(raw: str | None) -> str:
+    """把档案名/方向名转成跨平台安全的目录与文件名片段。"""
+    if not raw or not raw.strip() or raw.strip().lower() == "default":
+        return DEFAULT_SANITIZED
+    name = _sanitize_chars(raw.strip())[:40].strip(" .")
     if not name:
         return DEFAULT_SANITIZED
     stem = name.split(".")[0].upper() if "." in name else name.upper()
     if stem in _WINDOWS_RESERVED:
         name = f"{name}_"
     return name
+
+
+def asset_filename(raw: str | None, *, limit: int = ASSET_STEM_LIMIT) -> str:
+    """把完整文件名转成安全文件名：只截断主干，扩展名永远完整保留。
+
+    报告/证据池的文件名可能很长（日期 + 方向名），截断时必须保住 `.md`
+    与 `.json`，否则双击打不开、扩展名筛选也会漏掉。
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return "未命名.md"
+    suffix = ""
+    candidate = Path(text).suffix
+    if candidate and 1 < len(candidate) <= 11 and candidate[1:].isalnum():
+        suffix = candidate
+        text = text[: -len(suffix)]
+    body = _sanitize_chars(text)
+    room = max(1, limit - len(suffix))
+    if len(body) > room:
+        body = body[:room].strip(" .")
+    if not body:
+        body = "未命名"
+    stem = body.split(".")[0].upper() if "." in body else body.upper()
+    if stem in _WINDOWS_RESERVED:
+        body = f"{body}_"
+    return body + suffix
 
 
 def profile_display_name(name: str | None) -> str:
@@ -123,14 +156,14 @@ def write_asset_text(
     encoding: str = "utf-8",
 ) -> Path:
     """写一个资产文本文件（自动建目录），返回路径。"""
-    target = kind_assets_dir(kind, profile_name) / sanitize_name(filename)
+    target = kind_assets_dir(kind, profile_name) / asset_filename(filename)
     target.write_text(text, encoding=encoding)
     return target
 
 
 def write_asset_bytes(kind: str, profile_name: str, filename: str, data: bytes) -> Path:
     """写一个资产二进制文件（自动建目录），返回路径。"""
-    target = kind_assets_dir(kind, profile_name) / sanitize_name(filename)
+    target = kind_assets_dir(kind, profile_name) / asset_filename(filename)
     target.write_bytes(data)
     return target
 
@@ -153,3 +186,4 @@ Career Kit 的报告数据全部来自实时抓取与本地知识库，每条附
 
 本目录可随时移动或删除，不影响档案数据；后续产出会自动回到这里。
 """
+

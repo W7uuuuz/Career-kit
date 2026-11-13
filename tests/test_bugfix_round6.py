@@ -248,7 +248,7 @@ def test_gather_surfaces_dropped_no_detail(temp_profile, monkeypatch):
         json.dumps([{"company": "百度"}]),
         json.dumps({"role": "AI Agent 开发"}),
     ))
-    assert "1 条真实岗位样本" in message
+    assert "1 条可投岗位样本" in message
     assert "1 条岗位因未获取到详情被剔除" in message
     profile = profile_module.load_profile()
     assert profile.research["counts"]["dropped_no_detail"] == 1
@@ -374,3 +374,4 @@ def test_read_research_details_validation(temp_profile, monkeypatch):
 
     bad_kind = json.loads(read_research_details(kind="unknown"))
     assert bad_kind["code"] == "INVALID_PARAM"
+
